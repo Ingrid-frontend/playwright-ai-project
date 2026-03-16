@@ -41,6 +41,8 @@ jobs:
         NODE_ENV: stage
         TEST_USERNAME: ${{ secrets.TEST_USERNAME }}
         TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+        FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+        FEISHU_WEBHOOK_SECRET: ${{ secrets.FEISHU_WEBHOOK_SECRET }}
         
     - name: Upload test results
       if: always()
