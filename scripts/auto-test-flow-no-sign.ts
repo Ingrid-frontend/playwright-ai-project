@@ -205,6 +205,9 @@ async function main() {
 
     runCommand('npm run compare-screenshots', '4. 生成截图对比报告');
 
+    // 发送 HTML 内容到飞书
+    runCommand('npm run send-html-to-feishu', '5. 发送 HTML 到飞书', true);
+
     // 发送飞书通知
     await sendFeishuNotification();
 
