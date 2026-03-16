@@ -6,6 +6,10 @@ async function sendFeishuNotification() {
   const webhookUrl = process.env.FEISHU_WEBHOOK_URL;
   const webhookSecret = process.env.FEISHU_WEBHOOK_SECRET;
   
+  console.log('🔍 飞书通知配置检查：');
+  console.log('  - Webhook URL:', webhookUrl ? '已配置' : '未配置');
+  console.log('  - Webhook Secret:', webhookSecret ? '已配置' : '未配置');
+  
   if (!webhookUrl) {
     console.log('⚠️  未配置飞书 Webhook URL，跳过通知');
     return;
@@ -35,6 +39,10 @@ async function sendFeishuNotification() {
       }
     };
 
+    console.log('📤 发送飞书消息：');
+    console.log('  - 消息类型:', message.msg_type);
+    console.log('  - 时间戳:', timestamp);
+
     const headers: Record<string, string> = {
       'Content-Type': 'application/json'
     };
@@ -48,6 +56,7 @@ async function sendFeishuNotification() {
       
       headers['X-Lark-Request-Timestamp'] = String(timestamp);
       headers['X-Lark-Signature'] = sign;
+      console.log('  - 签名：已添加');
     }
 
     const response = await fetch(webhookUrl, {
@@ -56,10 +65,19 @@ async function sendFeishuNotification() {
       body: JSON.stringify(message)
     });
 
+    console.log('📥 飞书响应：');
+    console.log('  - 状态码:', response.status);
+    console.log('  - 状态文本:', response.statusText);
+    
+    const responseText = await response.text();
+    console.log('  - 响应内容:', responseText);
+
     if (response.ok) {
       console.log('✅ 飞书通知发送成功');
     } else {
       console.log('❌ 飞书通知发送失败');
+      console.log('❌ 响应状态:', response.status, response.statusText);
+      console.log('❌ 响应内容:', responseText);
     }
   } catch (error) {
     console.log('❌ 飞书通知发送异常:', error);
