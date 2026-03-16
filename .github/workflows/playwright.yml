@@ -11,10 +11,6 @@ jobs:
   test:
     timeout-minutes: 90
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4]
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -39,15 +35,8 @@ jobs:
     - name: Install Playwright Browsers
       run: npx playwright install --with-deps
       
-    - name: Generate storageState
-      run: npx playwright test --project=setup
-      env:
-        NODE_ENV: stage
-        TEST_USERNAME: ${{ secrets.TEST_USERNAME }}
-        TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
-        
-    - name: Run Playwright Tests
-      run: npx playwright test --shard=${{ matrix.shard }}/4
+    - name: Run auto-test workflow
+      run: npm run auto-test
       env:
         NODE_ENV: stage
         TEST_USERNAME: ${{ secrets.TEST_USERNAME }}
@@ -57,7 +46,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: playwright-report-shard-${{ matrix.shard }}
+        name: playwright-report
         path: playwright-report/
         retention-days: 30
         
@@ -65,7 +54,7 @@ jobs:
       if: failure()
       uses: actions/upload-artifact@v4
       with:
-        name: test-videos-shard-${{ matrix.shard }}
+        name: test-videos
         path: test-results/
         retention-days: 7
         
@@ -73,7 +62,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: screenshots-shard-${{ matrix.shard }}
+        name: screenshots
         path: screenshots/
         retention-days: 7
         
