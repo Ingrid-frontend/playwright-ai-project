@@ -1,4 +1,20 @@
-const webhookUrl = process.env.FEISHU_WEBHOOK_URL || '';
+import dotenv from 'dotenv';
+import { readFileSync } from 'fs';
+
+dotenv.config();
+
+let webhookUrl = process.env.FEISHU_WEBHOOK_URL || '';
+
+if (!webhookUrl) {
+  try {
+    const configPath = 'feishu-config.json';
+    const configContent = readFileSync(configPath, 'utf-8');
+    const config = JSON.parse(configContent);
+    webhookUrl = config.webhookUrl || '';
+  } catch (error) {
+    console.log('📝 未找到 feishu-config.json 文件');
+  }
+}
 
 if (!webhookUrl) {
   console.error('❌ 错误：未配置 FEISHU_WEBHOOK_URL 环境变量');

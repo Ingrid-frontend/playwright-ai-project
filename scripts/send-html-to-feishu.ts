@@ -1,5 +1,8 @@
 import fs from 'fs';
 import path from 'path';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 interface FeishuConfig {
   webhookUrl: string;
@@ -174,8 +177,21 @@ async function main() {
   console.log('🎬 飞书文档发送工具');
   console.log('');
 
+  let webhookUrl = process.env.FEISHU_WEBHOOK_URL || '';
+
+  if (!webhookUrl) {
+    try {
+      const configPath = 'feishu-config.json';
+      const configContent = fs.readFileSync(configPath, 'utf-8');
+      const config = JSON.parse(configContent);
+      webhookUrl = config.webhookUrl || '';
+    } catch (error) {
+      console.log('📝 未找到 feishu-config.json 文件');
+    }
+  }
+
   const config: FeishuConfig = {
-    webhookUrl: process.env.FEISHU_WEBHOOK_URL || ''
+    webhookUrl: webhookUrl
   };
 
   const result = await sendToFeishu(htmlFilePath, config);
