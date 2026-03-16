@@ -83,6 +83,15 @@ jobs:
         path: results/screenshot-comparison.html
         retention-days: 30
         if-no-files-found: ignore
+        
+    - name: Upload diffs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: diffs
+        path: results/diffs/
+        retention-days: 30
+        if-no-files-found: ignore
 
   deploy:
     needs: test
@@ -107,10 +116,18 @@ jobs:
         name: screenshots
         path: ./screenshots
         
-    - name: Copy screenshots to report directory
+    - name: Download diffs
+      uses: actions/download-artifact@v4
+      with:
+        name: diffs
+        path: ./diffs
+        
+    - name: Copy screenshots and diffs to report directory
       run: |
         mkdir -p report/screenshots
         cp -r screenshots/* report/screenshots/ || true
+        mkdir -p report/diffs
+        cp -r diffs/* report/diffs/ || true
         
     - name: Setup Pages
       uses: actions/configure-pages@v4
