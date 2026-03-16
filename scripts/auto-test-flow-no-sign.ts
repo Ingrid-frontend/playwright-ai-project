@@ -18,16 +18,20 @@ async function sendFeishuNotification() {
   try {
     const timestamp = Math.floor(Date.now() / 1000);  // 飞书需要秒级时间戳
     
-    // 构建 GitHub Actions 运行链接
+    // 构建 GitHub Actions 运行链接和 GitHub Pages 链接
     const githubRepository = process.env.GITHUB_REPOSITORY || 'Ingrid-frontend/playwright-ai-project';
     const githubRunId = process.env.GITHUB_RUN_ID || '';
     const githubRunUrl = `https://github.com/${githubRepository}/actions/runs/${githubRunId}`;
+    
+    // 构建 GitHub Pages 链接
+    const [owner, repo] = githubRepository.split('/');
+    const githubPagesUrl = `https://${owner}.github.io/${repo}/screenshot-comparison.html`;
     
     // 使用简单的文本消息格式，包含链接
     const message = {
       msg_type: 'text',
       content: {
-        text: `🎉 Playwright AI 测试完成\n\n**测试结果**：\n✅ 录制：成功\n✅ 优化：成功\n✅ 执行：成功\n✅ 对比：成功\n\n📊 **截图对比报告**：\n请访问 GitHub Actions 运行页面下载截图对比报告：\n${githubRunUrl}`
+        text: `🎉 Playwright AI 测试完成\n\n**测试结果**：\n✅ 录制：成功\n✅ 优化：成功\n✅ 执行：成功\n✅ 对比：成功\n\n📊 **截图对比报告**：\n🌐 在线预览：${githubPagesUrl}\n📥 下载报告：${githubRunUrl}`
       }
     };
 
@@ -35,6 +39,7 @@ async function sendFeishuNotification() {
     console.log('  - 消息类型:', message.msg_type);
     console.log('  - 时间戳:', timestamp, '(秒级)');
     console.log('  - GitHub 运行链接:', githubRunUrl);
+    console.log('  - GitHub Pages 链接:', githubPagesUrl);
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json'
