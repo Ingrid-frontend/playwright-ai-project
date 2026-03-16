@@ -1,0 +1,95 @@
+name: Playwright Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    timeout-minutes: 90
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Cache Playwright Browsers
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: ${{ runner.os }}-playwright-${{ hashFiles('**/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-playwright-
+          
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Install Playwright Browsers
+      run: npx playwright install --with-deps
+      
+    - name: Generate storageState
+      run: npx playwright test --project=setup
+      env:
+        NODE_ENV: stage
+        TEST_USERNAME: ${{ secrets.TEST_USERNAME }}
+        TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+        
+    - name: Run Playwright Tests
+      run: npx playwright test --shard=${{ matrix.shard }}/4
+      env:
+        NODE_ENV: stage
+        TEST_USERNAME: ${{ secrets.TEST_USERNAME }}
+        TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+        
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: playwright-report-shard-${{ matrix.shard }}
+        path: playwright-report/
+        retention-days: 30
+        
+    - name: Upload test videos
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-videos-shard-${{ matrix.shard }}
+        path: test-results/
+        retention-days: 7
+        
+    - name: Upload screenshots
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: screenshots-shard-${{ matrix.shard }}
+        path: screenshots/
+        retention-days: 7
+        
+    - name: Upload screenshot comparison report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: screenshot-comparison-report
+        path: results/screenshot-comparison.html
+        retention-days: 30
+        if-no-files-found: ignore
+
+  notify:
+    needs: test
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+    - name: Send notification
+      run: echo "Tests failed! Please check the logs."

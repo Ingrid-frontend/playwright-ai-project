@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+# package-lock.json  # 移除此行，因为npm ci需要lock文件
+yarn.lock
+pnpm-lock.yaml
+
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Results
+results/
+
+# Environment variables
+.env
+.env.local
+
+# Datasource configuration
+datasource/accounts.json
+
+# Login state files (contains sensitive tokens)
+storage/loginState/*.json
+!storage/loginState/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Build output
+dist/
+build/
+
+# Deprecated test files
+tests/deprecated/

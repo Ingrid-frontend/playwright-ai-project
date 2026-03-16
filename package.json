@@ -1,0 +1,62 @@
+{
+  "name": "playwright-ai-project",
+  "version": "1.0.0",
+  "description": "Playwright AI 驱动的自动化测试项目",
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:debug": "playwright test --debug",
+    "test:headed": "playwright test --headed",
+    "test:ai": "playwright test tests/ai-generated",
+    "test:e2e": "playwright test tests/e2e",
+    "test:single": "playwright test --workers=1",
+    "test:parallel": "playwright test --workers=2",
+    "test:optimized": "playwright test --project=optimized --workers=1",
+    "test:optimized-parallel": "playwright test --project=optimized --workers=2",
+    "report": "playwright show-report",
+    "record": "tsx scripts/record.ts",
+    "auto-test": "tsx scripts/auto-test-flow.ts",
+    "init-agents": "npx playwright init-agents --loop=vscode",
+    "optimize": "tsx scripts/optimize-recorded-test.ts",
+    "analyze-errors": "tsx scripts/analyze-errors.ts",
+    "generate-pom": "tsx scripts/generate-pom.ts",
+    "analyze-test": "tsx scripts/analyze-test.ts",
+    "rename-recordings": "tsx scripts/rename-recorded-files.ts",
+    "compare-screenshots": "tsx scripts/compare-screenshots.ts",
+    "run-optimized-tests": "tsx scripts/run-optimized-tests.ts",
+    "clean": "rm -rf test-results playwright-report screenshots/results",
+    "clean:all": "rm -rf node_modules test-results playwright-report screenshots results && npm install",
+    "lint": "eslint . --ext .ts,.tsx --fix",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""
+  },
+  "keywords": [
+    "playwright",
+    "ai",
+    "e2e",
+    "testing",
+    "automation"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "@types/node": "^20.0.0",
+    "@types/pngjs": "^6.0.5",
+    "@typescript-eslint/eslint-plugin": "^8.57.0",
+    "@typescript-eslint/parser": "^8.57.0",
+    "eslint": "^10.0.3",
+    "pixelmatch": "^7.1.0",
+    "pngjs": "^7.0.0",
+    "prettier": "^3.8.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "playwright": "^1.58.0"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "dev": {
+    "baseURL": "https://dev.huilianyi.com",
+    "storageState": "storage/loginState/dev.json"
+  },
+  "uat": {
+    "baseURL": "https://uat.huilianyi.com",
+    "storageState": "storage/loginState/uat.json"
+  },
+  "stage9084": {
+    "baseURL": "https://stage9084.huilianyi.com",
+    "storageState": "storage/loginState/stage9084.json"
+  },
+  "stage": {
+    "baseURL": "https://stage.huilianyi.com",
+    "storageState": "storage/loginState/stage.json"
+  }
+}

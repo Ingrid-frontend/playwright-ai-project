@@ -1,0 +1,18 @@
+{
+  "dev": {
+    "username": "your-dev-username",
+    "password": "your-dev-password"
+  },
+  "uat": {
+    "username": "your-uat-username",
+    "password": "your-uat-password"
+  },
+  "stage9084": {
+    "username": "your-stage9084-username",
+    "password": "your-stage9084-password"
+  },
+  "stage": {
+    "username": "your-stage-username",
+    "password": "your-stage-password"
+  }
+}

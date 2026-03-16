@@ -1,0 +1,15 @@
+{
+  "home": "/main/home",
+  "my-account": "/main/my-account",
+  "expense-report": "/main/expense-parent-report/expense-report",
+  "request": "/main/request",
+  "accrual-business": "/main/accrual",
+  "my-borrow": "/main/loan-billing/my-borrow",
+  "borrow-management": "/main/loan-billing/borrow-management",
+  "ap-request": "/main/ap-request",
+  "corporate-payment-report": "/main/corporate-payment-report",
+  "my-contract": "/main/contract/my-contract",
+  "budget-journal": "/main/budget/budget-journal",
+  "approve": "/main/approve",
+  "my-agency": "/main/my-agency"
+}
