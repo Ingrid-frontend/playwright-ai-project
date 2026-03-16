@@ -2,6 +2,54 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
+async function sendFeishuNotification() {
+  const webhookUrl = process.env.FEISHU_WEBHOOK_URL;
+  if (!webhookUrl) {
+    console.log('⚠️  未配置飞书 Webhook URL，跳过通知');
+    return;
+  }
+
+  try {
+    const message = {
+      msg_type: 'interactive',
+      card: {
+        header: {
+          title: {
+            tag: 'plain_text',
+            content: '🎉 Playwright AI 测试完成'
+          },
+          template: 'green'
+        },
+        elements: [
+          {
+            tag: 'div',
+            text: {
+              tag: 'lark_md',
+              content: `**测试结果**：\n✅ 录制：成功\n✅ 优化：成功\n✅ 执行：成功\n✅ 对比：成功`
+            }
+          }
+        ]
+      }
+    };
+
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(message)
+    });
+
+    if (response.ok) {
+      console.log('✅ 飞书通知发送成功');
+    } else {
+      console.log('❌ 飞书通知发送失败');
+    }
+  } catch (error) {
+    console.log('❌ 飞书通知发送异常:', error);
+  }
+}
+
 function runCommand(command: string, description: string, continueOnError: boolean = false): void {
   console.log(`\n📋 ${description}`);
   console.log(`🔧 执行命令: ${command}`);
@@ -76,6 +124,9 @@ async function main() {
     runCommand(`npx playwright test ${optimizedTestPath} --project=chromium --headed=false`, '3. 执行优化后的测试', true);
 
     runCommand('npm run compare-screenshots', '4. 生成截图对比报告');
+
+    // 发送飞书通知
+    await sendFeishuNotification();
 
     console.log('\n🎉 所有步骤执行成功！');
     console.log(`\n📁 生成的文件:`);
