@@ -107,15 +107,18 @@ jobs:
         name: screenshots
         path: ./screenshots
         
+    - name: Copy screenshots to report directory
+      run: |
+        mkdir -p report/screenshots
+        cp -r screenshots/* report/screenshots/ || true
+        
     - name: Setup Pages
       uses: actions/configure-pages@v4
       
     - name: Upload to GitHub Pages
       uses: actions/upload-pages-artifact@v3
       with:
-        path: |
-          ./report
-          ./screenshots
+        path: ./report
         
     - name: Deploy to GitHub Pages
       id: deployment
