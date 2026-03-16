@@ -49,13 +49,20 @@ async function sendFeishuNotification() {
 
     if (webhookSecret) {
       const crypto = await import('crypto');
-      const signString = `${timestamp}\n${JSON.stringify(message)}`;
+      const bodyString = JSON.stringify(message);
+      const signString = `${timestamp}\n${bodyString}`;
+      
+      console.log('  - 签名字符串:', signString);
+      console.log('  - Body 字符串长度:', bodyString.length);
+      console.log('  - Body 字符串:', bodyString);
+      
       const sign = crypto.createHmac('sha256', webhookSecret)
         .update(signString)
         .digest('base64');
       
       headers['X-Lark-Request-Timestamp'] = String(timestamp);
       headers['X-Lark-Signature'] = sign;
+      console.log('  - 签名:', sign);
       console.log('  - 签名：已添加');
     }
 
