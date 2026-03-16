@@ -23,7 +23,7 @@ async function sendFeishuNotification() {
     const githubRunId = process.env.GITHUB_RUN_ID || '';
     const githubRunUrl = `https://github.com/${githubRepository}/actions/runs/${githubRunId}`;
     
-    // 构建 GitHub Pages 链接
+    // 构建 GitHub Pages 链接（使用正确的文件名）
     const [owner, repo] = githubRepository.split('/');
     const githubPagesUrl = `https://${owner}.github.io/${repo}/screenshot-comparison.html`;
     
