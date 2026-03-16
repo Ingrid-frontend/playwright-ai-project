@@ -49,6 +49,7 @@ jobs:
         name: playwright-report
         path: playwright-report/
         retention-days: 30
+        if-no-files-found: ignore
         
     - name: Upload test videos
       if: failure()
@@ -57,6 +58,7 @@ jobs:
         name: test-videos
         path: test-results/
         retention-days: 7
+        if-no-files-found: ignore
         
     - name: Upload screenshots
       if: always()
@@ -65,6 +67,7 @@ jobs:
         name: screenshots
         path: screenshots/
         retention-days: 7
+        if-no-files-found: ignore
         
     - name: Upload screenshot comparison report
       if: always()
