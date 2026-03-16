@@ -16,7 +16,7 @@ async function sendFeishuNotification() {
   }
 
   try {
-    const timestamp = Date.now();
+    const timestamp = Math.floor(Date.now() / 1000);  // 飞书需要秒级时间戳
     const message = {
       msg_type: 'interactive',
       card: {
@@ -41,7 +41,7 @@ async function sendFeishuNotification() {
 
     console.log('📤 发送飞书消息：');
     console.log('  - 消息类型:', message.msg_type);
-    console.log('  - 时间戳:', timestamp);
+    console.log('  - 时间戳:', timestamp, '(秒级)');
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json'
