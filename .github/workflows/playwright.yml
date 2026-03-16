@@ -95,11 +95,17 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Download artifact
+    - name: Download screenshot comparison report
       uses: actions/download-artifact@v4
       with:
         name: screenshot-comparison-report
         path: ./report
+        
+    - name: Download screenshots
+      uses: actions/download-artifact@v4
+      with:
+        name: screenshots
+        path: ./screenshots
         
     - name: Setup Pages
       uses: actions/configure-pages@v4
@@ -107,7 +113,9 @@ jobs:
     - name: Upload to GitHub Pages
       uses: actions/upload-pages-artifact@v3
       with:
-        path: ./report
+        path: |
+          ./report
+          ./screenshots
         
     - name: Deploy to GitHub Pages
       id: deployment
