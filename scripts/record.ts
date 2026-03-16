@@ -11,6 +11,18 @@ if (!fs.existsSync(dir)) {
   fs.mkdirSync(dir, { recursive: true });
 }
 
+// CI/CD 环境中跳过录制
+const isCI = process.env.CI === 'true' || 
+             process.env.CI === '1' || 
+             process.env.GITHUB_ACTIONS === 'true' ||
+             process.env.GITHUB_ACTIONS === '1';
+
+if (isCI) {
+  console.log('🤖 检测到 CI/CD 环境，跳过录制步骤');
+  console.log('📁 将使用已存在的录制文件');
+  process.exit(0);
+}
+
 const storagePath = curConfig.storageState;
 if (!fs.existsSync(storagePath) || fs.statSync(storagePath).size <= 10) {
   console.log('🔐 登录状态文件不存在或无效，正在执行登录...');

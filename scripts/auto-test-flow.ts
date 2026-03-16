@@ -36,7 +36,13 @@ async function main() {
     console.log('📅 时间戳:', timestamp);
 
     // CI/CD 环境中跳过录制，使用已存在的脚本
-    if (process.env.CI) {
+    // 使用更可靠的 CI 环境检测方式
+    const isCI = process.env.CI === 'true' || 
+                   process.env.CI === '1' || 
+                   process.env.GITHUB_ACTIONS === 'true' ||
+                   process.env.GITHUB_ACTIONS === '1';
+    
+    if (isCI) {
       console.log('🤖 检测到 CI/CD 环境，跳过录制步骤');
       console.log('📁 将使用已存在的录制文件');
     } else {
