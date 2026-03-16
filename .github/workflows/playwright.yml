@@ -36,13 +36,12 @@ jobs:
       run: npx playwright install --with-deps
       
     - name: Run auto-test workflow
-      run: npm run auto-test
+      run: npx tsx scripts/auto-test-flow-no-sign.ts
       env:
         NODE_ENV: stage
         TEST_USERNAME: ${{ secrets.TEST_USERNAME }}
         TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
         FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
-        FEISHU_WEBHOOK_SECRET: ${{ secrets.FEISHU_WEBHOOK_SECRET }}
         
     - name: Upload test results
       if: always()
