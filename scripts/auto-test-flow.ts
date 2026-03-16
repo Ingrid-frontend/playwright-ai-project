@@ -35,7 +35,13 @@ async function main() {
   try {
     console.log('📅 时间戳:', timestamp);
 
-    runCommand('npm run record', '1. 录制测试脚本');
+    // CI/CD 环境中跳过录制，使用已存在的脚本
+    if (process.env.CI) {
+      console.log('🤖 检测到 CI/CD 环境，跳过录制步骤');
+      console.log('📁 将使用已存在的录制文件');
+    } else {
+      runCommand('npm run record', '1. 录制测试脚本');
+    }
 
     const rawRecordingFiles = fs.readdirSync(rawRecordingsDir)
       .filter(f => f.endsWith('.spec.ts'))
