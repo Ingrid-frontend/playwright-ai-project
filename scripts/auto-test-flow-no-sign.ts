@@ -27,11 +27,49 @@ async function sendFeishuNotification() {
     const [owner, repo] = githubRepository.split('/');
     const githubPagesUrl = `https://${owner}.github.io/${repo}/screenshot-comparison.html`;
     
-    // 使用简单的文本消息格式，包含链接
+    // 使用卡片式消息格式，包含链接
     const message = {
-      msg_type: 'text',
-      content: {
-        text: `🎉 Playwright AI 测试完成\n\n**测试结果**：\n✅ 录制：成功\n✅ 优化：成功\n✅ 执行：成功\n✅ 对比：成功\n\n📊 **截图对比报告**：\n🌐 在线预览：${githubPagesUrl}\n📥 下载报告：${githubRunUrl}`
+      msg_type: 'interactive',
+      card: {
+        header: {
+          title: {
+            tag: 'plain_text',
+            content: '🎉 Playwright AI 测试完成'
+          },
+          template: 'green'
+        },
+        elements: [
+          {
+            tag: 'div',
+            text: {
+              tag: 'lark_md',
+              content: '**测试结果**：\n✅ 录制：成功\n✅ 优化：成功\n✅ 执行：成功\n✅ 对比：成功'
+            }
+          },
+          {
+            tag: 'action',
+            actions: [
+              {
+                tag: 'button',
+                text: {
+                  tag: 'plain_text',
+                  content: '🌐 在线预览'
+                },
+                type: 'primary',
+                url: githubPagesUrl
+              },
+              {
+                tag: 'button',
+                text: {
+                  tag: 'plain_text',
+                  content: '📥 下载报告'
+                },
+                type: 'default',
+                url: githubRunUrl
+              }
+            ]
+          }
+        ]
       }
     };
 
