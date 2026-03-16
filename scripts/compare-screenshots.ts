@@ -189,7 +189,7 @@ function getAllScreenshots(dir: string, type: 'pom' | 'optimized', outputPath: s
         
         result.get(stepNumber)!.push({
           path: path.join(runPath, file),
-          relativePath: path.join(relativeRunPath, file),
+          relativePath: path.join('screenshots', relativeRunPath, file),
           timestamp: runDir,
           date,
           displayTimestamp,
