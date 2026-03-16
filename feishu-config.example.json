@@ -1,0 +1,12 @@
+{
+  "webhookUrl": "https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxxxxxxxxxx",
+  "appId": "",
+  "appSecret": "",
+  "tenantKey": "",
+  "settings": {
+    "enableHtmlUpload": true,
+    "enableCloudDocUpload": false,
+    "maxContentLength": 20000,
+    "enableTruncation": true
+  }
+}

@@ -29,6 +29,7 @@
     "compare-screenshots": "tsx scripts/compare-screenshots.ts",
     "send-html-to-feishu": "tsx scripts/send-html-to-feishu.ts",
     "upload-to-feishu": "tsx scripts/upload-to-feishu.ts",
+    "test-feishu-webhook": "node scripts/test-feishu-webhook.js",
     "run-optimized-tests": "tsx scripts/run-optimized-tests.ts",
     "clean": "rm -rf test-results playwright-report screenshots/results",
     "clean:all": "rm -rf node_modules test-results playwright-report screenshots results && npm install",
