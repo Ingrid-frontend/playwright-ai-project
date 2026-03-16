@@ -4,12 +4,15 @@ import path from 'path';
 
 async function sendFeishuNotification() {
   const webhookUrl = process.env.FEISHU_WEBHOOK_URL;
+  const webhookSecret = process.env.FEISHU_WEBHOOK_SECRET;
+  
   if (!webhookUrl) {
     console.log('⚠️  未配置飞书 Webhook URL，跳过通知');
     return;
   }
 
   try {
+    const timestamp = Date.now();
     const message = {
       msg_type: 'interactive',
       card: {
@@ -32,11 +35,24 @@ async function sendFeishuNotification() {
       }
     };
 
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+
+    if (webhookSecret) {
+      const crypto = await import('crypto');
+      const signString = `${timestamp}\n${JSON.stringify(message)}`;
+      const sign = crypto.createHmac('sha256', webhookSecret)
+        .update(signString)
+        .digest('base64');
+      
+      headers['X-Lark-Request-Timestamp'] = String(timestamp);
+      headers['X-Lark-Signature'] = sign;
+    }
+
     const response = await fetch(webhookUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers,
       body: JSON.stringify(message)
     });
 
