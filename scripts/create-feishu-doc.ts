@@ -18,7 +18,7 @@ interface CreateDocResult {
 
 interface FeishuDocBlock {
   block_type: number;
-  paragraph?: {
+  text?: {
     elements: FeishuDocElement[];
   };
   heading1?: {
@@ -366,8 +366,8 @@ async function addBlocksToDocument(documentId: string, blocks: FeishuDocBlock[],
       children: []
     };
     
-    if (block.paragraph) {
-      descendant.paragraph = block.paragraph;
+    if (block.text) {
+      descendant.text = block.text;
     }
     if (block.heading1) {
       descendant.heading1 = block.heading1;
@@ -576,7 +576,7 @@ function convertHtmlToFeishuBlocks(htmlContent: string, accessToken: string): Fe
     if (cleanParagraph.length > 0) {
       blocks.push({
         block_type: 2,
-        paragraph: {
+        text: {
           elements: [{
             text_run: {
               content: cleanParagraph
