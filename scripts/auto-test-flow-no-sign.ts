@@ -236,7 +236,7 @@ async function main() {
     const optimizedTestPath = path.join(optimizedDir, optimizedFiles[0]);
     console.log(`📁 找到优化文件: ${optimizedTestPath}`);
 
-    runCommand(`npx playwright test ${optimizedTestPath} --project=chromium --headless`, '3. 执行优化后的测试', true);
+    runCommand(`npx playwright test ${optimizedTestPath} --project=chromium`, '3. 执行优化后的测试', true);
 
     runCommand('npm run compare-screenshots', '4. 生成截图对比报告');
 
