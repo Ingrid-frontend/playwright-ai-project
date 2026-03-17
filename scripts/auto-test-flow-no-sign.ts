@@ -243,9 +243,6 @@ async function main() {
     // 创建飞书文档
     runCommand('npm run create-feishu-doc', '5. 创建飞书文档', true);
 
-    // 发送 HTML 内容到飞书
-    runCommand('npm run send-html-to-feishu', '6. 发送 HTML 到飞书', true);
-
     // 发送飞书通知
     await sendFeishuNotification();
 
