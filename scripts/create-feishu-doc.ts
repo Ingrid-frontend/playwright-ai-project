@@ -360,20 +360,35 @@ async function addBlocksToDocument(documentId: string, blocks: FeishuDocBlock[],
     
     const blockId = `block_${i}`;
     
+    const descendant: any = {
+      block_id: blockId,
+      block_type: block.block_type,
+      children: []
+    };
+    
+    if (block.paragraph) {
+      descendant.paragraph = block.paragraph;
+    }
+    if (block.heading1) {
+      descendant.heading1 = block.heading1;
+    }
+    if (block.heading2) {
+      descendant.heading2 = block.heading2;
+    }
+    if (block.heading3) {
+      descendant.heading3 = block.heading3;
+    }
+    if (block.image) {
+      descendant.image = block.image;
+    }
+    if (block.table) {
+      descendant.table = block.table;
+    }
+    
     const requestBody = {
       index: -1,
       children_id: [blockId],
-      descendants: [{
-        block_id: blockId,
-        block_type: block.block_type,
-        paragraph: block.paragraph,
-        heading1: block.heading1,
-        heading2: block.heading2,
-        heading3: block.heading3,
-        image: block.image,
-        table: block.table,
-        children: []
-      }]
+      descendants: [descendant]
     };
 
     console.log('📤 请求体:', JSON.stringify(requestBody));
