@@ -369,7 +369,8 @@ async function addBlocksToDocument(documentId: string, blocks: FeishuDocBlock[],
       }]
     };
 
-    console.log('📤 请求体:', JSON.stringify(requestBody).substring(0, 200));
+    console.log('📤 请求体:', JSON.stringify(requestBody));
+    console.log('📤 请求体长度:', JSON.stringify(requestBody).length);
     
     const response = await fetch(`https://open.feishu.cn/open-apis/docx/v1/documents/${documentId}/blocks/${rootBlockId}/descendant`, {
       method: 'POST',
