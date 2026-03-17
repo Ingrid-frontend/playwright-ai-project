@@ -526,6 +526,12 @@ function convertHtmlToFeishuBlocks(htmlContent: string, accessToken: string): Fe
       .replace(/&lt;/g, '<')
       .replace(/&gt;/g, '>')
       .replace(/&amp;/g, '&')
+      .replace(/<style[^>]*>.*?<\/style>/gis, '')
+      .replace(/<script[^>]*>.*?<\/script>/gis, '')
+      .replace(/<link[^>]*>.*?>/gis, '')
+      .replace(/<meta[^>]*>.*?>/gis, '')
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/\s+/g, ' ')
       .trim();
 
     if (cleanParagraph.length > 0) {
