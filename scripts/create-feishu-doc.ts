@@ -43,8 +43,9 @@ interface FeishuDocBlock {
 }
 
 interface FeishuDocElement {
-  text_run: {
-    content: string;
+  type: string;
+  textRun: {
+    text: string;
     style?: {
       bold?: boolean;
       italic?: boolean;
@@ -470,8 +471,9 @@ function convertHtmlToFeishuBlocks(htmlContent: string, accessToken: string): Fe
       block_type: 'heading1',
       heading1: {
         elements: [{
-          text_run: {
-            content: titleMatch[1].trim(),
+          type: 'textRun',
+          textRun: {
+            text: titleMatch[1].trim(),
             style: {
               bold: true
             }
@@ -488,8 +490,9 @@ function convertHtmlToFeishuBlocks(htmlContent: string, accessToken: string): Fe
       block_type: 'heading2',
       heading2: {
         elements: [{
-          text_run: {
-            content: match[1].trim(),
+          type: 'textRun',
+          textRun: {
+            text: match[1].trim(),
             style: {
               bold: true
             }
@@ -506,8 +509,9 @@ function convertHtmlToFeishuBlocks(htmlContent: string, accessToken: string): Fe
       block_type: 'heading3',
       heading3: {
         elements: [{
-          text_run: {
-            content: match[1].trim(),
+          type: 'textRun',
+          textRun: {
+            text: match[1].trim(),
             style: {
               bold: true
             }
@@ -533,8 +537,9 @@ function convertHtmlToFeishuBlocks(htmlContent: string, accessToken: string): Fe
         block_type: 'paragraph',
         paragraph: {
           elements: [{
-            text_run: {
-              content: cleanParagraph
+            type: 'textRun',
+            textRun: {
+              text: cleanParagraph
             }
           }]
         }
