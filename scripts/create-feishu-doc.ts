@@ -78,7 +78,15 @@ async function getAccessToken(config: FeishuDocConfig): Promise<string> {
     })
   });
 
-  const data = await response.json();
+  const responseText = await response.text();
+  console.log('📥 飞书 API 响应:', responseText.substring(0, 200));
+  
+  let data;
+  try {
+    data = JSON.parse(responseText);
+  } catch (error) {
+    throw new Error(`解析飞书 API 响应失败: ${error}\n响应内容: ${responseText.substring(0, 500)}`);
+  }
   
   if (data.code !== 0) {
     throw new Error(`获取访问令牌失败: ${data.msg}`);
@@ -133,7 +141,16 @@ async function getDocumentInfo(documentId: string, accessToken: string): Promise
     }
   });
 
-  const data = await response.json();
+  const responseText = await response.text();
+  console.log('📥 飞书 API 响应:', responseText.substring(0, 200));
+  
+  let data;
+  try {
+    data = JSON.parse(responseText);
+  } catch (error) {
+    console.log('⚠️  解析飞书 API 响应失败:', error);
+    return null;
+  }
   
   if (data.code === 0) {
     console.log('✅ 文档已存在');
@@ -154,7 +171,16 @@ async function getDocumentBlocks(documentId: string, accessToken: string): Promi
     }
   });
 
-  const data = await response.json();
+  const responseText = await response.text();
+  console.log('📥 飞书 API 响应:', responseText.substring(0, 200));
+  
+  let data;
+  try {
+    data = JSON.parse(responseText);
+  } catch (error) {
+    console.log('⚠️  解析飞书 API 响应失败:', error);
+    return [];
+  }
   
   if (data.code !== 0) {
     console.log('⚠️  获取文档内容块失败');
