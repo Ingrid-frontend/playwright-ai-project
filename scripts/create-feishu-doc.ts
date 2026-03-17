@@ -65,7 +65,8 @@ interface FeishuDocElement {
       strike_through?: boolean;
       code?: boolean;
       link?: {
-        url: string;
+        href?: string;
+        url?: string;
       };
     };
   };
@@ -625,7 +626,7 @@ async function convertHtmlToFeishuBlocks(htmlContent: string, accessToken: strin
                 content: `📷 图片: ${imageName}`,
                 text_element_style: {
                   link: {
-                    url: fullImageUrl
+                    href: fullImageUrl
                   }
                 }
               }
