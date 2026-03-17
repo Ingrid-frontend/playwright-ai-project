@@ -16,6 +16,19 @@ interface CreateDocResult {
   documentId?: string;
 }
 
+interface ScreenshotInfo {
+  timestamp: string;
+  browser: string;
+  sessionId: string;
+  steps: {
+    stepNumber: number;
+    actionType: string;
+    page: string;
+    beforeImage?: string;
+    afterImage?: string;
+  }[];
+}
+
 interface FeishuDocBlock {
   block_type: number;
   text?: {
@@ -497,6 +510,206 @@ async function shareDocument(documentId: string, accessToken: string): Promise<s
   return data.share_url;
 }
 
+function generateHtmlFromScreenshots(): string {
+  console.log('🔍 扫描 screenshots 文件夹...');
+  
+  const screenshotsDir = 'screenshots';
+  if (!fs.existsSync(screenshotsDir)) {
+    console.error('❌ screenshots 文件夹不存在');
+    process.exit(1);
+  }
+
+  const timestampDirs = fs.readdirSync(screenshotsDir)
+    .filter(dir => fs.statSync(path.join(screenshotsDir, dir)).isDirectory())
+    .sort()
+    .reverse();
+
+  if (timestampDirs.length === 0) {
+    console.error('❌ screenshots 文件夹为空');
+    process.exit(1);
+  }
+
+  const latestTimestampDir = timestampDirs[0];
+  const latestDirPath = path.join(screenshotsDir, latestTimestampDir);
+  const browserDirs = fs.readdirSync(latestDirPath)
+    .filter(dir => fs.statSync(path.join(latestDirPath, dir)).isDirectory());
+
+  console.log(`📁 找到 ${timestampDirs.length} 个时间戳文件夹`);
+  console.log(`📁 使用最新的文件夹: ${latestTimestampDir}`);
+  console.log(`📁 找到 ${browserDirs.length} 个浏览器文件夹`);
+
+  let html = `
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>📸 截图对比报告</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      line-height: 1.6;
+      color: #333;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 40px;
+    }
+    .timestamp-section {
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 20px;
+      background: #f9f9f9;
+    }
+    .timestamp-title {
+      font-size: 24px;
+      font-weight: bold;
+      margin-bottom: 20px;
+      color: #1a1a1a;
+    }
+    .browser-section {
+      margin-bottom: 30px;
+    }
+    .browser-title {
+      font-size: 18px;
+      font-weight: bold;
+      margin-bottom: 15px;
+      color: #2c3e50;
+    }
+    .step {
+      margin-bottom: 20px;
+      padding: 15px;
+      background: #ffffff;
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .step-title {
+      font-size: 16px;
+      font-weight: bold;
+      margin-bottom: 10px;
+      color: #1a1a1a;
+    }
+    .step-images {
+      display: flex;
+      gap: 20px;
+      margin-top: 10px;
+    }
+    .step-image {
+      flex: 1;
+      max-width: 45%;
+    }
+    .step-image img {
+      width: 100%;
+      border-radius: 4px;
+      border: 1px solid #e0e0e0;
+    }
+    .step-label {
+      font-size: 14px;
+      color: #666;
+      margin-bottom: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📸 截图对比报告</h1>
+`;
+
+  for (const timestampDir of timestampDirs) {
+    const timestampPath = path.join(screenshotsDir, timestampDir);
+    const timestampBrowserDirs = fs.readdirSync(timestampPath)
+      .filter(dir => fs.statSync(path.join(timestampPath, dir)).isDirectory());
+
+    html += `
+    <div class="timestamp-section">
+      <div class="timestamp-title">📅 ${timestampDir}</div>
+    `;
+
+    for (const browserDir of timestampBrowserDirs) {
+      const browserPath = path.join(timestampPath, browserDir);
+      const imageFiles = fs.readdirSync(browserPath)
+        .filter(file => file.endsWith('.png'));
+
+      const stepMatches: any[] = [];
+      
+      for (const imageFile of imageFiles) {
+        const match = imageFile.match(/^step-(\d+)-(before|after)-(.+?)__(.+)\.png$/);
+        if (match) {
+          const stepNumber = parseInt(match[1]);
+          const actionType = match[2];
+          const page = match[4];
+          
+          let existingStep = stepMatches.find(s => s.stepNumber === stepNumber && s.actionType === actionType && s.page === page);
+          if (!existingStep) {
+            existingStep = {
+              stepNumber,
+              actionType,
+              page
+            };
+            stepMatches.push(existingStep);
+          }
+          
+          if (actionType === 'before') {
+            existingStep.beforeImage = path.join(browserPath, imageFile);
+          } else {
+            existingStep.afterImage = path.join(browserPath, imageFile);
+          }
+        }
+      }
+
+      const sortedSteps = stepMatches.sort((a, b) => a.stepNumber - b.stepNumber);
+
+      html += `
+      <div class="browser-section">
+        <div class="browser-title">🌐 ${browserDir}</div>
+      `;
+
+      for (const step of sortedSteps) {
+        html += `
+        <div class="step">
+          <div class="step-title">步骤 ${step.stepNumber}: ${step.actionType === 'before' ? '操作前' : '操作后'} - ${step.page}</div>
+          <div class="step-images">
+            ${step.beforeImage ? `
+              <div class="step-image">
+                <div class="step-label">操作前</div>
+                <img src="${step.beforeImage}" alt="操作前截图">
+              </div>
+            ` : ''}
+            ${step.afterImage ? `
+              <div class="step-image">
+                <div class="step-label">操作后</div>
+                <img src="${step.afterImage}" alt="操作后截图">
+              </div>
+            ` : ''}
+          </div>
+        </div>
+        `;
+      }
+
+      html += `
+      </div>
+      `;
+    }
+
+    html += `
+    </div>
+    `;
+  }
+
+  html += `
+  </div>
+</body>
+</html>
+  `;
+
+  console.log('✅ HTML 生成完成');
+  return html;
+}
+
 function convertHtmlToFeishuBlocks(htmlContent: string, accessToken: string): FeishuDocBlock[] {
   console.log('🔄 转换 HTML 为飞书文档格式...');
   
@@ -605,10 +818,9 @@ async function createFeishuDoc(htmlFilePath: string, config: FeishuDocConfig): P
         success: false,
         message: '未配置飞书开放平台应用信息（App ID 和 App Secret）'
       };
-    }
 
-    const htmlContent = fs.readFileSync(htmlFilePath, 'utf-8');
-    const fileName = path.basename(htmlFilePath);
+    const htmlContent = generateHtmlFromScreenshots();
+    const fileName = 'screenshots-comparison-report.html';
     
     console.log(`📄 文件名: ${fileName}`);
     console.log(`📏 文件大小: ${htmlContent.length} 字符`);
