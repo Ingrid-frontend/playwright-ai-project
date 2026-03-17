@@ -68,10 +68,45 @@ async function sendFeishuNotification() {
                 url: githubRunUrl
               }
             ]
+          },
+          {
+            tag: 'div',
+            text: {
+              tag: 'lark_md',
+              content: '**飞书文档**：'
+            }
+          },
+          {
+            tag: 'action',
+            actions: []
           }
         ]
       }
     };
+
+    // 添加飞书文档链接（如果存在）
+    const feishuDocUrlPath = 'results/feishu-doc-url.txt';
+    if (fs.existsSync(feishuDocUrlPath)) {
+      try {
+        const feishuDocUrl = fs.readFileSync(feishuDocUrlPath, 'utf-8').trim();
+        if (feishuDocUrl) {
+          const lastElement = message.card.elements[message.card.elements.length - 1];
+          if (lastElement && 'actions' in lastElement && Array.isArray(lastElement.actions)) {
+            lastElement.actions.push({
+              tag: 'button',
+              text: {
+                tag: 'plain_text',
+                content: '📄 飞书文档'
+              },
+              type: 'primary',
+              url: feishuDocUrl
+            });
+          }
+        }
+      } catch (error) {
+        console.log('⚠️  无法读取飞书文档链接');
+      }
+    }
 
     console.log('📤 发送飞书消息：');
     console.log('  - 消息类型:', message.msg_type);
@@ -205,8 +240,11 @@ async function main() {
 
     runCommand('npm run compare-screenshots', '4. 生成截图对比报告');
 
+    // 创建飞书文档
+    runCommand('npm run create-feishu-doc', '5. 创建飞书文档', true);
+
     // 发送 HTML 内容到飞书
-    runCommand('npm run send-html-to-feishu', '5. 发送 HTML 到飞书', true);
+    runCommand('npm run send-html-to-feishu', '6. 发送 HTML 到飞书', true);
 
     // 发送飞书通知
     await sendFeishuNotification();

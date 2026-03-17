@@ -28,6 +28,7 @@
     "rename-recordings": "tsx scripts/rename-recorded-files.ts",
     "compare-screenshots": "tsx scripts/compare-screenshots.ts",
     "send-html-to-feishu": "tsx scripts/send-html-to-feishu.ts",
+    "create-feishu-doc": "tsx scripts/create-feishu-doc.ts",
     "upload-to-feishu": "tsx scripts/upload-to-feishu.ts",
     "test-feishu-webhook": "tsx scripts/test-feishu-webhook.ts",
     "run-optimized-tests": "tsx scripts/run-optimized-tests.ts",
