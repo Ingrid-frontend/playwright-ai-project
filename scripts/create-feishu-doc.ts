@@ -351,28 +351,33 @@ async function addBlocksToDocument(documentId: string, blocks: FeishuDocBlock[],
     const block = blocks[i];
     console.log(`📝 添加第 ${i + 1}/${blocks.length} 个内容块...`);
     
+    const blockId = `block_${i}`;
+    
     const requestBody = {
-      block_type: block.block_type,
-      paragraph: block.paragraph,
-      heading1: block.heading1,
-      heading2: block.heading2,
-      heading3: block.heading3,
-      image: block.image,
-      table: block.table
+      index: -1,
+      children_id: [blockId],
+      descendants: [{
+        block_id: blockId,
+        block_type: block.block_type,
+        paragraph: block.paragraph,
+        heading1: block.heading1,
+        heading2: block.heading2,
+        heading3: block.heading3,
+        image: block.image,
+        table: block.table,
+        children: []
+      }]
     };
 
     console.log('📤 请求体:', JSON.stringify(requestBody).substring(0, 200));
     
-    const response = await fetch(`https://open.feishu.cn/open-apis/docx/v1/documents/${documentId}/blocks/${rootBlockId}/children`, {
+    const response = await fetch(`https://open.feishu.cn/open-apis/docx/v1/documents/${documentId}/blocks/${rootBlockId}/descendant`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${accessToken}`
       },
-      body: JSON.stringify({
-        children: [requestBody],
-        index: i
-      })
+      body: JSON.stringify(requestBody)
     });
 
     const responseText = await response.text();
