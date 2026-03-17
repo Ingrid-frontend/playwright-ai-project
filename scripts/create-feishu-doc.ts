@@ -650,7 +650,11 @@ async function createFeishuDoc(htmlFilePath: string, config: FeishuDocConfig): P
 
     const blocks = convertHtmlToFeishuBlocks(htmlContent, accessToken);
     await addBlocksToDocument(documentId, blocks, accessToken);
-    const shareUrl = await shareDocument(documentId, accessToken);
+    
+    // 跳过分享步骤，直接构造文档 URL
+    // const shareUrl = await shareDocument(documentId, accessToken);
+    const shareUrl = `https://feishu.cn/docx/${documentId}`;
+    console.log('✅ 文档 URL 构造成功:', shareUrl);
 
     return {
       success: true,
