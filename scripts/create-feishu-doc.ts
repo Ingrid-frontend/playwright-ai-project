@@ -45,7 +45,7 @@ interface FeishuDocBlock {
 interface FeishuDocElement {
   text_run: {
     content: string;
-    text_element_style?: {
+    style?: {
       bold?: boolean;
       italic?: boolean;
       underline?: boolean;
@@ -472,7 +472,7 @@ function convertHtmlToFeishuBlocks(htmlContent: string, accessToken: string): Fe
         elements: [{
           text_run: {
             content: titleMatch[1].trim(),
-            text_element_style: {
+            style: {
               bold: true
             }
           }
@@ -490,7 +490,7 @@ function convertHtmlToFeishuBlocks(htmlContent: string, accessToken: string): Fe
         elements: [{
           text_run: {
             content: match[1].trim(),
-            text_element_style: {
+            style: {
               bold: true
             }
           }
@@ -508,7 +508,7 @@ function convertHtmlToFeishuBlocks(htmlContent: string, accessToken: string): Fe
         elements: [{
           text_run: {
             content: match[1].trim(),
-            text_element_style: {
+            style: {
               bold: true
             }
           }
