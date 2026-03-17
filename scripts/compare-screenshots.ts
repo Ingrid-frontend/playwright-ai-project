@@ -185,7 +185,19 @@ function getAllScreenshots(dir: string, type: 'pom' | 'optimized', outputPath: s
         const date = dateMatch ? dateMatch[1] : runDir;
         
         const timeMatch = runDir.match(/(\d{2})-(\d{2})-(\d{2})-/);
-        const displayTimestamp = timeMatch ? `${timeMatch[1]}:${timeMatch[2]}:${timeMatch[3]}` : runDir;
+        let displayTimestamp = runDir;
+        if (timeMatch) {
+          const hours = parseInt(timeMatch[1]);
+          const minutes = parseInt(timeMatch[2]);
+          const seconds = parseInt(timeMatch[3]);
+          
+          const dateObj = new Date();
+          dateObj.setHours(hours, minutes, seconds, 0);
+          
+          const adjustedDate = new Date(dateObj.getTime() + 8 * 60 * 60 * 1000);
+          
+          displayTimestamp = `${String(adjustedDate.getHours()).padStart(2, '0')}:${String(adjustedDate.getMinutes()).padStart(2, '0')}:${String(adjustedDate.getSeconds()).padStart(2, '0')}`;
+        }
         
         result.get(stepNumber)!.push({
           path: path.join(runPath, file),
@@ -467,8 +479,14 @@ function extractImageLabel(path: string, index: number): string {
   const timeMatch = path.match(/(\d{2}-\d{2}-\d{2})-/);
   if (timeMatch) {
     const timeStr = timeMatch[1];
-    const [hh, mm, ss] = timeStr.split('-');
-    return `${hh}:${mm}:${ss}`;
+    const [hh, mm, ss] = timeStr.split('-').map(Number);
+    
+    const dateObj = new Date();
+    dateObj.setHours(hh, mm, ss, 0);
+    
+    const adjustedDate = new Date(dateObj.getTime() + 8 * 60 * 60 * 1000);
+    
+    return `${String(adjustedDate.getHours()).padStart(2, '0')}:${String(adjustedDate.getMinutes()).padStart(2, '0')}:${String(adjustedDate.getSeconds()).padStart(2, '0')}`;
   }
   
   return `图片 ${index}`;
@@ -478,18 +496,25 @@ function extractImageLabelWithRoute(path: string, index: number): string {
   const timeMatch = path.match(/(\d{2}-\d{2}-\d{2})-/);
   if (timeMatch) {
     const timeStr = timeMatch[1];
-    const [hh, mm, ss] = timeStr.split('-');
+    const [hh, mm, ss] = timeStr.split('-').map(Number);
+    
+    const dateObj = new Date();
+    dateObj.setHours(hh, mm, ss, 0);
+    
+    const adjustedDate = new Date(dateObj.getTime() + 8 * 60 * 60 * 1000);
+    
+    const timeStrAdjusted = `${String(adjustedDate.getHours()).padStart(2, '0')}:${String(adjustedDate.getMinutes()).padStart(2, '0')}:${String(adjustedDate.getSeconds()).padStart(2, '0')}`;
     
     const routeMatch = path.match(/__(.+)\.png$/);
     if (routeMatch) {
       const route = routeMatch[1];
       const routeDisplayName = getRouteDisplayName(route);
       if (route !== routeDisplayName) {
-        return `${hh}:${mm}:${ss} (${routeDisplayName})`;
+        return `${timeStrAdjusted} (${routeDisplayName})`;
       }
     }
     
-    return `${hh}:${mm}:${ss}`;
+    return timeStrAdjusted;
   }
   
   return `图片 ${index}`;
