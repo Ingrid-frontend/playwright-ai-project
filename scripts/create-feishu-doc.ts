@@ -347,9 +347,16 @@ async function addBlocksToDocument(documentId: string, blocks: FeishuDocBlock[],
   console.log(`✅ 获取到根 block ID: ${rootBlockId}`);
 
   // 飞书 API 不支持批量创建，需要逐个创建
+  // 飞书 API 频率限制：每秒 3 次，需要添加延迟
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i];
     console.log(`📝 添加第 ${i + 1}/${blocks.length} 个内容块...`);
+    
+    // 添加延迟，避免触发频率限制
+    if (i > 0) {
+      console.log('⏳ 等待 500ms 避免触发频率限制...');
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
     
     const blockId = `block_${i}`;
     
@@ -388,6 +395,17 @@ async function addBlocksToDocument(documentId: string, blocks: FeishuDocBlock[],
     
     console.log('📥 飞书 API 响应:', cleanedResponseText.substring(0, 200));
     console.log('📊 响应长度:', cleanedResponseText.length);
+    console.log('📊 HTTP 状态码:', response.status);
+    
+    // 检查响应是否为空
+    if (cleanedResponseText.length === 0) {
+      console.error('❌ 飞书 API 返回空响应');
+      console.error('📝 可能原因：');
+      console.error('  1. 触发频率限制（每秒 3 次）');
+      console.error('  2. 网络连接问题');
+      console.error('  3. API 服务异常');
+      throw new Error(`飞书 API 返回空响应`);
+    }
     
     let data;
     try {
