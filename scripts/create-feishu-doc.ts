@@ -316,60 +316,92 @@ async function createFeishuDocument(accessToken: string): Promise<string> {
 async function addBlocksToDocument(documentId: string, blocks: FeishuDocBlock[], accessToken: string): Promise<void> {
   console.log(`📝 添加 ${blocks.length} 个内容块到文档...`);
   
-  const requestBody = {
-    requests: blocks.map((block, index) => ({
-      create_block: {
-        block_id: `${index}`,
-        parent_id: '',
-        index: index,
-        block_type: block.block_type,
-        paragraph: block.paragraph,
-        heading1: block.heading1,
-        heading2: block.heading2,
-        heading3: block.heading3,
-        image: block.image,
-        table: block.table
-      }
-    }))
-  };
-
-  console.log('📤 请求体大小:', JSON.stringify(requestBody).length);
-  
-  const response = await fetch(`https://open.feishu.cn/open-apis/docx/v1/documents/${documentId}/blocks/batch_create`, {
-    method: 'POST',
+  // 首先获取文档的根 block ID
+  console.log('🔍 获取文档根 block ID...');
+  const docResponse = await fetch(`https://open.feishu.cn/open-apis/docx/v1/documents/${documentId}`, {
+    method: 'GET',
     headers: {
-      'Content-Type': 'application/json',
       'Authorization': `Bearer ${accessToken}`
-    },
-    body: JSON.stringify(requestBody)
+    }
   });
 
-  const responseText = await response.text();
+  const docResponseText = await docResponse.text();
+  const cleanedDocResponseText = docResponseText.replace(/^\uFEFF/, '');
   
-  // 移除 BOM（Byte Order Mark）
-  const cleanedResponseText = responseText.replace(/^\uFEFF/, '');
-  
-  console.log('📥 飞书 API 响应:', cleanedResponseText.substring(0, 200));
-  console.log('📊 响应长度:', cleanedResponseText.length);
-  
-  let data;
+  let docData;
   try {
-    data = JSON.parse(cleanedResponseText);
+    docData = JSON.parse(cleanedDocResponseText);
   } catch (error) {
     console.error('❌ JSON 解析失败');
     console.error('📝 错误信息:', error);
     console.error('📄 响应内容（前 500 字符）:');
-    console.error(cleanedResponseText.substring(0, 500));
-    console.error('📄 响应内容（完整）:');
-    console.error(cleanedResponseText);
-    throw new Error(`添加内容块失败: JSON 解析错误`);
+    console.error(cleanedDocResponseText.substring(0, 500));
+    throw new Error(`获取文档信息失败: JSON 解析错误`);
   }
   
-  if (data.code !== 0) {
-    console.error('❌ 添加内容块失败');
-    console.error('📝 错误码:', data.code);
-    console.error('📝 错误信息:', data.msg);
-    throw new Error(`添加内容块失败: ${data.msg}`);
+  if (docData.code !== 0) {
+    throw new Error(`获取文档信息失败: ${docData.msg}`);
+  }
+
+  const rootBlockId = docData.data.document.document_id;
+  console.log(`✅ 获取到根 block ID: ${rootBlockId}`);
+
+  // 飞书 API 不支持批量创建，需要逐个创建
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i];
+    console.log(`📝 添加第 ${i + 1}/${blocks.length} 个内容块...`);
+    
+    const requestBody = {
+      block_type: block.block_type,
+      paragraph: block.paragraph,
+      heading1: block.heading1,
+      heading2: block.heading2,
+      heading3: block.heading3,
+      image: block.image,
+      table: block.table
+    };
+
+    console.log('📤 请求体:', JSON.stringify(requestBody).substring(0, 200));
+    
+    const response = await fetch(`https://open.feishu.cn/open-apis/docx/v1/documents/${documentId}/blocks/${rootBlockId}/children`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`
+      },
+      body: JSON.stringify({
+        children: [requestBody],
+        index: i
+      })
+    });
+
+    const responseText = await response.text();
+    
+    // 移除 BOM（Byte Order Mark）
+    const cleanedResponseText = responseText.replace(/^\uFEFF/, '');
+    
+    console.log('📥 飞书 API 响应:', cleanedResponseText.substring(0, 200));
+    console.log('📊 响应长度:', cleanedResponseText.length);
+    
+    let data;
+    try {
+      data = JSON.parse(cleanedResponseText);
+    } catch (error) {
+      console.error('❌ JSON 解析失败');
+      console.error('📝 错误信息:', error);
+      console.error('📄 响应内容（前 500 字符）:');
+      console.error(cleanedResponseText.substring(0, 500));
+      console.error('📄 响应内容（完整）:');
+      console.error(cleanedResponseText);
+      throw new Error(`添加内容块失败: JSON 解析错误`);
+    }
+    
+    if (data.code !== 0) {
+      console.error('❌ 添加内容块失败');
+      console.error('📝 错误码:', data.code);
+      console.error('📝 错误信息:', data.msg);
+      throw new Error(`添加内容块失败: ${data.msg}`);
+    }
   }
 
   console.log('✅ 内容块添加成功');
