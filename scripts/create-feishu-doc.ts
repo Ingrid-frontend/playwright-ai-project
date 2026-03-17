@@ -79,13 +79,24 @@ async function getAccessToken(config: FeishuDocConfig): Promise<string> {
   });
 
   const responseText = await response.text();
-  console.log('📥 飞书 API 响应:', responseText.substring(0, 200));
+  
+  // 移除 BOM（Byte Order Mark）
+  const cleanedResponseText = responseText.replace(/^\uFEFF/, '');
+  
+  console.log('📥 飞书 API 响应:', cleanedResponseText.substring(0, 200));
+  console.log('📊 响应长度:', cleanedResponseText.length);
   
   let data;
   try {
-    data = JSON.parse(responseText);
+    data = JSON.parse(cleanedResponseText);
   } catch (error) {
-    throw new Error(`解析飞书 API 响应失败: ${error}\n响应内容: ${responseText.substring(0, 500)}`);
+    console.error('❌ JSON 解析失败');
+    console.error('📝 错误信息:', error);
+    console.error('📄 响应内容（前 500 字符）:');
+    console.error(cleanedResponseText.substring(0, 500));
+    console.error('📄 响应内容（完整）:');
+    console.error(cleanedResponseText);
+    throw new Error(`解析飞书 API 响应失败: ${error}`);
   }
   
   if (data.code !== 0) {
@@ -142,13 +153,22 @@ async function getDocumentInfo(documentId: string, accessToken: string): Promise
   });
 
   const responseText = await response.text();
-  console.log('📥 飞书 API 响应:', responseText.substring(0, 200));
+  
+  // 移除 BOM（Byte Order Mark）
+  const cleanedResponseText = responseText.replace(/^\uFEFF/, '');
+  
+  console.log('📥 飞书 API 响应:', cleanedResponseText.substring(0, 200));
   
   let data;
   try {
-    data = JSON.parse(responseText);
+    data = JSON.parse(cleanedResponseText);
   } catch (error) {
-    console.log('⚠️  解析飞书 API 响应失败:', error);
+    console.error('❌ JSON 解析失败');
+    console.error('📝 错误信息:', error);
+    console.error('📄 响应内容（前 500 字符）:');
+    console.error(cleanedResponseText.substring(0, 500));
+    console.error('📄 响应内容（完整）:');
+    console.error(cleanedResponseText);
     return null;
   }
   
@@ -172,13 +192,22 @@ async function getDocumentBlocks(documentId: string, accessToken: string): Promi
   });
 
   const responseText = await response.text();
-  console.log('📥 飞书 API 响应:', responseText.substring(0, 200));
+  
+  // 移除 BOM（Byte Order Mark）
+  const cleanedResponseText = responseText.replace(/^\uFEFF/, '');
+  
+  console.log('📥 飞书 API 响应:', cleanedResponseText.substring(0, 200));
   
   let data;
   try {
-    data = JSON.parse(responseText);
+    data = JSON.parse(cleanedResponseText);
   } catch (error) {
-    console.log('⚠️  解析飞书 API 响应失败:', error);
+    console.error('❌ JSON 解析失败');
+    console.error('📝 错误信息:', error);
+    console.error('📄 响应内容（前 500 字符）:');
+    console.error(cleanedResponseText.substring(0, 500));
+    console.error('📄 响应内容（完整）:');
+    console.error(cleanedResponseText);
     return [];
   }
   
