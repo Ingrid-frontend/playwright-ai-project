@@ -17,7 +17,7 @@ interface CreateDocResult {
 }
 
 interface FeishuDocBlock {
-  block_type: number;
+  block_type: string;
   paragraph?: {
     elements: FeishuDocElement[];
   };
@@ -467,7 +467,7 @@ function convertHtmlToFeishuBlocks(htmlContent: string, accessToken: string): Fe
   const titleMatch = htmlContent.match(/<h1[^>]*>(.*?)<\/h1>/i);
   if (titleMatch) {
     blocks.push({
-      block_type: 2,
+      block_type: 'heading1',
       heading1: {
         elements: [{
           text_run: {
@@ -485,7 +485,7 @@ function convertHtmlToFeishuBlocks(htmlContent: string, accessToken: string): Fe
   const h2Matches = htmlContent.matchAll(/<h2[^>]*>(.*?)<\/h2>/gi);
   for (const match of h2Matches) {
     blocks.push({
-      block_type: 3,
+      block_type: 'heading2',
       heading2: {
         elements: [{
           text_run: {
@@ -503,7 +503,7 @@ function convertHtmlToFeishuBlocks(htmlContent: string, accessToken: string): Fe
   const h3Matches = htmlContent.matchAll(/<h3[^>]*>(.*?)<\/h3>/gi);
   for (const match of h3Matches) {
     blocks.push({
-      block_type: 4,
+      block_type: 'heading3',
       heading3: {
         elements: [{
           text_run: {
@@ -530,7 +530,7 @@ function convertHtmlToFeishuBlocks(htmlContent: string, accessToken: string): Fe
 
     if (cleanParagraph.length > 0) {
       blocks.push({
-        block_type: 1,
+        block_type: 'paragraph',
         paragraph: {
           elements: [{
             text_run: {
