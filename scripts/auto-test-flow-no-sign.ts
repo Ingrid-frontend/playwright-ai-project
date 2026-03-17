@@ -86,20 +86,11 @@ async function sendFeishuNotification() {
 
     // 添加飞书文档链接（如果存在）
     const feishuDocUrlPath = 'results/feishu-doc-url.txt';
-    console.log('🔍 检查飞书文档链接文件:', feishuDocUrlPath);
-    console.log('  - 文件存在:', fs.existsSync(feishuDocUrlPath));
-    
     if (fs.existsSync(feishuDocUrlPath)) {
       try {
         const feishuDocUrl = fs.readFileSync(feishuDocUrlPath, 'utf-8').trim();
-        console.log('  - 读取到的文档链接:', feishuDocUrl);
-        console.log('  - 链接是否为空:', !feishuDocUrl);
-        
         if (feishuDocUrl) {
           const lastElement = message.card.elements[message.card.elements.length - 1];
-          console.log('  - 最后一个元素:', lastElement);
-          console.log('  - 是否有 actions:', 'actions' in lastElement);
-          
           if (lastElement && 'actions' in lastElement && Array.isArray(lastElement.actions)) {
             lastElement.actions.push({
               tag: 'button',
@@ -110,18 +101,11 @@ async function sendFeishuNotification() {
               type: 'primary',
               url: feishuDocUrl
             });
-            console.log('  - ✅ 飞书文档链接已添加');
-          } else {
-            console.log('  - ❌ 无法添加飞书文档链接：元素结构不正确');
           }
-        } else {
-          console.log('  - ⚠️  飞书文档链接为空');
         }
       } catch (error) {
-        console.log('⚠️  无法读取飞书文档链接:', error);
+        console.log('⚠️  无法读取飞书文档链接');
       }
-    } else {
-      console.log('⚠️  飞书文档链接文件不存在');
     }
 
     console.log('📤 发送飞书消息：');

@@ -92,6 +92,15 @@ jobs:
         path: results/diffs/
         retention-days: 30
         if-no-files-found: ignore
+        
+    - name: Upload Feishu document URL
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: feishu-doc-url
+        path: results/feishu-doc-url.txt
+        retention-days: 30
+        if-no-files-found: ignore
 
   deploy:
     needs: test
