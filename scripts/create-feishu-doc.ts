@@ -521,16 +521,16 @@ function convertHtmlToFeishuBlocks(htmlContent: string, accessToken: string): Fe
   const paragraphs = htmlContent.split(/<h[1-6][^>]*>.*?<\/h[1-6]>/gi);
   for (const paragraph of paragraphs) {
     const cleanParagraph = paragraph
-      .replace(/<[^>]+>/g, '')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&amp;/g, '&')
       .replace(/<style[^>]*>.*?<\/style>/gis, '')
       .replace(/<script[^>]*>.*?<\/script>/gis, '')
       .replace(/<link[^>]*>.*?>/gis, '')
       .replace(/<meta[^>]*>.*?>/gis, '')
       .replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&')
       .replace(/\s+/g, ' ')
       .trim();
 
