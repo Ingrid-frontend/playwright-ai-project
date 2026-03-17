@@ -65,8 +65,7 @@ interface FeishuDocElement {
       strike_through?: boolean;
       code?: boolean;
       link?: {
-        href?: string;
-        url?: string;
+        url: string;
       };
     };
   };
@@ -603,12 +602,16 @@ async function convertHtmlToFeishuBlocks(htmlContent: string, accessToken: strin
         
         console.log(`🔍 处理图片: ${imagePath}`);
         console.log(`  - 是否以 ../screenshots/ 开头: ${imagePath.startsWith('../screenshots/')}`);
+        console.log(`  - 是否以 screenshots/ 开头: ${imagePath.startsWith('screenshots/')}`);
         console.log(`  - 是否以 diffs/ 开头: ${imagePath.startsWith('diffs/')}`);
         
         let fullImageUrl = imagePath;
         if (imagePath.startsWith('../screenshots/')) {
           fullImageUrl = `https://ingrid-frontend.github.io/playwright-ai-project/screenshots/${imagePath.replace('../screenshots/', '')}`;
           console.log(`  - ✅ 转换为 GitHub Pages URL`);
+        } else if (imagePath.startsWith('screenshots/')) {
+          fullImageUrl = `https://ingrid-frontend.github.io/playwright-ai-project/screenshots/${imagePath.replace('screenshots/', '')}`;
+          console.log(`  - ✅ 转换为 GitHub Pages URL (无../前缀)`);
         } else if (imagePath.startsWith('diffs/')) {
           fullImageUrl = `https://ingrid-frontend.github.io/playwright-ai-project/results/${imagePath}`;
           console.log(`  - ✅ 转换为 GitHub Pages URL (diffs)`);
@@ -626,7 +629,7 @@ async function convertHtmlToFeishuBlocks(htmlContent: string, accessToken: strin
                 content: `📷 图片: ${imageName}`,
                 text_element_style: {
                   link: {
-                    href: fullImageUrl
+                    url: fullImageUrl
                   }
                 }
               }
