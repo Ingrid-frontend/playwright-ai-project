@@ -449,7 +449,7 @@ async function addBlocksToDocument(documentId: string, blocks: FeishuDocBlock[],
 async function shareDocument(documentId: string, accessToken: string): Promise<string> {
   console.log('🔗 分享文档...');
   
-  const response = await fetch(`https://open.feishu.cn/open-apis/drive/v1/permissions/${documentId}/share`, {
+  const response = await fetch(`https://open.feishu.cn/open-apis/drive/v1/files/${documentId}/share`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
