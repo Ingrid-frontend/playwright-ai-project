@@ -17,7 +17,7 @@ interface CreateDocResult {
 }
 
 interface FeishuDocBlock {
-  block_type: string;
+  block_type: number;
   paragraph?: {
     elements: FeishuDocElement[];
   };
@@ -43,10 +43,9 @@ interface FeishuDocBlock {
 }
 
 interface FeishuDocElement {
-  type: string;
-  textRun: {
-    text: string;
-    style?: {
+  text_run: {
+    content: string;
+    text_element_style?: {
       bold?: boolean;
       italic?: boolean;
       underline?: boolean;
@@ -468,13 +467,12 @@ function convertHtmlToFeishuBlocks(htmlContent: string, accessToken: string): Fe
   const titleMatch = htmlContent.match(/<h1[^>]*>(.*?)<\/h1>/i);
   if (titleMatch) {
     blocks.push({
-      block_type: 'heading1',
+      block_type: 3,
       heading1: {
         elements: [{
-          type: 'textRun',
-          textRun: {
-            text: titleMatch[1].trim(),
-            style: {
+          text_run: {
+            content: titleMatch[1].trim(),
+            text_element_style: {
               bold: true
             }
           }
@@ -487,13 +485,12 @@ function convertHtmlToFeishuBlocks(htmlContent: string, accessToken: string): Fe
   const h2Matches = htmlContent.matchAll(/<h2[^>]*>(.*?)<\/h2>/gi);
   for (const match of h2Matches) {
     blocks.push({
-      block_type: 'heading2',
+      block_type: 4,
       heading2: {
         elements: [{
-          type: 'textRun',
-          textRun: {
-            text: match[1].trim(),
-            style: {
+          text_run: {
+            content: match[1].trim(),
+            text_element_style: {
               bold: true
             }
           }
@@ -506,13 +503,12 @@ function convertHtmlToFeishuBlocks(htmlContent: string, accessToken: string): Fe
   const h3Matches = htmlContent.matchAll(/<h3[^>]*>(.*?)<\/h3>/gi);
   for (const match of h3Matches) {
     blocks.push({
-      block_type: 'heading3',
+      block_type: 5,
       heading3: {
         elements: [{
-          type: 'textRun',
-          textRun: {
-            text: match[1].trim(),
-            style: {
+          text_run: {
+            content: match[1].trim(),
+            text_element_style: {
               bold: true
             }
           }
@@ -534,12 +530,11 @@ function convertHtmlToFeishuBlocks(htmlContent: string, accessToken: string): Fe
 
     if (cleanParagraph.length > 0) {
       blocks.push({
-        block_type: 'paragraph',
+        block_type: 2,
         paragraph: {
           elements: [{
-            type: 'textRun',
-            textRun: {
-              text: cleanParagraph
+            text_run: {
+              content: cleanParagraph
             }
           }]
         }
