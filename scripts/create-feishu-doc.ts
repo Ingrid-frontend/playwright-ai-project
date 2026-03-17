@@ -222,7 +222,7 @@ async function getDocumentBlocks(documentId: string, accessToken: string): Promi
 }
 
 async function clearDocumentBlocks(documentId: string, accessToken: string): Promise<void> {
-  console.log('🗑️  清空文档内容...');
+  console.log('🗑️ 清空文档内容...');
   
   const blockIds = await getDocumentBlocks(documentId, accessToken);
   
@@ -242,10 +242,29 @@ async function clearDocumentBlocks(documentId: string, accessToken: string): Pro
     })
   });
 
-  const data = await response.json();
+  const responseText = await response.text();
+  
+  // 移除 BOM（Byte Order Mark）
+  const cleanedResponseText = responseText.replace(/^\uFEFF/, '');
+  
+  console.log('📥 飞书 API 响应:', cleanedResponseText.substring(0, 200));
+  
+  let data;
+  try {
+    data = JSON.parse(cleanedResponseText);
+  } catch (error) {
+    console.error('❌ JSON 解析失败');
+    console.error('📝 错误信息:', error);
+    console.error('📄 响应内容（前 500 字符）:');
+    console.error(cleanedResponseText.substring(0, 500));
+    console.error('📄 响应内容（完整）:');
+    console.error(cleanedResponseText);
+    console.log('⚠️ 清空文档失败，可能需要手动删除内容块');
+    return;
+  }
   
   if (data.code !== 0) {
-    console.log('⚠️  清空文档失败，可能需要手动删除内容块');
+    console.log('⚠️ 清空文档失败，可能需要手动删除内容块');
   } else {
     console.log('✅ 文档内容已清空');
   }
@@ -266,7 +285,25 @@ async function createFeishuDocument(accessToken: string): Promise<string> {
     })
   });
 
-  const data = await response.json();
+  const responseText = await response.text();
+  
+  // 移除 BOM（Byte Order Mark）
+  const cleanedResponseText = responseText.replace(/^\uFEFF/, '');
+  
+  console.log('📥 飞书 API 响应:', cleanedResponseText.substring(0, 200));
+  
+  let data;
+  try {
+    data = JSON.parse(cleanedResponseText);
+  } catch (error) {
+    console.error('❌ JSON 解析失败');
+    console.error('📝 错误信息:', error);
+    console.error('📄 响应内容（前 500 字符）:');
+    console.error(cleanedResponseText.substring(0, 500));
+    console.error('📄 响应内容（完整）:');
+    console.error(cleanedResponseText);
+    throw new Error(`创建文档失败: JSON 解析错误`);
+  }
   
   if (data.code !== 0) {
     throw new Error(`创建文档失败: ${data.msg}`);
@@ -279,33 +316,59 @@ async function createFeishuDocument(accessToken: string): Promise<string> {
 async function addBlocksToDocument(documentId: string, blocks: FeishuDocBlock[], accessToken: string): Promise<void> {
   console.log(`📝 添加 ${blocks.length} 个内容块到文档...`);
   
+  const requestBody = {
+    requests: blocks.map((block, index) => ({
+      create_block: {
+        block_id: `${index}`,
+        parent_id: '',
+        index: index,
+        block_type: block.block_type,
+        paragraph: block.paragraph,
+        heading1: block.heading1,
+        heading2: block.heading2,
+        heading3: block.heading3,
+        image: block.image,
+        table: block.table
+      }
+    }))
+  };
+
+  console.log('📤 请求体大小:', JSON.stringify(requestBody).length);
+  
   const response = await fetch(`https://open.feishu.cn/open-apis/docx/v1/documents/${documentId}/blocks/batch_create`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${accessToken}`
     },
-    body: JSON.stringify({
-      requests: blocks.map((block, index) => ({
-        create_block: {
-          block_id: `${index}`,
-          parent_id: '',
-          index: index,
-          block_type: block.block_type,
-          paragraph: block.paragraph,
-          heading1: block.heading1,
-          heading2: block.heading2,
-          heading3: block.heading3,
-          image: block.image,
-          table: block.table
-        }
-      }))
-    })
+    body: JSON.stringify(requestBody)
   });
 
-  const data = await response.json();
+  const responseText = await response.text();
+  
+  // 移除 BOM（Byte Order Mark）
+  const cleanedResponseText = responseText.replace(/^\uFEFF/, '');
+  
+  console.log('📥 飞书 API 响应:', cleanedResponseText.substring(0, 200));
+  console.log('📊 响应长度:', cleanedResponseText.length);
+  
+  let data;
+  try {
+    data = JSON.parse(cleanedResponseText);
+  } catch (error) {
+    console.error('❌ JSON 解析失败');
+    console.error('📝 错误信息:', error);
+    console.error('📄 响应内容（前 500 字符）:');
+    console.error(cleanedResponseText.substring(0, 500));
+    console.error('📄 响应内容（完整）:');
+    console.error(cleanedResponseText);
+    throw new Error(`添加内容块失败: JSON 解析错误`);
+  }
   
   if (data.code !== 0) {
+    console.error('❌ 添加内容块失败');
+    console.error('📝 错误码:', data.code);
+    console.error('📝 错误信息:', data.msg);
     throw new Error(`添加内容块失败: ${data.msg}`);
   }
 
@@ -335,7 +398,25 @@ async function shareDocument(documentId: string, accessToken: string): Promise<s
     })
   });
 
-  const data = await response.json();
+  const responseText = await response.text();
+  
+  // 移除 BOM（Byte Order Mark）
+  const cleanedResponseText = responseText.replace(/^\uFEFF/, '');
+  
+  console.log('📥 飞书 API 响应:', cleanedResponseText.substring(0, 200));
+  
+  let data;
+  try {
+    data = JSON.parse(cleanedResponseText);
+  } catch (error) {
+    console.error('❌ JSON 解析失败');
+    console.error('📝 错误信息:', error);
+    console.error('📄 响应内容（前 500 字符）:');
+    console.error(cleanedResponseText.substring(0, 500));
+    console.error('📄 响应内容（完整）:');
+    console.error(cleanedResponseText);
+    throw new Error(`分享文档失败: JSON 解析错误`);
+  }
   
   if (data.code !== 0) {
     throw new Error(`分享文档失败: ${data.msg}`);
