@@ -600,12 +600,22 @@ async function convertHtmlToFeishuBlocks(htmlContent: string, accessToken: strin
         const imagePath = srcMatch[1];
         const imageName = path.basename(imagePath);
         
+        console.log(`🔍 处理图片: ${imagePath}`);
+        console.log(`  - 是否以 ../screenshots/ 开头: ${imagePath.startsWith('../screenshots/')}`);
+        console.log(`  - 是否以 diffs/ 开头: ${imagePath.startsWith('diffs/')}`);
+        
         let fullImageUrl = imagePath;
         if (imagePath.startsWith('../screenshots/')) {
           fullImageUrl = `https://ingrid-frontend.github.io/playwright-ai-project/screenshots/${imagePath.replace('../screenshots/', '')}`;
+          console.log(`  - ✅ 转换为 GitHub Pages URL`);
         } else if (imagePath.startsWith('diffs/')) {
           fullImageUrl = `https://ingrid-frontend.github.io/playwright-ai-project/results/${imagePath}`;
+          console.log(`  - ✅ 转换为 GitHub Pages URL (diffs)`);
+        } else {
+          console.log(`  - ⚠️  未匹配到任何路径模式，保持原样`);
         }
+        
+        console.log(`  - 最终 URL: ${fullImageUrl}`);
         
         blocks.push({
           block_type: 2,
