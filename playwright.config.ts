@@ -106,15 +106,15 @@ export default defineConfig({
     // },
 
     /* --- 优化后的测试项目 --- */
-    // {
-    //   name: 'optimized',
-    //   testDir: './tests/optimized',
-    //   use: { 
-    //     ...devices['Desktop Chrome'],
-    //     storageState: curConfig.storageState
-    //   },
-    //   dependencies: ['setup'],
-    // },
+    {
+      name: 'optimized',
+      testDir: './tests/optimized',
+      use: { 
+        ...devices['Desktop Chrome'],
+        storageState: curConfig.storageState
+      },
+      dependencies: ['setup'],
+    },
   ],
 
   /* 5. 本地开发服务器配置（按需取消注释） */

@@ -201,7 +201,7 @@ async function main() {
       console.log(`\n🧪 执行测试: ${file}`);
       
       try {
-        execSync(`npx playwright test ${testPath} --project=chromium`, {
+        execSync(`npx playwright test ${testPath} --project=optimized`, {
           stdio: 'inherit'
         });
         console.log(`✅ ${file} 测试通过`);
