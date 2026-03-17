@@ -2,199 +2,237 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
-interface TestFile {
-  name: string;
-  path: string;
-}
-
-interface TestResult {
-  testFile: TestFile;
-  success: boolean;
-  screenshotDir?: string;
-}
-
-function getOptimizedTestFiles(targetFile?: string): TestFile[] {
-  const optimizedDir = 'tests/optimized';
+async function sendFeishuNotification() {
+  const webhookUrl = process.env.FEISHU_WEBHOOK_URL;
+  const webhookSecret = process.env.FEISHU_WEBHOOK_SECRET;
   
-  if (!fs.existsSync(optimizedDir)) {
-    console.log(`❌ 目录不存在: ${optimizedDir}`);
-    return [];
-  }
+  console.log('🔍 飞书通知配置检查：');
+  console.log('  - Webhook URL:', webhookUrl ? '已配置' : '未配置');
+  console.log('  - Webhook Secret:', webhookSecret ? '已配置' : '未配置');
   
-  if (targetFile) {
-    const targetPath = path.join(optimizedDir, targetFile);
-    if (!fs.existsSync(targetPath)) {
-      console.log(`❌ 文件不存在: ${targetPath}`);
-      return [];
-    }
-    return [{
-      name: targetFile,
-      path: targetPath
-    }];
-  }
-  
-  const files = fs.readdirSync(optimizedDir)
-    .filter(f => f.endsWith('.spec.ts'))
-    .map(f => ({
-      name: f,
-      path: path.join(optimizedDir, f)
-    }))
-    .sort();
-  
-  return files;
-}
-
-function cleanFailedTestScreenshots(results: TestResult[]): void {
-  console.log('\n🧹 清理失败测试的截图...');
-  
-  const failedTests = results.filter(r => !r.success && r.screenshotDir);
-  
-  if (failedTests.length === 0) {
-    console.log('✅ 没有失败的测试，无需清理');
+  if (!webhookUrl) {
+    console.log('⚠️  未配置飞书 Webhook URL，跳过通知');
     return;
   }
-  
-  console.log(`📋 失败的测试: ${failedTests.length} 个`);
-  
-  failedTests.forEach(result => {
-    if (!result.screenshotDir) return;
-    
-    if (!fs.existsSync(result.screenshotDir)) {
-      console.log(`⚠️  截图目录不存在: ${result.screenshotDir}`);
-      return;
-    }
-    
-    console.log(`   删除: ${result.screenshotDir}`);
-    fs.rmSync(result.screenshotDir, { recursive: true, force: true });
-  });
-  
-  console.log('✅ 失败测试的截图清理完成');
-}
 
-function runTest(testFile: TestFile, verbose: boolean = false): TestResult {
-  console.log(`\n🚀 执行测试: ${testFile.name}`);
-  console.log('='.repeat(60));
-  
-  const match = testFile.name.match(/(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})/);
-  const screenshotDir = match ? `screenshots/${match[1]}` : undefined;
-  
   try {
-    execSync(`npx playwright test --project=chromium --workers=1 ${testFile.path}`, {
-      stdio: verbose ? 'inherit' : 'pipe',
-      cwd: process.cwd(),
-      timeout: 120000
+    const timestamp = Math.floor(Date.now() / 1000);
+    
+    const githubRepository = process.env.GITHUB_REPOSITORY || 'Ingrid-frontend/playwright-ai-project';
+    const githubRunId = process.env.GITHUB_RUN_ID || '';
+    const githubRunUrl = `https://github.com/${githubRepository}/actions/runs/${githubRunId}`;
+    
+    const [owner, repo] = githubRepository.split('/');
+    const githubPagesUrl = `https://${owner}.github.io/${repo}/screenshot-comparison.html`;
+    
+    const message = {
+      msg_type: 'interactive',
+      card: {
+        header: {
+          title: {
+            tag: 'plain_text',
+            content: '🎉 Playwright AI 测试完成'
+          },
+          template: 'green'
+        },
+        elements: [
+          {
+            tag: 'div',
+            text: {
+              tag: 'lark_md',
+              content: '**测试结果**：\n✅ 执行：成功\n✅ 对比：成功'
+            }
+          },
+          {
+            tag: 'action',
+            actions: [
+              {
+                tag: 'button',
+                text: {
+                  tag: 'plain_text',
+                  content: '🌐 在线预览'
+                },
+                type: 'primary',
+                url: githubPagesUrl
+              },
+              {
+                tag: 'button',
+                text: {
+                  tag: 'plain_text',
+                  content: '📥 下载报告'
+                },
+                type: 'default',
+                url: githubRunUrl
+              }
+            ]
+          },
+          {
+            tag: 'div',
+            text: {
+              tag: 'lark_md',
+              content: '**飞书文档**：'
+            }
+          },
+          {
+            tag: 'action',
+            actions: []
+          }
+        ]
+      }
+    };
+
+    const feishuDocUrlPath = 'results/feishu-doc-url.txt';
+    if (fs.existsSync(feishuDocUrlPath)) {
+      try {
+        const feishuDocUrl = fs.readFileSync(feishuDocUrlPath, 'utf-8').trim();
+        if (feishuDocUrl) {
+          const lastElement = message.card.elements[message.card.elements.length - 1];
+          if (lastElement && 'actions' in lastElement && Array.isArray(lastElement.actions)) {
+            lastElement.actions.push({
+              tag: 'button',
+              text: {
+                tag: 'plain_text',
+                content: '📄 飞书文档'
+              },
+              type: 'primary',
+              url: feishuDocUrl
+            });
+          }
+        }
+      } catch (error) {
+        console.log('⚠️  无法读取飞书文档链接');
+      }
+    }
+
+    console.log('📤 发送飞书消息：');
+    console.log('  - 消息类型:', message.msg_type);
+    console.log('  - 时间戳:', timestamp, '(秒级)');
+    console.log('  - GitHub 运行链接:', githubRunUrl);
+    console.log('  - GitHub Pages 链接:', githubPagesUrl);
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+
+    if (webhookSecret) {
+      const crypto = await import('crypto');
+      const bodyString = JSON.stringify(message);
+      const signString = `${timestamp}\n${bodyString}`;
+      
+      console.log('  - 签名字符串:', signString);
+      console.log('  - Body 字符串长度:', bodyString.length);
+      console.log('  - Body 字符串:', bodyString);
+      
+      const sign = crypto.createHmac('sha256', webhookSecret)
+        .update(signString)
+        .digest('base64');
+      
+      headers['X-Lark-Request-Timestamp'] = String(timestamp);
+      headers['X-Lark-Signature'] = sign;
+      console.log('  - 签名:', sign);
+      console.log('  - 签名：已添加');
+    } else {
+      console.log('  - 签名：未配置（跳过签名验证）');
+    }
+
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(message)
     });
-    console.log(`✅ 测试完成: ${testFile.name}`);
-    return { testFile, success: true, screenshotDir };
-  } catch (error: any) {
-    console.log(`⚠️  测试执行遇到问题: ${testFile.name}`);
-    console.log(`   错误: ${error.message || '未知错误'}`);
-    console.log(`   继续执行下一个测试...`);
-    return { testFile, success: false, screenshotDir };
+
+    console.log('📥 飞书响应：');
+    console.log('  - 状态码:', response.status);
+    console.log('  - 状态文本:', response.statusText);
+    
+    const responseText = await response.text();
+    console.log('  - 响应内容:', responseText);
+
+    if (response.ok) {
+      console.log('✅ 飞书通知发送成功');
+    } else {
+      console.log('❌ 飞书通知发送失败');
+      console.log('❌ 响应状态:', response.status, response.statusText);
+      console.log('❌ 响应内容:', responseText);
+    }
+  } catch (error) {
+    console.log('❌ 飞书通知发送异常:', error);
   }
 }
 
-function generateComparisonReport(verbose: boolean = false): boolean {
-  console.log('\n📊 生成截图对比报告');
-  console.log('='.repeat(60));
-  
+function runCommand(command: string, description: string, continueOnError: boolean = false): void {
+  console.log(`\n📋 ${description}`);
+  console.log(`🔧 执行命令: ${command}`);
   try {
-    execSync('npm run compare-screenshots', {
-      stdio: verbose ? 'inherit' : 'pipe',
-      cwd: process.cwd(),
-      timeout: 60000
-    });
-    console.log('✅ 截图对比报告生成完成');
-    return true;
-  } catch (error: any) {
-    console.log(`⚠️  对比报告生成遇到问题: ${error.message || '未知错误'}`);
-    return false;
+    execSync(command, { stdio: 'inherit' });
+    console.log(`✅ ${description} 完成`);
+  } catch (error) {
+    console.error(`❌ ${description} 失败`);
+    if (continueOnError) {
+      console.log(`⚠️  继续执行后续步骤...`);
+    } else {
+      throw error;
+    }
   }
 }
 
 async function main() {
-  const args = process.argv.slice(2);
-  const verbose = args.includes('--verbose') || args.includes('-v');
-  const stopOnError = args.includes('--stop') || args.includes('-s');
-  const cleanScreenshots = args.includes('--clean');
-  
-  const targetFileIndex = args.findIndex(arg => !arg.startsWith('--') && !arg.startsWith('-'));
-  const targetFile = targetFileIndex !== -1 ? args[targetFileIndex] : undefined;
-  
-  console.log('🎯 开始执行优化测试套件');
-  console.log('='.repeat(60));
-  
-  const testFiles = getOptimizedTestFiles(targetFile);
-  
-  if (testFiles.length === 0) {
-    console.log('⚠️  没有找到测试文件');
-    return;
-  }
-  
-  console.log(`📋 找到 ${testFiles.length} 个测试文件:`);
-  testFiles.forEach((file, index) => {
-    console.log(`  ${index + 1}. ${file.name}`);
-  });
-  
-  if (verbose) {
-    console.log('\n🔧 配置:');
-    console.log(`  详细输出: ${verbose ? '开启' : '关闭'}`);
-    console.log(`  遇到错误停止: ${stopOnError ? '是' : '否'}`);
-    console.log(`  清理失败测试截图: ${cleanScreenshots ? '是' : '否'}`);
-    if (targetFile) {
-      console.log(`  目标文件: ${targetFile}`);
-    }
-  }
-  
-  const results = {
-    total: testFiles.length,
-    passed: 0,
-    failed: 0
-  };
-  
-  const testResults: TestResult[] = [];
-  
-  for (const testFile of testFiles) {
-    const result = runTest(testFile, verbose);
-    testResults.push(result);
+  console.log('🎬 开始执行优化后的测试...\n');
+
+  const optimizedDir = 'tests/optimized';
+
+  try {
+    const optimizedFiles = fs.readdirSync(optimizedDir)
+      .filter(f => f.endsWith('.optimized.spec.ts'))
+      .sort();
     
-    if (result.success) {
-      results.passed++;
-    } else {
-      results.failed++;
-      if (stopOnError) {
-        console.log('\n⚠️  遇到错误，停止执行');
-        console.log('💡 提示: 默认遇到错误继续执行，使用 --stop 参数在遇到错误时停止');
-        break;
+    if (optimizedFiles.length === 0) {
+      console.log('⚠️  未找到优化后的测试文件');
+      process.exit(0);
+    }
+    
+    console.log(`📋 找到 ${optimizedFiles.length} 个优化后的测试文件\n`);
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const file of optimizedFiles) {
+      const testPath = path.join(optimizedDir, file);
+      console.log(`\n🧪 执行测试: ${file}`);
+      
+      try {
+        execSync(`npx playwright test ${testPath} --project=chromium`, {
+          stdio: 'inherit'
+        });
+        console.log(`✅ ${file} 测试通过`);
+        successCount++;
+      } catch (error) {
+        console.error(`❌ ${file} 测试失败`);
+        failCount++;
       }
     }
-  }
-  
-  if (cleanScreenshots) {
-    cleanFailedTestScreenshots(testResults);
-  }
-  
-  console.log('\n' + '='.repeat(60));
-  console.log('📊 测试执行汇总:');
-  console.log(`  总计: ${results.total}`);
-  console.log(`  成功: ${results.passed}`);
-  console.log(`  失败: ${results.failed}`);
-  
-  if (results.passed > 0 || results.failed > 0) {
-    const reportSuccess = generateComparisonReport(verbose);
-    
-    if (reportSuccess) {
-      console.log('\n🎉 全部完成！');
-      console.log('📄 对比报告: results/screenshot-comparison.html');
-    } else {
-      console.log('\n⚠️  对比报告生成失败，但测试已完成');
+
+    console.log(`\n📊 测试执行结果：`);
+    console.log(`  - 总数: ${optimizedFiles.length}`);
+    console.log(`  - 成功: ${successCount}`);
+    console.log(`  - 失败: ${failCount}`);
+
+    if (failCount > 0) {
+      console.log(`\n⚠️  有 ${failCount} 个测试失败，但继续执行后续步骤...`);
     }
-  } else {
-    console.log('\n⚠️  没有执行任何测试');
+
+    runCommand('npm run compare-screenshots', '生成截图对比报告');
+
+    runCommand('npm run create-feishu-doc', '创建飞书文档', true);
+
+    await sendFeishuNotification();
+
+    console.log('\n🎉 所有步骤执行成功！');
+
+  } catch (error) {
+    console.error('\n❌ 流程执行失败，请检查错误信息');
+    process.exit(1);
   }
 }
 
-main().catch(error => {
-  console.error('❌ 执行失败:', error);
-  process.exit(1);
-});
+main();
