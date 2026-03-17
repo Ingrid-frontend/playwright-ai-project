@@ -114,6 +114,88 @@ async function uploadImageToFeishu(imagePath: string, accessToken: string): Prom
   return data.file.token;
 }
 
+async function getDocumentIdFromUrl(url: string): Promise<string | null> {
+  try {
+    const match = url.match(/docx\/([a-zA-Z0-9_-]+)/);
+    return match ? match[1] : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+async function getDocumentInfo(documentId: string, accessToken: string): Promise<any> {
+  console.log(`🔍 检查文档是否存在: ${documentId}`);
+  
+  const response = await fetch(`https://open.feishu.cn/open-apis/docx/v1/documents/${documentId}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`
+    }
+  });
+
+  const data = await response.json();
+  
+  if (data.code === 0) {
+    console.log('✅ 文档已存在');
+    return data.data;
+  } else {
+    console.log('⚠️  文档不存在');
+    return null;
+  }
+}
+
+async function getDocumentBlocks(documentId: string, accessToken: string): Promise<string[]> {
+  console.log('🔍 获取文档内容块...');
+  
+  const response = await fetch(`https://open.feishu.cn/open-apis/docx/v1/documents/${documentId}/blocks`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`
+    }
+  });
+
+  const data = await response.json();
+  
+  if (data.code !== 0) {
+    console.log('⚠️  获取文档内容块失败');
+    return [];
+  }
+
+  const blockIds = data.data.items.map((item: any) => item.block_id);
+  console.log(`✅ 找到 ${blockIds.length} 个内容块`);
+  return blockIds;
+}
+
+async function clearDocumentBlocks(documentId: string, accessToken: string): Promise<void> {
+  console.log('🗑️  清空文档内容...');
+  
+  const blockIds = await getDocumentBlocks(documentId, accessToken);
+  
+  if (blockIds.length === 0) {
+    console.log('✅ 文档已经是空的');
+    return;
+  }
+
+  const response = await fetch(`https://open.feishu.cn/open-apis/docx/v1/documents/${documentId}/blocks/batch_delete`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`
+    },
+    body: JSON.stringify({
+      block_ids: blockIds
+    })
+  });
+
+  const data = await response.json();
+  
+  if (data.code !== 0) {
+    console.log('⚠️  清空文档失败，可能需要手动删除内容块');
+  } else {
+    console.log('✅ 文档内容已清空');
+  }
+}
+
 async function createFeishuDocument(accessToken: string): Promise<string> {
   console.log('📄 创建飞书文档...');
   
@@ -320,14 +402,46 @@ async function createFeishuDoc(htmlFilePath: string, config: FeishuDocConfig): P
     console.log('');
 
     const accessToken = await getAccessToken(config);
-    const documentId = await createFeishuDocument(accessToken);
+    
+    // 检查是否存在之前的文档 URL
+    const urlFilePath = 'results/feishu-doc-url.txt';
+    let documentId: string | null = null;
+    let isNewDocument = true;
+
+    if (fs.existsSync(urlFilePath)) {
+      try {
+        const savedUrl = fs.readFileSync(urlFilePath, 'utf-8').trim();
+        const savedDocumentId = await getDocumentIdFromUrl(savedUrl);
+        
+        if (savedDocumentId) {
+          const docInfo = await getDocumentInfo(savedDocumentId, accessToken);
+          if (docInfo) {
+            console.log('🔄 检测到已存在的文档，将更新内容...');
+            documentId = savedDocumentId;
+            isNewDocument = false;
+            
+            // 清空文档内容
+            await clearDocumentBlocks(documentId, accessToken);
+          }
+        }
+      } catch (error) {
+        console.log('⚠️  读取保存的文档 URL 失败，将创建新文档');
+      }
+    }
+
+    // 如果没有找到现有文档，创建新文档
+    if (isNewDocument || !documentId) {
+      console.log('🆕 未找到现有文档，将创建新文档...');
+      documentId = await createFeishuDocument(accessToken);
+    }
+
     const blocks = convertHtmlToFeishuBlocks(htmlContent, accessToken);
     await addBlocksToDocument(documentId, blocks, accessToken);
     const shareUrl = await shareDocument(documentId, accessToken);
 
     return {
       success: true,
-      message: '文档创建成功',
+      message: isNewDocument ? '文档创建成功' : '文档更新成功',
       documentUrl: shareUrl,
       documentId: documentId
     };
