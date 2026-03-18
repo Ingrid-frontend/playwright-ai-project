@@ -623,7 +623,144 @@ npm run compare-screenshots
 │  步骤 2: 点击报销单              │
 │  └─ [截图网格]                 │
 └─────────────────────────────────────┘
+
+#### 5. Chrome Recorder 优化工具 (`npm run optimize-chrome-recorder`)
+
+专门用于优化从 Chrome Recorder 导出的 JavaScript 脚本，将其转换为稳定的 Playwright 测试：
+
+```bash
+# 优化单个文件
+npm run optimize-chrome-recorder -- "tests/chrome-recorder/Recording 2026_3_18 at 14_48_15.js"
+
+# 批量优化整个文件夹
+npm run optimize-chrome-recorder -- "tests/chrome-recorder/"
 ```
+
+**功能特点**：
+- 🔄 自动转换：将 Chrome Recorder 导出的 JS 脚本转换为 TypeScript 测试
+- 🎯 智能等待：使用 `attached` 状态等待，避免因元素不可见导致的超时
+- 🛡️ 错误处理：每个操作都包含 try-catch 错误处理
+- 📸 自动截图：每个操作前后自动截图，便于调试
+- 🔍 跟踪支持：集成 Playwright Tracing，便于问题排查
+- ⚙️ 选择器优化：自动优化不稳定的选择器（如动态类名）
+- 📝 测试步骤：使用 `test.step()` 组织测试逻辑
+
+**优化内容**：
+1. **等待机制优化**
+   - 使用 `waitFor({ state: 'attached' })` 替代 `visible` 状态
+   - 增加等待超时时间到 15000ms
+   - 操作超时设置为 30000ms
+
+2. **选择器优化**
+   - 移除 `.filter({ visible: true })` 过滤器
+   - 使用 `.first()` 选择第一个匹配元素
+   - 优化动态选择器（如 `li.ant-menu-item-active span` → `li.ant-menu-item span`）
+
+3. **测试结构优化**
+   - 添加 storageState 配置
+   - 设置测试超时时间为 60000ms
+   - 集成截图和跟踪功能
+   - 使用 test.step() 组织测试步骤
+
+**输出文件**：`tests/optimized/{原文件名}.optimized.spec.ts`
+
+**示例对比**：
+
+**优化前（Chrome Recorder 导出）**：
+```javascript
+test.describe("Recording 2026/3/18 at 14:48:15", () => {
+  test("tests Recording 2026/3/18 at 14:48:15", async ({ page }) => {
+    await page.setViewportSize({
+          width: 1344,
+          height: 928
+        })
+    await page.goto("https://stage.huilianyi.com/main/home");
+    await page.locator("li.ant-menu-item-active span").click()
+    await page.locator("td:nth-of-type(4) > span > span").click()
+    await page.locator("div:nth-of-type(2) > button").click()
+  });
+});
+```
+
+**优化后**：
+```typescript
+import { test, expect } from '@playwright/test';
+import fs from 'fs';
+import { screenshotWhenStable } from '../../utils/screenshot';
+
+test.use({
+  storageState: 'storage/loginState/stage.json'
+});
+
+test("tests Recording 2026/3/18 at 14:48:15", async ({ page }) => {
+  const tracingStarted = await page.context().tracing.start({ screenshots: true, snapshots: true }).catch(() => false);
+  const screenshotRoot = 'screenshots/Recording 2026_3_18 at 14_48_15';
+  const now = new Date();
+  const runTimestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
+  const testId = Math.random().toString(36).substring(2, 9);
+  let browserInfo = 'unknown';
+  let runDir = '';
+  const getScreenshotPath = (step: number, label: string) => `${runDir}/step-${step}-${label}.png`;
+  test.setTimeout(60000);
+
+  await page.goto("https://stage.huilianyi.com/main/home");
+  await expect(page).toHaveURL(/.*huilianyi.*/);
+  browserInfo = await page.context().browser()?.browserType().name() || 'unknown';
+  runDir = `${screenshotRoot}/${runTimestamp}-${browserInfo}-${testId}`;
+  if (!fs.existsSync(runDir)) {
+    fs.mkdirSync(runDir, { recursive: true });
+  }
+
+  await test.step('step-1-action', async () => {
+    const { path: beforePath, route: beforeRoute } = await screenshotWhenStable(page, getScreenshotPath(1, 'before-action'));
+    console.log('📍 当前路由:', beforeRoute);
+    try {
+      const _locator = page.locator("li.ant-menu-item span").first();
+      await _locator.waitFor({ state: 'attached', timeout: 15000 }).catch(() => {});
+      await _locator.click({ timeout: 30000, force: true });
+    } catch (error) {
+      console.log(`❌ 步骤执行失败: ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
+    }
+    const { path: afterPath, route: afterRoute } = await screenshotWhenStable(page, getScreenshotPath(1, 'after-action'));
+    console.log('📍 当前路由:', afterRoute);
+  });
+
+  await test.step('step-2-action', async () => {
+    const { path: beforePath, route: beforeRoute } = await screenshotWhenStable(page, getScreenshotPath(2, 'before-action'));
+    console.log('📍 当前路由:', beforeRoute);
+    try {
+      const _locator = page.locator("td:nth-of-type(4) > span > span").first();
+      await _locator.waitFor({ state: 'attached', timeout: 15000 }).catch(() => {});
+      await _locator.click({ timeout: 30000, force: true });
+    } catch (error) {
+      console.log(`❌ 步骤执行失败: ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
+    }
+    const { path: afterPath, route: afterRoute } = await screenshotWhenStable(page, getScreenshotPath(2, 'after-action'));
+    console.log('📍 当前路由:', afterRoute);
+  });
+
+  if (tracingStarted) {
+    await page.context().tracing.stop({ path: `${runDir}/trace.zip` });
+  }
+});
+```
+
+**支持的操作类型**：
+- `click` - 点击操作
+- `fill` - 填写表单
+- `type` - 输入文本
+- `check` - 勾选复选框
+- `selectOption` - 选择下拉选项
+- `press` - 按键操作
+
+**注意事项**：
+1. 输入文件必须是 `.js` 格式的 Chrome Recorder 导出文件
+2. 输出文件名与原文件名对应，不会每次都创建新文件
+3. 生成的测试文件会自动使用 storageState 进行登录
+4. 截图保存在 `screenshots/{脚本名称}/` 目录下
+5. Tracing 文件保存在 `{截图目录}/trace.zip`
 
 ### 优化前后对比
 
@@ -733,6 +870,7 @@ npm run auto-test
 
 如果需要手动控制每个步骤：
 
+**Playwright Codegen 录制流程**：
 ```bash
 # 1. 录制测试
 npm run record
@@ -751,6 +889,17 @@ npx playwright test tests/optimized/2026-03-02_10-20-26.optimized.spec.ts --proj
 
 # 6. 生成截图对比报告
 npm run compare-screenshots
+```
+
+**Chrome Recorder 导出流程**：
+```bash
+# 1. 使用 Chrome Recorder 录制并导出 JS 文件到 tests/chrome-recorder/
+
+# 2. 优化 Chrome Recorder 导出的脚本
+npm run optimize-chrome-recorder -- "tests/chrome-recorder/Recording 2026_3_18 at 14_48_15.js"
+
+# 3. 运行优化后的测试
+npx playwright test tests/optimized/Recording\ 2026_3_18\ at\ 14_48_15.optimized.spec.ts --project=chromium --ui
 ```
 
 ### 最佳实践
