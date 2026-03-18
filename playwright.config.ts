@@ -45,7 +45,7 @@ export default defineConfig({
       'Accept-Language': 'zh-CN,zh;q=0.9'
     },
     viewport: { width: 1280, height: 720 },
-    actionTimeout: 30000,  // 增加操作超时时间
+    actionTimeout: 60000,  // 增加操作超时时间
     navigationTimeout: 60000,  // 增加导航超时时间
   },
 
