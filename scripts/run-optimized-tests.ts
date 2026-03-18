@@ -180,6 +180,7 @@ async function main() {
   console.log('🎬 开始执行优化后的测试...\n');
 
   const optimizedDir = 'tests/optimized';
+  const browsers = ['chromium', 'webkit'];
 
   try {
     const optimizedFiles = fs.readdirSync(optimizedDir)
@@ -193,32 +194,49 @@ async function main() {
     
     console.log(`📋 找到 ${optimizedFiles.length} 个优化后的测试文件\n`);
 
-    let successCount = 0;
-    let failCount = 0;
+    let totalSuccessCount = 0;
+    let totalFailCount = 0;
 
-    for (const file of optimizedFiles) {
-      const testPath = path.join(optimizedDir, file);
-      console.log(`\n🧪 执行测试: ${file}`);
+    for (const browser of browsers) {
+      console.log(`\n🌐 开始执行 ${browser} 测试...\n`);
       
-      try {
-        execSync(`npx playwright test ${testPath} --project=optimized`, {
-          stdio: 'inherit'
-        });
-        console.log(`✅ ${file} 测试通过`);
-        successCount++;
-      } catch (error) {
-        console.error(`❌ ${file} 测试失败`);
-        failCount++;
+      let successCount = 0;
+      let failCount = 0;
+
+      for (const file of optimizedFiles) {
+        const testPath = path.join(optimizedDir, file);
+        console.log(`\n🧪 执行测试: ${file} (${browser})`);
+        
+        try {
+          execSync(`npx playwright test ${testPath} --project=${browser} --workers=1`, {
+            stdio: 'inherit'
+          });
+          console.log(`✅ ${file} 测试通过 (${browser})`);
+          successCount++;
+        } catch (error) {
+          console.error(`❌ ${file} 测试失败 (${browser})`);
+          failCount++;
+        }
       }
+
+      console.log(`\n📊 ${browser} 测试执行结果：`);
+      console.log(`  - 总数: ${optimizedFiles.length}`);
+      console.log(`  - 成功: ${successCount}`);
+      console.log(`  - 失败: ${failCount}`);
+
+      totalSuccessCount += successCount;
+      totalFailCount += failCount;
     }
 
-    console.log(`\n📊 测试执行结果：`);
-    console.log(`  - 总数: ${optimizedFiles.length}`);
-    console.log(`  - 成功: ${successCount}`);
-    console.log(`  - 失败: ${failCount}`);
+    console.log(`\n📊 总体测试执行结果：`);
+    console.log(`  - 浏览器数: ${browsers.length}`);
+    console.log(`  - 测试文件数: ${optimizedFiles.length}`);
+    console.log(`  - 总测试数: ${optimizedFiles.length * browsers.length}`);
+    console.log(`  - 成功: ${totalSuccessCount}`);
+    console.log(`  - 失败: ${totalFailCount}`);
 
-    if (failCount > 0) {
-      console.log(`\n⚠️  有 ${failCount} 个测试失败，但继续执行后续步骤...`);
+    if (totalFailCount > 0) {
+      console.log(`\n⚠️  有 ${totalFailCount} 个测试失败，但继续执行后续步骤...`);
     }
 
     runCommand('npm run compare-screenshots', '生成截图对比报告');
