@@ -33,6 +33,7 @@
     "upload-to-feishu": "tsx scripts/upload-to-feishu.ts",
     "test-feishu-webhook": "tsx scripts/test-feishu-webhook.ts",
     "run-optimized-tests": "tsx scripts/run-optimized-tests.ts",
+    "generate-raw-recording": "tsx scripts/generate-raw-recording.ts",
     "clean": "rm -rf test-results playwright-report screenshots/results",
     "clean:all": "rm -rf node_modules test-results playwright-report screenshots results && npm install",
     "lint": "eslint . --ext .ts,.tsx --fix",

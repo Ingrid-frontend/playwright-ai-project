@@ -443,6 +443,69 @@ npx playwright codegen https://stage.huilianyi.com/ \
 
 你在浏览器里完成操作并关闭 Codegen 后，就会在 `tests/raw-recordings/` 下得到一个可回放的用例文件。
 
+## 📝 快速生成录制脚本：`npm run generate-raw-recording`
+
+除了使用浏览器录制，你还可以通过代码快速生成录制脚本。这个功能特别适合：
+
+1. **快速创建测试模板**：基于现有代码生成测试文件
+2. **代码片段转换**：将手动编写的测试代码转换为完整测试文件
+3. **批量生成**：从文件或命令行参数生成多个测试脚本
+
+### 使用方法
+
+#### 方法1：从文件生成
+```bash
+# 从文本文件生成录制脚本
+npm run generate-raw-recording -- --file path/to/code.txt --name "测试名称"
+
+# 示例
+npm run generate-raw-recording -- --file my-test-code.txt --name "登录测试"
+```
+
+#### 方法2：从命令行参数生成
+```bash
+# 直接提供代码片段
+npm run generate-raw-recording -- --code "await page.getByText('按钮').click();"
+
+# 多行代码
+npm run generate-raw-recording -- --code "await page.goto('https://example.com');
+await page.getByText('登录').click();
+await page.fill('#username', 'testuser');"
+```
+
+#### 方法3：交互式输入
+```bash
+# 不提供参数，进入交互模式
+npm run generate-raw-recording
+```
+
+### 命名规则
+
+生成的文件使用以下命名格式：
+- **格式**：`[内容摘要]_[时间戳].spec.ts`
+- **示例**：`click-登录按钮_2026-03-19_10-30-45.spec.ts`
+
+脚本会自动从代码中提取关键信息：
+- `page.goto()` → `goto-[域名]`
+- `page.getByText('文本')` → `click-[文本]`
+- `page.getByRole('button')` → `role-button`
+
+### 生成的文件结构
+
+生成的测试文件包含完整的Playwright测试结构：
+```typescript
+import { test, expect } from '@playwright/test';
+
+test.use({
+  storageState: 'storage/loginState/stage.json'
+});
+
+test('test', async ({ page }) => {
+  // 你的代码在这里
+  await page.getByText('按钮').click();
+});
+```
+
 ## 🛠️ 录制脚本优化指南
 
 录制生成的测试脚本通常存在以下问题，需要优化以提高通过率和可维护性：
