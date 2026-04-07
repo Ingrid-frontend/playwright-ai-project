@@ -102,7 +102,48 @@ class RawRecordingGenerator {
     let baseName = customName || contentInfo;
     
     const fileName = `${baseName}_${timestamp}.spec.ts`;
-    return path.join(this.outputDir, fileName);
+    
+    const dateStr = timestamp.split('_')[0];
+    const dateCategory = this.getDateCategoryForDate(dateStr);
+    const categoryDir = path.join(this.outputDir, dateCategory);
+    
+    if (!fs.existsSync(categoryDir)) {
+      fs.mkdirSync(categoryDir, { recursive: true });
+    }
+    
+    return path.join(categoryDir, fileName);
+  }
+  
+  private getDateCategoryForDate(dateStr: string): string {
+    const configPath = path.join(process.cwd(), 'config', 'date-categories.json');
+    
+    if (!fs.existsSync(configPath)) {
+      console.warn(`⚠️  配置文件不存在: ${configPath}`);
+      return 'default';
+    }
+    
+    try {
+      const configContent = fs.readFileSync(configPath, 'utf-8');
+      const config = JSON.parse(configContent) as { dateCategories: string[] };
+      
+      const fileDate = new Date(dateStr);
+      
+      for (const category of config.dateCategories) {
+        const year = parseInt(category.substring(0, 4));
+        const month = parseInt(category.substring(4, 6)) - 1;
+        const day = parseInt(category.substring(6, 8));
+        const categoryDate = new Date(year, month, day);
+        
+        if (fileDate < categoryDate) {
+          return category;
+        }
+      }
+      
+      return config.dateCategories[config.dateCategories.length - 1];
+    } catch (error) {
+      console.warn(`⚠️  读取配置文件失败: ${error}`);
+      return 'default';
+    }
   }
   
   private wrapCodeInTest(code: string): string {
