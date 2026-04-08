@@ -147,9 +147,37 @@ class RawRecordingGenerator {
   }
   
   private wrapCodeInTest(code: string): string {
+    const trimmedCode = code.trim();
+    
+    const hasImport = trimmedCode.includes('import { test, expect } from \'@playwright/test\'');
+    const hasTestFunction = trimmedCode.includes('test(\'test\', async ({ page }) => {');
+    
+    if (hasImport && hasTestFunction) {
+      const lines = trimmedCode.split('\n');
+      const testIndex = lines.findIndex(line => line.includes('test(\'test\', async ({ page }) => {'));
+      
+      if (testIndex !== -1) {
+        const beforeTest = lines.slice(0, testIndex)
+          .filter(line => {
+            const trimmedLine = line.trim();
+            return !trimmedLine.startsWith('//') && 
+                   !trimmedLine.startsWith('/*') && 
+                   !trimmedLine.endsWith('*/') &&
+                   !trimmedLine.match(/^[\u4e00-\u9fa5]+$/) &&
+                   trimmedLine.length > 0;
+          })
+          .join('\n');
+        const testContent = lines.slice(testIndex).join('\n');
+        
+        const testConfig = `test.use({\n  storageState: 'storage/loginState/stage.json'\n});\n\n`;
+        
+        return beforeTest + (beforeTest ? '\n' : '') + testConfig + testContent;
+      }
+    }
+    
     const imports = `import { test, expect } from '@playwright/test';\n\n`;
     const testConfig = `test.use({\n  storageState: 'storage/loginState/stage.json'\n});\n\n`;
-    const testFunction = `test('test', async ({ page }) => {\n${code}\n});\n`;
+    const testFunction = `test('test', async ({ page }) => {\n${trimmedCode}\n});\n`;
     
     return imports + testConfig + testFunction;
   }
