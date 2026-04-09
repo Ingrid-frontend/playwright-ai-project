@@ -1,29 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-/**
- * optimize-raw-recordings.ts
- * 
- * 将 tests/raw-recordings 下的原始录制脚本转换为优化的测试脚本
- * 
- * 使用方法:
- *   1. 不传参数: 处理 tests/raw-recordings 文件夹下的所有文件
- *      npm run optimize-raw-recordings
- *   
- *   2. 处理单个文件:
- *      npm run optimize-raw-recordings -- tests/raw-recordings/test.spec.ts
- *   
- *   3. 处理文件夹:
- *      npm run optimize-raw-recordings -- tests/raw-recordings/
- *   
- * 功能:
- *   - 提取并保留 test.use 设置（如 storageState）
- *   - 跳过登录相关的操作（账号登录、密码输入、协议同意等）
- *   - 按日期分类存放生成的优化脚本
- *   - 添加截图功能和增强的等待策略
- *   - 优化选择器，提高测试稳定性
- */
-
 interface Action {
   index: number;
   type: 'click' | 'fill' | 'type' | 'check' | 'selectOption' | 'press' | 'goto';
@@ -71,19 +48,7 @@ class RawRecordingOptimizer {
       'loginState'
     ];
     
-    // 检查是否包含登录关键词
-    if (loginKeywords.some(keyword => line.includes(keyword))) {
-      return true;
-    }
-    
-    // 检查是否是登录流程中的 label 点击
-    // 原始代码: await page.locator('label').click();
-    // 优化后: page.locator('label').filter({ hasText: /同意|协议/ })
-    if (line.includes("page.locator('label')") || line.includes('page.locator("label")')) {
-      return true;
-    }
-    
-    return false;
+    return loginKeywords.some(keyword => line.includes(keyword));
   }
 
   private analyzeActions(): void {
@@ -205,35 +170,6 @@ class RawRecordingOptimizer {
     return -1;
   }
 
-  private extractTestUseSettings(): string[] {
-    const testUseLines: string[] = [];
-    
-    // 查找 test.use 设置
-    for (let i = 0; i < this.lines.length; i++) {
-      const line = this.lines[i].trim();
-      
-      // 找到 test.use 开始
-      if (line.startsWith('test.use(')) {
-        // 收集 test.use 块
-        let currentLine = line;
-        testUseLines.push(this.lines[i]);
-        
-        // 检查是否是多行的 test.use
-        if (!currentLine.includes(');')) {
-          for (let j = i + 1; j < this.lines.length; j++) {
-            testUseLines.push(this.lines[j]);
-            if (this.lines[j].includes(');')) {
-              break;
-            }
-          }
-        }
-        break;
-      }
-    }
-    
-    return testUseLines;
-  }
-
   private generateOptimizedCode(): string {
     if (!this.testBlock) {
       console.error('❌ 未找到测试块');
@@ -251,24 +187,12 @@ class RawRecordingOptimizer {
       screenshotDir = `screenshots/${dateCategory}/${fileName}`;
     }
 
-    // 提取 test.use 设置
-    const testUseLines = this.extractTestUseSettings();
-
     let actionIndex = 1;
     const optimizedLines = [
       "import { test, expect } from '@playwright/test';",
       "import fs from 'fs';",
       "import path from 'path';",
       "",
-    ];
-
-    // 添加 test.use 设置
-    if (testUseLines.length > 0) {
-      optimizedLines.push(...testUseLines);
-      optimizedLines.push("");
-    }
-
-    optimizedLines.push(
       `test('${testName}', async ({ page }) => {`,
       `  test.setTimeout(60000);`,
       "",
@@ -281,7 +205,7 @@ class RawRecordingOptimizer {
       `  const runDir = path.join(screenshotDir, timestamp);`,
       `  fs.mkdirSync(runDir, { recursive: true });`,
       ""
-    );
+    ];
 
     // 检查是否有页面导航操作
     const hasGotoAction = this.actions.some(action => action.type === 'goto');
@@ -520,9 +444,13 @@ class RawRecordingOptimizer {
 }
 
 const filePath = process.argv[2];
-
-// 如果没有提供参数，默认处理 tests/raw-recordings 文件夹下的所有文件
-const targetPath = filePath || 'tests/raw-recordings/';
+if (!filePath) {
+  console.error('❌ 请提供测试文件路径或文件夹路径');
+  console.error('📖 使用方法:');
+  console.error('   单个文件: npm run optimize-raw-recordings -- tests/raw-recordings/test.spec.ts');
+  console.error('   批量处理: npm run optimize-raw-recordings -- tests/raw-recordings/');
+  process.exit(1);
+}
 
 const outputDir = 'tests/optimized';
 if (!fs.existsSync(outputDir)) {
@@ -553,33 +481,15 @@ async function processFile(filePath: string): Promise<void> {
   console.log(`✅ 优化完成: ${outputPath}`);
 }
 
-// 递归查找所有 .spec.ts 文件
-function findSpecFiles(dir: string): string[] {
-  const files: string[] = [];
-  
-  const items = fs.readdirSync(dir, { withFileTypes: true });
-  
-  for (const item of items) {
-    const fullPath = path.join(dir, item.name);
-    
-    if (item.isDirectory()) {
-      // 递归处理子目录
-      files.push(...findSpecFiles(fullPath));
-    } else if (item.isFile() && item.name.endsWith('.spec.ts')) {
-      files.push(fullPath);
-    }
-  }
-  
-  return files.sort();
-}
-
 async function main() {
-  const stats = fs.statSync(targetPath);
+  const stats = fs.statSync(filePath);
   
   if (stats.isDirectory()) {
-    console.log(`📁 批量处理文件夹: ${targetPath}`);
+    console.log(`📁 批量处理文件夹: ${filePath}`);
     
-    const files = findSpecFiles(targetPath);
+    const files = fs.readdirSync(filePath)
+      .filter(file => file.endsWith('.spec.ts'))
+      .sort();
     
     if (files.length === 0) {
       console.log('⚠️  未找到 .spec.ts 文件');
@@ -589,16 +499,17 @@ async function main() {
     console.log(`📊 找到 ${files.length} 个测试文件`);
     
     for (const file of files) {
-      await processFile(file);
+      const fullPath = path.join(filePath, file);
+      await processFile(fullPath);
     }
     
     console.log(`🎉 批量优化完成! 共处理 ${files.length} 个文件`);
   } else if (stats.isFile()) {
-    if (!targetPath.endsWith('.spec.ts')) {
+    if (!filePath.endsWith('.spec.ts')) {
       console.error('❌ 文件必须以 .spec.ts 结尾');
       process.exit(1);
     }
-    await processFile(targetPath);
+    await processFile(filePath);
   } else {
     console.error('❌ 路径不存在或不是文件/文件夹');
     process.exit(1);

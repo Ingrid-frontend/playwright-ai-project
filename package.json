@@ -39,6 +39,7 @@
     "fix-html-image-paths": "tsx scripts/fix-html-image-paths.ts",
     "optimize-raw-recordings": "tsx scripts/optimize-raw-recordings.ts",
     "run-raw-recordings-optimized": "tsx scripts/run-raw-recordings-optimized.ts",
+    "remove-iframe-logic": "tsx scripts/remove-iframe-logic.ts",
     "clean": "rm -rf test-results playwright-report screenshots/results",
     "clean:all": "rm -rf node_modules test-results playwright-report screenshots results && npm install",
     "lint": "eslint . --ext .ts,.tsx --fix",

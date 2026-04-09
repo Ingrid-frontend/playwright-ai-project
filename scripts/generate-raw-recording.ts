@@ -146,8 +146,27 @@ class RawRecordingGenerator {
     }
   }
   
+  private processIframeCode(code: string): string {
+    // 直接忽略包含 locator('iframe').contentFrame() 的代码行
+    // 因为已经有统一的登录逻辑，不需要生成登录相关的代码
+    
+    const lines = code.split('\n');
+    const filteredLines = lines.filter(line => {
+      // 检查是否包含 locator('iframe').contentFrame()
+      const hasIframeContentFrame = line.includes("locator('iframe').contentFrame()") || 
+                                   line.includes('locator("iframe").contentFrame()');
+      
+      // 如果包含，则忽略这一行
+      return !hasIframeContentFrame;
+    });
+    
+    return filteredLines.join('\n');
+  }
+  
   private wrapCodeInTest(code: string): string {
-    const trimmedCode = code.trim();
+    // 先处理iframe代码
+    const processedCode = this.processIframeCode(code);
+    const trimmedCode = processedCode.trim();
     
     const hasImport = trimmedCode.includes('import { test, expect } from \'@playwright/test\'');
     const hasTestFunction = trimmedCode.includes('test(\'test\', async ({ page }) => {');

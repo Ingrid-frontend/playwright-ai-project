@@ -2,6 +2,10 @@ import { test, expect } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
 
+test.use({
+  storageState: 'storage/loginState/stage.json'
+});
+
 test('test', async ({ page }) => {
   test.setTimeout(60000);
 
@@ -14,6 +18,9 @@ test('test', async ({ page }) => {
   const runDir = path.join(screenshotDir, timestamp);
   fs.mkdirSync(runDir, { recursive: true });
 
+  // 导航到首页
+  await page.goto('https://stage.huilianyi.com/', { waitUntil: 'networkidle' });
+  await page.waitForTimeout(2000);
 
   // Step 1: 新建合同
   await page.screenshot({ path: path.join(runDir, `step-1-before-action.png`), fullPage: true });
