@@ -1,12 +1,5 @@
 # Playwright AI 项目协作指南
 
-## 📋 目录
-- [录制与协作](#录制与协作)
-- [本地开发流程](#本地开发流程)
-- [团队协作流程](#团队协作流程)
-- [CI/CD 流程](#cicd-流程)
-- [故障排查](#故障排查)
-
 ## 🎬 录制与协作
 
 ### 录制限制说明
@@ -32,11 +25,6 @@
 ```bash
 # 安装依赖
 npm install
-
-# 配置环境变量
-cp .env.example .env
-
-# 编辑 .env 文件，配置测试账号和密码
 ```
 
 ### 2. 录制测试脚本
@@ -52,7 +40,7 @@ npm run record
 
 ```bash
 # 优化录制的脚本
-npm run optimize tests/raw-recordings/your-script.spec.ts
+npm run optimize -- tests/raw-recordings/your-script.spec.ts
 
 # 优化后的脚本会保存在 tests/optimized/ 目录
 ```
@@ -73,7 +61,7 @@ npm run auto-test
 # 提交录制的脚本
 git add tests/raw-recordings/
 git add tests/optimized/
-git commit -m "feat: add test script for XXX"
+git commit -m "feat: 新增 XXX 场景用例"
 git push
 ```
 
@@ -94,11 +82,11 @@ git checkout -b feature/test-xxx
 
 # 录制和优化测试
 npm run record
-npm run optimize tests/raw-recordings/xxx.spec.ts
+npm run optimize -- tests/raw-recordings/xxx.spec.ts
 
 # 提交代码
 git add .
-git commit -m "feat: add test for XXX"
+git commit -m "feat: 新增 XXX 场景用例"
 git push origin feature/test-xxx
 
 # 创建 Pull Request

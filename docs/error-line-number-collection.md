@@ -1,143 +1,26 @@
-# 错误行号收集功能说明
+# 错误行号收集（速查）
 
-## 🎯 功能概述
+目标：在错误 JSON 中记录 `errorFile` / `errorLine` / `errorColumn`，便于快速定位与聚类修复。
 
-错误收集器现在会自动提取并保存脚本报错的行号信息，方便后续一起优化。
+## 产物
 
-## ✨ 新增功能
+- 错误 JSON：`tests/deprecated/errors/test-errors-YYYY-MM-DD.json`
+- 字段：`errors[].errorFile` / `errors[].errorLine` / `errors[].errorColumn`
 
-### 1. 错误位置提取
+## 如何使用
 
-错误收集器会从错误堆栈中提取：
-- **错误文件路径**: 报错的测试文件路径
-- **错误行号**: 报错的代码行号
-- **错误列号**: 报错的代码列号
+```bash
+# 运行测试，触发失败后会写入行号信息
+npm test
 
-### 2. 实时显示
-
-测试执行过程中，会实时显示错误位置：
-
-```
-❌ 测试失败: 测试行号收集1
-   错误: Error: expect(locator).toBeVisible() failed
-   文件: /Users/hly/self-project/playwright-ai-project/tests/deprecated/test-line-number.spec.ts
-   错误位置: /Users/hly/self-project/playwright-ai-project/tests/deprecated/test-line-number.spec.ts:7:25
+# 汇总分析（推荐）
+npm run analyze-errors
 ```
 
-### 3. JSON文件保存
+## 相关位置
 
-错误信息会保存到 `tests/deprecated/errors/test-errors-YYYY-MM-DD.json`，包含：
-
-```json
-{
-  "summary": {
-    "totalErrors": 6,
-    "uniqueErrors": 3,
-    "timestamp": "2026-03-09T10:27:51.820Z",
-    "nodeVersion": "v24.12.0",
-    "platform": "darwin",
-    "arch": "arm64"
-  },
-  "errors": [
-    {
-      "testFile": "/Users/hly/self-project/playwright-ai-project/tests/deprecated/test-line-number.spec.ts",
-      "testName": "测试行号收集1",
-      "error": "Error: expect(locator).toBeVisible() failed\n\nLocator: locator('#non-existent-element-1')\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 5000ms\n  - waiting for locator('#non-existent-element-1')",
-      "stack": "Error: expect(locator).toBeVisible() failed\n\nLocator: locator('#non-existent-element-1')\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 5000ms\n  - waiting for locator('#non-existent-element-1')\n\n    at /Users/hly/self-project/playwright-ai-project/tests/deprecated/test-line-number.spec.ts:7:25",
-      "errorLine": 7,
-      "errorColumn": 25,
-      "errorFile": "/Users/hly/self-project/playwright-ai-project/tests/deprecated/test-line-number.spec.ts",
-      "timestamp": "2026-03-09T10:27:18.055Z",
-      "duration": 6328
-    }
-  ]
-}
-```
-
-### 4. 按行号统计
-
-错误分析脚本会按代码行号统计错误频率：
-
-```
-📍 按代码行号统计（最频繁的错误行）
-──────────────────────────────────────────────────
-   📍 test-line-number.spec.ts:7:25
-   错误: Error: expect(locator).toBeVisible() failed
-   次数: 1 (16.7%)
-   测试: 测试行号收集1
-
-   📍 test-line-number.spec.ts:14:25
-   错误: Error: expect(locator).toBeVisible() failed
-   次数: 1 (16.7%)
-   测试: 测试行号收集2
-
-   📍 test-line-number.spec.ts:21:25
-   错误: Error: expect(locator).toBeVisible() failed
-   次数: 1 (16.7%)
-   测试: 测试行号收集3
-```
-
-## 🔧 实现原理
-
-### 1. 错误位置提取
-
-```javascript
-extractErrorLocation(stack) {
-  const location = {
-    file: null,
-    line: null,
-    column: null
-  };
-
-  if (!stack) return location;
-
-  const lines = stack.split('\n');
-  
-  for (const line of lines) {
-    const match = line.match(/at\s+.*?\s+\((.+?):(\d+):(\d+)\)/) ||
-                 line.match(/at\s+(.+?):(\d+):(\d+)/);
-    
-    if (match) {
-      const filePath = match[1];
-      
-      if (filePath.includes('.spec.ts') || filePath.includes('.spec.js')) {
-        location.file = filePath;
-        location.line = parseInt(match[2], 10);
-        location.column = parseInt(match[3], 10);
-        break;
-      }
-    }
-  }
-
-  return location;
-}
-```
-
-### 2. 错误信息保存
-
-```javascript
-const errorLocation = this.extractErrorLocation(errorStack);
-
-const errorInfo = {
-  testFile: test.location?.file || 'unknown',
-  testName: test.title,
-  error: errorMessage,
-  stack: errorStack,
-  errorLine: errorLocation.line,
-  errorColumn: errorLocation.column,
-  errorFile: errorLocation.file,
-  timestamp: new Date().toISOString(),
-  duration: testDuration
-};
-```
-
-### 3. 重复错误去重
-
-```javascript
-removeDuplicateErrors() {
-  const seen = new Set();
-  const uniqueErrors = [];
-  
+- Reporter：`custom-reporters/error-reporter.js`
+- 分析脚本：`scripts/analyze/analyze-errors.ts`
   for (const error of this.errors) {
     const key = `${error.testFile}::${error.testName}::${error.error}::${error.errorLine}::${error.errorColumn}`;
     

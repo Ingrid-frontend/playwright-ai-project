@@ -1,103 +1,34 @@
-# 测试错误收集功能指南（已优化）
+# 测试错误收集功能指南
 
-## 🚀 功能说明
+目标：在执行 Playwright 测试时，自动记录失败信息，并可离线分析。
 
-当执行 `npm run test` 时，系统会自动收集测试执行过程中遇到的报错，并将错误信息保存到 `tests/deprecated/errors` 文件夹下，方便后续分析和解决。
-
-## ✨ 最新优化
-
-### 1. ANSI颜色代码清理
-- ✅ 自动移除错误信息中的ANSI颜色转义序列
-- ✅ 确保JSON文件纯净可读
-- ✅ 便于工具解析和处理
-
-### 2. 重复错误去重
-- ✅ 自动识别并去除重复的错误记录
-- ✅ 区分总错误数和唯一错误数
-- ✅ 节省存储空间
-
-### 3. 增强错误摘要
-- ✅ 按错误类型分组显示
-- ✅ 显示每种错误的次数
-- ✅ 更清晰的错误统计
-
-## 📖 工作原理
-
-### 1. 自动收集
-
-错误收集器会在测试执行时自动启动，收集以下信息：
-- ✅ 测试文件路径
-- ✅ 测试名称
-- ✅ 错误信息（已清理ANSI代码）
-- ✅ 错误堆栈（已清理ANSI代码）
-- ✅ 错误时间戳
-- ✅ 测试执行时长
-
-### 2. 自动保存
-
-- ✅ 错误信息自动保存到 `tests/deprecated/errors/test-errors-YYYY-MM-DD.json`
-- ✅ 每天生成一个新的错误文件
-- ✅ 文件名包含日期，方便查找
-- ✅ 自动去重重复错误
-
-### 3. 实时显示
-
-测试执行过程中，错误收集器会：
-- ✅ 显示每个失败的测试
-- ✅ 显示错误摘要（按类型分组）
-- ✅ 按文件分组显示错误
-- ✅ 显示保存路径和统计信息
-
-## 📊 错误报告格式
-
-### JSON格式
-
-```json
-{
-  "summary": {
-    "totalErrors": 4,
-    "uniqueErrors": 2,
-    "timestamp": "2026-03-09T09:51:24.329Z",
-    "nodeVersion": "v24.12.0",
-    "platform": "darwin",
-    "arch": "arm64"
-  },
-  "errors": [
-    {
-      "testFile": "/Users/hly/self-project/playwright-ai-project/tests/deprecated/test-ansi-cleanup.spec.ts",
-      "testName": "测试ANSI清理",
-      "error": "Error: expect(locator).toBeVisible() failed\n\nLocator: locator('#non-existent-element')\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 5000ms\n  - waiting for locator('#non-existent-element')",
-      "stack": "Error: expect(locator).toBeVisible() failed\n\nLocator: locator('#non-existent-element')\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 5000ms\n  - waiting for locator('#non-existent-element')\n\n    at /Users/hly/self-project/playwright-ai-project/tests/deprecated/test-ansi-cleanup.spec.ts:7:25",
-      "timestamp": "2026-03-09T09:51:03.960Z",
-      "duration": 6341
-    }
-  ]
-}
-```
-
-### 字段说明
-
-| 字段 | 说明 |
-|------|------|
-| `summary.totalErrors` | 总错误数量（包含重试） |
-| `summary.uniqueErrors` | 唯一错误数量（已去重） |
-| `summary.timestamp` | 报告生成时间 |
-| `summary.nodeVersion` | Node.js版本 |
-| `summary.platform` | 操作系统平台 |
-| `summary.arch` | 系统架构 |
-| `errors[].testFile` | 测试文件路径 |
-| `errors[].testName` | 测试名称 |
-| `errors[].error` | 错误信息（已清理ANSI代码） |
-| `errors[].stack` | 错误堆栈（已清理ANSI代码） |
-| `errors[].timestamp` | 错误发生时间 |
-| `errors[].duration` | 测试执行时长（毫秒） |
-
-## 🎯 使用示例
-
-### 示例1: 正常测试（无错误）
+## 速查
 
 ```bash
-npm run test -- tests/deprecated/2026-03-09_12-01-22.optimized.spec.ts --project=chromium --workers=1
+# 运行测试（失败时会落地 errors JSON）
+npm test
+
+# 分析 errors JSON（汇总/去重/分组）
+npm run analyze-errors
+```
+
+## 产物与位置
+
+- 错误 JSON：`tests/deprecated/errors/test-errors-YYYY-MM-DD.json`
+- Reporter：`custom-reporters/error-reporter.js`
+- 分析脚本：`scripts/analyze/analyze-errors.ts`
+
+## JSON 字段（最小说明）
+
+- `summary.totalErrors`：总错误数（可能包含重试）
+- `summary.uniqueErrors`：去重后的错误数（若实现）
+- `errors[]`：每条错误（`testFile` / `testName` / `error` / `stack` / `timestamp` / `duration`）
+
+## 使用示例
+
+```bash
+# 只跑一个用例（示例）
+npx playwright test tests/e2e/login.spec.ts --project=optimized --workers=1
 ```
 
 **输出**:
@@ -114,102 +45,22 @@ npm run test -- tests/deprecated/2026-03-09_12-01-22.optimized.spec.ts --project
 ✅ 所有测试通过，无错误需要记录
 ```
 
-### 示例2: 测试失败（有错误）
-
-```bash
-npm run test -- tests/deprecated/test-error-collection.spec.ts --project=chromium --workers=1
-```
-
-**输出**:
-```
-📝 错误收集器已启动
-  ✗  1 …ests/deprecated/test-error-collection.spec.ts:3:1 › 故意失败的测试
-  ✗  2 …ests/deprecated/test-error-collection.spec.ts:10:1 › 超时测试
-
-  2 failed
-
-📊 测试执行完成
-   总耗时: 24s
-   失败数: 4
-
-💾 错误已保存到: tests/deprecated/errors/test-errors-2026-03-09.json
-   总错误数: 4
-   唯一错误数: 2
-
-📋 错误摘要:
-═══════════════════════════════════
-
-📄 文件: test-error-collection.spec.ts
-──────────────────────────────────────────────────
-   ❌ Error: expect(locator).toBeVisible() failed
-      次数: 2
-
-═════════════════════════════════════
-```
+（更多示例输出已省略：错误文件与摘要会在测试结束后打印，并落地到 `tests/deprecated/errors/`）
 
 ## 🔍 查看错误文件
 
-### 方法1: 直接查看JSON文件
+推荐直接使用分析脚本汇总：
 
 ```bash
-cat tests/deprecated/errors/test-errors-2026-03-09.json
-```
-
-### 方法2: 使用jq格式化查看
-
-```bash
-cat tests/deprecated/errors/test-errors-2026-03-09.json | jq '.'
-```
-
-### 方法3: 查看特定错误
-
-```bash
-cat tests/deprecated/errors/test-errors-2026-03-09.json | jq '.errors[0]'
-```
-
-### 方法4: 按文件分组查看
-
-```bash
-cat tests/deprecated/errors/test-errors-2026-03-09.json | jq '.errors | group_by(.testFile)'
-```
-
-### 方法5: 查看统计信息
-
-```bash
-cat tests/deprecated/errors/test-errors-2026-03-09.json | jq '.summary'
+npm run analyze-errors
 ```
 
 ## 🛠️ 错误分析工具
 
-### 1. 统计错误类型
-
-```bash
-cat tests/deprecated/errors/test-errors-2026-03-09.json | jq '.errors | group_by(.error) | map({error: .[0].error, count: length})'
-```
-
-### 2. 查找最频繁的错误
-
-```bash
-cat tests/deprecated/errors/test-errors-2026-03-09.json | jq '.errors | group_by(.error) | sort_by(-length) | .[0]'
-```
-
-### 3. 统计每个文件的错误数
-
-```bash
-cat tests/deprecated/errors/test-errors-2026-03-09.json | jq '.errors | group_by(.testFile) | map({file: .[0].testFile | split("/") | .[-1], count: length})'
-```
-
-### 4. 查找超时的测试
-
-```bash
-cat tests/deprecated/errors/test-errors-2026-03-09.json | jq '.errors[] | select(.error | contains("timeout"))'
-```
-
-### 5. 对比总错误和唯一错误
-
-```bash
-cat tests/deprecated/errors/test-errors-2026-03-09.json | jq '{total: .summary.totalErrors, unique: .summary.uniqueErrors, duplicate: (.summary.totalErrors - .summary.uniqueErrors)}'
-```
+脚本会输出：
+- 总错误数 / 唯一错误数（如实现去重）
+- 按文件与错误类型的聚合统计
+- Top 失败用例与错误摘要
 
 ## 📈 错误趋势分析
 
@@ -267,7 +118,7 @@ npm run analyze-errors
     fi
 ```
 
-## 🐛 故障排查
+## 🐛 故障排查（最常见）
 
 ### 问题1: 错误文件未生成
 

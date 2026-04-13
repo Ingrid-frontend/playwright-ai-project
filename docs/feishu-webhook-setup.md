@@ -1,203 +1,44 @@
-# 飞书 Webhook URL 配置指南
+# 飞书 Webhook 配置（速查）
 
-## 📋 目录
-1. [创建飞书群聊机器人](#创建飞书群聊机器人)
-2. [获取 Webhook URL](#获取-webhook-url)
-3. [本地配置](#本地配置)
-4. [测试配置](#测试配置)
-5. [常见问题](#常见问题)
+目标：配置 `FEISHU_WEBHOOK_URL`，让测试流程可发送飞书通知（可选）。
 
----
+## 1) 获取 Webhook URL
 
-## 🤖 创建飞书群聊机器人
+在飞书群聊添加「自定义机器人」并复制 Webhook URL。
 
-### 步骤 1：打开飞书群聊
-
-1. 在飞书中打开你想要接收通知的群聊
-2. 确保你有管理员权限
-
-### 步骤 2：添加群机器人
-
-1. 点击群聊右上角的 **"..."** 菜单
-2. 选择 **"群设置"**
-3. 点击 **"群机器人"**
-4. 点击 **"添加机器人"**
-5. 选择 **"自定义机器人"**
-
-### 步骤 3：配置机器人
-
-1. **机器人名称**：输入一个名称，例如 `Playwright 测试通知`
-2. **机器人描述**：输入描述，例如 `自动发送测试结果通知`
-3. **机器人头像**：选择一个头像（可选）
-4. 点击 **"添加"**
-
----
-
-## 🔗 获取 Webhook URL
-
-### 步骤 1：复制 Webhook URL
-
-1. 添加机器人后，会显示 Webhook URL
-2. 点击 **"复制"** 按钮复制 URL
-3. URL 格式类似：
-   ```
-   https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxxxxxxxxxx
-   ```
-
-### 步骤 2：保存 Webhook URL
-
-将 Webhook URL 保存到安全的地方，不要泄露给他人。
-
----
-
-## 💻 本地配置
-
-### 方式 1：使用 .env 文件（推荐）
-
-#### 步骤 1：创建 .env 文件
-
-在项目根目录创建 `.env` 文件：
-
-```bash
-touch .env
-```
-
-#### 步骤 2：添加环境变量
-
-在 `.env` 文件中添加：
-
-```env
-# 飞书 Webhook URL
-FEISHU_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxxxxxxxxxx
-```
-
-#### 步骤 3：确保 .env 文件被忽略
-
-检查 `.gitignore` 文件是否包含 `.env`：
-
-```gitignore
-# 环境变量
-.env
-.env.local
-.env.*.local
-```
-
-### 方式 2：使用环境变量
-
-#### macOS / Linux
-
-在 `~/.zshrc` 或 `~/.bashrc` 中添加：
+## 2) 本地配置（推荐使用环境变量）
 
 ```bash
 export FEISHU_WEBHOOK_URL="https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxxxxxxxxxx"
 ```
 
-然后重新加载配置：
+可选（如果你的机器人启用了签名校验）：
 
 ```bash
-source ~/.zshrc
-# 或
-source ~/.bashrc
+export FEISHU_WEBHOOK_SECRET="xxxxxxxx"
 ```
 
-#### Windows (PowerShell)
-
-在 PowerShell 中运行：
-
-```powershell
-$env:FEISHU_WEBHOOK_URL="https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxxxxxxxxxx"
-```
-
-或者永久设置：
-
-```powershell
-[System.Environment]::SetEnvironmentVariable('FEISHU_WEBHOOK_URL', 'https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxxxxxxxxxx', 'User')
-```
-
-### 方式 3：使用配置文件
-
-#### 步骤 1：创建配置文件
-
-在项目根目录创建 `feishu-config.json` 文件：
-
-```json
-{
-  "webhookUrl": "https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxxxxxxxxxx"
-}
-```
-
-#### 步骤 2：确保配置文件被忽略
-
-检查 `.gitignore` 文件是否包含 `feishu-config.json`：
-
-```gitignore
-# 飞书配置
-feishu-config.json
-```
-
----
-
-## 🧪 测试配置
-
-### 测试 1：发送简单消息
-
-创建测试脚本 `test-feishu-webhook.js`：
-
-```javascript
-const webhookUrl = process.env.FEISHU_WEBHOOK_URL || 'YOUR_WEBHOOK_URL';
-
-const message = {
-  msg_type: 'text',
-  content: {
-    text: '🎉 飞书 Webhook 配置测试成功！'
-  }
-};
-
-fetch(webhookUrl, {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify(message)
-})
-  .then(response => response.json())
-  .then(data => {
-    console.log('✅ 发送成功:', data);
-  })
-  .catch(error => {
-    console.error('❌ 发送失败:', error);
-  });
-```
-
-运行测试：
+## 3) 验证（使用项目脚本）
 
 ```bash
-node test-feishu-webhook.js
+# 测试 webhook 是否可用
+npm run test-feishu-webhook
 ```
 
-### 测试 2：使用项目脚本
-
-运行项目中的飞书发送脚本：
+## 4) 在流程中使用
 
 ```bash
-# 发送 HTML 到飞书
-npm run send-html-to-feishu
-
-# 或者手动指定文件路径
-npm run send-html-to-feishu results/screenshot-comparison.html
-```
-
-### 测试 3：完整流程测试
-
-运行完整的自动测试流程：
-
-```bash
+# 默认飞书卡片通知
 npm run auto-test
+
+# 纯文本通知
+npm run auto-test:feishu-text
+
+# 卡片 + 链接（并创建飞书文档）
+npm run auto-test:feishu-links
 ```
 
----
-
-## ❓ 常见问题
+## 常见问题
 
 ### Q1: Webhook URL 泄露了怎么办？
 
@@ -300,7 +141,7 @@ npm run auto-test
 
 ### Q8: 如何自定义消息内容？
 
-**A**: 你可以修改 `scripts/send-html-to-feishu.ts` 文件来自定义消息内容：
+**A**: 你可以修改 `scripts/feishu/send-html-to-feishu.ts` 文件来自定义消息内容：
 
 1. 修改 `convertHtmlToFeishuMarkdown` 函数来调整 HTML 转换逻辑
 2. 修改 `sendToFeishu` 函数中的 `message` 对象来调整消息格式
@@ -308,51 +149,4 @@ npm run auto-test
 
 ---
 
-## 📚 相关文档
-
-- [飞书开放平台文档](https://open.feishu.cn/document/ukTMukTMukTM/ucTM5YjL3ETO24yNkjE3)
-- [飞书机器人开发指南](https://open.feishu.cn/document/ukTMukTMukTM/uYjNwUjL2YDM14iN2ATN)
-- [飞书消息类型说明](https://open.feishu.cn/document/ukTMukTMukTM/uYjNwUjL2YDM14iN2ATN)
-
----
-
-## 🎯 快速开始
-
-### 1 分钟快速配置
-
-```bash
-# 1. 创建 .env 文件
-echo "FEISHU_WEBHOOK_URL=你的WebhookURL" > .env
-
-# 2. 测试配置
-npm run send-html-to-feishu
-
-# 3. 检查飞书群聊，查看是否收到消息
-```
-
----
-
-## ✅ 配置检查清单
-
-- [ ] 已创建飞书群聊机器人
-- [ ] 已复制 Webhook URL
-- [ ] 已创建 .env 文件
-- [ ] 已添加 FEISHU_WEBHOOK_URL 环境变量
-- [ ] 已确保 .env 文件在 .gitignore 中
-- [ ] 已测试发送消息
-- [ ] 已在飞书群聊中收到测试消息
-- [ ] 已配置 GitHub Actions Secret（如果需要）
-
----
-
-## 🆘 需要帮助？
-
-如果配置过程中遇到问题，可以：
-
-1. 查看飞书开放平台文档
-2. 检查项目日志输出
-3. 联系飞书技术支持
-
----
-
-**祝你配置顺利！** 🎉
+（其余资料链接与检查清单已省略：以本文“速查命令”与常见问题为准）

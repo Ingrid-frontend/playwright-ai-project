@@ -41,7 +41,7 @@ jobs:
       run: npx playwright install --with-deps
       
     - name: Run auto-test workflow
-      run: npx tsx scripts/run-optimized-tests.ts
+      run: npx tsx scripts/flow/run-optimized-tests.ts
       env:
         NODE_ENV: stage
         TEST_USERNAME: ${{ secrets.TEST_USERNAME }}

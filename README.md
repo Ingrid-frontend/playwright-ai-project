@@ -101,7 +101,7 @@ my-playwright-ai-project/
 
 ```bash
 # 以 uat 环境运行（会读取 datasource/base-config.json 和 datasource/accounts.json 中的 uat 配置）
-NODE_ENV=uat npx playwright test --project=chromium
+NODE_ENV=uat npx playwright test --project=optimized
 ```
 
 环境配置来源：
@@ -174,7 +174,7 @@ await expect(page).toHaveScreenshot('login-page.png');
 
 因此：
 
-- 运行 `--project=chromium` 时，会 **先执行一次** `[setup] login.setup.ts`，再执行你的用例
+- 运行 `--project=optimized` 时，会 **先执行一次** `[setup] login.setup.ts`，再执行你的用例
 - UI 模式（`--ui`）同样遵循依赖链
 
 另外，`login.setup.ts` 内部做了缓存判断：
@@ -367,30 +367,27 @@ NODE_ENV=uat npx playwright test
 ### 快速运行示例测试
 
 ```bash
-# 方式 1: 使用运行脚本（推荐）
-./run-tests.sh -p chromium -f tests/e2e/example.spec.ts
-
-# 方式 2: 手动运行
-npx playwright test tests/e2e/example.spec.ts --project=chromium
+# 手动运行（以 project=optimized 为准）
+npx playwright test tests/e2e/example.spec.ts --project=optimized
 ```
 
 ### 运行录制用例（raw-recordings）
 
 ```bash
 # 运行某个录制文件（会先跑 setup，再跑录制用例）
-npx playwright test tests/raw-recordings/2026-01-26T08-31-41.spec.ts --project=chromium
+npx playwright test tests/raw-recordings/2026-01-26T08-31-41.spec.ts --project=optimized
 ```
 
 ### 用 UI 模式调试（推荐）
 
 ```bash
-npx playwright test tests/raw-recordings/2026-01-26T08-31-41.spec.ts --project=chromium --ui
+npx playwright test tests/raw-recordings/2026-01-26T08-31-41.spec.ts --project=optimized --ui
 ```
 
 如果你只想调试用例、不想跑登录依赖（跳过 setup）：
 
 ```bash
-npx playwright test tests/raw-recordings/2026-01-26T08-31-41.spec.ts --project=chromium --ui --no-deps
+npx playwright test tests/raw-recordings/2026-01-26T08-31-41.spec.ts --project=optimized --ui --no-deps
 ```
 
 ### 快速确认“依赖链是否会执行到 setup”（排查用）
@@ -399,8 +396,8 @@ npx playwright test tests/raw-recordings/2026-01-26T08-31-41.spec.ts --project=c
 # 查看 setup 项目能发现哪些测试（应该能列出 src/setup/login.setup.ts）
 npx playwright test --project=setup --list
 
-# 查看 chromium + 依赖 setup 的执行清单（应该同时列出 setup 与目标用例）
-npx playwright test --project=chromium --list tests/raw-recordings/2026-01-26T08-31-41.spec.ts
+# 查看 optimized + 依赖 setup 的执行清单（应该同时列出 setup 与目标用例）
+npx playwright test --project=optimized --list tests/raw-recordings/2026-01-26T08-31-41.spec.ts
 ```
 
 ### 其他测试命令
@@ -427,7 +424,7 @@ npm run report
 
 ## 🎥 录制流程：`npm run record` 会做什么？
 
-`npm run record` 实际执行的是 `tsx scripts/record.ts`，流程如下：
+`npm run record` 实际执行的是 `tsx scripts/recording/record.ts`，流程如下：
 
 1. 确保目录 `tests/raw-recordings/` 存在
 2. 检查登录态文件 `storage/loginState/stage.json` 是否存在且有效

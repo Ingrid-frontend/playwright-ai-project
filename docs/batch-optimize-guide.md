@@ -1,11 +1,8 @@
 # 批量优化测试脚本指南
 
-## 🚀 功能说明
+## 目标
 
-`npm run optimize` 命令现在支持两种模式：
-
-1. **单个文件优化**：优化指定的测试文件
-2. **批量文件夹优化**：优化文件夹下所有 `.spec.ts` 文件
+用一条命令把录制脚本批量/单个优化到 `tests/optimized/`，减少手工处理。
 
 ## 📖 使用方法
 
@@ -41,17 +38,14 @@ npm run optimize -- tests/deprecated/
 
 ### 3. 错误处理
 
-**不提供参数**:
+**不提供参数（默认目录）**:
 ```bash
 npm run optimize
 ```
 
 **输出**:
 ```
-❌ 请提供测试文件路径或文件夹路径
-📖 使用方法:
-   单个文件: npm run optimize -- tests/raw-recordings/2026-03-09_12-01-22.spec.ts
-   批量处理: npm run optimize -- tests/raw-recordings/
+📁 批量处理文件夹: tests/raw-recordings/
 ```
 
 **文件不存在**:

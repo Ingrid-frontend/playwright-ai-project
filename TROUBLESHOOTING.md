@@ -111,7 +111,7 @@ rm storage/loginState/stage.json
 npx playwright test --project=setup
 
 # 运行测试
-./run-tests.sh -p chromium -f tests/e2e/example.spec.ts
+npx playwright test tests/e2e/example.spec.ts --project=optimized
 
 # 查看测试报告
 npm run report

@@ -12,7 +12,7 @@ type CliOptions = {
 };
 
 function printHelp(): void {
-  console.log(`用法: tsx scripts/auto-test-flow.ts [选项]
+  console.log(`用法: tsx scripts/flow/auto-test-flow.ts [选项]
 
 录制 → 优化 → 执行 → 截图对比 →（可选）飞书文档 / 飞书通知
 

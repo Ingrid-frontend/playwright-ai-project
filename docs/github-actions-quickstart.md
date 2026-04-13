@@ -1,61 +1,37 @@
-# GitHub Actions 快速开始指南
+# GitHub Actions 快速开始
 
-## 🚀 快速部署到GitHub
+目标：在 GitHub Actions 中跑 Playwright 测试并上传报告产物。
 
-### 步骤1: 初始化Git仓库
+## 现状说明（先看）
 
-```bash
-# 如果还没有初始化Git
-git init
+本仓库的工作流文件目前为 `*.yml.disabled`，需要你在启用时将其改回 `*.yml`。
 
-# 添加所有文件
-git add .
+## 1) 配置 Secrets
 
-# 提交
-git commit -m "feat: initial commit with GitHub Actions configuration"
-```
+在仓库 `Settings` → `Secrets and variables` → `Actions` 添加：
 
-### 步骤2: 创建GitHub仓库
+| Secret 名称 | 用途 |
+|---|---|
+| `TEST_USERNAME` | 测试账号 |
+| `TEST_PASSWORD` | 测试密码 |
+| `FEISHU_WEBHOOK_URL` | （可选）飞书通知 webhook |
 
-1. 访问 https://github.com/new
-2. 输入仓库名称（例如：`playwright-ai-project`）
-3. 选择 `Public` 或 `Private`
-4. **不要**初始化README（避免冲突）
-5. 点击 `Create repository`
+## 2) 启用工作流（如果当前是 disabled）
 
-### 步骤3: 关联远程仓库
+- 将 `.github/workflows/*.yml.disabled` 重命名为 `.yml`
+- 推送到 `main`/`develop` 或手动触发 `workflow_dispatch`
 
-```bash
-# 添加远程仓库
-git remote add origin https://github.com/your-username/playwright-ai-project.git
+## 3) 工作流做什么
 
-# 推送到GitHub
-git branch -M main
-git push -u origin main
-```
+- 安装依赖（`npm ci`）
+- 安装 Playwright 浏览器（`npx playwright install --with-deps`）
+- 执行测试入口（以 workflow 文件为准，通常是 `npm run run-optimized-tests`）
+- 上传产物（HTML 报告、截图/视频等）
 
-### 步骤4: 配置GitHub Secrets
+## 4) 常见排错
 
-1. 进入GitHub仓库页面
-2. 点击 `Settings` → `Secrets and variables` → `Actions`
-3. 点击 `New repository secret`
-4. 添加以下Secrets：
-
-| Secret名称 | 说明 | 示例值 |
-|-----------|------|--------|
-| `TEST_USERNAME` | 测试账号用户名 | `test@example.com` |
-| `TEST_PASSWORD` | 测试账号密码 | `your-password-here` |
-
-### 步骤5: 验证GitHub Actions
-
-推送代码后，GitHub Actions会自动运行测试：
-
-```bash
-# 查看Actions运行状态
-# 访问: https://github.com/your-username/playwright-ai-project/actions
-```
-
-## 📊 GitHub Actions 工作流说明
+- **`npm ci` 失败**：确认仓库包含 `package-lock.json` 且与 `package.json` 同步
+- **浏览器安装慢**：可开启 `~/.cache/ms-playwright` 缓存（workflow 已有示例）
 
 ### Playwright Tests (push/PR)
 
@@ -239,7 +215,7 @@ git push
 npx playwright test tests/e2e/login.spec.ts
 
 # 只运行特定项目
-npx playwright test --project=chromium
+npx playwright test --project=optimized
 ```
 
 ### 2. 增加并行度

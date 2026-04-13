@@ -1,123 +1,30 @@
 # 运行优化测试套件
 
-## 功能说明
+目标：批量执行 `tests/optimized/` 下的用例，并生成截图对比报告。
 
-这个脚本会自动执行 `tests/optimized` 目录下的所有测试文件，并生成截图对比报告。
-
-## 使用方法
-
-### 基本用法
+## 速查
 
 ```bash
 npm run run-optimized-tests
 ```
 
-### 命令行参数
+常用参数（npm 透传用 `--`）：
 
-- `--verbose` 或 `-v`: 显示详细的测试输出
-- `--stop` 或 `-s`: 遇到错误时停止执行（默认是继续执行）
-- `--clean`: 清理失败测试的截图（保留成功测试的截图用于对比）
-
-### 示例
-
-1. **正常执行**（遇到错误继续）
-   ```bash
-   npm run run-optimized-tests
-   ```
-
-2. **清理旧截图并执行**
-   ```bash
-   npm run run-optimized-tests -- --clean
-   ```
-
-3. **详细输出模式**
-   ```bash
-   npm run run-optimized-tests -- --verbose
-   ```
-
-4. **遇到错误停止执行**
-   ```bash
-   npm run run-optimized-tests -- --stop
-   ```
-
-5. **详细输出 + 清理旧截图**
-   ```bash
-   npm run run-optimized-tests -- --verbose --clean
-   ```
-
-6. **清理旧截图 + 遇到错误停止**
-   ```bash
-   npm run run-optimized-tests -- --clean --stop
-   ```
-
-## 执行流程
-
-1. **扫描测试文件**
-   - 自动查找 `tests/optimized` 目录下的所有 `.spec.ts` 文件
-   - 按文件名排序
-
-2. **执行测试**
-   - 依次执行每个测试文件
-   - 使用 Chromium 浏览器
-   - 单线程执行（workers=1）
-   - 每个测试超时时间：120秒
-
-3. **生成对比报告**
-   - 所有测试执行完成后
-   - 自动调用 `npm run compare-screenshots`
-   - 生成截图对比报告
-
-4. **输出汇总**
-   - 显示测试执行统计
-   - 显示对比报告路径
-
-## 输出示例
-
-```
-🎯 开始执行优化测试套件
-============================================================
-📋 找到 4 个测试文件:
-  1. 2026-03-06_11-27-50.optimized.spec.ts
-  2. 2026-03-06_15-24-39.optimized.spec.ts
-  3. 2026-03-06_18-07-33.optimized.spec.ts
-  4. 2026-03-06_18-26-58.optimized.spec.ts
-
-🚀 执行测试: 2026-03-06_11-27-50.optimized.spec.ts
-============================================================
-✅ 测试完成: 2026-03-06_11-27-50.optimized.spec.ts
-
-🚀 执行测试: 2026-03-06_15-24-39.optimized.spec.ts
-============================================================
-✅ 测试完成: 2026-03-06_15-24-39.optimized.spec.ts
-
-🚀 执行测试: 2026-03-06_18-07-33.optimized.spec.ts
-============================================================
-✅ 测试完成: 2026-03-06_18-07-33.optimized.spec.ts
-
-🚀 执行测试: 2026-03-06_18-26-58.optimized.spec.ts
-============================================================
-⚠️  测试执行遇到问题: 2026-03-06_18-26-58.optimized.spec.ts
-   错误: Command failed: ...
-   继续执行下一个测试...
-
-⚠️  遇到错误，停止执行
-💡 提示: 默认遇到错误继续执行，使用 --stop 参数在遇到错误时停止
-
-============================================================
-📊 测试执行汇总:
-  总计: 4
-  成功: 3
-  失败: 1
-
-📊 生成截图对比报告
-============================================================
-✅ 截图对比报告生成完成
-
-🎉 全部完成！
-📄 对比报告: results/screenshot-comparison.html
+```bash
+npm run run-optimized-tests -- --verbose
+npm run run-optimized-tests -- --clean
+npm run run-optimized-tests -- --stop
 ```
 
-## 注意事项
+## 输出
+
+- 对比报告：`results/screenshot-comparison.html`
+
+## 参数说明
+
+- `--verbose` / `-v`：显示更详细的执行输出
+- `--stop` / `-s`：遇到错误时停止（默认继续执行后续文件）
+- `--clean`：清理失败测试的截图（保留成功测试截图用于对比）
 
 1. **测试超时**
    - 每个测试的超时时间为 120 秒
@@ -132,8 +39,7 @@ npm run run-optimized-tests
    - 可以在浏览器中打开查看
 
 4. **浏览器选择**
-   - 默认使用 Chromium 浏览器
-   - 可以修改脚本中的 `--project=chromium` 来切换浏览器
+   - 以 `playwright.config.ts` 的 project 为准（推荐 `optimized`）
 
 ## 故障排除
 

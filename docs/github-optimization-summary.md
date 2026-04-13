@@ -1,143 +1,24 @@
-# GitHub部署优化总结
+# GitHub 优化总结（速查）
 
-## ✅ 已完成的优化
+目标：让 CI 跑得更快、更稳、更省产物存储。
 
-### 1. package.json优化
+## 做了什么（结论）
 
-#### 添加engines字段
-```json
-"engines": {
-  "node": ">=18.0.0"
-}
-```
-**优势**: 明确Node.js版本要求，避免兼容性问题
+- **依赖缓存**：`setup-node` 开启 npm cache
+- **浏览器缓存**：缓存 `~/.cache/ms-playwright`
+- **并行/分片**：按 workflow 配置启用（若开启矩阵）
+- **产物策略**：失败时上传视频/截图；报告作为常驻产物
 
-#### 新增实用脚本
-```json
-"clean": "rm -rf test-results playwright-report screenshots/results",
-"clean:all": "rm -rf node_modules test-results playwright-report screenshots results && npm install",
-"lint": "eslint . --ext .ts,.tsx --fix",
-"typecheck": "tsc --noEmit",
-"format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""
-```
-**优势**: 
-- 快速清理测试产物
-- 代码质量检查
-- 自动格式化
+## 入口与关联
 
-### 2. .gitignore优化
+- 工作流（可能为 disabled）：`.github/workflows/*.yml(.disabled)`
+- 快速开始：`docs/github-actions-quickstart.md`
+- Secrets 与环境：`docs/github-deployment.md`
 
-#### 移除package-lock.json
-```gitignore
-# package-lock.json  # 移除此行，因为npm ci需要lock文件
-```
-**优势**: 
-- `npm ci` 需要lock文件
-- 确保依赖版本一致性
-- 提高CI/CD可靠性
+## 验证方式
 
-### 3. GitHub Actions优化
-
-#### 添加依赖缓存
-```yaml
-- name: Setup Node.js
-  uses: actions/setup-node@v4
-  with:
-    node-version: '18'
-    cache: 'npm'  # 启用npm缓存
-```
-**性能提升**: 依赖安装时间从5分钟降至30秒
-
-#### 添加浏览器缓存
-```yaml
-- name: Cache Playwright Browsers
-  uses: actions/cache@v4
-  with:
-    path: ~/.cache/ms-playwright
-    key: ${{ runner.os }}-playwright-${{ hashFiles('**/package-lock.json') }}
-    restore-keys: |
-      ${{ runner.os }}-playwright-
-```
-**性能提升**: 浏览器下载时间从3分钟降至0秒
-
-#### 添加矩阵测试
-```yaml
-strategy:
-  fail-fast: false
-  matrix:
-    shard: [1, 2, 3, 4]
-```
-**性能提升**: 测试执行时间减少75%（4个分片并行）
-
-#### 增加超时时间
-```yaml
-timeout-minutes: 90  # 从60分钟增加到90分钟
-```
-**优势**: 确保复杂测试有足够时间完成
-
-#### 智能产物上传
-```yaml
-- name: Upload test videos
-  if: failure()  # 仅失败时上传
-  uses: actions/upload-artifact@v4
-
-- name: Upload screenshots
-  if: failure()  # 仅失败时上传
-  uses: actions/upload-artifact@v4
-```
-**优势**: 节省存储空间，仅上传失败的产物
-
-#### 添加失败通知
-```yaml
-notify:
-  needs: test
-  if: failure()
-  runs-on: ubuntu-latest
-  steps:
-  - name: Send notification
-    run: echo "Tests failed! Please check the logs."
-```
-**优势**: 及时发现测试失败
-
-#### 添加手动触发
-```yaml
-on:
-  workflow_dispatch:  # 允许手动触发
-```
-**优势**: 方便手动运行测试
-
-### 4. 文档优化
-
-#### 创建GitHub部署指南
-- `docs/github-deployment.md`: 详细的部署配置指南
-- `docs/github-actions-quickstart.md`: GitHub Actions快速开始指南
-
-**优势**: 
-- 降低部署门槛
-- 提供故障排查指南
-- 包含最佳实践
-
-## 📊 性能对比
-
-### 优化前
-
-| 指标 | 时间 |
-|--------|------|
-| 依赖安装 | 5分钟 |
-| 浏览器下载 | 3分钟 |
-| 测试执行 | 20分钟（单线程） |
-| 总时间 | ~28分钟 |
-
-### 优化后
-
-| 指标 | 时间 | 提升 |
-|--------|------|------|
-| 依赖安装 | 30秒 | 90% ↓ |
-| 浏览器下载 | 0秒（缓存） | 100% ↓ |
-| 测试执行 | 5分钟（4分片） | 75% ↓ |
-| 总时间 | ~6分钟 | 78% ↓ |
-
-## 🔒 安全性优化
+- 推送到目标分支或手动触发 workflow
+- 对比单次运行的总耗时与产物大小
 
 ### 1. Secrets管理
 - ✅ 使用GitHub Secrets存储测试账号密码

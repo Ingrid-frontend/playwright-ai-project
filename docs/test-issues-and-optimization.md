@@ -1,143 +1,32 @@
-# 测试脚本问题排查与优化建议
+# 测试问题排查与优化建议（速查）
 
-## 📊 错误分析结果
+目标：把“失败原因 → 定位点 → 可落地修复”压缩成可执行清单。
 
-### 错误统计
+## 入口
 
-从 `tests/deprecated/errors/test-errors-2026-03-09.json` 分析：
+- 错误文件：`tests/deprecated/errors/`
+- 汇总分析：`npm run analyze-errors`
 
-```json
-{
-  "summary": {
-    "totalErrors": 24,
-    "uniqueErrors": 4,
-    "timestamp": "2026-03-09T10:41:55.301Z",
-    "nodeVersion": "v24.12.0",
-    "platform": "darwin",
-    "arch": "arm64"
-  }
-}
+## 常见问题（结论）
+
+### 1) 等待策略叠加导致超时
+
+- **症状**：大量 `waitForLoadState/networkidle` + loading mask 等待叠加，单步耗时过长
+- **定位**：`utils/screenshot.ts` 的 `screenshotWhenStable` / `waitForRouteStable`
+- **建议**：给每个等待阶段加最大总时长上限；将“稳定性等待”从每步必跑改为关键步骤/失败时跑
+
+### 2) 路由稳定检测可能卡住
+
+- **症状**：路由持续变化导致稳定计数重置，整体等待拉长
+- **定位**：`utils/screenshot.ts` 的 `waitForRouteStable`
+- **建议**：加入硬超时（例如 3-5s），超时后降级继续执行并记录日志
+
+## 验证方式
+
+```bash
+# 复现并观察耗时/失败点（示例）
+npx playwright test tests/optimized --project=optimized --workers=1
 ```
-
-**关键发现**:
-- 总错误数: 24
-- 唯一错误数: 4
-- 重复率: 83.3%
-- 所有错误类型: "Test timeout of 30000ms exceeded."
-
-### 失败的测试文件
-
-1. `tests/optimized/2026-03-09_15-51-01.optimized.spec.ts` - 30.2s 超时
-2. `tests/optimized/2026-03-09_16-45-51.optimized.spec.ts` - 30.5s 超时
-3. `tests/optimized/2026-03-09_16-46-41.optimized.spec.ts` - 30.3s 超时
-4. `tests/optimized/2026-03-09_16-47-28.optimized.spec.ts` - 30.3s 超时
-
----
-
-## 🔍 问题排查
-
-### 问题1: 路由稳定性检测可能卡住
-
-**位置**: `utils/screenshot.ts` - `waitForRouteStable` 函数
-
-**问题代码**:
-```typescript
-async function waitForRouteStable(page: Page): Promise<void> {
-  try {
-    let currentRoute = await getCurrentRoute(page);
-    await page.waitForTimeout(500);
-    
-    let stableCount = 0;
-    const maxStableCount = 3;
-    
-    while (stableCount < maxStableCount) {
-      const newRoute = await getCurrentRoute(page);
-      
-      if (newRoute === currentRoute) {
-        stableCount++;
-      } else {
-        console.log(`🔄 路由变化: ${currentRoute} -> ${newRoute}`);
-        currentRoute = newRoute;
-        stableCount = 0;  // ⚠️ 这里会重置，可能导致无限循环
-      }
-      
-      await page.waitForTimeout(200);
-    }
-    
-    console.log(`✅ 路由稳定: ${currentRoute}`);
-  } catch (error) {
-    console.log('⚠️  路由稳定检测失败，继续执行');
-  }
-}
-```
-
-**问题分析**:
-- 如果路由持续变化，`stableCount` 会不断被重置为 0
-- 没有最大等待时间限制
-- 可能导致无限循环
-
-**影响**:
-- 测试卡在路由稳定性检测
-- 最终导致 30 秒超时
-
----
-
-### 问题2: 多个等待操作叠加
-
-**位置**: `utils/screenshot.ts` - `screenshotWhenStable` 函数
-
-**问题代码**:
-```typescript
-export async function screenshotWhenStable(page: Page, path: string, options: { fullPage?: boolean } = {}): Promise<{ path: string; route: string }> {
-  const { fullPage = false } = options;
-
-  await waitForRouteStable(page);  // 等待1: 路由稳定 (最多 1.1s)
-
-  try {
-    await page.waitForLoadState('networkidle', { timeout: 5000 });  // 等待2: 网络空闲 (最多 5s)
-  } catch (error) {
-    console.log('⚠️  等待网络空闲超时，继续执行截图');
-  }
-
-  const loadingSelectors = [
-    '.ant-spin',
-    '.ant-spin-spinning',
-    '.page-loading-mask',
-    '[class*="loading"]',
-    '[class*="spinner"]',
-    '[class*="skeleton"]',
-  ];
-
-  for (const sel of loadingSelectors) {
-    try {
-      const el = page.locator(sel);
-      const count = await el.count();
-      if (count > 0) {
-        await expect(el, `等待 ${sel} 消失`).toBeHidden({ timeout: 3000 });  // 等待3: 加载元素消失 (最多 18s)
-      }
-    } catch (error) {
-      continue;
-    }
-  }
-
-  await waitForContentReady(page);  // 等待4: 内容准备 (最多 0.5s)
-
-  await page.waitForTimeout(800);  // 等待5: 固定延迟 (0.8s)
-
-  const route = await getCurrentRoute(page);
-  const routePath = addRouteToPath(path, route);
-  await page.screenshot({ path: routePath, fullPage });
-  
-  return { path: routePath, route };
-}
-```
-
-**问题分析**:
-- 每个步骤最多等待: 1.1s + 5s + 18s + 0.5s + 0.8s = 25.4s
-- 7 个步骤 = 177.8s
-- 远超 30 秒超时限制
-
-**影响**:
 - 测试执行时间过长
 - 容易超时
 

@@ -32,7 +32,7 @@ const userArgs = userArgv();
 const target = userArgs[0];
 
 if (!target) {
-  runTsx('scripts/optimize-raw-recordings.ts', []);
+  runTsx('scripts/optimize/optimize-raw-recordings.ts', []);
 }
 
 const resolved = path.resolve(root, target);
@@ -43,7 +43,7 @@ if (!fs.existsSync(resolved)) {
 
 const stat = fs.statSync(resolved);
 if (stat.isDirectory()) {
-  runTsx('scripts/optimize-raw-recordings.ts', [resolved]);
+  runTsx('scripts/optimize/optimize-raw-recordings.ts', [resolved]);
 }
 
-runTsx('scripts/optimize-recorded-test.ts', [resolved]);
+runTsx('scripts/optimize/optimize-recorded-test.ts', [resolved]);

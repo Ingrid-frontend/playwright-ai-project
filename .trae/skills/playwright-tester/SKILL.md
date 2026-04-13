@@ -16,7 +16,6 @@ description: "Automates Playwright testing tasks including running tests, record
 - 在有头或无头模式下运行测试
 - 在 UI 模式下运行测试进行调试
 - 为特定项目运行测试
-- 使用 run-tests.sh 脚本进行灵活配置
 
 ### 2. 录制测试
 录制用户交互以生成测试脚本：
@@ -64,8 +63,8 @@ npx playwright test
 # 运行特定测试文件
 npx playwright test tests/e2e/login.spec.ts
 
-# 仅运行 chromium 测试
-npx playwright test --project=chromium
+# 仅运行 optimized 项目
+npx playwright test --project=optimized
 
 # 在有头模式下运行测试
 npx playwright test --headed
@@ -73,9 +72,8 @@ npx playwright test --headed
 # 在 UI 模式下运行测试
 npx playwright test --ui
 
-# 使用 run-tests.sh 脚本（推荐）
-./run-tests.sh -p chromium -f tests/e2e/example.spec.ts
-./run-tests.sh -w 1 -p chromium --headed
+# 运行优化用例目录
+npx playwright test tests/optimized --project=optimized
 ```
 
 ### 录制测试
@@ -111,13 +109,13 @@ npx playwright test --trace on
 npm run auto-test
 
 # 分析测试脚本
-npm run analyze-test tests/raw-recordings/2026-03-06_11-27-50.spec.ts
+npm run analyze-test -- tests/raw-recordings/2026-03-06_11-27-50.spec.ts
 
 # 自动优化测试脚本
-npm run optimize tests/raw-recordings/2026-03-06_11-27-50.spec.ts
+npm run optimize -- tests/raw-recordings/2026-03-06_11-27-50.spec.ts
 
 # 生成 POM 类
-npm run generate-pom tests/raw-recordings/2026-03-06_11-27-50.spec.ts
+npm run generate-pom -- tests/raw-recordings/2026-03-06_11-27-50.spec.ts
 
 # 对比截图
 npm run compare-screenshots
@@ -184,8 +182,8 @@ npx playwright install
 # 运行测试
 npm test
 
-# 使用 run-tests.sh 运行测试
-./run-tests.sh -p chromium -f tests/e2e/example.spec.ts
+# 运行指定用例（示例）
+npx playwright test tests/e2e/example.spec.ts --project=optimized
 
 # 查看测试报告
 npm run report
@@ -194,10 +192,10 @@ npm run report
 npm run record
 
 # 优化测试
-npm run optimize tests/raw-recordings/test.spec.ts
+npm run optimize -- tests/raw-recordings/test.spec.ts
 
 # 生成 POM
-npm run generate-pom tests/raw-recordings/test.spec.ts
+npm run generate-pom -- tests/raw-recordings/test.spec.ts
 
 # 对比截图
 npm run compare-screenshots tests/optimized/test.optimized.spec.ts

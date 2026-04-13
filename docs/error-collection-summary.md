@@ -1,183 +1,35 @@
-# 测试错误收集功能实现总结
+# 测试错误收集（速查）
 
-## ✅ 已完成的功能
+目标：在跑 Playwright 测试时自动收集失败信息，并提供离线分析入口。
 
-### 1. 错误收集器实现
-
-**文件**: `custom-reporters/error-reporter.js`
-
-**功能**:
-- ✅ 自动收集测试执行过程中的所有错误
-- ✅ 记录测试文件、测试名称、错误信息、错误堆栈
-- ✅ 记录错误时间戳和测试执行时长
-- ✅ 按日期生成错误报告文件
-- ✅ 实时显示错误摘要
-
-**配置**: 已集成到 `playwright.config.ts`
-
-```typescript
-reporter: [
-  ['html'],
-  ['list'],
-  [path.resolve(__dirname, 'custom-reporters/error-reporter.js')]
-]
-```
-
-### 2. 错误报告格式
-
-**保存位置**: `tests/deprecated/errors/test-errors-YYYY-MM-DD.json`
-
-**JSON格式**:
-```json
-{
-  "summary": {
-    "totalErrors": 4,
-    "timestamp": "2026-03-09T09:05:00.072Z",
-    "nodeVersion": "v24.12.0",
-    "platform": "darwin",
-    "arch": "arm64"
-  },
-  "errors": [
-    {
-      "testFile": "/Users/hly/self-project/playwright-ai-project/tests/deprecated/test-error-collection.spec.ts",
-      "testName": "故意失败的测试",
-      "error": "Test timeout of 5000ms exceeded.",
-      "stack": "Test timeout of 5000ms exceeded.",
-      "timestamp": "2026-03-09T09:04:42.903Z",
-      "duration": 5265
-    }
-  ]
-}
-```
-
-### 3. 错误分析脚本
-
-**文件**: `scripts/analyze-errors.ts`
-
-**命令**: `npm run analyze-errors`
-
-**功能**:
-- ✅ 分析所有错误文件
-- ✅ 统计总体错误数量
-- ✅ 按文件分组统计
-- ✅ 分析错误类型
-- ✅ 找出最频繁的测试错误
-
-**输出示例**:
-```
-📊 错误分析报告
-═════════════════════════════════════
-
-📄 test-errors-2026-03-09.json
-   总错误数: 4
-   生成时间: 2026-03-09T09:05:00.072Z
-   Node版本: v24.12.0
-   平台: darwin (arm64)
-   按文件统计:
-     test-error-collection.spec.ts: 4个错误
-
-═════════════════════════════════════
-📈 总体统计
-   总错误数: 4
-   错误文件数: 1
-
-🔍 错误类型分析
-──────────────────────────────────────────────────
-   Test timeout of 5000ms exceeded.
-   次数: 4 (100.0%)
-
-🎯 最频繁的测试错误
-──────────────────────────────────────────────────
-   test-error-collection.spec.ts::故意失败的测试
-   次数: 2 (50.0%)
-
-   test-error-collection.spec.ts::超时测试
-   次数: 2 (50.0%)
-```
-
-### 4. 使用文档
-
-**文件**: `docs/error-collection-guide.md`
-
-**内容**:
-- 📖 功能说明
-- 📖 工作原理
-- 📖 错误报告格式
-- 📖 使用示例
-- 📖 查看错误文件
-- 📖 错误分析工具
-- 📖 错误趋势分析
-- 📖 最佳实践
-- 📖 故障排查
-
-## 🎯 使用方法
-
-### 1. 自动收集错误
-
-执行测试时，错误收集器会自动运行：
+## 速查
 
 ```bash
-npm run test
-```
+# 运行测试（失败时会落地 errors JSON）
+npm test
 
-**输出示例**:
-```
-📝 错误收集器已启动
-  ✓  1 [setup] › src/setup/login.setup.ts:33:1 › 🔐 全局登录并持久化状态 (277ms)
-  ✓  2 …ests/deprecated/2026-03-09_12-01-22.optimized.spec.ts:9:1 › test (21.5s)
-
-  2 passed (23.2s)
-
-📊 测试执行完成
-   总耗时: 23s
-   失败数: 0
-✅ 所有测试通过，无错误需要记录
-```
-
-### 2. 查看错误文件
-
-```bash
-# 查看最新的错误文件
-cat tests/deprecated/errors/test-errors-2026-03-09.json
-
-# 使用jq格式化查看
-cat tests/deprecated/errors/test-errors-2026-03-09.json | jq '.'
-```
-
-### 3. 分析错误
-
-```bash
-# 运行错误分析脚本
+# 汇总分析 errors JSON（推荐）
 npm run analyze-errors
 ```
 
-## 📊 测试结果
+## 产物
 
-### 测试1: 正常测试（无错误）
+- 错误 JSON：`tests/deprecated/errors/test-errors-YYYY-MM-DD.json`
+- Playwright HTML 报告：`playwright-report/`
 
-```bash
-npm run test -- tests/deprecated/2026-03-09_12-01-22.optimized.spec.ts --project=chromium --workers=1
-```
+## 位置
 
-**结果**: ✅ 测试通过，无错误记录
+- Reporter：`custom-reporters/error-reporter.js`（已在 `playwright.config.ts` 中注册）
+- 分析脚本：`scripts/analyze/analyze-errors.ts`
 
-### 测试2: 失败测试（有错误）
+## JSON 字段（最小）
 
-```bash
-npm run test -- tests/deprecated/test-error-collection.spec.ts --project=chromium --workers=1 --timeout=5000
-```
+- `summary.totalErrors`：总错误数（可能包含重试）
+- `errors[]`：错误数组（含 `testFile` / `testName` / `error` / `stack` / `timestamp` / `duration`）
 
-**结果**: ✅ 成功收集4个错误，保存到 `tests/deprecated/errors/test-errors-2026-03-09.json`
+详见：`docs/error-collection-guide.md`
 
-### 测试3: 错误分析
-
-```bash
-npm run analyze-errors
-```
-
-**结果**: ✅ 成功分析错误，生成详细报告
-
-## 🔧 技术实现
+（本文仅保留速查信息；实现细节与排错建议请参考上面的 guide。）
 
 ### 1. Playwright Reporter接口
 
@@ -271,27 +123,11 @@ function analyzeErrors(): void {
 }
 ```
 
-## 📈 优势
+## 优势（简版）
 
-### 1. 自动化
-- ✅ 无需手动配置，自动收集所有错误
-- ✅ 测试执行时自动运行
-- ✅ 自动保存到指定目录
-
-### 2. 结构化
-- ✅ JSON格式，易于解析和分析
-- ✅ 包含完整的错误信息
-- ✅ 支持多种分析工具
-
-### 3. 可追溯
-- ✅ 按日期保存，方便历史对比
-- ✅ 包含时间戳，支持趋势分析
-- ✅ 记录环境信息，便于复现
-
-### 4. 易分析
-- ✅ 提供分析脚本，快速生成报告
-- ✅ 支持多种分析维度
-- ✅ 可扩展自定义分析逻辑
+- 自动落地错误 JSON，便于归档
+- 结构化字段，便于脚本分析
+- 可按日期追踪趋势
 
 ## 🎯 最佳实践
 
@@ -326,29 +162,6 @@ find tests/deprecated/errors/test-errors-*.json -mtime +30 -delete
 - [Playwright配置](../playwright.config.ts) - Playwright配置文件
 - [README.md](../README.md) - 项目主文档
 
-## 🎉 总结
+## 总结
 
-测试错误收集功能已完全实现并测试通过！
-
-**核心功能**:
-- ✅ 自动收集测试错误
-- ✅ 保存到 `tests/deprecated` 文件夹
-- ✅ 按日期生成错误文件
-- ✅ 实时显示错误摘要
-- ✅ 支持JSON格式导出
-- ✅ 提供错误分析脚本
-- ✅ 支持错误趋势分析
-
-**使用命令**:
-```bash
-# 执行测试（自动收集错误）
-npm run test
-
-# 分析错误
-npm run analyze-errors
-
-# 查看错误文件
-cat tests/deprecated/errors/test-errors-2026-03-09.json
-```
-
-现在可以方便地收集、分析和解决测试错误了！🚀
+（总结省略：按本文“速查”两条命令即可使用。）
