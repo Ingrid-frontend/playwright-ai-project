@@ -20,8 +20,8 @@ export class LoginPage {
         this.loginButton = page.getByRole('button', { name: '登 录' });
     }
 
-    async goto(baseURL?: string) {
-        const url = baseURL || 'https://stage.huilianyi.com/';
+    async goto(url: string = '/') {
+        // 默认使用 Playwright 的 baseURL；需要覆盖时可传入绝对 URL
         await this.page.goto(url, { waitUntil: "load" });
     }
 

@@ -46,16 +46,16 @@ test('test', async ({ page }) => {
   if (!hasGotoAction) {
     // 如果没有页面导航，添加一个默认的
     await step('导航到首页', async () => {
-      console.log('🌐 导航到: https://stage.huilianyi.com/');
-      await page.goto('https://stage.huilianyi.com/', { waitUntil: 'networkidle' });
+      console.log('🌐 导航到: / (基于 baseURL)');
+      await page.goto('/', { waitUntil: 'networkidle' });
       await page.waitForLoadState('networkidle');
       await takeStepScreenshot(page, path.join(runDir, `step-1-before-action.png`), { fullPage: true });
     });
   }
 
     await step('导航到页面', async () => {
-    console.log('🌐 导航到: https://stage.huilianyi.com/');
-    await page.goto('https://stage.huilianyi.com/', { waitUntil: 'networkidle' });
+    console.log('🌐 导航到: / (基于 baseURL)');
+    await page.goto('/', { waitUntil: 'networkidle' });
     await page.waitForLoadState('networkidle');
     await takeStepScreenshot(page, path.join(runDir, `step-1-before-action.png`), { fullPage: true });
   });

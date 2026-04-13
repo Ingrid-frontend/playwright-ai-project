@@ -18,7 +18,7 @@ test('test', async ({ page }) => {
   const getScreenshotPath = (step: number, label: string) => `${runDir}/step-${step}-${label}.png`;
 
   test.setTimeout(60000);
-  await page.goto('https://stage.huilianyi.com/');
+  await page.goto('/');
   await expect(page).toHaveURL(/.*huilianyi.*/);
   browserInfo = await page.context().browser()?.browserType().name() || 'unknown';
   runDir = `${screenshotRoot}/${runTimestamp}-${browserInfo}-${testId}`;
