@@ -49,7 +49,8 @@
     "remove-iframe-logic": "tsx scripts/optimize/remove-iframe-logic.ts",
     "clean": "rm -rf test-results playwright-report screenshots/results",
     "clean:all": "rm -rf node_modules test-results playwright-report screenshots results && npm install",
-    "lint": "eslint . --ext .ts,.tsx --fix",
+    "lint": "eslint . --ext .ts,.tsx",
+    "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""
   },
