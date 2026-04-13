@@ -521,6 +521,7 @@ class RawRecordingOptimizer {
     const template = `import { test, expect } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
+import { takeStepScreenshot } from '../../utils/screenshot';
 
 // 定义智能动作函数
 async function smartClick(locator, stepName) {
@@ -652,7 +653,7 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
       console.log('🌐 导航到: https://stage.huilianyi.com/');
       await page.goto('https://stage.huilianyi.com/', { waitUntil: 'networkidle' });
       await page.waitForLoadState('networkidle');
-      await page.screenshot({ path: path.join(runDir, \`step-1-before-action.png\`), fullPage: true });
+      await takeStepScreenshot(page, path.join(runDir, \`step-1-before-action.png\`), { fullPage: true });
     });
   }
 
@@ -678,7 +679,7 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
     console.log('🌐 导航到: ${action.url}');
     await page.goto('${action.url}', { waitUntil: 'networkidle' });
     ${this.options.waitLoad ? 'await page.waitForLoadState(\'networkidle\');' : ''}
-    await page.screenshot({ path: path.join(${runDirVariable}, \`step-${stepIndex}-before-action.png\`), fullPage: true });
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-before-action.png\`), { fullPage: true });
   });
 
 `;
@@ -702,13 +703,13 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
     switch (action.type) {
       case 'click':
         return `  await step('${label}', async () => {
-    await page.screenshot({ path: path.join(${runDirVariable}, \`step-${stepIndex}-before-action.png\`), fullPage: true });
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-before-action.png\`), { fullPage: true });
     ${this.hasIframe ? `const baseContext = iframeContent || page;
     const locator = ${locatorCode.replace(/page\./g, 'baseContext.')};` : `const locator = ${locatorCode};`}
     ${this.options.addVisible && isKeyAction ? `await expect(locator).toBeVisible();` : ''}
     await smartClick(locator, '${label}');
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-    await page.screenshot({ path: path.join(${runDirVariable}, \`step-${stepIndex}-after-action.png\`), fullPage: true });
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-after-action.png\`), { fullPage: true });
   });
 
 `;
@@ -716,19 +717,19 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
       case 'type':
         const text = action.text || '';
         return `  await step('${label}', async () => {
-    await page.screenshot({ path: path.join(${runDirVariable}, \`step-${stepIndex}-before-action.png\`), fullPage: true });
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-before-action.png\`), { fullPage: true });
     ${this.hasIframe ? `const baseContext = iframeContent || page;
     const locator = ${locatorCode.replace(/page\./g, 'baseContext.')};` : `const locator = ${locatorCode};`}
     ${this.options.addVisible && isKeyAction ? `await expect(locator).toBeVisible();` : ''}
     await smartFill(locator, "${text}", '${label}');
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-    await page.screenshot({ path: path.join(${runDirVariable}, \`step-${stepIndex}-after-action.png\`), fullPage: true });
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-after-action.png\`), { fullPage: true });
   });
 
 `;
       case 'check':
         return `  await step('${label}', async () => {
-    await page.screenshot({ path: path.join(${runDirVariable}, \`step-${stepIndex}-before-action.png\`), fullPage: true });
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-before-action.png\`), { fullPage: true });
     ${this.hasIframe ? `const baseContext = iframeContent || page;
     const locator = ${locatorCode.replace(/page\./g, 'baseContext.')};` : `const locator = ${locatorCode};`}
     ${this.options.addVisible && isKeyAction ? `await expect(locator).toBeVisible();` : ''}
@@ -745,13 +746,13 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
       await page.pause();
     }
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-    await page.screenshot({ path: path.join(${runDirVariable}, \`step-${stepIndex}-after-action.png\`), fullPage: true });
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-after-action.png\`), { fullPage: true });
   });
 
 `;
       case 'selectOption':
         return `  await step('${label}', async () => {
-    await page.screenshot({ path: path.join(${runDirVariable}, \`step-${stepIndex}-before-action.png\`), fullPage: true });
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-before-action.png\`), { fullPage: true });
     ${this.hasIframe ? `const baseContext = iframeContent || page;
     const locator = ${locatorCode.replace(/page\./g, 'baseContext.')};` : `const locator = ${locatorCode};`}
     ${this.options.addVisible && isKeyAction ? `await expect(locator).toBeVisible();` : ''}
@@ -768,13 +769,13 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
       await page.pause();
     }
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-    await page.screenshot({ path: path.join(${runDirVariable}, \`step-${stepIndex}-after-action.png\`), fullPage: true });
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-after-action.png\`), { fullPage: true });
   });
 
 `;
       case 'press':
         return `  await step('${label}', async () => {
-    await page.screenshot({ path: path.join(${runDirVariable}, \`step-${stepIndex}-before-action.png\`), fullPage: true });
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-before-action.png\`), { fullPage: true });
     ${this.hasIframe ? `const baseContext = iframeContent || page;
     const locator = ${locatorCode.replace(/page\./g, 'baseContext.')};` : `const locator = ${locatorCode};`}
     ${this.options.addVisible && isKeyAction ? `await expect(locator).toBeVisible();` : ''}
@@ -791,7 +792,7 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
       await page.pause();
     }
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-    await page.screenshot({ path: path.join(${runDirVariable}, \`step-${stepIndex}-after-action.png\`), fullPage: true });
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-after-action.png\`), { fullPage: true });
   });
 
 `;

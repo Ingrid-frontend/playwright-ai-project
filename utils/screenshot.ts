@@ -59,6 +59,23 @@ export async function screenshotWhenStable(page: Page, path: string, options: { 
   return { path: routePath, route };
 }
 
+export async function takeStepScreenshot(
+  page: Page,
+  filePath: string,
+  options: { fullPage?: boolean; mode?: 'fast' | 'stable' } = {},
+): Promise<{ path: string; route: string }> {
+  const envMode = process.env.SCREENSHOT_MODE === 'stable' ? 'stable' : 'fast';
+  const mode = options.mode ?? envMode;
+  const { fullPage = false } = options;
+
+  if (mode === 'stable') {
+    return await screenshotWhenStable(page, filePath, { fullPage });
+  }
+
+  await page.screenshot({ path: filePath, fullPage });
+  return { path: filePath, route: page.url() };
+}
+
 function addRouteToPath(originalPath: string, route: string): string {
   const dir = path.dirname(originalPath);
   const filename = path.basename(originalPath, '.png');
