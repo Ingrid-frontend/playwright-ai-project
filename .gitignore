@@ -51,3 +51,7 @@ build/
 
 # Deprecated test files
 tests/deprecated/
+
+# Raw recordings / recorder outputs (may contain sensitive credentials)
+tests/raw-recordings/
+tests/chrome-recorder/
