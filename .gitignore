@@ -12,6 +12,10 @@ playwright/.cache/
 # Results
 results/
 
+# Screenshots (generated artifacts)
+screenshots/
+!screenshots/.gitkeep
+
 # Environment variables
 .env
 .env.local
