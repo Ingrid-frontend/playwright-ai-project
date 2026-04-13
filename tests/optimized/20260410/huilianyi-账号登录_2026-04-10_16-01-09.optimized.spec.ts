@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
-import { takeStepScreenshot } from '../../utils/screenshot';
+import { takeStepScreenshot } from '../../../utils/screenshot';
 
 const PAUSE_ENABLED = process.env.ENABLE_PAUSE === '1';
 async function maybePause(page, reason: string) {
