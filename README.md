@@ -109,6 +109,28 @@ PLAYWRIGHT_ENV=uat npx playwright test --project=optimized
 - `datasource/base-config.json`：每个环境的 `baseURL` 与 `storageState` 路径
 - `datasource/accounts.json`：每个环境的登录账号/密码
 
+## ⚙️ 常用开关（环境变量速查）
+
+默认策略：**不开启就不生效**（避免噪声/泄露/卡住执行）。需要时按表格开启即可。
+
+| 开关 | 默认 | 用途 | 如何开启 |
+|---|---|---|---|
+| `ENABLE_PAUSE` | 0 | 允许 optimized 用例在异常点 `page.pause()` | `ENABLE_PAUSE=1` |
+| `SCREENSHOT_MODE` | fast | 截图模式：`fast`(直接截图) / `stable`(更稳) | `SCREENSHOT_MODE=stable` |
+| `ENABLE_LIST_REPORTER` | 0 | 控制 Playwright `list` reporter，减少控制台噪声 | `ENABLE_LIST_REPORTER=1` |
+| `ENABLE_SENSITIVE_LOGS` | 0 | 允许输出签名串、请求体等敏感调试信息 | `ENABLE_SENSITIVE_LOGS=1` |
+| `ENABLE_GITHUB` | 0 | 允许生成 GitHub/Pages 相关链接（飞书卡片按钮等） | `ENABLE_GITHUB=1` |
+| `PUBLIC_REPORT_URL` | - | 公开报告 URL（配合 `ENABLE_GITHUB=1`） | `ENABLE_GITHUB=1 PUBLIC_REPORT_URL=...` |
+| `PUBLIC_ASSET_BASE_URL` | - | 公开静态资源基址（图片/截图 URL，配合 `ENABLE_GITHUB=1`） | `ENABLE_GITHUB=1 PUBLIC_ASSET_BASE_URL=...` |
+| `ENABLE_POM` | 0 | 启用 POM 生成相关能力（默认关闭，避免误用） | `ENABLE_POM=1` |
+| `ENABLE_GLOBAL_SETUP` | 0 | 回退启用 `globalSetup`（默认走 project dependencies） | `ENABLE_GLOBAL_SETUP=1` |
+| `ENABLE_LEGACY_LOGIN_FIXTURE` | 0 | 回退到“每个用例内登录”（需要 `TEST_USERNAME/TEST_PASSWORD`） | `ENABLE_LEGACY_LOGIN_FIXTURE=1` |
+
+飞书相关（如需通知/文档）：
+
+- **Webhook**：`FEISHU_WEBHOOK_URL`（可选 `FEISHU_WEBHOOK_SECRET`）
+- **建议**：默认不要打开 `ENABLE_SENSITIVE_LOGS`，只有在排查签名/请求体问题时临时开启。
+
 ## 🎯 核心实践
 
 ### 1. 使用语义化定位符
