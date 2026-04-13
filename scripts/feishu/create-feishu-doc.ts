@@ -4,6 +4,8 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+const sensitiveLogsEnabled = process.env.ENABLE_SENSITIVE_LOGS === '1';
+
 interface FeishuDocConfig {
   appId: string;
   appSecret: string;
@@ -96,7 +98,11 @@ async function getAccessToken(config: FeishuDocConfig): Promise<string> {
   // 移除 BOM（Byte Order Mark）
   const cleanedResponseText = responseText.replace(/^\uFEFF/, '');
   
-  console.log('📥 飞书 API 响应:', cleanedResponseText.substring(0, 200));
+  if (sensitiveLogsEnabled) {
+    console.log('📥 飞书 API 响应:', cleanedResponseText.substring(0, 200));
+  } else {
+    console.log('📥 飞书 API 响应: (已隐藏，设置 ENABLE_SENSITIVE_LOGS=1 查看)');
+  }
   console.log('📊 响应长度:', cleanedResponseText.length);
   
   let data;
@@ -105,10 +111,14 @@ async function getAccessToken(config: FeishuDocConfig): Promise<string> {
   } catch (error) {
     console.error('❌ JSON 解析失败');
     console.error('📝 错误信息:', error);
-    console.error('📄 响应内容（前 500 字符）:');
-    console.error(cleanedResponseText.substring(0, 500));
-    console.error('📄 响应内容（完整）:');
-    console.error(cleanedResponseText);
+    if (sensitiveLogsEnabled) {
+      console.error('📄 响应内容（前 500 字符）:');
+      console.error(cleanedResponseText.substring(0, 500));
+      console.error('📄 响应内容（完整）:');
+      console.error(cleanedResponseText);
+    } else {
+      console.error('📄 响应内容: (已隐藏，设置 ENABLE_SENSITIVE_LOGS=1 查看)');
+    }
     throw new Error(`解析飞书 API 响应失败: ${error}`);
   }
   
@@ -143,7 +153,11 @@ async function uploadImageToFeishu(imagePath: string, accessToken: string): Prom
 
   const responseText = await response.text();
   
-  console.log(`📥 图片上传响应: ${responseText.substring(0, 200)}`);
+  if (sensitiveLogsEnabled) {
+    console.log(`📥 图片上传响应: ${responseText.substring(0, 200)}`);
+  } else {
+    console.log('📥 图片上传响应: (已隐藏，设置 ENABLE_SENSITIVE_LOGS=1 查看)');
+  }
   
   let data;
   try {
@@ -156,7 +170,7 @@ async function uploadImageToFeishu(imagePath: string, accessToken: string): Prom
     throw new Error(`上传图片失败: ${data.msg}`);
   }
 
-  console.log(`✅ 图片上传成功: ${data.file.token}`);
+  console.log(`✅ 图片上传成功: ${data.file.token ? '已返回 token（已隐藏）' : '成功'}`);
   return data.file.token;
 }
 
@@ -184,7 +198,11 @@ async function getDocumentInfo(documentId: string, accessToken: string): Promise
   // 移除 BOM（Byte Order Mark）
   const cleanedResponseText = responseText.replace(/^\uFEFF/, '');
   
-  console.log('📥 飞书 API 响应:', cleanedResponseText.substring(0, 200));
+  if (sensitiveLogsEnabled) {
+    console.log('📥 飞书 API 响应:', cleanedResponseText.substring(0, 200));
+  } else {
+    console.log('📥 飞书 API 响应: (已隐藏，设置 ENABLE_SENSITIVE_LOGS=1 查看)');
+  }
   
   let data;
   try {
@@ -223,7 +241,11 @@ async function getDocumentBlocks(documentId: string, accessToken: string): Promi
   // 移除 BOM（Byte Order Mark）
   const cleanedResponseText = responseText.replace(/^\uFEFF/, '');
   
-  console.log('📥 飞书 API 响应:', cleanedResponseText.substring(0, 200));
+  if (sensitiveLogsEnabled) {
+    console.log('📥 飞书 API 响应:', cleanedResponseText.substring(0, 200));
+  } else {
+    console.log('📥 飞书 API 响应: (已隐藏，设置 ENABLE_SENSITIVE_LOGS=1 查看)');
+  }
   
   let data;
   try {
@@ -274,7 +296,11 @@ async function clearDocumentBlocks(documentId: string, accessToken: string): Pro
   // 移除 BOM（Byte Order Mark）
   const cleanedResponseText = responseText.replace(/^\uFEFF/, '');
   
-  console.log('📥 飞书 API 响应:', cleanedResponseText.substring(0, 200));
+  if (sensitiveLogsEnabled) {
+    console.log('📥 飞书 API 响应:', cleanedResponseText.substring(0, 200));
+  } else {
+    console.log('📥 飞书 API 响应: (已隐藏，设置 ENABLE_SENSITIVE_LOGS=1 查看)');
+  }
   
   let data;
   try {
@@ -317,7 +343,11 @@ async function createFeishuDocument(accessToken: string): Promise<string> {
   // 移除 BOM（Byte Order Mark）
   const cleanedResponseText = responseText.replace(/^\uFEFF/, '');
   
-  console.log('📥 飞书 API 响应:', cleanedResponseText.substring(0, 200));
+  if (sensitiveLogsEnabled) {
+    console.log('📥 飞书 API 响应:', cleanedResponseText.substring(0, 200));
+  } else {
+    console.log('📥 飞书 API 响应: (已隐藏，设置 ENABLE_SENSITIVE_LOGS=1 查看)');
+  }
   
   let data;
   try {
@@ -418,8 +448,12 @@ async function addBlocksToDocument(documentId: string, blocks: FeishuDocBlock[],
       descendants: [descendant]
     };
 
+  if (sensitiveLogsEnabled) {
     console.log('📤 请求体:', JSON.stringify(requestBody));
     console.log('📤 请求体长度:', JSON.stringify(requestBody).length);
+  } else {
+    console.log('📤 请求体: (已隐藏，设置 ENABLE_SENSITIVE_LOGS=1 查看)');
+  }
     
     const response = await fetch(`https://open.feishu.cn/open-apis/docx/v1/documents/${documentId}/blocks/${rootBlockId}/descendant`, {
       method: 'POST',
@@ -435,7 +469,11 @@ async function addBlocksToDocument(documentId: string, blocks: FeishuDocBlock[],
     // 移除 BOM（Byte Order Mark）
     const cleanedResponseText = responseText.replace(/^\uFEFF/, '');
     
-    console.log('📥 飞书 API 响应:', cleanedResponseText.substring(0, 200));
+    if (sensitiveLogsEnabled) {
+      console.log('📥 飞书 API 响应:', cleanedResponseText.substring(0, 200));
+    } else {
+      console.log('📥 飞书 API 响应: (已隐藏，设置 ENABLE_SENSITIVE_LOGS=1 查看)');
+    }
     console.log('📊 响应长度:', cleanedResponseText.length);
     console.log('📊 HTTP 状态码:', response.status);
     
@@ -501,7 +539,11 @@ async function shareDocument(documentId: string, accessToken: string): Promise<s
   // 移除 BOM（Byte Order Mark）
   const cleanedResponseText = responseText.replace(/^\uFEFF/, '');
   
-  console.log('📥 飞书 API 响应:', cleanedResponseText.substring(0, 200));
+  if (sensitiveLogsEnabled) {
+    console.log('📥 飞书 API 响应:', cleanedResponseText.substring(0, 200));
+  } else {
+    console.log('📥 飞书 API 响应: (已隐藏，设置 ENABLE_SENSITIVE_LOGS=1 查看)');
+  }
   
   let data;
   try {

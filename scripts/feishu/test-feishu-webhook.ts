@@ -30,7 +30,7 @@ if (!webhookUrl) {
 
 console.log('🎬 飞书 Webhook 测试工具');
 console.log('');
-console.log(`🔑 Webhook URL: ${webhookUrl.substring(0, 50)}...`);
+console.log(`🔑 Webhook URL: ${webhookUrl ? '已配置（已脱敏）' : '未配置'}`);
 console.log('');
 
 const testMessage = {
@@ -115,7 +115,7 @@ fetch(webhookUrl, {
     console.log('  2. 检查是否能访问飞书 API');
     console.log('  3. 检查是否有防火墙或代理限制');
     console.log('  4. 尝试使用 curl 测试：');
-    console.log(`     curl -X POST ${webhookUrl} \\`);
+    console.log('     curl -X POST "$FEISHU_WEBHOOK_URL" \\');
     console.log('       -H "Content-Type: application/json" \\');
     console.log('       -d \'{"msg_type":"text","content":{"text":"测试"}}\'');
   });

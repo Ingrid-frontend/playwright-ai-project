@@ -6,6 +6,7 @@ async function sendFeishuNotification() {
   const webhookUrl = process.env.FEISHU_WEBHOOK_URL;
   const webhookSecret = process.env.FEISHU_WEBHOOK_SECRET;
   const githubEnabled = process.env.ENABLE_GITHUB === '1';
+  const sensitiveLogsEnabled = process.env.ENABLE_SENSITIVE_LOGS === '1';
   
   console.log('🔍 飞书通知配置检查：');
   console.log('  - Webhook URL:', webhookUrl ? '已配置' : '未配置');
@@ -123,9 +124,13 @@ async function sendFeishuNotification() {
       const bodyString = JSON.stringify(message);
       const signString = `${timestamp}\n${bodyString}`;
       
-      console.log('  - 签名字符串:', signString);
-      console.log('  - Body 字符串长度:', bodyString.length);
-      console.log('  - Body 字符串:', bodyString);
+      if (sensitiveLogsEnabled) {
+        console.log('  - 签名字符串:', signString);
+        console.log('  - Body 字符串长度:', bodyString.length);
+        console.log('  - Body 字符串:', bodyString);
+      } else {
+        console.log('  - 签名：已启用（敏感日志默认关闭，可设置 ENABLE_SENSITIVE_LOGS=1 查看细节）');
+      }
       
       const sign = crypto.createHmac('sha256', webhookSecret)
         .update(signString)
@@ -133,7 +138,6 @@ async function sendFeishuNotification() {
       
       headers['X-Lark-Request-Timestamp'] = String(timestamp);
       headers['X-Lark-Signature'] = sign;
-      console.log('  - 签名:', sign);
       console.log('  - 签名：已添加');
     } else {
       console.log('  - 签名：未配置（跳过签名验证）');
