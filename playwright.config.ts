@@ -11,6 +11,16 @@ const defaultEnv = "stage";
 export const env = process.env.PLAYWRIGHT_ENV || process.env.NODE_ENV || defaultEnv;
 export const curConfig = (baseConfig as Record<string, any>)[env] || (baseConfig as Record<string, any>)[defaultEnv];
 
+function buildReporter() {
+  const reporters: any[] = [['html']];
+  // 默认不启用 list，避免输出噪声；需要时可显式开启
+  if (process.env.ENABLE_LIST_REPORTER === '1') {
+    reporters.push(['list']);
+  }
+  reporters.push([path.resolve(__dirname, 'custom-reporters/error-reporter.js')]);
+  return reporters;
+}
+
 export default defineConfig({
   // 1. 测试目录与并行度
   testDir: './tests',
@@ -21,11 +31,7 @@ export default defineConfig({
   workers: process.env.CI ? 2 : 1,
 
   // 2. 增强型测试报告：支持 HTML 与错误收集
-  reporter: [
-    ['html'],
-    ['list'],
-    [path.resolve(__dirname, 'custom-reporters/error-reporter.js')]
-  ],
+  reporter: buildReporter(),
 
   // 3. 全局通用配置
   use: {
