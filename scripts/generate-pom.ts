@@ -212,7 +212,8 @@ class POMGenerator {
     pom += `  }\n\n`;
     
     pom += `  async navigateTo() {\n`;
-    pom += `    await this.page.goto('https://stage.huilianyi.com/main/home');\n`;
+    pom += `    // 默认使用 Playwright 的 baseURL；如需可在测试中传入绝对 URL\n`;
+    pom += `    await this.page.goto('/main/home');\n`;
     pom += `    await this.page.waitForLoadState('networkidle');\n`;
     pom += `  }\n\n`;
     
