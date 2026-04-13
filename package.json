@@ -11,7 +11,7 @@
     "test:ui": "playwright test --ui",
     "test:debug": "playwright test --debug",
     "test:headed": "playwright test --headed",
-    "test:ai": "playwright test tests/ai-generated",
+    "test:ai": "node -e \"const fs=require('fs'); const p='tests/ai-generated'; const has=fs.existsSync(p)&&fs.readdirSync(p).some(f=>/\\.(spec|test)\\.[jt]s$/.test(f)); if(!has){ console.log('ℹ️  tests/ai-generated 为空，跳过执行（如需运行，请放入 *.spec.ts 并重试）'); process.exit(0);} \" && playwright test tests/ai-generated",
     "test:e2e": "playwright test tests/e2e",
     "test:single": "playwright test --workers=1",
     "test:parallel": "playwright test --workers=2",
