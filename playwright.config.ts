@@ -24,6 +24,10 @@ function buildReporter() {
 export default defineConfig({
   // 1. 测试目录与并行度
   testDir: './tests',
+  testIgnore: [
+    '**/raw-recordings/**',
+    '**/chrome-recorder/**',
+  ],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 1,
