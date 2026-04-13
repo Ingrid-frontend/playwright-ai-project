@@ -57,7 +57,7 @@ cp datasource/accounts.json.example datasource/accounts.json
 **注意**：
 - `datasource/accounts.json` 已添加到 `.gitignore`，不会被提交到 GitHub
 - 环境变量优先级高于配置文件
-- 如果没有配置文件或环境变量，测试将使用默认值
+- 如果没有配置文件或环境变量，相关测试会报错提示缺少凭据
 
 ## 🧭 项目执行流程（一图读懂）
 
@@ -130,6 +130,19 @@ PLAYWRIGHT_ENV=uat npx playwright test --project=optimized
 
 - **Webhook**：`FEISHU_WEBHOOK_URL`（可选 `FEISHU_WEBHOOK_SECRET`）
 - **建议**：默认不要打开 `ENABLE_SENSITIVE_LOGS`，只有在排查签名/请求体问题时临时开启。
+
+## ✅ 代码质量（lint / fix / typecheck）
+
+```bash
+# 只检查（不自动改文件）
+npm run lint
+
+# 自动修复（显式执行）
+npm run lint:fix
+
+# 类型检查
+npm run typecheck
+```
 
 ## 🎯 核心实践
 
@@ -455,10 +468,15 @@ npm run report
 4. 启动 Playwright Codegen，并加载登录态进行录制：
 
 ```bash
-npx playwright codegen https://stage.huilianyi.com/ \
+# URL 使用当前环境的 baseURL（由 datasource/base-config.json 决定）
+npx playwright codegen <baseURL> \
   --load-storage=storage/loginState/stage.json \
   -o tests/raw-recordings/YYYY-MM-DD_HH-MM-SS.spec.ts
 ```
+
+说明：
+- `npm run record` 会使用当前环境（`PLAYWRIGHT_ENV`）对应的 `datasource/base-config.json` 中的 `baseURL` 作为 codegen 入口
+- 因此示例中的 URL 可以理解为“当前环境的 baseURL”
 
 你在浏览器里完成操作并关闭 Codegen 后，就会在 `tests/raw-recordings/` 下得到一个可回放的用例文件。
 
