@@ -1,7 +1,7 @@
 import { chromium, FullConfig } from "@playwright/test";
 import fs from "fs";
 import { LoginPage } from "../pages/LoginPage";
-import { env, curConfig } from "../../playwright.config";
+import { curConfig } from "../../playwright.config";
 const STORAGE_PATH = curConfig.storageState;
 
 async function globalSetup(config: FullConfig) {
