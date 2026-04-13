@@ -1,6 +1,6 @@
 import { chromium, FullConfig } from "@playwright/test";
 import fs from "fs";
-import { LoginPage } from "../pages/LoginPage"; // 引入刚才写的 POM
+import { LoginPage } from "../pages/LoginPage";
 import { env, curConfig } from "../../playwright.config";
 import accounts from "../../datasource/accounts.json";
 
@@ -8,6 +8,13 @@ const STORAGE_PATH = curConfig.storageState;
 const ACCOUNT = accounts[env as keyof typeof accounts];
 
 async function globalSetup(config: FullConfig) {
+    // 默认禁用：仓库已切到 Project Dependencies（setup 项目生成 storageState）
+    // 回滚/启用：设置 ENABLE_GLOBAL_SETUP=1
+    if (process.env.ENABLE_GLOBAL_SETUP !== '1') {
+        console.log('ℹ️  globalSetup 已默认禁用（ENABLE_GLOBAL_SETUP!=1），请使用 setup 项目生成 storageState');
+        return;
+    }
+
     // 1. 检查状态是否已存在
     if (fs.existsSync(STORAGE_PATH) && fs.statSync(STORAGE_PATH).size > 10) {
         console.log("💡 检测到 loginState.json，跳过登录");

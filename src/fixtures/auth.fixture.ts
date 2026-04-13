@@ -13,17 +13,24 @@ type AuthFixtures = {
 export const test = base.extend<AuthFixtures>({
   // 自动登录的页面
   authenticatedPage: async ({ page }, use) => {
-    const loginPage = new LoginPage(page);
-    await loginPage.goto();
-    
-    // 使用环境变量或默认测试账号
-    const username = process.env.TEST_USERNAME || 'test@example.com';
-    const password = process.env.TEST_PASSWORD || 'password123';
-    
-    await loginPage.login(username, password);
-    await loginPage.expectLoginSuccess();
-    
-    // 将已登录的 page 传递给测试
+    // 默认走 playwright.config.ts 的 Project Dependencies（setup -> storageState）
+    // 如需回退到“每个用例内登录”，设置 ENABLE_LEGACY_LOGIN_FIXTURE=1
+    const legacyLogin = process.env.ENABLE_LEGACY_LOGIN_FIXTURE === '1';
+    if (legacyLogin) {
+      const loginPage = new LoginPage(page);
+      await loginPage.goto();
+
+      // legacy 模式仍然只读环境变量（避免硬编码账号）
+      const username = process.env.TEST_USERNAME;
+      const password = process.env.TEST_PASSWORD;
+      if (!username || !password) {
+        throw new Error('ENABLE_LEGACY_LOGIN_FIXTURE=1 需要同时设置 TEST_USERNAME / TEST_PASSWORD');
+      }
+
+      await loginPage.login(username, password);
+      await loginPage.expectLoginSuccess();
+    }
+
     await use(page);
   },
 
