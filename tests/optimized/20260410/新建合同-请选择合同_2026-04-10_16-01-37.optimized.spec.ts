@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
+import { takeStepScreenshot } from '../../utils/screenshot';
 
 const PAUSE_ENABLED = process.env.ENABLE_PAUSE === '1';
 async function maybePause(page, reason: string) {
@@ -103,6 +104,16 @@ test('test', async ({ page }) => {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const runDir = path.join(screenshotDir, timestamp);
   
+  // 统一存量 optimized 用例截图入口（保留原调用形态）
+  const originalScreenshot = page.screenshot.bind(page);
+  (page as any).screenshot = async (options: any) => {
+    if (options?.path) {
+      await takeStepScreenshot(page, options.path, { fullPage: Boolean(options.fullPage) });
+      return;
+    }
+    return await originalScreenshot(options);
+  };
+
 
   // 检查是否有页面导航操作
   const hasGotoAction = false;

@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
+import { takeStepScreenshot } from '../../utils/screenshot';
 
 const PAUSE_ENABLED = process.env.ENABLE_PAUSE === '1';
 async function maybePause(page, reason: string) {
@@ -104,6 +105,16 @@ test('test', async ({ page }) => {
   const runDir = path.join(screenshotDir, timestamp);
   // 定义 Iframe 引用
   let iframeContent: any = null;
+
+  // 统一存量 optimized 用例截图入口（保留原调用形态）
+  const originalScreenshot = page.screenshot.bind(page);
+  (page as any).screenshot = async (options: any) => {
+    if (options?.path) {
+      await takeStepScreenshot(page, options.path, { fullPage: Boolean(options.fullPage) });
+      return;
+    }
+    return await originalScreenshot(options);
+  };
   
   await step('获取 Iframe 内容', async () => {
     console.log('🔍 查找并获取 Iframe');
