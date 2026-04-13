@@ -92,16 +92,16 @@ my-playwright-ai-project/
 
 ## 🌍 环境切换（dev / uat / stage9084 / stage）
 
-项目通过 `NODE_ENV` 选择环境，未设置时默认 `stage`：
+项目通过 `PLAYWRIGHT_ENV` 选择环境，未设置时默认 `stage`（兼容 `NODE_ENV`）：
 
 - **默认环境**：`stage`
-- **切环境方式**：在命令前加 `NODE_ENV=xxx`
+- **切环境方式**：优先使用 `PLAYWRIGHT_ENV=xxx`（旧的 `NODE_ENV=xxx` 仍可用）
 
 示例：
 
 ```bash
 # 以 uat 环境运行（会读取 datasource/base-config.json 和 datasource/accounts.json 中的 uat 配置）
-NODE_ENV=uat npx playwright test --project=optimized
+PLAYWRIGHT_ENV=uat npx playwright test --project=optimized
 ```
 
 环境配置来源：
@@ -342,9 +342,9 @@ npx playwright test --project=setup
 
 **原因**：不同环境使用不同的 storageState 文件
 
-**解决方案**：确保使用正确的 `NODE_ENV`：
+**解决方案**：确保使用正确的 `PLAYWRIGHT_ENV`（兼容 `NODE_ENV`）：
 ```bash
-NODE_ENV=uat npx playwright test
+PLAYWRIGHT_ENV=uat npx playwright test
 ```
 
 ### 最佳实践

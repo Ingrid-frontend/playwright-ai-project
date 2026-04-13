@@ -83,7 +83,7 @@ npx playwright test tests/optimized --project=optimized
 npm run record
 
 # 为特定环境录制
-NODE_ENV=uat npm run record
+PLAYWRIGHT_ENV=uat npm run record
 
 # 录制文件保存在 tests/raw-recordings/ 目录
 # 文件名格式：YYYY-MM-DD_HH-MM-SS.spec.ts

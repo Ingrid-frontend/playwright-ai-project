@@ -35,13 +35,13 @@ cp datasource/accounts.json.example datasource/accounts.json
 npm test
 
 # 开发环境
-NODE_ENV=dev npm test
+PLAYWRIGHT_ENV=dev npm test
 
 # UAT环境
-NODE_ENV=uat npm test
+PLAYWRIGHT_ENV=uat npm test
 
 # Stage 9084环境
-NODE_ENV=stage9084 npm test
+PLAYWRIGHT_ENV=stage9084 npm test
 ```
 
 ### GitHub Actions
@@ -51,7 +51,7 @@ NODE_ENV=stage9084 npm test
 编辑 `.github/workflows/playwright.yml`（或对应的 `.disabled` 文件）:
 ```yaml
 env:
-  NODE_ENV: stage  # 修改为 dev/uat/stage9084
+  PLAYWRIGHT_ENV: stage  # 修改为 dev/uat/stage9084
 ```
 
 ## 4) 常见排错
@@ -78,7 +78,7 @@ env:
 rm storage/loginState/stage.json
 
 # 重新运行测试，会自动登录
-NODE_ENV=stage npm test
+PLAYWRIGHT_ENV=stage npm test
 ```
 
 ### GitHub部署

@@ -28,7 +28,7 @@ jobs:
     - name: Run Playwright Tests
       run: npx playwright test tests/optimized
       env:
-        NODE_ENV: stage
+        PLAYWRIGHT_ENV: stage
         TEST_USERNAME: ${{ secrets.TEST_USERNAME }}
         TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
         

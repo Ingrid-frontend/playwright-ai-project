@@ -53,7 +53,7 @@ npx playwright test --project=setup
 **解决方案**：
 ```bash
 # 使用正确的环境变量
-NODE_ENV=uat npx playwright test
+PLAYWRIGHT_ENV=uat npx playwright test
 ```
 
 ## 测试执行问题
