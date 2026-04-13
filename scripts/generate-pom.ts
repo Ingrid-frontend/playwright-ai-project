@@ -395,6 +395,13 @@ ${this.generateTestSteps(className)}
 }
 
 function main() {
+  const pomEnabled = process.env.ENABLE_POM === '1';
+  if (!pomEnabled) {
+    console.log('ℹ️  POM 生成功能默认关闭（ENABLE_POM!=1），已跳过。');
+    console.log('如需临时启用：ENABLE_POM=1 npm run generate-pom -- <测试文件路径>');
+    process.exit(0);
+  }
+
   const args = process.argv.slice(2);
   
   if (args.length === 0) {

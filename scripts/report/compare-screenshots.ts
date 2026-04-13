@@ -18,6 +18,8 @@ interface ScreenshotInfo {
   route?: string;
 }
 
+const POM_ENABLED = process.env.ENABLE_POM === '1';
+
 interface StepComparison {
   stepNumber: number;
   stepName?: string;
@@ -311,7 +313,9 @@ function generateStepSection(stepNumber: number, stepName: string | undefined, t
 function getTotalExecutions(comparisons: StepComparison[]): number {
   const timestamps = new Set<string>();
   comparisons.forEach(comp => {
-    comp.pomScreenshots.forEach(s => timestamps.add(s.timestamp));
+    if (POM_ENABLED) {
+      comp.pomScreenshots.forEach(s => timestamps.add(s.timestamp));
+    }
     comp.optimizedScreenshots.forEach(s => timestamps.add(s.timestamp));
   });
   return timestamps.size;

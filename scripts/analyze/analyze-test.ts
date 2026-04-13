@@ -196,6 +196,11 @@ class TestAnalyzer {
   }
 
   private checkPOMUsage(): void {
+    const pomEnabled = process.env.ENABLE_POM === '1';
+    if (!pomEnabled) {
+      return;
+    }
+
     const importsPageObject = this.content.includes('from ') && 
                              this.content.includes('pages/');
 
@@ -389,8 +394,13 @@ class TestAnalyzer {
     
     console.log('\n🔧 优化建议:');
     console.log('  1. 运行 npm run optimize <文件路径> 自动优化脚本');
-    console.log('  2. 运行 npm run generate-pom <文件路径> 生成页面对象模型');
-    console.log('  3. 参考项目中的最佳实践示例');
+    if (process.env.ENABLE_POM === '1') {
+      console.log('  2. 运行 npm run generate-pom <文件路径> 生成页面对象模型');
+      console.log('  3. 参考项目中的最佳实践示例');
+    } else {
+      console.log('  2. （可选）POM 相关建议已默认关闭：如需启用设置 ENABLE_POM=1');
+      console.log('  3. 参考项目中的最佳实践示例');
+    }
   }
 
   saveReport(outputPath?: string): void {
