@@ -75,6 +75,33 @@ if (!fs.existsSync(storagePath) || fs.statSync(storagePath).size <= 10) {
   execSync('npx playwright test src/setup/login.setup.ts', { stdio: 'inherit' });
 }
 
+function sanitizeSegment(input: string): string {
+  return input
+    .trim()
+    .replace(/[^\w\u4e00-\u9fa5-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .substring(0, 24) || 'recording';
+}
+
+function getArgValue(flag: string): string | undefined {
+  const args = process.argv.slice(2);
+  for (let i = 0; i < args.length; i++) {
+    const cur = args[i];
+    if (cur === flag && i + 1 < args.length) return args[i + 1];
+    if (cur.startsWith(flag + '=')) return cur.slice(flag.length + 1);
+  }
+  return undefined;
+}
+
+/**
+ * Raw recordings 命名规范：<feature>-<behavior>_<timestamp>.spec.ts
+ * - feature/behavior 可通过 CLI 传入，便于自动化与后续脚本解析
+ * - timestamp 固定为 YYYY-MM-DD_HH-mm-ss（便于排序与 grep）
+ */
+const feature = sanitizeSegment(getArgValue('--feature') || 'recording');
+const behavior = sanitizeSegment(getArgValue('--behavior') || getArgValue('--action') || 'codegen');
+
 const now = new Date();
 const timestamp = now.getFullYear() + '-' + 
   String(now.getMonth() + 1).padStart(2, '0') + '-' + 
@@ -90,7 +117,7 @@ if (!fs.existsSync(outputDir)) {
   fs.mkdirSync(outputDir, { recursive: true });
 }
 
-const outputFile = path.join(outputDir, `${timestamp}.spec.ts`);
+const outputFile = path.join(outputDir, `${feature}-${behavior}_${timestamp}.spec.ts`);
 
 const command = `npx playwright codegen ${curConfig.baseURL} --load-storage=${curConfig.storageState} -o ${outputFile}`;
 

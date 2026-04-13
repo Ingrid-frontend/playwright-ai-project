@@ -164,10 +164,22 @@ class RawRecordingGenerator {
     return 'selector';
   }
   
-  private generateFileName(code: string, customName?: string): string {
+  /**
+   * Raw recordings 命名规范：<feature>-<behavior>_<timestamp>.spec.ts
+   *
+   * - feature：优先使用 --name（或从代码推断的关键词）
+   * - behavior：优先使用 --description（或从代码推断的关键词）
+   * - timestamp：固定 YYYY-MM-DD_HH-mm-ss
+   *
+   * 解析建议：以最后一个 '_' 分割，右侧即 timestamp
+   */
+  private generateFileName(code: string, options: GenerateOptions = {}): string {
     const timestamp = this.generateTimestamp();
-    const baseName = this.buildBaseName(code, customName);
-    
+
+    const feature = this.shortenSegment(options.name?.trim() || this.buildBaseName(code), 14);
+    const behavior = this.shortenSegment(options.description?.trim() || this.buildBaseName(code, undefined, undefined), 14);
+    const baseName = `${feature}-${behavior}`.replace(/-+/g, '-').replace(/^-|-$/g, '').substring(0, 32) || 'recording-codegen';
+
     const fileName = `${baseName}_${timestamp}.spec.ts`;
     
     const dateStr = timestamp.split('_')[0];
@@ -338,7 +350,7 @@ class RawRecordingGenerator {
     }
     
     const wrappedCode = this.wrapCodeInTest(code);
-    const fileName = this.generateFileName(code, options.name);
+    const fileName = this.generateFileName(code, options);
     
     // 保存原始代码
     this.saveOriginalCode(code, fileName);
