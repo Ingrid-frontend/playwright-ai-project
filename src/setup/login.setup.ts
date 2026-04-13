@@ -49,21 +49,30 @@ setup('🔐 全局登录并持久化状态', async ({ page }) => {
   // 2. 访问登录页
   await page.goto(curConfig.baseURL, { waitUntil: "load" });
 
-  // 3. 执行登录操作
+  // 3. 等待 iframe 加载并获取 iframe 内容
+  const iframe = page.locator('iframe').first();
+  await iframe.waitFor({ state: 'visible', timeout: 10000 });
+  const iframeContent = await iframe.contentFrame();
+  
+  if (!iframeContent) {
+    throw new Error('无法获取 iframe 内容');
+  }
+
+  // 4. 执行登录操作（在 iframe 中）
   // 建议：此处未来可以替换为 LoginPage POM 调用
-  await page.getByRole('tab', { name: '账号登录' }).click();
-  await page.getByRole('textbox', { name: '请输入手机号/邮箱' }).fill(ACCOUNT.username);
-  await page.getByRole('textbox', { name: '密码' }).fill(ACCOUNT.password);
+  await iframeContent.getByRole('tab', { name: '账号登录' }).click();
+  await iframeContent.getByRole('textbox', { name: '请输入手机号/邮箱' }).fill(ACCOUNT.username);
+  await iframeContent.getByRole('textbox', { name: '密码' }).fill(ACCOUNT.password);
   
   // 勾选协议
-  await page.locator('label')
+  await iframeContent.locator('label')
     .filter({ hasText: '我已阅读并同意《用户协议》和《隐私协议》' })
     .click();
 
-  // 4. 点击登录并等待跳转
+  // 5. 点击登录并等待跳转
   // 使用 Promise.all 确保点击动作和网络跳转同时被捕获
   await Promise.all([
-    page.getByRole('button', { name: '登 录' }).click(),
+    iframeContent.getByRole('button', { name: '登 录' }).click(),
     page.waitForNavigation({ waitUntil: "networkidle" })
   ]);
 

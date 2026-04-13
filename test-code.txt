@@ -1,0 +1,12 @@
+import { test, expect } from '@playwright/test';
+
+test('test', async ({ page }) => {
+  await page.goto('https://stage.huilianyi.com/');
+  await page.locator('iframe').contentFrame().locator('div').filter({ hasText: '汇联易管理系统二维码登录账号登录请使用汇联易APP' }).nth(3).click();
+  await page.locator('iframe').contentFrame().getByRole('tab', { name: '账号登录' }).click();
+  await page.locator('iframe').contentFrame().getByRole('textbox', { name: '请输入手机号/邮箱' }).fill('183202411010@e-elitech.com');
+  await page.locator('iframe').contentFrame().getByRole('textbox', { name: '密码' }).fill('jc123456');
+  await page.locator('iframe').contentFrame().getByRole('checkbox', { name: '我已阅读并同意《用户协议》和《隐私协议》，未激活的账号在登录后将自动激活' }).check();
+  await page.locator('iframe').contentFrame().getByRole('button', { name: '登 录' }).click();
+  await page.locator('iframe').contentFrame().getByText('二月', { exact: true }).click();
+});

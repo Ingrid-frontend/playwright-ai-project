@@ -324,7 +324,13 @@ ${lineIndent}}`;
 
   private getScreenshotDir(): string {
     const name = path.basename(this.filePath).replace(".spec.ts", "");
-    return `screenshots/${name}`;
+    // 从文件名中提取日期部分（格式：YYYY-MM-DD）
+    const dateMatch = name.match(/(\d{4}-\d{2}-\d{2})/);
+    let dateCategory = 'default';
+    if (dateMatch) {
+      dateCategory = getDateCategoryForDate(dateMatch[1]);
+    }
+    return `screenshots/${dateCategory}/${name}`;
   }
 
   private extractText(line: string): string | undefined {
@@ -366,9 +372,38 @@ if (!filePath) {
   process.exit(1);
 }
 
-const outputDir = 'tests/optimized';
-if (!fs.existsSync(outputDir)) {
-  fs.mkdirSync(outputDir, { recursive: true });
+function getDateCategoryForDate(dateStr: string): string {
+  const configPath = path.join(process.cwd(), 'config', 'date-categories.json');
+  
+  if (!fs.existsSync(configPath)) {
+    console.warn(`⚠️  配置文件不存在: ${configPath}`);
+    return 'default';
+  }
+  
+  try {
+    const configContent = fs.readFileSync(configPath, 'utf-8');
+    const config = JSON.parse(configContent) as { dateCategories: string[] };
+    
+    // 解析日期字符串，确保使用本地时区
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const fileDate = new Date(year, month - 1, day);
+    
+    for (const category of config.dateCategories) {
+      const catYear = parseInt(category.substring(0, 4));
+      const catMonth = parseInt(category.substring(4, 6)) - 1;
+      const catDay = parseInt(category.substring(6, 8));
+      const categoryDate = new Date(catYear, catMonth, catDay);
+      
+      if (fileDate <= categoryDate) {
+        return category;
+      }
+    }
+    
+    return config.dateCategories[config.dateCategories.length - 1];
+  } catch (error) {
+    console.warn(`⚠️  读取配置文件失败: ${error}`);
+    return 'default';
+  }
 }
 
 async function processFile(filePath: string): Promise<void> {
@@ -376,6 +411,18 @@ async function processFile(filePath: string): Promise<void> {
   const result = optimizer.optimize();
 
   const fileName = path.basename(filePath);
+  // 从文件名中提取日期部分（格式：YYYY-MM-DD）
+  const dateMatch = fileName.match(/(\d{4}-\d{2}-\d{2})/);
+  let dateCategory = 'default';
+  if (dateMatch) {
+    dateCategory = getDateCategoryForDate(dateMatch[1]);
+  }
+  
+  const outputDir = `tests/optimized/${dateCategory}`;
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
+  
   const outputPath = path.join(outputDir, fileName.replace('.spec.ts', '.optimized.spec.ts'));
 
   fs.writeFileSync(outputPath, result, 'utf-8');

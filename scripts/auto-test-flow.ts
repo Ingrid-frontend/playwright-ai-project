@@ -138,31 +138,44 @@ async function main() {
       runCommand('npm run record', '1. 录制测试脚本');
     }
 
-    const rawRecordingFiles = fs.readdirSync(rawRecordingsDir)
-      .filter(f => f.endsWith('.spec.ts'))
+    // 递归查找所有 .spec.ts 文件
+    function findFiles(dir: string, pattern: RegExp): string[] {
+      const files: string[] = [];
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          files.push(...findFiles(fullPath, pattern));
+        } else if (pattern.test(entry.name)) {
+          files.push(fullPath);
+        }
+      }
+      return files;
+    }
+    
+    const rawRecordingFiles = findFiles(rawRecordingsDir, /\.spec\.ts$/)
       .sort((a, b) => b.localeCompare(a));
     
     if (rawRecordingFiles.length === 0) {
       throw new Error('录制文件不存在');
     }
     
-    const rawRecordingPath = path.join(rawRecordingsDir, rawRecordingFiles[0]);
+    const rawRecordingPath = rawRecordingFiles[0];
     console.log(`📁 找到录制文件: ${rawRecordingPath}`);
 
     runCommand(`npm run optimize ${rawRecordingPath}`, '2. 优化测试脚本');
 
-    const optimizedFiles = fs.readdirSync(optimizedDir)
-      .filter(f => f.endsWith('.optimized.spec.ts'))
+    const optimizedFiles = findFiles(optimizedDir, /\.optimized\.spec\.ts$/)
       .sort((a, b) => b.localeCompare(a));
     
     if (optimizedFiles.length === 0) {
       throw new Error('优化文件不存在');
     }
     
-    const optimizedTestPath = path.join(optimizedDir, optimizedFiles[0]);
+    const optimizedTestPath = optimizedFiles[0];
     console.log(`📁 找到优化文件: ${optimizedTestPath}`);
 
-    runCommand(`npx playwright test ${optimizedTestPath} --project=chromium`, '3. 执行优化后的测试', true);
+    runCommand(`npx playwright test ${optimizedTestPath} --project=optimized`, '3. 执行优化后的测试', true);
 
     runCommand('npm run compare-screenshots', '4. 生成截图对比报告');
 

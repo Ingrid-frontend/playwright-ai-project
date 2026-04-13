@@ -86,6 +86,75 @@ class RawRecordingGenerator {
       .replace(/^-|-$/g, '')
       .substring(0, 20);
   }
+
+  private sanitizePathSegment(name: string): string {
+    return name
+      .replace(/[^\w\u4e00-\u9fa5-]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .toLowerCase()
+      .substring(0, 18) || 'test';
+  }
+
+  private shortenSegment(name: string, maxLength = 8): string {
+    const cleaned = this.sanitizePathSegment(name);
+    return cleaned.length > maxLength ? cleaned.substring(0, maxLength) : cleaned;
+  }
+
+  private extractActionKeywords(code: string): string[] {
+    const keywords: string[] = [];
+    const lines = code.split('\n').map(line => line.trim()).filter(Boolean);
+
+    for (const line of lines) {
+      const gotoMatch = line.match(/page\.goto\(['"]([^'"]+)['"]\)/);
+      if (gotoMatch) {
+        // 域名保留更直观的前缀，不要裁得过短导致 example 变成 exampl
+        keywords.push(this.shortenSegment(this.extractDomain(gotoMatch[1]), 12));
+        continue;
+      }
+
+      const textMatch = line.match(/getBy(?:Role|Text|Label|Placeholder|AltText)\([^)]*name\s*:\s*['"]([^'"]+)['"]/i)
+        || line.match(/getByText\(['"]([^'"]+)['"]/i)
+        || line.match(/fill\(['"]([^'"]+)['"]/i)
+        || line.match(/type\(['"]([^'"]+)['"]/i);
+
+      if (textMatch) {
+        keywords.push(this.shortenSegment(textMatch[1], 10));
+      }
+
+      if (keywords.length >= 2) break;
+    }
+
+    return keywords.filter(Boolean);
+  }
+
+  private buildBaseName(code: string, customName?: string, description?: string): string {
+    const parts: string[] = [];
+
+    if (customName?.trim()) {
+      parts.push(this.shortenSegment(customName.trim(), 10));
+    }
+
+    if (description?.trim()) {
+      parts.push(this.shortenSegment(description.trim(), 10));
+    }
+
+    const actionKeywords = this.extractActionKeywords(code);
+    parts.push(...actionKeywords.map(keyword => this.shortenSegment(keyword, 10)));
+
+    if (parts.length === 0) {
+      return 'test';
+    }
+
+    const deduped: string[] = [];
+    for (const part of parts) {
+      if (!deduped.includes(part)) {
+        deduped.push(part);
+      }
+    }
+
+    return deduped.join('-').substring(0, 28);
+  }
   
   private extractSelectorType(selector: string): string {
     if (selector.startsWith('.')) return 'class';
@@ -97,9 +166,7 @@ class RawRecordingGenerator {
   
   private generateFileName(code: string, customName?: string): string {
     const timestamp = this.generateTimestamp();
-    const contentInfo = this.extractContentInfo(code);
-    
-    let baseName = customName || contentInfo;
+    const baseName = this.buildBaseName(code, customName);
     
     const fileName = `${baseName}_${timestamp}.spec.ts`;
     
@@ -114,6 +181,37 @@ class RawRecordingGenerator {
     return path.join(categoryDir, fileName);
   }
   
+  private saveOriginalCode(code: string, fileName: string): void {
+    // 创建原始代码保存目录
+    const originalDir = path.join(this.outputDir, 'original');
+    if (!fs.existsSync(originalDir)) {
+      fs.mkdirSync(originalDir, { recursive: true });
+    }
+    
+    // 提取日期分类
+    const baseNameWithTimestamp = path.basename(fileName, '.spec.ts');
+    // 从文件名中提取日期部分（格式：YYYY-MM-DD）
+    const dateMatch = baseNameWithTimestamp.match(/(\d{4}-\d{2}-\d{2})/);
+    if (!dateMatch) {
+      console.warn(`⚠️  无法从文件名提取日期: ${baseNameWithTimestamp}`);
+      return;
+    }
+    const dateStr = dateMatch[1];
+    const dateCategory = this.getDateCategoryForDate(dateStr);
+    const categoryDir = path.join(originalDir, dateCategory);
+    
+    if (!fs.existsSync(categoryDir)) {
+      fs.mkdirSync(categoryDir, { recursive: true });
+    }
+    
+    // 生成原始代码文件名：保持与录制文件相同的基础命名，仅放入 original 目录
+    const originalFileName = path.join(categoryDir, `${baseNameWithTimestamp}.spec.ts`);
+    
+    // 保存原始代码
+    fs.writeFileSync(originalFileName, code, 'utf-8');
+    console.log(`✅ 已保存原始代码: ${originalFileName}`);
+  }
+  
   private getDateCategoryForDate(dateStr: string): string {
     const configPath = path.join(process.cwd(), 'config', 'date-categories.json');
     
@@ -126,15 +224,17 @@ class RawRecordingGenerator {
       const configContent = fs.readFileSync(configPath, 'utf-8');
       const config = JSON.parse(configContent) as { dateCategories: string[] };
       
-      const fileDate = new Date(dateStr);
+      // 解析日期字符串，确保使用本地时区
+      const [year, month, day] = dateStr.split('-').map(Number);
+      const fileDate = new Date(year, month - 1, day);
       
       for (const category of config.dateCategories) {
-        const year = parseInt(category.substring(0, 4));
-        const month = parseInt(category.substring(4, 6)) - 1;
-        const day = parseInt(category.substring(6, 8));
-        const categoryDate = new Date(year, month, day);
+        const catYear = parseInt(category.substring(0, 4));
+        const catMonth = parseInt(category.substring(4, 6)) - 1;
+        const catDay = parseInt(category.substring(6, 8));
+        const categoryDate = new Date(catYear, catMonth, catDay);
         
-        if (fileDate < categoryDate) {
+        if (fileDate <= categoryDate) {
           return category;
         }
       }
@@ -147,20 +247,28 @@ class RawRecordingGenerator {
   }
   
   private processIframeCode(code: string): string {
-    // 直接忽略包含 locator('iframe').contentFrame() 的代码行
-    // 因为已经有统一的登录逻辑，不需要生成登录相关的代码
-    
+    // 将 page.locator('iframe').contentFrame() 统一转换为 page.frameLocator('iframe')
+    // 原来的实现直接删除这些行，会导致所有 iframe 内操作丢失，只剩下 goto。
     const lines = code.split('\n');
-    const filteredLines = lines.filter(line => {
-      // 检查是否包含 locator('iframe').contentFrame()
-      const hasIframeContentFrame = line.includes("locator('iframe').contentFrame()") || 
-                                   line.includes('locator("iframe").contentFrame()');
-      
-      // 如果包含，则忽略这一行
-      return !hasIframeContentFrame;
+    const processedLines = lines.map(line => {
+      let processedLine = line;
+
+      // 先处理显式的 iframe contentFrame 链
+      processedLine = processedLine.replace(
+        /page\.locator\((['"])iframe\1\)\.contentFrame\(\)\./g,
+        "page.frameLocator('iframe')."
+      );
+
+      // 兼容 locate 到 iframe 后再 contentFrame 的双引号写法
+      processedLine = processedLine.replace(
+        /page\.locator\((['"])iframe\1\)\.contentFrame\(\)/g,
+        "page.frameLocator('iframe')"
+      );
+
+      return processedLine;
     });
-    
-    return filteredLines.join('\n');
+
+    return processedLines.join('\n');
   }
   
   private wrapCodeInTest(code: string): string {
@@ -231,6 +339,9 @@ class RawRecordingGenerator {
     
     const wrappedCode = this.wrapCodeInTest(code);
     const fileName = this.generateFileName(code, options.name);
+    
+    // 保存原始代码
+    this.saveOriginalCode(code, fileName);
     
     fs.writeFileSync(fileName, wrappedCode, 'utf-8');
     

@@ -4,11 +4,57 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { env, curConfig } from '../playwright.config';
 
+interface DateCategoryConfig {
+  dateCategories: string[];
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const dir = 'tests/raw-recordings';
 if (!fs.existsSync(dir)) {
   fs.mkdirSync(dir, { recursive: true });
+}
+
+function loadDateCategoryConfig(): DateCategoryConfig | null {
+  const configPath = path.join(process.cwd(), 'config', 'date-categories.json');
+
+  if (!fs.existsSync(configPath)) {
+    console.warn(`⚠️  日期分类配置不存在，将使用默认目录: ${configPath}`);
+    return null;
+  }
+
+  try {
+    const content = fs.readFileSync(configPath, 'utf-8');
+    return JSON.parse(content) as DateCategoryConfig;
+  } catch (error) {
+    console.warn(`⚠️  读取日期分类配置失败，将使用默认目录: ${error}`);
+    return null;
+  }
+}
+
+function parseCategoryDate(dateStr: string): Date {
+  const year = parseInt(dateStr.substring(0, 4), 10);
+  const month = parseInt(dateStr.substring(4, 6), 10) - 1;
+  const day = parseInt(dateStr.substring(6, 8), 10);
+  return new Date(year, month, day);
+}
+
+function getDateCategoryForDate(dateStr: string): string {
+  const config = loadDateCategoryConfig();
+  if (!config?.dateCategories?.length) {
+    return 'default';
+  }
+
+  const fileDate = parseCategoryDate(dateStr);
+
+  for (const category of config.dateCategories) {
+    const categoryDate = parseCategoryDate(category);
+    if (fileDate <= categoryDate) {
+      return category;
+    }
+  }
+
+  return config.dateCategories[config.dateCategories.length - 1];
 }
 
 // CI/CD 环境中跳过录制
@@ -36,7 +82,15 @@ const timestamp = now.getFullYear() + '-' +
   String(now.getHours()).padStart(2, '0') + '-' + 
   String(now.getMinutes()).padStart(2, '0') + '-' + 
   String(now.getSeconds()).padStart(2, '0');
-const outputFile = path.join(dir, `${timestamp}.spec.ts`);
+const dateStr = timestamp.split('_')[0].replaceAll('-', '');
+const dateCategory = getDateCategoryForDate(dateStr);
+const outputDir = path.join(dir, dateCategory);
+
+if (!fs.existsSync(outputDir)) {
+  fs.mkdirSync(outputDir, { recursive: true });
+}
+
+const outputFile = path.join(outputDir, `${timestamp}.spec.ts`);
 
 const command = `npx playwright codegen ${curConfig.baseURL} --load-storage=${curConfig.storageState} -o ${outputFile}`;
 

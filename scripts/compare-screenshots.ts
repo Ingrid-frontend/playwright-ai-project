@@ -149,72 +149,76 @@ function getAllScreenshots(dir: string, type: 'pom' | 'optimized', outputPath: s
   const outputDir = path.dirname(outputPath);
   const relativeDir = path.relative(outputDir, dir);
   
-  const runDirs = fs.readdirSync(dir).filter(f => fs.statSync(path.join(dir, f)).isDirectory());
-  console.log(`📁 扫描目录: ${dir}, 找到 ${runDirs.length} 个运行目录`);
-  
-  runDirs.forEach(runDir => {
-    const runPath = path.join(dir, runDir);
-    const relativeRunPath = path.join(relativeDir, runDir);
-    const files = fs.readdirSync(runPath).filter(f => f.endsWith('.png'));
-    console.log(`  📂 ${runDir}: ${files.length} 个 PNG 文件`);
+  function scanDirectory(currentDir: string, currentRelativePath: string) {
+    const entries = fs.readdirSync(currentDir, { withFileTypes: true });
     
-    files.forEach(file => {
-      const match = file.match(/step-(\d+)-(.+)\.png/);
-      if (match) {
-        const stepNumber = parseInt(match[1]);
-        const stepName = match[2];
-        
-        let route = '';
-        const routeMatch = stepName.match(/^(.+)__(.+)$/);
-        if (routeMatch) {
-          route = routeMatch[2];
-        }
-        
-        if (!result.has(stepNumber)) {
-          result.set(stepNumber, []);
-        }
-        
-        const browserMatch = runDir.match(/-(chrome|firefox|safari|edge|webkit|chromium)-/);
-        let browser = browserMatch ? browserMatch[1] : 'unknown';
-        
-        if (browser === 'chromium') {
-          browser = 'chrome';
-        }
-        
-        const dateMatch = runDir.match(/^(\d{4}-\d{2}-\d{2})_/);
-        const date = dateMatch ? dateMatch[1] : runDir;
-        
-        const timeMatch = runDir.match(/(\d{2})-(\d{2})-(\d{2})-/);
-        let displayTimestamp = runDir;
-        if (timeMatch) {
-          const hours = parseInt(timeMatch[1]);
-          const minutes = parseInt(timeMatch[2]);
-          const seconds = parseInt(timeMatch[3]);
+    entries.forEach(entry => {
+      const fullPath = path.join(currentDir, entry.name);
+      const relativePath = path.join(currentRelativePath, entry.name);
+      
+      if (entry.isDirectory()) {
+        scanDirectory(fullPath, relativePath);
+      } else if (entry.isFile() && entry.name.endsWith('.png')) {
+        const match = entry.name.match(/step-(\d+)-(.+)\.png/);
+        if (match) {
+          const stepNumber = parseInt(match[1]);
+          const stepName = match[2];
           
-          const dateObj = new Date();
-          dateObj.setHours(hours, minutes, seconds, 0);
+          let route = '';
+          const routeMatch = stepName.match(/^(.+)__(.+)$/);
+          if (routeMatch) {
+            route = routeMatch[2];
+          }
           
-          const adjustedDate = new Date(dateObj.getTime() + 8 * 60 * 60 * 1000);
+          if (!result.has(stepNumber)) {
+            result.set(stepNumber, []);
+          }
           
-          displayTimestamp = `${String(adjustedDate.getHours()).padStart(2, '0')}:${String(adjustedDate.getMinutes()).padStart(2, '0')}:${String(adjustedDate.getSeconds()).padStart(2, '0')}`;
+          const browserMatch = currentDir.match(/-(chrome|firefox|safari|edge|webkit|chromium)-/);
+          let browser = browserMatch ? browserMatch[1] : 'unknown';
+          
+          if (browser === 'chromium') {
+            browser = 'chrome';
+          }
+          
+          const dateMatch = currentDir.match(/^(\d{4}-\d{2}-\d{2})_/);
+          const date = dateMatch ? dateMatch[1] : path.basename(currentDir);
+          
+          const timeMatch = currentDir.match(/(\d{2})-(\d{2})-(\d{2})-/);
+          let displayTimestamp = path.basename(currentDir);
+          if (timeMatch) {
+            const hours = parseInt(timeMatch[1]);
+            const minutes = parseInt(timeMatch[2]);
+            const seconds = parseInt(timeMatch[3]);
+            
+            const dateObj = new Date();
+            dateObj.setHours(hours, minutes, seconds, 0);
+            
+            const adjustedDate = new Date(dateObj.getTime() + 8 * 60 * 60 * 1000);
+            
+            displayTimestamp = `${String(adjustedDate.getHours()).padStart(2, '0')}:${String(adjustedDate.getMinutes()).padStart(2, '0')}:${String(adjustedDate.getSeconds()).padStart(2, '0')}`;
+          }
+          
+          result.get(stepNumber)!.push({
+            path: fullPath,
+            relativePath: path.join('screenshots', relativePath),
+            timestamp: path.basename(currentDir),
+            date,
+            displayTimestamp,
+            type,
+            stepName: routeMatch ? routeMatch[1] : stepName,
+            browser,
+            route
+          } as ScreenshotInfo);
+        } else {
+          console.log(`    ⚠️  文件名不匹配: ${entry.name}`);
         }
-        
-        result.get(stepNumber)!.push({
-          path: path.join(runPath, file),
-          relativePath: path.join('screenshots', relativeRunPath, file),
-          timestamp: runDir,
-          date,
-          displayTimestamp,
-          type,
-          stepName: routeMatch ? routeMatch[1] : stepName,
-          browser,
-          route
-        } as ScreenshotInfo);
-      } else {
-        console.log(`    ⚠️  文件名不匹配: ${file}`);
       }
     });
-  });
+  }
+  
+  console.log(`📁 开始递归扫描目录: ${dir}`);
+  scanDirectory(dir, relativeDir);
   
   console.log(`✅ ${type} 目录扫描完成: ${result.size} 个步骤`);
   return result;

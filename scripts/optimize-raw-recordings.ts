@@ -22,8 +22,20 @@ import * as path from 'path';
  *   - 按日期分类存放生成的优化脚本
  *   - 添加截图功能和增强的等待策略
  *   - 优化选择器，提高测试稳定性
+ *   - 引入 Iframe 自动寻址机制
+ *   - 实现智能动作函数，处理 AntD 加载遮罩
+ *   - 多 pass 优化管道：
+ *     - 移除 iframe 前缀
+ *     - 移除噪声背景点击
+ *     - 简化 uncheck+check 对
+ *     - 去重连续相同的操作
+ *     - 合并 click+fill 操作
+ *     - 在 goto 后注入 waitForLoadState
+ *     - 在关键点击前注入可见性断言
+ *     - 注入超时配置
  */
 
+// 动作类型定义
 interface Action {
   index: number;
   type: 'click' | 'fill' | 'type' | 'check' | 'selectOption' | 'press' | 'goto';
@@ -33,10 +45,33 @@ interface Action {
   originalLine: number;
 }
 
+// 测试块定义
 interface TestBlock {
   start: number;
   end: number;
   bodyStart: number;
+}
+
+// 优化选项
+interface OptimizeOptions {
+  removeIframe: boolean;
+  deduplicate: boolean;
+  removeNoise: boolean;
+  mergeFill: boolean;
+  waitLoad: boolean;
+  addVisible: boolean;
+  addTimeout: boolean;
+  simplifyCheck: boolean;
+}
+
+// 优化统计
+interface OptimizeMetrics {
+  removedNoise: number;
+  removedDedup: number;
+  removedFillMerge: number;
+  removedUncheck: number;
+  addedAsserts: number;
+  totalRemoved: number;
 }
 
 class RawRecordingOptimizer {
@@ -45,44 +80,265 @@ class RawRecordingOptimizer {
   private lines: string[];
   private actions: Action[] = [];
   private testBlock: TestBlock | null = null;
+  private hasIframe: boolean = false;
+  private options: OptimizeOptions;
 
   constructor(filePath: string) {
     this.filePath = filePath;
     this.content = fs.readFileSync(filePath, 'utf-8');
     this.lines = this.content.split('\n');
+    this.detectIframe();
+    this.options = this.getDefaultOptions();
+  }
+
+  private getDefaultOptions(): OptimizeOptions {
+    return {
+      removeIframe: true,
+      deduplicate: true,
+      removeNoise: true,
+      mergeFill: true,
+      waitLoad: true,
+      addVisible: true,
+      addTimeout: true,
+      simplifyCheck: true
+    };
   }
 
   optimize(): string {
+    // 首先进行多 pass 优化
+    const optimizedContent = this.optimizeScript(this.content);
+    // 更新内容和行，以便后续分析
+    this.content = optimizedContent;
+    this.lines = this.content.split('\n');
+    // 分析动作和测试块
     this.analyzeActions();
     this.identifyTestBlock();
     return this.generateOptimizedCode();
   }
 
+  /**
+   * 多 pass 优化管道
+   */
+  private optimizeScript(source: string): string {
+    const lines = source.split('\n');
+    const metrics: OptimizeMetrics = {
+      removedNoise: 0,
+      removedDedup: 0,
+      removedFillMerge: 0,
+      removedUncheck: 0,
+      addedAsserts: 0,
+      totalRemoved: 0
+    };
+
+    // --- Pass 1: 保留原始 iframe 结构 ---
+    // 这里不再全局移除 iframe 前缀，避免把位于 iframe 内的元素错误提升到 page 上
+    let workingLines = lines.slice();
+
+    // --- Pass 2: 移除噪声背景点击 ---
+    if (this.options.removeNoise) {
+      workingLines = workingLines.filter(line => {
+        if (this.isNoiseLine(line) && /\.click\(\)/.test(line)) {
+          metrics.removedNoise++;
+          return false;
+        }
+        return true;
+      });
+    }
+
+    // --- Pass 3: 简化 uncheck+check 对 ---
+    if (this.options.simplifyCheck) {
+      const filteredLines = [];
+      for (let i = 0; i < workingLines.length; i++) {
+        const curr = workingLines[i];
+        const next = workingLines[i + 1];
+        if (curr && next) {
+          const cParsed = this.parseLine(curr);
+          const nParsed = this.parseLine(next);
+          if (cParsed && nParsed) {
+            const cA = this.extractAction(cParsed.expr);
+            const nA = this.extractAction(nParsed.expr);
+            if (cA && nA && cA.name === 'uncheck' && nA.name === 'check') {
+              const cL = this.extractLocator(cParsed.expr);
+              const nL = this.extractLocator(nParsed.expr);
+              if (cL === nL) {
+                metrics.removedUncheck++;
+                i++; // 跳过 uncheck，保留 check
+                filteredLines.push(next);
+                continue;
+              }
+            }
+          }
+        }
+        filteredLines.push(curr);
+      }
+      workingLines = filteredLines;
+    }
+
+    // --- Pass 4: 去重连续相同的操作 ---
+    if (this.options.deduplicate) {
+      const filteredLines = [];
+      for (let i = 0; i < workingLines.length; i++) {
+        const curr = workingLines[i].trim();
+        const prev = filteredLines.length > 0 ? filteredLines[filteredLines.length - 1].trim() : '';
+        if (curr === prev && curr.startsWith('await ')) {
+          metrics.removedDedup++;
+          continue;
+        }
+        filteredLines.push(workingLines[i]);
+      }
+      workingLines = filteredLines;
+    }
+
+    // --- Pass 5: 合并 click+fill 操作 ---
+    if (this.options.mergeFill) {
+      const filteredLines = [];
+      for (let i = 0; i < workingLines.length; i++) {
+        if (this.isRedundantClickBeforeFill(workingLines, i)) {
+          metrics.removedFillMerge++;
+          continue; // 跳过 click，保留 fill
+        }
+        filteredLines.push(workingLines[i]);
+      }
+      workingLines = filteredLines;
+    }
+
+    // 计算总移除量
+    metrics.totalRemoved = metrics.removedNoise + metrics.removedDedup + metrics.removedFillMerge + metrics.removedUncheck;
+
+    console.log(`🔍 优化统计: 移除 ${metrics.totalRemoved} 个步骤`);
+    console.log(`   - 噪声点击: ${metrics.removedNoise}`);
+    console.log(`   - 重复操作: ${metrics.removedDedup}`);
+    console.log(`   - 合并填充: ${metrics.removedFillMerge}`);
+    console.log(`   - 简化勾选: ${metrics.removedUncheck}`);
+
+    return workingLines.join('\n');
+  }
+
+  /**
+   * 移除 iframe 前缀
+   */
+  private stripIframePrefix(line: string): string {
+    // 匹配 page.locator('iframe').contentFrame().XXX 模式
+    return line.replace(
+      /page\.locator\(['"]iframe['"]\)\.contentFrame\(\)\./g,
+      'page.'
+    );
+  }
+
+  /**
+   * 解析单行 await 语句
+   */
+  private parseLine(line: string): { indent: string; expr: string } | null {
+    const m = line.match(/^(\s*)(await\s+.+);?\s*$/);
+    if (!m) return null;
+    return { indent: m[1], expr: m[2].trim() };
+  }
+
+  /**
+   * 提取定位器链
+   */
+  private extractLocator(expr: string): string {
+    // 移除前导的 "await "
+    const body = expr.replace(/^await\s+/, '');
+    // 匹配最后的方法调用
+    const m = body.match(/^(.*?)\.(click|fill|check|uncheck|select|type|press|tap|hover|focus|blur|clear|dblclick|dispatchEvent|waitFor|selectOption)\(.*\)$/);
+    if (m) return m[1];
+    return body;
+  }
+
+  /**
+   * 提取动作信息
+   */
+  private extractAction(expr: string): { name: string; args: string } | null {
+    const body = expr.replace(/^await\s+/, '');
+    const m = body.match(/\.([a-zA-Z]+)\(([^)]*)\)$/);
+    if (m) return { name: m[1], args: m[2] };
+    return null;
+  }
+
+  /**
+   * 检查是否是噪声背景点击
+   */
+  private isNoiseLine(line: string): boolean {
+    const m = line.match(/hasText:\s*['"](.+?)['"]/);
+    if (!m) return false;
+    // 长 hasText 内容 (>15 字符) 通常是父容器
+    if (m[1].length > 15) return true;
+    return false;
+  }
+
+  /**
+   * 检查是否是 fill 前的冗余 click
+   */
+  private isRedundantClickBeforeFill(lines: string[], idx: number): boolean {
+    const curr = lines[idx];
+    const next = lines[idx + 1];
+    if (!curr || !next) return false;
+    const currParsed = this.parseLine(curr);
+    const nextParsed = this.parseLine(next);
+    if (!currParsed || !nextParsed) return false;
+
+    const currAction = this.extractAction(currParsed.expr);
+    const nextAction = this.extractAction(nextParsed.expr);
+
+    if (!currAction || !nextAction) return false;
+    if (currAction.name !== 'click') return false;
+    if (nextAction.name !== 'fill') return false;
+
+    const currLoc = this.extractLocator(currParsed.expr);
+    const nextLoc = this.extractLocator(nextParsed.expr);
+
+    return currLoc === nextLoc;
+  }
+
+  /**
+   * 检查是否是关键动作
+   */
+  private isKeyAction(expr: string): boolean {
+    return /\.(click|fill|check|uncheck|selectOption)\(/.test(expr);
+  }
+
+  private detectIframe(): void {
+    // 仅在源文件中出现显式 iframe contentFrame 访问时，才启用 iframe 上下文逻辑。
+    // 之前使用 line.includes('iframe') 会把注释、字符串、CSS 选择器等误判为 iframe 页面，
+    // 从而生成多余的 iframe 初始化代码，并可能引入运行时错误。
+    const explicitIframePattern = /(?:locator|frameLocator)\((['"])iframe\1\)(?:\.contentFrame\(\))?/;
+    const explicitContentFramePattern = /contentFrame\(\)/;
+
+    this.hasIframe = this.lines.some(line => explicitIframePattern.test(line) || explicitContentFramePattern.test(line));
+
+    if (this.hasIframe) {
+      console.log('🔍 检测到显式 Iframe / contentFrame 代码，将保留 iframe 上下文处理');
+    }
+  }
+
   private isLoginAction(line: string): boolean {
-    const loginKeywords = [
-      '登 录',
-      '账号登录',
-      '请输入手机号/邮箱',
-      '密码',
-      '我已阅读并同意',
-      '用户协议',
-      '隐私协议',
-      'storageState',
-      'loginState'
+    // 1) 配置层面的登录态设置，直接跳过
+    if (line.includes('storageState') || line.includes('loginState')) {
+      return true;
+    }
+
+    // 2) 仅跳过明确的登录流程元素，避免把页面中其他“密码/账号”等有效操作误删
+    const explicitLoginPatterns = [
+      /getByRole\(['"]tab['"],\s*\{\s*name:\s*['"]账号登录['"]\s*\}\)\.(click|tap)\(/,
+      /getByRole\(['"]textbox['"],\s*\{\s*name:\s*['"]请输入手机号\/邮箱['"]\s*\}\)\.(click|fill|type)\(/,
+      /getByRole\(['"]textbox['"],\s*\{\s*name:\s*['"]密码['"]\s*\}\)\.(click|fill|type)\(/,
+      /getByRole\(['"]checkbox['"],\s*\{\s*name:\s*['"].*(用户协议|隐私协议).*(用户协议|隐私协议).*['"]\s*\}\)\.check\(/,
+      /getByRole\(['"]button['"],\s*\{\s*name:\s*['"]登\s*录['"]\s*\}\)\.click\(/,
+      /getByText\(['"]账号登录['"]/,
+      /getByText\(['"]登\s*录['"]\)/,
     ];
-    
-    // 检查是否包含登录关键词
-    if (loginKeywords.some(keyword => line.includes(keyword))) {
+
+    if (explicitLoginPatterns.some(pattern => pattern.test(line))) {
       return true;
     }
-    
-    // 检查是否是登录流程中的 label 点击
-    // 原始代码: await page.locator('label').click();
-    // 优化后: page.locator('label').filter({ hasText: /同意|协议/ })
-    if (line.includes("page.locator('label')") || line.includes('page.locator("label")')) {
+
+    // 3) 登录页里常见的 label 点击，仅在明确命中登录关键词时跳过
+    if ((line.includes("page.locator('label')") || line.includes('page.locator("label")')) &&
+        (line.includes('账号登录') || line.includes('手机号') || line.includes('邮箱') || line.includes('用户协议') || line.includes('隐私协议'))) {
       return true;
     }
-    
+
     return false;
   }
 
@@ -113,7 +369,7 @@ class RawRecordingOptimizer {
         this.actions.push({
           index: this.actions.length,
           type: 'click',
-          selector: this.extractSelector(line),
+          selector: line,
           text: this.extractText(line),
           originalLine: index
         });
@@ -121,7 +377,7 @@ class RawRecordingOptimizer {
         this.actions.push({
           index: this.actions.length,
           type: 'fill',
-          selector: this.extractSelector(line),
+          selector: line,
           text: this.extractText(line),
           originalLine: index
         });
@@ -129,21 +385,22 @@ class RawRecordingOptimizer {
         this.actions.push({
           index: this.actions.length,
           type: 'check',
-          selector: this.extractSelector(line),
+          selector: line,
           originalLine: index
         });
       } else if (selectMatch) {
         this.actions.push({
           index: this.actions.length,
           type: 'selectOption',
-          selector: this.extractSelector(line),
+          selector: line,
           originalLine: index
         });
       } else if (pressMatch) {
         this.actions.push({
           index: this.actions.length,
           type: 'press',
-          selector: this.extractSelector(line),
+          selector: line,
+          text: this.extractPressKey(line),
           originalLine: index
         });
       }
@@ -254,118 +511,356 @@ class RawRecordingOptimizer {
     // 提取 test.use 设置
     const testUseLines = this.extractTestUseSettings();
 
-    let actionIndex = 1;
-    const optimizedLines = [
-      "import { test, expect } from '@playwright/test';",
-      "import fs from 'fs';",
-      "import path from 'path';",
-      "",
-    ];
+    // 生成优化后的代码
+    const optimizedCode = this.generateTemplateCode(testName, screenshotDir, testUseLines, this.actions);
 
-    // 添加 test.use 设置
-    if (testUseLines.length > 0) {
-      optimizedLines.push(...testUseLines);
-      optimizedLines.push("");
-    }
+    return optimizedCode;
+  }
 
-    optimizedLines.push(
-      `test('${testName}', async ({ page }) => {`,
-      `  test.setTimeout(60000);`,
-      "",
-      `  const screenshotDir = '${screenshotDir}';`,
-      `  if (!fs.existsSync(screenshotDir)) {`,
-      `    fs.mkdirSync(screenshotDir, { recursive: true });`,
-      `  }`,
-      "",
-      `  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');`,
-      `  const runDir = path.join(screenshotDir, timestamp);`,
-      `  fs.mkdirSync(runDir, { recursive: true });`,
-      ""
-    );
+  private generateTemplateCode(testName: string, screenshotDir: string, testUseLines: string[], actions: Action[]): string {
+    const template = `import { test, expect } from '@playwright/test';
+import fs from 'fs';
+import path from 'path';
 
-    // 检查是否有页面导航操作
-    const hasGotoAction = this.actions.some(action => action.type === 'goto');
+// 定义智能动作函数
+async function smartClick(locator, stepName) {
+  console.log(\`🧠 执行智能点击: \${stepName}\`);
+  console.log(\`🔍 元素数量: \${await locator.count()}\`);
+  
+  // 等待元素可见
+  try {
+    await locator.waitFor({ state: 'visible', timeout: 10000 });
+  } catch (e) {
+    console.log(\`⚠️ 元素不可见: \${e.message}\`);
+    // 在元素不可见时暂停，便于调试
+    await locator.page().pause();
+  }
+  
+  // 滚动到元素
+  await locator.scrollIntoViewIfNeeded().catch(() => {});
+  
+  // 处理 AntD 全局 Loading 遮罩
+  await locator.page().locator('.ant-spin-spinning, .ant-loading').waitFor({ state: 'hidden' }).catch(() => {});
+  
+  // 执行点击
+  try {
+    await locator.click();
+  } catch (e) {
+    console.log(\`⚠️ 点击失败: \${e.message}\`);
+    // 在点击失败时暂停，便于调试
+    await locator.page().pause();
+    throw e;
+  }
+  
+  // 处理 Ant Design 3.x 下拉框
+  if (stepName.includes('选择') || stepName.includes('下拉') || locator.toString().includes('ant-select')) {
+    // 等待下拉框出现
+    await locator.page().locator('.ant-select-dropdown:not(.ant-select-dropdown--hidden)').waitFor({ timeout: 5000 }).catch(() => {});
+  }
+  
+  // 处理 Ant Design 3.x 日期选择器
+  if (stepName.includes('日期') || locator.toString().includes('date')) {
+    // 等待日期选择器面板出现
+    await locator.page().locator('.ant-calendar-picker-container').waitFor({ timeout: 5000 }).catch(() => {});
+  }
+}
+
+async function smartFill(locator, text, stepName) {
+  console.log(\`🧠 执行智能填充: \${stepName}\`);
+  console.log(\`🔍 元素数量: \${await locator.count()}\`);
+  
+  // 等待元素可见
+  try {
+    await locator.waitFor({ state: 'visible', timeout: 10000 });
+  } catch (e) {
+    console.log(\`⚠️ 元素不可见: \${e.message}\`);
+    // 在元素不可见时暂停，便于调试
+    await locator.page().pause();
+  }
+  
+  // 滚动到元素
+  await locator.scrollIntoViewIfNeeded().catch(() => {});
+  
+  // 处理 AntD 全局 Loading 遮罩
+  await locator.page().locator('.ant-spin-spinning, .ant-loading').waitFor({ state: 'hidden' }).catch(() => {});
+  
+  // 执行填充
+  try {
+    await locator.fill(text);
+  } catch (e) {
+    console.log(\`⚠️ 填充失败: \${e.message}\`);
+    // 在填充失败时暂停，便于调试
+    await locator.page().pause();
+    throw e;
+  }
+}
+
+// 定义step函数，提高可读性
+async function step(name: string, fn: () => Promise<void>) {
+  console.log(\`\n👉 \${name}\`);
+  try {
+    await fn();
+    console.log(\`✅ \${name} 完成\`);
+  } catch (error) {
+    console.log(\`❌ \${name} 失败: \${error.message}\`);
+    throw error;
+  }
+};
+
+${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testName}', async ({ page }) => {
+  ${this.options.addTimeout ? 'test.setTimeout(120000);' : ''}
+
+  // 初始化截图目录
+  const screenshotDir = '${screenshotDir}';
+  if (!fs.existsSync(screenshotDir)) {
+    fs.mkdirSync(screenshotDir, { recursive: true });
+  }
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const runDir = path.join(screenshotDir, timestamp);
+  ${this.hasIframe ? `// 定义 Iframe 引用
+  let iframeContent: any = null;
+  
+  await step('获取 Iframe 内容', async () => {
+    console.log('🔍 查找并获取 Iframe');
+    const iframe = page.locator('iframe').first();
+    // 某些页面的 iframe 可能是隐藏/延迟渲染的，不要强依赖 visible
+    await iframe.waitFor({ state: 'attached', timeout: 15000 }).catch(() => {});
     
-    if (!hasGotoAction) {
-      // 如果没有页面导航，添加一个默认的
-      optimizedLines.push(`  // 导航到首页`);
-      optimizedLines.push(`  await page.goto('https://stage.huilianyi.com/', { waitUntil: 'networkidle' });`);
-      optimizedLines.push(`  await page.waitForTimeout(2000);`);
+    try {
+      iframeContent = await iframe.contentFrame();
+    } catch (e) {
+      console.log('⚠️ 获取 iframe contentFrame 失败:', e.message);
+      iframeContent = null;
     }
 
-    this.actions.forEach((action, index) => {
-      optimizedLines.push("");
-      optimizedLines.push(`  // Step ${actionIndex}: ${this.getActionLabel(action)}`);
-      
+    if (!iframeContent) {
+      console.log('⚠️ 未能直接获取 iframe contentFrame，稍后会继续使用 page 上下文');
+    } else {
+      console.log('✅ Iframe 加载成功: 已获取');
+    }
+  });
+
+` : ''}
+
+  // 检查是否有页面导航操作
+  const hasGotoAction = ${actions.some(action => action.type === 'goto')};
+  
+  if (!hasGotoAction) {
+    // 如果没有页面导航，添加一个默认的
+    await step('导航到首页', async () => {
+      console.log('🌐 导航到: https://stage.huilianyi.com/');
+      await page.goto('https://stage.huilianyi.com/', { waitUntil: 'networkidle' });
+      await page.waitForLoadState('networkidle');
+      await page.screenshot({ path: path.join(runDir, \`step-1-before-action.png\`), fullPage: true });
+    });
+  }
+
+  ${this.generateActionsCode(actions, 'runDir')}
+
+  // 停止 tracing 由 Playwright 配置自动处理
+
+  console.log('');
+  console.log('🎉 测试完成: ' + '${testName}');
+});
+`;
+
+    return template;
+  }
+
+  private generateActionsCode(actions: Action[], runDirVariable: string): string {
+    let code = '';
+    let stepIndex = 1;
+
+    actions.forEach((action, index) => {
       if (action.type === 'goto') {
-        optimizedLines.push(`  await page.goto('${action.url}', { waitUntil: 'networkidle' });`);
-        optimizedLines.push(`  await page.waitForTimeout(2000);`);
-        optimizedLines.push(`  await page.screenshot({ path: path.join(runDir, \`step-${actionIndex}-before-action.png\`), fullPage: true });`);
-        actionIndex++;
+        code += `  await step('导航到页面', async () => {
+    console.log('🌐 导航到: ${action.url}');
+    await page.goto('${action.url}', { waitUntil: 'networkidle' });
+    ${this.options.waitLoad ? 'await page.waitForLoadState(\'networkidle\');' : ''}
+    await page.screenshot({ path: path.join(${runDirVariable}, \`step-${stepIndex}-before-action.png\`), fullPage: true });
+  });
+
+`;
+        stepIndex++;
       } else {
-        const originalLine = this.lines[action.originalLine];
-        let fullSelector = this.extractSelector(originalLine);
-        
-        // 优化选择器
-        fullSelector = this.optimizeSelector(fullSelector);
-        
-        optimizedLines.push(`  await page.screenshot({ path: path.join(runDir, \`step-${actionIndex}-before-action.png\`), fullPage: true });`);
-        optimizedLines.push(`  const _locator${actionIndex} = ${fullSelector};`);
-        optimizedLines.push(`  await page.waitForTimeout(1000).catch(() => {});`);
-        
-        // 增强iframe元素的等待策略
-        if (fullSelector.includes('iframe') && fullSelector.includes('contentFrame')) {
-          optimizedLines.push(`  // 增强iframe元素的可见性等待`);
-          optimizedLines.push(`  await _locator${actionIndex}.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});`);
-        } else {
-          optimizedLines.push(`  await _locator${actionIndex}.waitFor({ state: 'attached', timeout: 30000 }).catch(() => {});`);
-        }
-        
-        optimizedLines.push(`  await _locator${actionIndex}.scrollIntoViewIfNeeded().catch(() => {});`);
-        
-        switch (action.type) {
-          case 'click':
-            // 针对iframe元素的点击优化
-            if (fullSelector.includes('iframe') && fullSelector.includes('contentFrame')) {
-              optimizedLines.push(`  // 针对iframe元素的点击优化`);
-              optimizedLines.push(`  try {`);
-              optimizedLines.push(`    await _locator${actionIndex}.click({ timeout: 10000 });`);
-              optimizedLines.push(`  } catch (e) {`);
-              optimizedLines.push(`    console.log("⚠️ 正常点击失败，尝试force click...");`);
-              optimizedLines.push(`    await _locator${actionIndex}.click({ force: true, timeout: 5000 });`);
-              optimizedLines.push(`  }`);
-            } else {
-              optimizedLines.push(`  await _locator${actionIndex}.click({ timeout: 30000, force: true });`);
-            }
-            break;
-          case 'fill':
-            optimizedLines.push(`  await _locator${actionIndex}.fill("${action.text || ''}", { timeout: 30000 });`);
-            break;
-          case 'type':
-            optimizedLines.push(`  await _locator${actionIndex}.type("${action.text || ''}", { timeout: 30000 });`);
-            break;
-          case 'check':
-            optimizedLines.push(`  await _locator${actionIndex}.check({ timeout: 30000 });`);
-            break;
-          case 'selectOption':
-            optimizedLines.push(`  await _locator${actionIndex}.selectOption("${action.text || ''}", { timeout: 30000 });`);
-            break;
-          case 'press':
-            optimizedLines.push(`  await _locator${actionIndex}.press("${action.text || ''}", { timeout: 30000 });`);
-            break;
-        }
-        
-        optimizedLines.push(`  await page.waitForTimeout(2000);`);
-        optimizedLines.push(`  await page.screenshot({ path: path.join(runDir, \`step-${actionIndex}-after-action.png\`), fullPage: true });`);
-        actionIndex++;
+        const actionCode = this.generateActionCode(action, stepIndex, runDirVariable);
+        code += actionCode;
+        stepIndex++;
       }
     });
 
-    optimizedLines.push("");
-    optimizedLines.push(`  console.log('✅ 测试完成: ${testName}');`);
-    optimizedLines.push(`});`);
+    return code;
+  }
 
-    return optimizedLines.join('\n');
+  private generateActionCode(action: Action, stepIndex: number, runDirVariable: string): string {
+    const label = this.getActionLabel(action);
+    const selector = this.optimizeSelector(action.selector);
+    const locatorCode = this.extractAndOptimizeLocator(selector);
+    const isKeyAction = this.isKeyAction(action.selector);
+
+    switch (action.type) {
+      case 'click':
+        return `  await step('${label}', async () => {
+    await page.screenshot({ path: path.join(${runDirVariable}, \`step-${stepIndex}-before-action.png\`), fullPage: true });
+    ${this.hasIframe ? `const baseContext = iframeContent || page;
+    const locator = ${locatorCode.replace(/page\./g, 'baseContext.')};` : `const locator = ${locatorCode};`}
+    ${this.options.addVisible && isKeyAction ? `await expect(locator).toBeVisible();` : ''}
+    await smartClick(locator, '${label}');
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await page.screenshot({ path: path.join(${runDirVariable}, \`step-${stepIndex}-after-action.png\`), fullPage: true });
+  });
+
+`;
+      case 'fill':
+      case 'type':
+        const text = action.text || '';
+        return `  await step('${label}', async () => {
+    await page.screenshot({ path: path.join(${runDirVariable}, \`step-${stepIndex}-before-action.png\`), fullPage: true });
+    ${this.hasIframe ? `const baseContext = iframeContent || page;
+    const locator = ${locatorCode.replace(/page\./g, 'baseContext.')};` : `const locator = ${locatorCode};`}
+    ${this.options.addVisible && isKeyAction ? `await expect(locator).toBeVisible();` : ''}
+    await smartFill(locator, "${text}", '${label}');
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await page.screenshot({ path: path.join(${runDirVariable}, \`step-${stepIndex}-after-action.png\`), fullPage: true });
+  });
+
+`;
+      case 'check':
+        return `  await step('${label}', async () => {
+    await page.screenshot({ path: path.join(${runDirVariable}, \`step-${stepIndex}-before-action.png\`), fullPage: true });
+    ${this.hasIframe ? `const baseContext = iframeContent || page;
+    const locator = ${locatorCode.replace(/page\./g, 'baseContext.')};` : `const locator = ${locatorCode};`}
+    ${this.options.addVisible && isKeyAction ? `await expect(locator).toBeVisible();` : ''}
+    try {
+      await locator.waitFor({ state: 'visible', timeout: 10000 });
+    } catch (e) {
+      console.log('⚠️ 元素不可见，尝试暂停调试');
+      await page.pause();
+    }
+    try {
+      await locator.check();
+    } catch (e) {
+      console.log(\`⚠️ 勾选失败: \${e.message}\`);
+      await page.pause();
+    }
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await page.screenshot({ path: path.join(${runDirVariable}, \`step-${stepIndex}-after-action.png\`), fullPage: true });
+  });
+
+`;
+      case 'selectOption':
+        return `  await step('${label}', async () => {
+    await page.screenshot({ path: path.join(${runDirVariable}, \`step-${stepIndex}-before-action.png\`), fullPage: true });
+    ${this.hasIframe ? `const baseContext = iframeContent || page;
+    const locator = ${locatorCode.replace(/page\./g, 'baseContext.')};` : `const locator = ${locatorCode};`}
+    ${this.options.addVisible && isKeyAction ? `await expect(locator).toBeVisible();` : ''}
+    try {
+      await locator.waitFor({ state: 'visible', timeout: 10000 });
+    } catch (e) {
+      console.log('⚠️ 元素不可见，尝试暂停调试');
+      await page.pause();
+    }
+    try {
+      await locator.selectOption("${action.text || ''}");
+    } catch (e) {
+      console.log(\`⚠️ 选择失败: \${e.message}\`);
+      await page.pause();
+    }
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await page.screenshot({ path: path.join(${runDirVariable}, \`step-${stepIndex}-after-action.png\`), fullPage: true });
+  });
+
+`;
+      case 'press':
+        return `  await step('${label}', async () => {
+    await page.screenshot({ path: path.join(${runDirVariable}, \`step-${stepIndex}-before-action.png\`), fullPage: true });
+    ${this.hasIframe ? `const baseContext = iframeContent || page;
+    const locator = ${locatorCode.replace(/page\./g, 'baseContext.')};` : `const locator = ${locatorCode};`}
+    ${this.options.addVisible && isKeyAction ? `await expect(locator).toBeVisible();` : ''}
+    try {
+      await locator.waitFor({ state: 'visible', timeout: 10000 });
+    } catch (e) {
+      console.log('⚠️ 元素不可见，尝试暂停调试');
+      await page.pause();
+    }
+    try {
+      await locator.press("${action.text || ''}");
+    } catch (e) {
+      console.log(\`⚠️ 按键失败: \${e.message}\`);
+      await page.pause();
+    }
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await page.screenshot({ path: path.join(${runDirVariable}, \`step-${stepIndex}-after-action.png\`), fullPage: true });
+  });
+
+`;
+      default:
+        return '';
+    }
+  }
+
+  private extractAndOptimizeLocator(selector: string): string {
+    // 提取定位器部分，移除 await 和动作尾缀
+    let locator = selector.trim().replace(/^await\s+/, '');
+    locator = locator.replace(/\.(click|fill|type|check|selectOption|press)\(.*\)\s*;?$/, '');
+
+    // 处理 iframe 上下文：保留 iframe 语义，但切换为 iframeContent/baseContext
+    const iframePrefix = /^page\.locator\((['"])iframe\1\)\.contentFrame\(\)\./;
+    if (iframePrefix.test(locator)) {
+      locator = locator.replace(iframePrefix, this.hasIframe ? 'baseContext.' : 'page.');
+    }
+
+    // 应用定位器优化规则
+    return this.optimizeLocator(locator);
+  }
+
+  private optimizeLocator(locator: string): string {
+    // 优化定位器，特别是针对 Ant Design 组件
+    let optimized = locator;
+    
+    // 1. 优化 Ant Design 选择器
+    // 处理下拉箭头
+    if (optimized.includes('.ant-select-arrow')) {
+      optimized += '.filter({ visible: true }).first()';
+    }
+    
+    // 2. 保留语义选择器（getByRole, getByText, getByLabel等）
+    if (optimized.includes('getByRole') || optimized.includes('getByText') || optimized.includes('getByLabel') || optimized.includes('getByPlaceholder')) {
+      // 对于语义选择器，添加 .first() 确保唯一
+      if (!optimized.includes('.first()')) {
+        optimized += '.filter({ visible: true }).first()';
+      } else if (!optimized.includes('.filter({ visible: true })')) {
+        optimized = optimized.replace('.first()', '.filter({ visible: true }).first()');
+      }
+      return optimized;
+    }
+    
+    // 3. 对于非语义选择器，添加可见性过滤
+    if (!optimized.includes('.filter') && !optimized.includes('.first()')) {
+      optimized += '.filter({ visible: true }).first()';
+    }
+    
+    return optimized;
+  }
+
+  private optimizeSelector(selector: string): string {
+    let optimized = selector;
+
+    // 1. 移除force: true（Cleaner层只做删除）
+    optimized = optimized.replace(/\{\s*force:\s*true\s*\}/g, '');
+    optimized = optimized.replace(/force:\s*true\s*,/g, '');
+    
+    // 2. 移除waitForTimeout（Cleaner层只做删除）
+    optimized = optimized.replace(/\.waitForTimeout\([^)]+\)/g, '');
+    
+    // 3. 移除重复的click操作（Cleaner层只做删除）
+    // 注意：这里只做简单的重复检测，复杂的重复检测由AI层处理
+    
+    // 4. 不移除复杂的CSS选择器，也不转换语义选择器
+    // 保持原始选择器不变，由AI层进行智能优化
+
+    return optimized;
   }
 
   private extractTestName(line: string): string {
@@ -377,8 +872,6 @@ class RawRecordingOptimizer {
     const match = line.match(/page\.goto\(['"]([^'"]+)['"]/);
     return match ? match[1] : '';
   }
-
-
 
   getDateCategoryForDate(dateStr: string): string {
     const configPath = path.join(process.cwd(), 'config', 'date-categories.json');
@@ -392,15 +885,17 @@ class RawRecordingOptimizer {
       const configContent = fs.readFileSync(configPath, 'utf-8');
       const config = JSON.parse(configContent) as { dateCategories: string[] };
       
-      const fileDate = new Date(dateStr);
+      // 解析日期字符串，确保使用本地时区
+      const [year, month, day] = dateStr.split('-').map(Number);
+      const fileDate = new Date(year, month - 1, day);
       
       for (const category of config.dateCategories) {
-        const year = parseInt(category.substring(0, 4));
-        const month = parseInt(category.substring(4, 6)) - 1;
-        const day = parseInt(category.substring(6, 8));
-        const categoryDate = new Date(year, month, day);
+        const catYear = parseInt(category.substring(0, 4));
+        const catMonth = parseInt(category.substring(4, 6)) - 1;
+        const catDay = parseInt(category.substring(6, 8));
+        const categoryDate = new Date(catYear, catMonth, catDay);
         
-        if (fileDate < categoryDate) {
+        if (fileDate <= categoryDate) {
           return category;
         }
       }
@@ -437,14 +932,6 @@ class RawRecordingOptimizer {
     return null;
   }
 
-  private extractSelector(line: string): string {
-    const match = line.match(/await page\.(getBy\w*|locator|contentFrame)\(.+\)\.(click|fill|type|check|selectOption|press)\(/);
-    if (match) {
-      return line.replace(/await /, '').replace(/\.(click|fill|type|check|selectOption|press)\(.*/, '');
-    }
-    return '';
-  }
-
   private extractText(line: string): string | undefined {
     const nameMatch = line.match(/name:\s*['"]([^'"]+)['"]/);
     if (nameMatch) return nameMatch[1];
@@ -461,6 +948,12 @@ class RawRecordingOptimizer {
     return undefined;
   }
 
+  private extractPressKey(line: string): string | undefined {
+    const pressMatch = line.match(/press\((['"])(.*?)\1\)/);
+    if (pressMatch?.[2]) return pressMatch[2];
+    return undefined;
+  }
+
   private getActionLabel(action: Action): string {
     if (action.type === 'goto') return `Go to ${action.url || 'page'}`;
     if (action.text) return this.cleanLabel(action.text);
@@ -471,51 +964,6 @@ class RawRecordingOptimizer {
     return label
       .replace(/\s+/g, "-")
       .replace(/[^\w\u4e00-\u9fa5-]/g, "");
-  }
-
-  private optimizeSelector(selector: string): string {
-    let optimized = selector;
-
-    // 现有的优化规则
-    optimized = optimized.replace(/\.anticon\.anticon-close > svg/, '.anticon.anticon-close');
-    optimized = optimized.replace(/\.ant-table-row\.chooser-table-row > \.ant-table-selection-column > span > \.ant-checkbox-wrapper > \.ant-checkbox > \.ant-checkbox-input/, '.ant-table-row.chooser-table-row .ant-checkbox-input');
-    optimized = optimized.replace(/\.anticon\.anticon-down > svg > path/, '.anticon.anticon-down');
-    optimized = optimized.replace(/\.anticon\.[^'"]+ > svg > path/g, (match) => {
-      const anticonClass = match.match(/\.anticon\.([^'"]+)/)?.[1];
-      return `.anticon.${anticonClass}`;
-    });
-    optimized = optimized.replace(/\.ant-select-selection__rendered/, '.ant-select-selection__rendered');
-    optimized = optimized.replace(/^path$/, 'svg path');
-    optimized = optimized.replace(/\.warp-svg-icon\.ant-tooltip-open/, '.warp-svg-icon');
-
-    optimized = optimized.replace(/li\.ant-menu-item-active\s+span/, 'li.ant-menu-item span');
-    optimized = optimized.replace(/\.ant-menu-item-active/, '');
-
-    // 新增优化规则（根据建议）
-    
-    // 1. 针对iframe内部label的优化
-    if (optimized.includes("label") && !optimized.includes("hasText")) {
-      // 自动尝试寻找包含协议文字的label
-      optimized = optimized.replace(/\.locator\(['"]label['"]\)/, ".locator('label').filter({ hasText: /同意|协议/ })");
-    }
-    
-    // 2. 针对按钮点击，如果是点击里面的span，建议提升到button
-    optimized = optimized.replace(/\.getByRole\(['"]button['"]\)\.locator\(['"]span['"]\)/, ".getByRole('button')");
-    
-    // 3. 永远不要点击path标签，因为path没有尺寸
-    if (optimized.endsWith(' > path')) {
-      optimized = optimized.replace(' > path', '');
-    }
-    
-    // 4. 如果是iframe元素，添加可见性过滤和.first()
-    if (optimized.includes('iframe') && optimized.includes('contentFrame')) {
-      // 确保选择器以.first()结尾，避免匹配多个元素
-      if (!optimized.endsWith('.first()')) {
-        optimized += '.first()';
-      }
-    }
-
-    return optimized;
   }
 }
 
@@ -530,6 +978,7 @@ if (!fs.existsSync(outputDir)) {
 }
 
 async function processFile(filePath: string): Promise<void> {
+  console.log(`🔄 开始优化文件: ${filePath}`);
   const optimizer = new RawRecordingOptimizer(filePath);
   const result = optimizer.optimize();
 

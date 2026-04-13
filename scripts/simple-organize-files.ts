@@ -75,7 +75,7 @@ class SimpleFileOrganizer {
   
   private findDateCategory(fileDate: Date): string {
     for (let i = 0; i < this.dateCategories.length; i++) {
-      if (fileDate < this.dateCategories[i]) {
+      if (fileDate <= this.dateCategories[i]) {
         return this.config.dateCategories[i];
       }
     }
