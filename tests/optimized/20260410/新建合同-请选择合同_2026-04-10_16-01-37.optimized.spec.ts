@@ -88,10 +88,6 @@ async function step(name: string, fn: () => Promise<void>) {
   }
 };
 
-test.use({
-  storageState: 'storage/loginState/stage.json'
-});
-
 test('test', async ({ page }) => {
   test.setTimeout(120000);
 

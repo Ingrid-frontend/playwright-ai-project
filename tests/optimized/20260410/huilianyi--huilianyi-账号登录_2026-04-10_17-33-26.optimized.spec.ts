@@ -88,10 +88,6 @@ async function step(name: string, fn: () => Promise<void>) {
   }
 };
 
-test.use({
-  storageState: 'storage/loginState/stage.json'
-});
-
 test('test', async ({ page }) => {
   test.setTimeout(120000);
 
@@ -146,6 +142,126 @@ test('test', async ({ page }) => {
     await page.goto('https://stage.huilianyi.com/', { waitUntil: 'networkidle' });
     await page.waitForLoadState('networkidle');
     await page.screenshot({ path: path.join(runDir, `step-1-before-action.png`), fullPage: true });
+  });
+
+  await step('action', async () => {
+    await page.screenshot({ path: path.join(runDir, `step-2-before-action.png`), fullPage: true });
+    const baseContext = iframeContent || page;
+    const locator = baseContext.locator('label').filter({ visible: true }).first();
+    await expect(locator).toBeVisible();
+    await smartClick(locator, 'action');
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await page.screenshot({ path: path.join(runDir, `step-2-after-action.png`), fullPage: true });
+  });
+
+  await step('action', async () => {
+    await page.screenshot({ path: path.join(runDir, `step-3-before-action.png`), fullPage: true });
+    const baseContext = iframeContent || page;
+    const locator = baseContext.locator('.hover-pointer-icon').first();
+    await expect(locator).toBeVisible();
+    await smartClick(locator, 'action');
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await page.screenshot({ path: path.join(runDir, `step-3-after-action.png`), fullPage: true });
+  });
+
+  await step('action', async () => {
+    await page.screenshot({ path: path.join(runDir, `step-4-before-action.png`), fullPage: true });
+    const baseContext = iframeContent || page;
+    const locator = baseContext.locator('.ant-popover-open > .hover-pointer-icon').filter({ visible: true }).first();
+    await expect(locator).toBeVisible();
+    await smartClick(locator, 'action');
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await page.screenshot({ path: path.join(runDir, `step-4-after-action.png`), fullPage: true });
+  });
+
+  await step('action', async () => {
+    await page.screenshot({ path: path.join(runDir, `step-5-before-action.png`), fullPage: true });
+    const baseContext = iframeContent || page;
+    const locator = baseContext.locator('.single-index.hover-click > .index-name > div:nth-child(2) > .hover-pointer-icon').filter({ visible: true }).first();
+    await expect(locator).toBeVisible();
+    await smartClick(locator, 'action');
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await page.screenshot({ path: path.join(runDir, `step-5-after-action.png`), fullPage: true });
+  });
+
+  await step('请选择日期', async () => {
+    await page.screenshot({ path: path.join(runDir, `step-6-before-action.png`), fullPage: true });
+    const baseContext = iframeContent || page;
+    const locator = baseContext.locator('#home-main-charts-guide-id').getByRole('textbox', { name: '请选择日期' }).filter({ visible: true }).first();
+    await expect(locator).toBeVisible();
+    await smartClick(locator, '请选择日期');
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await page.screenshot({ path: path.join(runDir, `step-6-after-action.png`), fullPage: true });
+  });
+
+  await step('二月', async () => {
+    await page.screenshot({ path: path.join(runDir, `step-7-before-action.png`), fullPage: true });
+    const baseContext = iframeContent || page;
+    const locator = baseContext.getByText('二月', { exact: true }).filter({ visible: true }).first();
+    await expect(locator).toBeVisible();
+    await smartClick(locator, '二月');
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await page.screenshot({ path: path.join(runDir, `step-7-after-action.png`), fullPage: true });
+  });
+
+  await step('个人首页', async () => {
+    await page.screenshot({ path: path.join(runDir, `step-8-before-action.png`), fullPage: true });
+    const baseContext = iframeContent || page;
+    const locator = baseContext.getByText('个人首页').filter({ visible: true }).first();
+    await expect(locator).toBeVisible();
+    await smartClick(locator, '个人首页');
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await page.screenshot({ path: path.join(runDir, `step-8-after-action.png`), fullPage: true });
+  });
+
+  await step('请选择代理人', async () => {
+    await page.screenshot({ path: path.join(runDir, `step-9-before-action.png`), fullPage: true });
+    const baseContext = iframeContent || page;
+    const locator = baseContext.getByText('请选择代理人').filter({ visible: true }).first();
+    await expect(locator).toBeVisible();
+    await smartClick(locator, '请选择代理人');
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await page.screenshot({ path: path.join(runDir, `step-9-after-action.png`), fullPage: true });
+  });
+
+  await step('action', async () => {
+    await page.screenshot({ path: path.join(runDir, `step-10-before-action.png`), fullPage: true });
+    const baseContext = iframeContent || page;
+    const locator = baseContext.locator('.ant-select-arrow').first().filter({ visible: true }).first();
+    await expect(locator).toBeVisible();
+    await smartClick(locator, 'action');
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await page.screenshot({ path: path.join(runDir, `step-10-after-action.png`), fullPage: true });
+  });
+
+  await step('工作台个人首页设置首页面板个人首页管理员首页', async () => {
+    await page.screenshot({ path: path.join(runDir, `step-11-before-action.png`), fullPage: true });
+    const baseContext = iframeContent || page;
+    const locator = baseContext.getByText('工作台个人首页设置首页面板个人首页管理员首页').filter({ visible: true }).first();
+    await expect(locator).toBeVisible();
+    await smartClick(locator, '工作台个人首页设置首页面板个人首页管理员首页');
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await page.screenshot({ path: path.join(runDir, `step-11-after-action.png`), fullPage: true });
+  });
+
+  await step('action', async () => {
+    await page.screenshot({ path: path.join(runDir, `step-12-before-action.png`), fullPage: true });
+    const baseContext = iframeContent || page;
+    const locator = baseContext.locator('.down-triangle').filter({ visible: true }).first();
+    await expect(locator).toBeVisible();
+    await smartClick(locator, 'action');
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await page.screenshot({ path: path.join(runDir, `step-12-after-action.png`), fullPage: true });
+  });
+
+  await step('action', async () => {
+    await page.screenshot({ path: path.join(runDir, `step-13-before-action.png`), fullPage: true });
+    const baseContext = iframeContent || page;
+    const locator = baseContext.locator('.down-triangle > path').filter({ visible: true }).first();
+    await expect(locator).toBeVisible();
+    await smartClick(locator, 'action');
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await page.screenshot({ path: path.join(runDir, `step-13-after-action.png`), fullPage: true });
   });
 
 
