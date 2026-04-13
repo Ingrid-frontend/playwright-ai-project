@@ -27,7 +27,7 @@ function printHelp(): void {
 feishu-mode 说明:
   interactive  简单卡片（默认）
   text         纯文本 webhook
-  links        卡片 + GitHub / Pages 按钮，可读 results/feishu-doc-url.txt 附加文档链接
+  links        卡片 + 链接按钮（默认禁用 GitHub；需 ENABLE_GITHUB=1 才会生成 GitHub 链接）
   none         不发送飞书
 `);
 }
@@ -76,6 +76,12 @@ async function sendFeishuNotification(mode: FeishuMode): Promise<void> {
   if (mode === 'none') {
     console.log('ℹ️  feishu-mode=none，跳过飞书通知');
     return;
+  }
+
+  const githubEnabled = process.env.ENABLE_GITHUB === '1';
+  if (mode === 'links' && !githubEnabled) {
+    console.log('ℹ️  未启用 GitHub 链接（ENABLE_GITHUB!=1），降级为 interactive');
+    mode = 'interactive';
   }
 
   const webhookUrl = process.env.FEISHU_WEBHOOK_URL;

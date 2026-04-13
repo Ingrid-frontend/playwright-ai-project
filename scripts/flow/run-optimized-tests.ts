@@ -5,6 +5,7 @@ import path from 'path';
 async function sendFeishuNotification() {
   const webhookUrl = process.env.FEISHU_WEBHOOK_URL;
   const webhookSecret = process.env.FEISHU_WEBHOOK_SECRET;
+  const githubEnabled = process.env.ENABLE_GITHUB === '1';
   
   console.log('🔍 飞书通知配置检查：');
   console.log('  - Webhook URL:', webhookUrl ? '已配置' : '未配置');
@@ -20,10 +21,9 @@ async function sendFeishuNotification() {
     
     const githubRepository = process.env.GITHUB_REPOSITORY || 'Ingrid-frontend/playwright-ai-project';
     const githubRunId = process.env.GITHUB_RUN_ID || '';
-    const githubRunUrl = `https://github.com/${githubRepository}/actions/runs/${githubRunId}`;
-    
+    const githubRunUrl = githubEnabled ? `https://github.com/${githubRepository}/actions/runs/${githubRunId}` : '';
     const [owner, repo] = githubRepository.split('/');
-    const githubPagesUrl = `https://${owner}.github.io/${repo}/screenshot-comparison.html`;
+    const githubPagesUrl = githubEnabled ? `https://${owner}.github.io/${repo}/screenshot-comparison.html` : '';
     
     const message = {
       msg_type: 'interactive',
@@ -43,7 +43,7 @@ async function sendFeishuNotification() {
               content: '**测试结果**：\n✅ 执行：成功\n✅ 对比：成功'
             }
           },
-          {
+          ...(githubEnabled ? [{
             tag: 'action',
             actions: [
               {
@@ -65,7 +65,7 @@ async function sendFeishuNotification() {
                 url: githubRunUrl
               }
             ]
-          },
+          }] : []),
           {
             tag: 'div',
             text: {
@@ -107,8 +107,12 @@ async function sendFeishuNotification() {
     console.log('📤 发送飞书消息：');
     console.log('  - 消息类型:', message.msg_type);
     console.log('  - 时间戳:', timestamp, '(秒级)');
-    console.log('  - GitHub 运行链接:', githubRunUrl);
-    console.log('  - GitHub Pages 链接:', githubPagesUrl);
+    if (githubEnabled) {
+      console.log('  - GitHub 运行链接:', githubRunUrl);
+      console.log('  - GitHub Pages 链接:', githubPagesUrl);
+    } else {
+      console.log('  - GitHub 链接：已禁用（ENABLE_GITHUB!=1）');
+    }
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json'

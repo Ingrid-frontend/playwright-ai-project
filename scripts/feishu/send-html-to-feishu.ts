@@ -72,6 +72,10 @@ async function sendToFeishu(htmlFilePath: string, config: FeishuConfig): Promise
     }
 
     const timestamp = Math.floor(Date.now() / 1000);
+    const githubEnabled = process.env.ENABLE_GITHUB === '1';
+    const publicReportUrl = githubEnabled
+      ? (process.env.PUBLIC_REPORT_URL || '')
+      : '';
 
     const message = {
       msg_type: 'interactive',
@@ -99,19 +103,26 @@ async function sendToFeishu(htmlFilePath: string, config: FeishuConfig): Promise
             }
           },
           {
-            tag: 'action',
-            actions: [
-              {
-                tag: 'button',
-                text: {
-                  tag: 'plain_text',
-                  content: '📥 下载完整报告'
-                },
-                type: 'primary',
-                url: 'https://ingrid-frontend.github.io/playwright-ai-project/screenshot-comparison.html'
-              }
-            ]
-          }
+            ...(publicReportUrl
+              ? {
+                  tag: 'action',
+                  actions: [
+                    {
+                      tag: 'button',
+                      text: { tag: 'plain_text', content: '📥 打开完整报告' },
+                      type: 'primary',
+                      url: publicReportUrl,
+                    },
+                  ],
+                }
+              : {
+                  tag: 'div',
+                  text: {
+                    tag: 'lark_md',
+                    content: '（未配置公开报告链接：如需生成外链，请设置 `ENABLE_GITHUB=1` 并提供 `PUBLIC_REPORT_URL`）',
+                  },
+                }),
+          } as any
         ]
       }
     };
@@ -140,7 +151,7 @@ async function sendToFeishu(htmlFilePath: string, config: FeishuConfig): Promise
       return {
         success: true,
         message: '发送成功',
-        documentUrl: 'https://ingrid-frontend.github.io/playwright-ai-project/screenshot-comparison.html'
+        documentUrl: publicReportUrl || undefined
       };
     } else {
       const responseText = await response.text();

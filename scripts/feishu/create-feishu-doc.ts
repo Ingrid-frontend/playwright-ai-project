@@ -605,21 +605,29 @@ async function convertHtmlToFeishuBlocks(htmlContent: string, accessToken: strin
         console.log(`  - 是否以 screenshots/ 开头: ${imagePath.startsWith('screenshots/')}`);
         console.log(`  - 是否以 diffs/ 开头: ${imagePath.startsWith('diffs/')}`);
         
-        let fullImageUrl = imagePath;
-        if (imagePath.startsWith('../screenshots/')) {
-          fullImageUrl = `https://ingrid-frontend.github.io/playwright-ai-project/screenshots/${imagePath.replace('../screenshots/', '')}`;
-          console.log(`  - ✅ 转换为 GitHub Pages URL`);
-        } else if (imagePath.startsWith('screenshots/')) {
-          fullImageUrl = `https://ingrid-frontend.github.io/playwright-ai-project/screenshots/${imagePath.replace('screenshots/', '')}`;
-          console.log(`  - ✅ 转换为 GitHub Pages URL (无../前缀)`);
-        } else if (imagePath.startsWith('diffs/')) {
-          fullImageUrl = `https://ingrid-frontend.github.io/playwright-ai-project/results/${imagePath}`;
-          console.log(`  - ✅ 转换为 GitHub Pages URL (diffs)`);
-        } else {
-          console.log(`  - ⚠️  未匹配到任何路径模式，保持原样`);
+        const githubEnabled = process.env.ENABLE_GITHUB === '1';
+        const publicAssetBaseUrl = (githubEnabled ? process.env.PUBLIC_ASSET_BASE_URL : '') || '';
+
+        let fullImageUrl = '';
+        if (publicAssetBaseUrl) {
+          const base = publicAssetBaseUrl.replace(/\/$/, '');
+          if (imagePath.startsWith('../screenshots/')) {
+            fullImageUrl = `${base}/screenshots/${imagePath.replace('../screenshots/', '')}`;
+          } else if (imagePath.startsWith('screenshots/')) {
+            fullImageUrl = `${base}/screenshots/${imagePath.replace('screenshots/', '')}`;
+          } else if (imagePath.startsWith('diffs/')) {
+            fullImageUrl = `${base}/results/${imagePath}`;
+          }
         }
-        
-        console.log(`  - 最终 URL: ${fullImageUrl}`);
+
+        if (!fullImageUrl) {
+          console.log(
+            `  - ℹ️  未配置公开图片链接（ENABLE_GITHUB!=1 或未提供 PUBLIC_ASSET_BASE_URL），仅记录本地路径`,
+          );
+          fullImageUrl = imagePath;
+        }
+
+        console.log(`  - 最终 URL/路径: ${fullImageUrl}`);
         
         blocks.push({
           block_type: 2,
