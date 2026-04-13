@@ -1,34 +1,14 @@
 import { test as setup, expect } from '@playwright/test';
 import fs from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
 import { env, curConfig } from "../../playwright.config";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-let accounts: Record<string, { username: string; password: string }> = {};
-
-try {
-  const accountsPath = path.resolve(__dirname, '../../datasource/accounts.json');
-  if (fs.existsSync(accountsPath)) {
-    accounts = JSON.parse(fs.readFileSync(accountsPath, 'utf-8'));
-  } else {
-    console.log("⚠️  未找到 datasource/accounts.json，将使用环境变量");
-  }
-} catch (error) {
-  console.log("⚠️  未找到 datasource/accounts.json，将使用环境变量");
-}
+import { getLoginCredentials } from '../utils/credentials';
 
 /**
  * 使用 Project Setup 模式
  * 优势：自动享受 Trace Viewer、自动重试、并行隔离
  */
 const STORAGE_PATH = curConfig.storageState;
-
-const ACCOUNT = {
-  username: process.env.TEST_USERNAME || accounts[env as keyof typeof accounts]?.username,
-  password: process.env.TEST_PASSWORD || accounts[env as keyof typeof accounts]?.password
-};
 
 setup('🔐 全局登录并持久化状态', async ({ page }) => {
   
@@ -46,11 +26,7 @@ setup('🔐 全局登录并持久化状态', async ({ page }) => {
 
   console.log(`🚀 正在执行 [${env}] 环境登录...`);
 
-  if (!ACCOUNT.username || !ACCOUNT.password) {
-    throw new Error(
-      `缺少登录凭据：请设置 TEST_USERNAME/TEST_PASSWORD 或提供 datasource/accounts.json（当前 env=${env}）`,
-    );
-  }
+  const ACCOUNT = getLoginCredentials(env);
 
   // 2. 访问登录页
   await page.goto(curConfig.baseURL, { waitUntil: "load" });
