@@ -1,9 +1,5 @@
 import { test, expect } from '@playwright/test';
 import fs from 'fs';
-import { screenshotWhenStable } from '../../utils/screenshot';
-test.use({
-  storageState: 'storage/loginState/stage.json'
-});
 
 test('test', async ({ page }) => {
 
