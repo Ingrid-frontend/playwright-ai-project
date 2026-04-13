@@ -2,6 +2,13 @@ import { test, expect } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
 
+const PAUSE_ENABLED = process.env.ENABLE_PAUSE === '1';
+async function maybePause(page, reason: string) {
+  if (!PAUSE_ENABLED) return;
+  console.log(`⏸️ 已启用 pause（ENABLE_PAUSE=1），原因: ${reason}`);
+  await page.pause();
+}
+
 // 定义智能动作函数
 async function smartClick(locator, stepName) {
   console.log(`🧠 执行智能点击: ${stepName}`);
@@ -12,8 +19,7 @@ async function smartClick(locator, stepName) {
     await locator.waitFor({ state: 'visible', timeout: 10000 });
   } catch (e) {
     console.log(`⚠️ 元素不可见: ${e.message}`);
-    // 在元素不可见时暂停，便于调试
-    await locator.page().pause();
+    await maybePause(locator.page(), `元素不可见: ${stepName}`);
   }
   
   // 滚动到元素
@@ -27,8 +33,7 @@ async function smartClick(locator, stepName) {
     await locator.click();
   } catch (e) {
     console.log(`⚠️ 点击失败: ${e.message}`);
-    // 在点击失败时暂停，便于调试
-    await locator.page().pause();
+    await maybePause(locator.page(), `点击失败: ${stepName}`);
     throw e;
   }
   
@@ -54,8 +59,7 @@ async function smartFill(locator, text, stepName) {
     await locator.waitFor({ state: 'visible', timeout: 10000 });
   } catch (e) {
     console.log(`⚠️ 元素不可见: ${e.message}`);
-    // 在元素不可见时暂停，便于调试
-    await locator.page().pause();
+    await maybePause(locator.page(), `元素不可见: ${stepName}`);
   }
   
   // 滚动到元素
@@ -69,8 +73,7 @@ async function smartFill(locator, text, stepName) {
     await locator.fill(text);
   } catch (e) {
     console.log(`⚠️ 填充失败: ${e.message}`);
-    // 在填充失败时暂停，便于调试
-    await locator.page().pause();
+    await maybePause(locator.page(), `填充失败: ${stepName}`);
     throw e;
   }
 }
