@@ -46,6 +46,12 @@ setup('🔐 全局登录并持久化状态', async ({ page }) => {
 
   console.log(`🚀 正在执行 [${env}] 环境登录...`);
 
+  if (!ACCOUNT.username || !ACCOUNT.password) {
+    throw new Error(
+      `缺少登录凭据：请设置 TEST_USERNAME/TEST_PASSWORD 或提供 datasource/accounts.json（当前 env=${env}）`,
+    );
+  }
+
   // 2. 访问登录页
   await page.goto(curConfig.baseURL, { waitUntil: "load" });
 

@@ -2,10 +2,7 @@ import { chromium, FullConfig } from "@playwright/test";
 import fs from "fs";
 import { LoginPage } from "../pages/LoginPage";
 import { env, curConfig } from "../../playwright.config";
-import accounts from "../../datasource/accounts.json";
-
 const STORAGE_PATH = curConfig.storageState;
-const ACCOUNT = accounts[env as keyof typeof accounts];
 
 async function globalSetup(config: FullConfig) {
     // 默认禁用：仓库已切到 Project Dependencies（setup 项目生成 storageState）
@@ -13,6 +10,13 @@ async function globalSetup(config: FullConfig) {
     if (process.env.ENABLE_GLOBAL_SETUP !== '1') {
         console.log('ℹ️  globalSetup 已默认禁用（ENABLE_GLOBAL_SETUP!=1），请使用 setup 项目生成 storageState');
         return;
+    }
+
+    // legacy 模式：仍然只读环境变量（避免硬编码/依赖本地文件）
+    const username = process.env.TEST_USERNAME;
+    const password = process.env.TEST_PASSWORD;
+    if (!username || !password) {
+        throw new Error('ENABLE_GLOBAL_SETUP=1 需要同时设置 TEST_USERNAME / TEST_PASSWORD');
     }
 
     // 1. 检查状态是否已存在
@@ -33,7 +37,7 @@ async function globalSetup(config: FullConfig) {
         
         // 2. 执行登录流程
         await loginPage.goto(curConfig.baseURL);
-        await loginPage.login(ACCOUNT.username, ACCOUNT.password);
+        await loginPage.login(username, password);
 
         // 3. 额外等待及保存状态
         await page.waitForTimeout(2000); // 正常情况下 networkidle 已足够，此处按需保留

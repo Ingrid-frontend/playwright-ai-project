@@ -8,7 +8,7 @@ import baseConfig from './datasource/base-config.json' assert { type: 'json' };
  * 环境处理逻辑
  */
 const defaultEnv = "stage";
-export const env = process.env.NODE_ENV || defaultEnv;
+export const env = process.env.PLAYWRIGHT_ENV || process.env.NODE_ENV || defaultEnv;
 export const curConfig = (baseConfig as Record<string, any>)[env] || (baseConfig as Record<string, any>)[defaultEnv];
 
 export default defineConfig({
