@@ -36,8 +36,8 @@ interface TestDirComparisons {
   comparisons: StepComparison[];
 }
 
-const MENU_ITEMS = JSON.parse(fs.readFileSync(path.join(__dirname, '../datasource/menu_items.json'), 'utf-8'));
-const MENU_ROUTES = JSON.parse(fs.readFileSync(path.join(__dirname, '../datasource/menu_routes.json'), 'utf-8'));
+const MENU_ITEMS = JSON.parse(fs.readFileSync(path.join(__dirname, '../../datasource/menu_items.json'), 'utf-8'));
+const MENU_ROUTES = JSON.parse(fs.readFileSync(path.join(__dirname, '../../datasource/menu_routes.json'), 'utf-8'));
 
 function getMenuNameByRoute(route: string): string {
   const normalizedRoute = '/' + route.replace(/_/g, '/');
@@ -182,6 +182,11 @@ function getAllScreenshots(dir: string, type: 'pom' | 'optimized', outputPath: s
           if (browser === 'chromium') {
             browser = 'chrome';
           }
+
+          // optimized 项目默认使用 Desktop Chrome；截图目录不带浏览器信息时给出合理默认值
+          if (browser === 'unknown' && type === 'optimized') {
+            browser = 'chrome';
+          }
           
           const dateMatch = currentDir.match(/^(\d{4}-\d{2}-\d{2})_/);
           const date = dateMatch ? dateMatch[1] : path.basename(currentDir);
@@ -203,7 +208,8 @@ function getAllScreenshots(dir: string, type: 'pom' | 'optimized', outputPath: s
           
           result.get(stepNumber)!.push({
             path: fullPath,
-            relativePath: path.join('screenshots', relativePath),
+            // 输出 HTML 位于 results/ 下，直接基于 fullPath 计算相对路径，避免重复拼接导致路径错误
+            relativePath: path.relative(outputDir, fullPath).replaceAll(path.sep, '/'),
             timestamp: path.basename(currentDir),
             date,
             displayTimestamp,
@@ -279,13 +285,14 @@ function generateStepSection(stepNumber: number, stepName: string | undefined, t
   const totalScreenshots = screenshots.length;
   
   return `
-  <div class="comparison">
-    <div class="comparison-header">
+  <div class="comparison" data-step="${stepNumber}">
+    <div class="comparison-header" onclick="toggleStep(${stepNumber})" role="button" tabindex="0" title="点击折叠/展开">
       <h2>
         步骤 ${stepNumber}
       </h2>
+      <span class="screenshot-badge">${totalScreenshots}张</span>
     </div>
-    <div class="comparison-body">
+    <div class="comparison-body" id="step-body-${stepNumber}">
       ${stepNames.map(name => {
         const nameScreenshots = groupedByStepName.get(name)!;
         const nameTotal = nameScreenshots.length;
@@ -478,6 +485,15 @@ function generateDiffStep(comp: StepComparison, type: 'pom' | 'optimized' | 'all
   </div>`;
 }
 
+function getOptimizedDiffCountsForScript(tdc: TestDirComparisons): { all: number; only: number } {
+  const all = tdc.comparisons.reduce((sum, comp) => sum + (comp.optimizedComparisons?.length || 0), 0);
+  const only = tdc.comparisons.reduce(
+    (sum, comp) => sum + (comp.optimizedComparisons?.filter((c) => c.difference >= 0.001).length || 0),
+    0
+  );
+  return { all, only };
+}
+
 function extractStepNameFromPath(path: string): string {
   const match = path.match(/step-\d+-([^_]+(?:_[^_]+)*)__/);
   return match ? match[1] : 'unknown';
@@ -563,6 +579,23 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
   const allComparisons = testDirComparisons.flatMap(tdc => tdc.comparisons);
   const optimizedSteps = hasOptimizedData ? allComparisons.map(comp => generateOptimizedStep(comp, optDirName)).join('') : '';
   
+  // 约定：testDir = "<iteration>/<script>"
+  const iterationMap = new Map<string, TestDirComparisons[]>();
+  for (const tdc of testDirComparisons) {
+    const [iteration, ...rest] = String(tdc.testDir).split('/');
+    const iter = iteration || 'unknown-iteration';
+    const script = rest.join('/') || tdc.testDir;
+    if (!iterationMap.has(iter)) iterationMap.set(iter, []);
+    iterationMap.get(iter)!.push({ ...tdc, testDir: script });
+  }
+  const iterations = Array.from(iterationMap.keys());
+  const firstIteration = iterations[0];
+
+  function stripScriptTimestamp(name: string): string {
+    // e.g. 登录-click_2026-04-13_16-58-12 -> 登录-click
+    return name.replace(/_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$/, '');
+  }
+
   const allBrowsers = new Set<string>();
   allComparisons.forEach(comp => {
     comp.optimizedScreenshots.forEach(s => {
@@ -573,29 +606,86 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
   });
   const browserList = Array.from(allBrowsers).sort();
   
-  const testDirTabs = testDirComparisons.map((tdc, index) => `
-    <button class="test-dir-tab ${index === 0 ? 'active' : ''}" data-test-dir="${tdc.testDir}" onclick="switchTestDir('${tdc.testDir}')">
-      <span>${tdc.testDir}</span>
+  const iterationTabs = iterations
+    .map((iter, index) => `
+    <button class="iteration-tab ${index === 0 ? 'active' : ''}" data-iteration="${iter}" onclick="switchIteration('${iter}')">
+      <span>${iter}</span>
     </button>
-  `).join('');
-  
-  const testDirContents = testDirComparisons.map(tdc => `
-    <div class="test-dir-content" data-test-dir="${tdc.testDir}" ${tdc.testDir === testDirComparisons[0].testDir ? '' : 'style="display: none;"'}>
-      ${tdc.comparisons.map(comp => generateOptimizedStep(comp, optDirName)).join('')}
+  `)
+    .join('');
+
+  function buildScriptTabs(iter: string): string {
+    const scripts = iterationMap.get(iter) || [];
+    const displayCount = new Map<string, number>();
+    return scripts
+      .map((tdc, index) => {
+        const rawName = String(tdc.testDir);
+        const base = stripScriptTimestamp(rawName);
+        const next = (displayCount.get(base) || 0) + 1;
+        displayCount.set(base, next);
+        const display = next > 1 ? `${base} (${next})` : base;
+        return `
+      <button class="script-tab ${index === 0 ? 'active' : ''}" data-iteration="${iter}" data-script="${rawName}" onclick="switchScript('${iter}', '${rawName}')" title="${rawName}">
+        <span>${display}</span>
+      </button>
+    `;
+      })
+      .join('');
+  }
+
+  function buildScriptContents(
+    iter: string,
+    render: (tdc: TestDirComparisons) => string,
+    extraAttrs?: (tdc: TestDirComparisons) => string
+  ): string {
+    const scripts = iterationMap.get(iter) || [];
+    const firstScript = scripts[0]?.testDir;
+    return scripts
+      .map((tdc) => `
+      <div class="script-content" data-iteration="${iter}" data-script="${tdc.testDir}" ${tdc.testDir === firstScript ? '' : 'style="display: none;"'} ${extraAttrs ? extraAttrs(tdc) : ''}>
+        ${render(tdc)}
+      </div>
+    `)
+      .join('');
+  }
+
+  const optimizedByIteration = iterations
+    .map((iter, index) => `
+    <div class="iteration-content" data-iteration="${iter}" ${index === 0 ? '' : 'style="display: none;"'}>
+      ${buildScriptContents(iter, (tdc) => tdc.comparisons.map((comp) => generateOptimizedStep(comp, optDirName)).join(''))}
     </div>
-  `).join('');
-  
-  const testDirDiffContents = testDirComparisons.map(tdc => `
-    <div class="test-dir-content" data-test-dir="${tdc.testDir}" ${tdc.testDir === testDirComparisons[0].testDir ? '' : 'style="display: none;"'}>
-      ${tdc.comparisons.map(comp => generateDiffStep(comp, 'optimized')).join('')}
+  `)
+    .join('');
+
+  const optimizedDiffByIteration = iterations
+    .map((iter, index) => `
+    <div class="iteration-content" data-iteration="${iter}" ${index === 0 ? '' : 'style="display: none;"'}>
+      ${buildScriptContents(
+        iter,
+        (tdc) => tdc.comparisons.map((comp) => generateDiffStep(comp, 'optimized')).join(''),
+        (tdc) => {
+          const c = getOptimizedDiffCountsForScript(tdc);
+          return `data-diff-all="${c.all}" data-diff-only="${c.only}"`;
+        }
+      )}
     </div>
-  `).join('');
-  
-  const testDirDiffOnlyContents = testDirComparisons.map(tdc => `
-    <div class="test-dir-content" data-test-dir="${tdc.testDir}" ${tdc.testDir === testDirComparisons[0].testDir ? '' : 'style="display: none;"'}>
-      ${tdc.comparisons.map(comp => generateDiffStep(comp, 'all', true)).join('')}
+  `)
+    .join('');
+
+  const diffOnlyByIteration = iterations
+    .map((iter, index) => `
+    <div class="iteration-content" data-iteration="${iter}" ${index === 0 ? '' : 'style="display: none;"'}>
+      ${buildScriptContents(
+        iter,
+        (tdc) => tdc.comparisons.map((comp) => generateDiffStep(comp, 'all', true)).join(''),
+        (tdc) => {
+          const c = getOptimizedDiffCountsForScript(tdc);
+          return `data-diff-all="${c.all}" data-diff-only="${c.only}"`;
+        }
+      )}
     </div>
-  `).join('');
+  `)
+    .join('');
   
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -673,6 +763,10 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       background: #f8f9fa;
       padding: 10px 15px;
       border-bottom: 1px solid #dee2e6;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
     }
     
     .comparison-header h2 {
@@ -682,6 +776,61 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       display: flex;
       align-items: center;
       gap: 10px;
+    }
+
+    .controls-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+
+    .controls-left {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      flex: 1 1 auto;
+      min-width: 320px;
+    }
+
+    .controls-right {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      flex: 0 0 auto;
+    }
+
+    .control-button {
+      padding: 10px 14px;
+      background: white;
+      border: 1px solid #dee2e6;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      color: #495057;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+      transition: all 0.2s ease;
+    }
+
+    .control-button:hover {
+      background: #f8f9fa;
+      transform: translateY(-1px);
+    }
+
+    .control-input {
+      height: 40px;
+      padding: 0 12px;
+      border: 1px solid #dee2e6;
+      border-radius: 10px;
+      background: white;
+      font-size: 13px;
+      min-width: 240px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
     }
     
     .screenshot-badge {
@@ -765,6 +914,122 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       background: white;
       border-radius: 10px;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+
+    /* iteration/script 双层 tab：复用原 test-dir-tab 样式 */
+    .iteration-tabs {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+      padding: 16px 20px;
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+    
+    .iteration-tabs-label {
+      font-size: 15px;
+      font-weight: 600;
+      color: #495057;
+      white-space: nowrap;
+    }
+    
+    .iteration-tabs-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+    
+    .iteration-tab {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 20px;
+      background: #f8f9fa;
+      border: 2px solid transparent;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      color: #495057;
+      transition: all 0.2s ease;
+    }
+    
+    .iteration-tab:hover {
+      background: #e9ecef;
+      color: #212529;
+      border-color: #dee2e6;
+    }
+    
+    .iteration-tab.active {
+      background: #667eea;
+      color: white;
+      font-weight: 600;
+      border-color: #667eea;
+      box-shadow: 0 2px 6px rgba(102, 126, 234, 0.2);
+    }
+
+    .script-tabs {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+      padding: 14px 18px;
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    }
+    
+    .script-tabs-label {
+      font-size: 14px;
+      font-weight: 600;
+      color: #495057;
+      white-space: nowrap;
+    }
+    
+    .script-tabs-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .script-tabs-iteration {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+    
+    .script-tab {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px;
+      background: #f8f9fa;
+      border: 2px solid transparent;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      color: #495057;
+      transition: all 0.2s ease;
+    }
+    
+    .script-tab:hover {
+      background: #e9ecef;
+      color: #212529;
+      border-color: #dee2e6;
+    }
+    
+    .script-tab.active {
+      background: #667eea;
+      color: white;
+      font-weight: 600;
+      border-color: #667eea;
+      box-shadow: 0 2px 6px rgba(102, 126, 234, 0.18);
     }
     
     .test-dir-tabs-label {
@@ -1243,22 +1508,44 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
     </div>
   </div>
   
-  ${testDirComparisons.length > 1 ? `
-  <div class="test-dir-tabs">
-    <div class="test-dir-tabs-label">选择测试目录：</div>
-    ${testDirTabs}
-  </div>` : ''}
-  
-  ${hasOptimizedData ? `
-  <div class="global-browser-tabs">
-    <div class="global-browser-tabs-label">选择浏览器：</div>
-    ${browserList.map((browser, index) => `
-      <button class="global-browser-tab ${index === 0 ? 'active' : ''}" data-browser="${browser}" onclick="switchGlobalBrowser('${browser}')">
-        ${getBrowserIcon(browser)}
-        <span>${browser}</span>
-      </button>
-    `).join('')}
-  </div>` : ''}
+  <div class="controls-row">
+    <div class="controls-left">
+      <div class="iteration-tabs">
+        <div class="iteration-tabs-label">选择迭代：</div>
+        <div class="iteration-tabs-container">
+          ${iterationTabs}
+        </div>
+      </div>
+
+      <div class="script-tabs">
+        <div class="script-tabs-label">选择脚本：</div>
+        <div class="script-tabs-container">
+          ${iterations
+            .map((iter) => `<div class="script-tabs-iteration" data-iteration="${iter}" ${
+              iter === firstIteration ? '' : 'style="display: none;"'
+            }>${buildScriptTabs(iter)}</div>`)
+            .join('')}
+        </div>
+      </div>
+
+      ${hasOptimizedData ? `
+      <div class="global-browser-tabs">
+        <div class="global-browser-tabs-label">选择浏览器：</div>
+        ${browserList.map((browser, index) => `
+          <button class="global-browser-tab ${index === 0 ? 'active' : ''}" data-browser="${browser}" onclick="switchGlobalBrowser('${browser}')">
+            ${getBrowserIcon(browser)}
+            <span>${browser}</span>
+          </button>
+        `).join('')}
+      </div>` : ''}
+    </div>
+
+    <div class="controls-right">
+      <input class="control-input" id="scriptSearch" placeholder="搜索脚本（当前迭代）…" oninput="filterScripts(this.value)" />
+      <button class="control-button" onclick="collapseAll(true)">折叠全部</button>
+      <button class="control-button" onclick="collapseAll(false)">展开全部</button>
+    </div>
+  </div>
   
   <div class="tabs">
     <button class="tab active" onclick="switchTab('optimized')">Optimized 版本</button>
@@ -1267,25 +1554,25 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
   </div>
   
   <div id="optimized-content" class="tab-content active">
-    ${testDirContents}
+    ${optimizedByIteration}
   </div>
   
   <div id="optimized-diff-content" class="tab-content">
     <div class="empty-state" id="optimized-diff-empty" style="display: none;">
       <div class="empty-state-icon">🎉</div>
-      <div class="empty-state-title">太棒了！没有发现任何差异</div>
-      <div class="empty-state-description">所有截图都完全一致，无需修改</div>
+      <div class="empty-state-title">暂无差异</div>
+      <div class="empty-state-description">diff 数据为空</div>
     </div>
-    ${testDirDiffContents}
+    ${optimizedDiffByIteration}
   </div>
   
   <div id="diff-only-content" class="tab-content">
     <div class="empty-state" id="diff-only-empty" style="display: none;">
       <div class="empty-state-icon">🎉</div>
-      <div class="empty-state-title">太棒了！没有发现任何差异</div>
-      <div class="empty-state-description">所有截图都完全一致，无需修改</div>
+      <div class="empty-state-title">暂无差异</div>
+      <div class="empty-state-description">diff 数据为空</div>
     </div>
-    ${testDirDiffOnlyContents}
+    ${diffOnlyByIteration}
   </div>
   
   <div class="modal" id="modal" onclick="if (event.target === this) closeModal()">
@@ -1333,26 +1620,39 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
           switchGlobalBrowser(browser);
         }
       }
+
+      updateDiffEmptyStates();
     }
     
-    function switchTestDir(testDir) {
-      const tabs = document.querySelectorAll('.test-dir-tab');
-      const contents = document.querySelectorAll('.test-dir-content');
+    function switchIteration(iteration) {
+      const iterTabs = document.querySelectorAll('.iteration-tab');
+      const iterContents = document.querySelectorAll('.iteration-content');
       
-      tabs.forEach(function(tab) {
+      iterTabs.forEach(function(tab) {
         tab.classList.remove('active');
       });
-      contents.forEach(function(content) {
+      iterContents.forEach(function(content) {
         content.style.display = 'none';
       });
       
-      const targetTab = document.querySelector('.test-dir-tab[data-test-dir="' + testDir + '"]');
-      const targetContents = document.querySelectorAll('.test-dir-content[data-test-dir="' + testDir + '"]');
-      
+      const targetTab = document.querySelector('.iteration-tab[data-iteration=\"' + iteration + '\"]');
+      const targetContent = document.querySelector('.iteration-content[data-iteration=\"' + iteration + '\"]');
       if (targetTab) targetTab.classList.add('active');
-      targetContents.forEach(function(content) {
-        content.style.display = 'block';
+      if (targetContent) targetContent.style.display = 'block';
+
+      const allScriptRows = document.querySelectorAll('.script-tabs-iteration');
+      allScriptRows.forEach(function(row) {
+        row.style.display = 'none';
       });
+      const scriptRow = document.querySelector('.script-tabs-iteration[data-iteration=\"' + iteration + '\"]');
+      if (scriptRow) scriptRow.style.display = 'block';
+      
+      // 激活该迭代下第一个脚本
+      const firstScriptTab = scriptRow ? scriptRow.querySelector('.script-tab') : null;
+      if (firstScriptTab) {
+        const script = firstScriptTab.getAttribute('data-script');
+        if (script) switchScript(iteration, script);
+      }
       
       const activeBrowserTab = document.querySelector('.global-browser-tab.active');
       if (activeBrowserTab) {
@@ -1360,6 +1660,99 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
         if (browser) {
           switchGlobalBrowser(browser);
         }
+      }
+
+      updateDiffEmptyStates();
+    }
+
+    function switchScript(iteration, script) {
+      const scriptTabs = document.querySelectorAll('.script-tab[data-iteration=\"' + iteration + '\"]');
+      const scriptContents = document.querySelectorAll('.script-content[data-iteration=\"' + iteration + '\"]');
+
+      scriptTabs.forEach(function(tab) {
+        tab.classList.remove('active');
+      });
+      scriptContents.forEach(function(content) {
+        content.style.display = 'none';
+      });
+
+      const targetTab = document.querySelector('.script-tab[data-iteration=\"' + iteration + '\"][data-script=\"' + script + '\"]');
+      const targetContent = document.querySelector('.script-content[data-iteration=\"' + iteration + '\"][data-script=\"' + script + '\"]');
+      if (targetTab) targetTab.classList.add('active');
+      if (targetContent) targetContent.style.display = 'block';
+
+      const input = document.getElementById('scriptSearch');
+      if (input) input.value = '';
+      filterScripts('');
+
+      const activeBrowserTab = document.querySelector('.global-browser-tab.active');
+      if (activeBrowserTab) {
+        const browser = activeBrowserTab.getAttribute('data-browser');
+        if (browser) {
+          switchGlobalBrowser(browser);
+        }
+      }
+
+      updateDiffEmptyStates();
+    }
+
+    function filterScripts(query) {
+      const activeIterTab = document.querySelector('.iteration-tab.active');
+      const iteration = activeIterTab ? activeIterTab.getAttribute('data-iteration') : null;
+      if (!iteration) return;
+
+      const q = String(query || '').trim().toLowerCase();
+      const tabs = document.querySelectorAll('.script-tab[data-iteration=\"' + iteration + '\"]');
+
+      tabs.forEach(function(tab) {
+        const label = (tab.textContent || '').trim().toLowerCase();
+        const title = (tab.getAttribute('title') || '').toLowerCase();
+        const hit = q.length === 0 || label.includes(q) || title.includes(q);
+        tab.style.display = hit ? 'inline-flex' : 'none';
+      });
+    }
+
+    function toggleStep(stepNumber) {
+      const body = document.getElementById('step-body-' + stepNumber);
+      if (!body) return;
+      const isHidden = body.style.display === 'none';
+      body.style.display = isHidden ? 'block' : 'none';
+    }
+
+    function collapseAll(collapse) {
+      const bodies = document.querySelectorAll('.comparison-body');
+      bodies.forEach(function(body) {
+        body.style.display = collapse ? 'none' : 'block';
+      });
+    }
+
+    function updateDiffEmptyStates() {
+      const activeIterTab = document.querySelector('.iteration-tab.active');
+      const iteration = activeIterTab ? activeIterTab.getAttribute('data-iteration') : null;
+      const activeScriptTab = iteration
+        ? document.querySelector('.script-tab.active[data-iteration=\"' + iteration + '\"]')
+        : null;
+      const script = activeScriptTab ? activeScriptTab.getAttribute('data-script') : null;
+      const activeTab = document.querySelector('.tab-content.active');
+
+      if (!iteration || !script || !activeTab) return;
+
+      if (activeTab.id === 'optimized-diff-content') {
+        const target = document.querySelector(
+          '#optimized-diff-content .script-content[data-iteration=\"' + iteration + '\"][data-script=\"' + script + '\"]'
+        );
+        const all = target ? Number(target.getAttribute('data-diff-all') || '0') : 0;
+        const empty = document.getElementById('optimized-diff-empty');
+        if (empty) empty.style.display = all === 0 ? 'flex' : 'none';
+      }
+
+      if (activeTab.id === 'diff-only-content') {
+        const target = document.querySelector(
+          '#diff-only-content .script-content[data-iteration=\"' + iteration + '\"][data-script=\"' + script + '\"]'
+        );
+        const only = target ? Number(target.getAttribute('data-diff-only') || '0') : 0;
+        const empty = document.getElementById('diff-only-empty');
+        if (empty) empty.style.display = only === 0 ? 'flex' : 'none';
       }
     }
     
@@ -1459,6 +1852,8 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
           comparison.style.display = 'block';
         });
       }
+
+      updateDiffEmptyStates();
     }
     
     document.addEventListener('DOMContentLoaded', function() {
@@ -1469,6 +1864,16 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
           switchGlobalBrowser(browser);
         }
       }
+
+      const activeIterTab = document.querySelector('.iteration-tab.active');
+      if (activeIterTab) {
+        const iteration = activeIterTab.getAttribute('data-iteration');
+        if (iteration) {
+          switchIteration(iteration);
+        }
+      }
+
+      updateDiffEmptyStates();
     });
     
     document.addEventListener('keydown', function(e) {
@@ -1496,31 +1901,47 @@ async function main() {
     return;
   }
   
-  const testDirs = fs.readdirSync(screenshotsDir)
-    .filter(f => fs.statSync(path.join(screenshotsDir, f)).isDirectory())
-    .filter(f => !f.startsWith('.'))
+  // 目录结构约定：
+  // screenshots/<dateDir>/<scriptDir>/<timestamp>/<step-*.png>
+  const dateDirs = fs.readdirSync(screenshotsDir)
+    .filter((f) => fs.statSync(path.join(screenshotsDir, f)).isDirectory())
+    .filter((f) => !f.startsWith('.'))
     .sort()
     .reverse();
   
   console.log('📸 正在扫描截图目录...');
   console.log(`  截图根目录: ${screenshotsDir}`);
-  console.log(`  找到 ${testDirs.length} 个测试目录: ${testDirs.join(', ')}`);
+  console.log(`  找到 ${dateDirs.length} 个日期目录: ${dateDirs.join(', ')}`);
   console.log(`  输出文件: ${outputPath}`);
   
   const testDirComparisons: TestDirComparisons[] = [];
   
-  for (const testDir of testDirs) {
-    const testPath = path.join(screenshotsDir, testDir);
-    console.log(`\n🔍 处理测试目录: ${testDir}`);
-    
-    const screenshots = getAllScreenshots(testPath, 'optimized', outputPath);
-    
-    if (screenshots.size > 0) {
-      const comparisons = await generateTestComparisons(testDir, screenshots, outputPath);
-      testDirComparisons.push({
-        testDir,
-        comparisons
-      });
+  for (const dateDir of dateDirs) {
+    const datePath = path.join(screenshotsDir, dateDir);
+    const scriptDirs = fs
+      .readdirSync(datePath)
+      .filter((f) => fs.statSync(path.join(datePath, f)).isDirectory())
+      .filter((f) => !f.startsWith('.'))
+      .sort();
+
+    if (scriptDirs.length === 0) continue;
+
+    console.log(`\n🗓️  处理日期目录: ${dateDir}（脚本数: ${scriptDirs.length}）`);
+
+    for (const scriptDir of scriptDirs) {
+      const scriptPath = path.join(datePath, scriptDir);
+      const scriptKey = `${dateDir}/${scriptDir}`;
+      console.log(`\n🔍 处理脚本目录: ${scriptKey}`);
+
+      const screenshots = getAllScreenshots(scriptPath, 'optimized', outputPath);
+
+      if (screenshots.size > 0) {
+        const comparisons = await generateTestComparisons(scriptKey, screenshots, outputPath);
+        testDirComparisons.push({
+          testDir: scriptKey,
+          comparisons,
+        });
+      }
     }
   }
   

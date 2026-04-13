@@ -163,6 +163,56 @@ class RawRecordingGenerator {
     if (selector.includes('=')) return 'xpath';
     return 'selector';
   }
+
+  private inferBehavior(code: string): string {
+    const lines = code.split('\n').map(l => l.trim()).filter(Boolean);
+    for (const line of lines) {
+      if (line.includes('.click(')) return 'click';
+      if (line.includes('.fill(')) return 'fill';
+      if (line.includes('.type(')) return 'type';
+      if (line.includes('page.goto(')) return 'goto';
+      if (line.includes('.check(')) return 'check';
+      if (line.includes('.selectOption(')) return 'select';
+      if (line.includes('.press(')) return 'press';
+    }
+    return 'script';
+  }
+
+  private inferFeature(code: string): string {
+    const lines = code.split('\n').map(l => l.trim()).filter(Boolean);
+
+    // 1) URL（非相对路径）
+    let sawRelativeGoto = false;
+    for (const line of lines) {
+      const gotoMatch = line.match(/page\.goto\(['"]([^'"]+)['"]/);
+      if (!gotoMatch) continue;
+      const url = gotoMatch[1];
+      if (/^https?:\/\//i.test(url)) {
+        const domain = this.extractDomain(url);
+        if (domain && domain !== 'unknown') return domain;
+      } else {
+        // 相对路径：先记下，等待是否能命中更可读的“元素文本”
+        sawRelativeGoto = true;
+      }
+    }
+
+    // 3) 操作元素文本（如 getByText('登录') / getByRole({ name: '登录' })）
+    for (const line of lines) {
+      const textMatch =
+        line.match(/getByText\(\s*['"]([^'"]+)['"]/i) ||
+        line.match(/getBy(?:Role|Label|Placeholder|AltText)\([^)]*name\s*:\s*['"]([^'"]+)['"]/i);
+      if (textMatch?.[1]) {
+        const v = this.shortenSegment(textMatch[1], 12);
+        if (v && v !== 'unknown') return v;
+      }
+    }
+
+    // 2) 相对路径 → 固定为 home（仅在没有更好的元素文本时使用）
+    if (sawRelativeGoto) return 'home';
+
+    // 4) 最终兜底：action 本身（如 click）
+    return this.inferBehavior(code);
+  }
   
   /**
    * Raw recordings 命名规范：<feature>-<behavior>_<timestamp>.spec.ts
@@ -176,8 +226,8 @@ class RawRecordingGenerator {
   private generateFileName(code: string, options: GenerateOptions = {}): string {
     const timestamp = this.generateTimestamp();
 
-    const feature = this.shortenSegment(options.name?.trim() || this.buildBaseName(code), 14);
-    const behavior = this.shortenSegment(options.description?.trim() || this.buildBaseName(code, undefined, undefined), 14);
+    const feature = this.shortenSegment(options.name?.trim() || this.inferFeature(code), 14);
+    const behavior = this.shortenSegment(options.description?.trim() || this.inferBehavior(code), 14);
     const baseName = `${feature}-${behavior}`.replace(/-+/g, '-').replace(/^-|-$/g, '').substring(0, 32) || 'recording-codegen';
 
     const fileName = `${baseName}_${timestamp}.spec.ts`;
@@ -348,12 +398,18 @@ class RawRecordingGenerator {
     if (!this.validateCode(code)) {
       process.exit(1);
     }
-    
-    const wrappedCode = this.wrapCodeInTest(code);
+
+    // CLI 传参常出现 "\\n" 这类字面量转义，落盘前统一还原为真实换行，避免生成脚本包含 "\n"
+    const normalizedCode = code
+      .replace(/\\r\\n/g, '\n')
+      .replace(/\\n/g, '\n')
+      .replace(/\\t/g, '\t');
+
+    const wrappedCode = this.wrapCodeInTest(normalizedCode);
     const fileName = this.generateFileName(code, options);
     
     // 保存原始代码
-    this.saveOriginalCode(code, fileName);
+    this.saveOriginalCode(normalizedCode, fileName);
     
     fs.writeFileSync(fileName, wrappedCode, 'utf-8');
     
@@ -411,15 +467,23 @@ class RawRecordingGenerator {
     const options: GenerateOptions = {};
     
     for (let i = 0; i < args.length; i++) {
-      if (args[i] === '--code' && i + 1 < args.length) {
-        options.code = args[++i];
-      } else if (args[i] === '--file' && i + 1 < args.length) {
-        options.file = args[++i];
-      } else if (args[i] === '--name' && i + 1 < args.length) {
-        options.name = args[++i];
-      } else if (args[i] === '--description' && i + 1 < args.length) {
-        options.description = args[++i];
-      }
+      const cur = args[i];
+
+      // 支持 --key value 与 --key=value 两种写法（npm run 透传常用）
+      const readValue = (flag: keyof GenerateOptions) => {
+        if (i + 1 < args.length) {
+          (options as any)[flag] = args[++i];
+        }
+      };
+
+      if (cur === '--code') readValue('code');
+      else if (cur.startsWith('--code=')) options.code = cur.slice('--code='.length);
+      else if (cur === '--file') readValue('file');
+      else if (cur.startsWith('--file=')) options.file = cur.slice('--file='.length);
+      else if (cur === '--name') readValue('name');
+      else if (cur.startsWith('--name=')) options.name = cur.slice('--name='.length);
+      else if (cur === '--description') readValue('description');
+      else if (cur.startsWith('--description=')) options.description = cur.slice('--description='.length);
     }
     
     try {

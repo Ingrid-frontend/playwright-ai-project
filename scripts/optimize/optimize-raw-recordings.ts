@@ -463,32 +463,9 @@ class RawRecordingOptimizer {
   }
 
   private extractTestUseSettings(): string[] {
-    const testUseLines: string[] = [];
-    
-    // 查找 test.use 设置
-    for (let i = 0; i < this.lines.length; i++) {
-      const line = this.lines[i].trim();
-      
-      // 找到 test.use 开始
-      if (line.startsWith('test.use(')) {
-        // 收集 test.use 块
-        let currentLine = line;
-        testUseLines.push(this.lines[i]);
-        
-        // 检查是否是多行的 test.use
-        if (!currentLine.includes(');')) {
-          for (let j = i + 1; j < this.lines.length; j++) {
-            testUseLines.push(this.lines[j]);
-            if (this.lines[j].includes(');')) {
-              break;
-            }
-          }
-        }
-        break;
-      }
-    }
-    
-    return testUseLines;
+    // optimized 用例默认走 playwright.config.ts 的 project 配置（storageState/baseURL 等）
+    // 为避免环境硬编码与重复配置，这里不再从 raw-recordings 透传 test.use 块
+    return [];
   }
 
   private generateOptimizedCode(): string {
@@ -518,98 +495,19 @@ class RawRecordingOptimizer {
   }
 
   private generateTemplateCode(testName: string, screenshotDir: string, testUseLines: string[], actions: Action[]): string {
+    const needsClick = actions.some((a) => a.type === 'click');
+    const needsFill = actions.some((a) => a.type === 'fill');
+    const actionImports = [
+      'step',
+      ...(needsClick ? ['smartClick'] : []),
+      ...(needsFill ? ['smartFill'] : []),
+    ];
+
     const template = `import { test, expect } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
-import { takeStepScreenshot } from '../../utils/screenshot';
-
-const PAUSE_ENABLED = process.env.ENABLE_PAUSE === '1';
-async function maybePause(page, reason: string) {
-  if (!PAUSE_ENABLED) return;
-  console.log(`⏸️ 已启用 pause（ENABLE_PAUSE=1），原因: ${reason}`);
-  await page.pause();
-}
-
-// 定义智能动作函数
-async function smartClick(locator, stepName) {
-  console.log(\`🧠 执行智能点击: \${stepName}\`);
-  console.log(\`🔍 元素数量: \${await locator.count()}\`);
-  
-  // 等待元素可见
-  try {
-    await locator.waitFor({ state: 'visible', timeout: 10000 });
-  } catch (e) {
-    console.log(\`⚠️ 元素不可见: \${e.message}\`);
-    await maybePause(locator.page(), \`元素不可见: \${stepName}\`);
-  }
-  
-  // 滚动到元素
-  await locator.scrollIntoViewIfNeeded().catch(() => {});
-  
-  // 处理 AntD 全局 Loading 遮罩
-  await locator.page().locator('.ant-spin-spinning, .ant-loading').waitFor({ state: 'hidden' }).catch(() => {});
-  
-  // 执行点击
-  try {
-    await locator.click();
-  } catch (e) {
-    console.log(\`⚠️ 点击失败: \${e.message}\`);
-    await maybePause(locator.page(), \`点击失败: \${stepName}\`);
-    throw e;
-  }
-  
-  // 处理 Ant Design 3.x 下拉框
-  if (stepName.includes('选择') || stepName.includes('下拉') || locator.toString().includes('ant-select')) {
-    // 等待下拉框出现
-    await locator.page().locator('.ant-select-dropdown:not(.ant-select-dropdown--hidden)').waitFor({ timeout: 5000 }).catch(() => {});
-  }
-  
-  // 处理 Ant Design 3.x 日期选择器
-  if (stepName.includes('日期') || locator.toString().includes('date')) {
-    // 等待日期选择器面板出现
-    await locator.page().locator('.ant-calendar-picker-container').waitFor({ timeout: 5000 }).catch(() => {});
-  }
-}
-
-async function smartFill(locator, text, stepName) {
-  console.log(\`🧠 执行智能填充: \${stepName}\`);
-  console.log(\`🔍 元素数量: \${await locator.count()}\`);
-  
-  // 等待元素可见
-  try {
-    await locator.waitFor({ state: 'visible', timeout: 10000 });
-  } catch (e) {
-    console.log(\`⚠️ 元素不可见: \${e.message}\`);
-    await maybePause(locator.page(), \`元素不可见: \${stepName}\`);
-  }
-  
-  // 滚动到元素
-  await locator.scrollIntoViewIfNeeded().catch(() => {});
-  
-  // 处理 AntD 全局 Loading 遮罩
-  await locator.page().locator('.ant-spin-spinning, .ant-loading').waitFor({ state: 'hidden' }).catch(() => {});
-  
-  // 执行填充
-  try {
-    await locator.fill(text);
-  } catch (e) {
-    console.log(\`⚠️ 填充失败: \${e.message}\`);
-    await maybePause(locator.page(), \`填充失败: \${stepName}\`);
-    throw e;
-  }
-}
-
-// 定义step函数，提高可读性
-async function step(name: string, fn: () => Promise<void>) {
-  console.log(\`\n👉 \${name}\`);
-  try {
-    await fn();
-    console.log(\`✅ \${name} 完成\`);
-  } catch (error) {
-    console.log(\`❌ \${name} 失败: \${error.message}\`);
-    throw error;
-  }
-};
+import { takeStepScreenshot } from '../../../utils/screenshot';
+import { ${actionImports.join(', ')} } from '../../utils/optimized-actions';
 
 ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testName}', async ({ page }) => {
   ${this.options.addTimeout ? 'test.setTimeout(120000);' : ''}
@@ -656,7 +554,7 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
       console.log('🌐 导航到: / (基于 baseURL)');
       await page.goto('/', { waitUntil: 'networkidle' });
       await page.waitForLoadState('networkidle');
-      await takeStepScreenshot(page, path.join(runDir, \`step-1-before-action.png\`), { fullPage: true });
+      await takeStepScreenshot(page, path.join(runDir, \`step-1-导航到首页.png\`), { fullPage: true });
     });
   }
 
@@ -682,7 +580,7 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
     console.log('🌐 导航到: ${action.url}');
     await page.goto('${action.url}', { waitUntil: 'networkidle' });
     ${this.options.waitLoad ? 'await page.waitForLoadState(\'networkidle\');' : ''}
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-before-action.png\`), { fullPage: true });
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-导航到页面.png\`), { fullPage: true });
   });
 
 `;
@@ -699,6 +597,7 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
 
   private generateActionCode(action: Action, stepIndex: number, runDirVariable: string): string {
     const label = this.getActionLabel(action);
+    const fileLabel = this.cleanLabel(label) || `step-${stepIndex}`;
     const selector = this.optimizeSelector(action.selector);
     const locatorCode = this.extractAndOptimizeLocator(selector);
     const isKeyAction = this.isKeyAction(action.selector);
@@ -706,13 +605,13 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
     switch (action.type) {
       case 'click':
         return `  await step('${label}', async () => {
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-before-action.png\`), { fullPage: true });
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`), { fullPage: true });
     ${this.hasIframe ? `const baseContext = iframeContent || page;
     const locator = ${locatorCode.replace(/page\./g, 'baseContext.')};` : `const locator = ${locatorCode};`}
     ${this.options.addVisible && isKeyAction ? `await expect(locator).toBeVisible();` : ''}
     await smartClick(locator, '${label}');
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-after-action.png\`), { fullPage: true });
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { fullPage: true });
   });
 
 `;
@@ -720,19 +619,19 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
       case 'type':
         const text = action.text || '';
         return `  await step('${label}', async () => {
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-before-action.png\`), { fullPage: true });
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`), { fullPage: true });
     ${this.hasIframe ? `const baseContext = iframeContent || page;
     const locator = ${locatorCode.replace(/page\./g, 'baseContext.')};` : `const locator = ${locatorCode};`}
     ${this.options.addVisible && isKeyAction ? `await expect(locator).toBeVisible();` : ''}
     await smartFill(locator, "${text}", '${label}');
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-after-action.png\`), { fullPage: true });
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { fullPage: true });
   });
 
 `;
       case 'check':
         return `  await step('${label}', async () => {
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-before-action.png\`), { fullPage: true });
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`), { fullPage: true });
     ${this.hasIframe ? `const baseContext = iframeContent || page;
     const locator = ${locatorCode.replace(/page\./g, 'baseContext.')};` : `const locator = ${locatorCode};`}
     ${this.options.addVisible && isKeyAction ? `await expect(locator).toBeVisible();` : ''}
@@ -749,13 +648,13 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
       await maybePause(page, '勾选失败');
     }
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-after-action.png\`), { fullPage: true });
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { fullPage: true });
   });
 
 `;
       case 'selectOption':
         return `  await step('${label}', async () => {
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-before-action.png\`), { fullPage: true });
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`), { fullPage: true });
     ${this.hasIframe ? `const baseContext = iframeContent || page;
     const locator = ${locatorCode.replace(/page\./g, 'baseContext.')};` : `const locator = ${locatorCode};`}
     ${this.options.addVisible && isKeyAction ? `await expect(locator).toBeVisible();` : ''}
@@ -772,13 +671,13 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
       await maybePause(page, '选择失败');
     }
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-after-action.png\`), { fullPage: true });
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { fullPage: true });
   });
 
 `;
       case 'press':
         return `  await step('${label}', async () => {
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-before-action.png\`), { fullPage: true });
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`), { fullPage: true });
     ${this.hasIframe ? `const baseContext = iframeContent || page;
     const locator = ${locatorCode.replace(/page\./g, 'baseContext.')};` : `const locator = ${locatorCode};`}
     ${this.options.addVisible && isKeyAction ? `await expect(locator).toBeVisible();` : ''}
@@ -795,7 +694,7 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
       await maybePause(page, '按键失败');
     }
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-after-action.png\`), { fullPage: true });
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { fullPage: true });
   });
 
 `;
@@ -985,6 +884,10 @@ async function processFile(filePath: string): Promise<void> {
   console.log(`🔄 开始优化文件: ${filePath}`);
   const optimizer = new RawRecordingOptimizer(filePath);
   const result = optimizer.optimize();
+  if (!result || result.trim().length === 0) {
+    console.log(`❌ 优化失败（未生成内容），跳过写入: ${filePath}`);
+    return;
+  }
 
   const fileName = path.basename(filePath, '.spec.ts');
   
@@ -1016,6 +919,8 @@ function findSpecFiles(dir: string): string[] {
     const fullPath = path.join(dir, item.name);
     
     if (item.isDirectory()) {
+      // raw-recordings 的 original 目录是备份原始文件，不参与 optimize
+      if (item.name === 'original') continue;
       // 递归处理子目录
       files.push(...findSpecFiles(fullPath));
     } else if (item.isFile() && item.name.endsWith('.spec.ts')) {
