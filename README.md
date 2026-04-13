@@ -535,94 +535,43 @@ npm run rename-recordings
 5. **测试命名不清晰**：使用通用名称 "test"
 6. **缺少错误处理**：没有异常处理机制
 
-### 优化工具
+### 脚本速查（高效使用）
 
-本项目提供了三个优化工具：
-
-#### 1. 分析工具 (`npm run analyze-test`)
-
-分析录制脚本的问题并提供优化建议：
+建议按下面的顺序使用（从录制到对比一条链路跑通即可）：
 
 ```bash
-npm run analyze-test tests/raw-recordings/2026-03-02_10-20-26.spec.ts
+# 1) 录制（Playwright Codegen）
+npm run record
+
+# 2) 分析（看脚本质量与改进建议）
+npm run analyze-test -- tests/raw-recordings/2026-03-02_10-20-26.spec.ts
 ```
 
-**输出内容**：
-- 统计信息（定位符数量、等待操作、断言数量等）
-- 发现的问题（错误、警告、建议）
-- 优化建议
-
-#### 2. 自动优化工具 (`npm run optimize`)
-
-自动优化录制的测试脚本：
+#### 2. 优化 / POM / 对比（常用）
 
 ```bash
-npm run optimize tests/raw-recordings/2026-03-02_10-20-26.spec.ts
+# 优化（统一入口：单文件 / 目录 / 不传参）
+npm run optimize -- tests/raw-recordings/2026-03-02_10-20-26.spec.ts
+npm run optimize -- tests/raw-recordings/
+npm run optimize
 ```
 
-**优化内容**：
-- 添加适当的等待（`waitForLoadState`, `waitForTimeout`）
-- 添加断言验证
-- 改进测试命名
-- 优化定位符（CSS → 语义化）
-- 添加页面截图功能（每个操作前后自动截图）
-- 添加注释说明
+输出：
+- 优化用例：`tests/optimized/<日期目录>/*.optimized.spec.ts`
 
-**输出文件**：`tests/optimized/2026-03-02_10-20-26.optimized.spec.ts`
+说明：
+- `npm run optimize` 是统一入口；需要强制走 raw-recordings 批量管线时用 `npm run optimize-raw-recordings`。
 
-**截图功能**：
-- 页面加载完成后自动截图
-- 每个关键操作（点击、填写、勾选等）前后都会截图
-- 截图保存到 `screenshots/{脚本名称}/` 目录，按脚本名称区分
-- 每次执行测试都会创建新的时间戳子目录，便于对比不同执行的结果
-- 截图文件名格式：`step-{编号}-{before/after}-{元素名称}.png`
-- 时间戳格式：`YYYY-MM-DD_HH-MM-SS`（例如：2026-03-04_08-34-03），每次执行自动生成
-- 增加等待时间到 800ms，确保页面加载完成后再截图
-- 支持的操作类型：click、check、fill、type、selectOption、press、dblclick、hover
-
-**截图目录结构示例**：
-```
-screenshots/
-├── optimized/
-│   └── 2026_03_02_10_20_26/
-│       ├── 2026-03-04_08-34-03/
-│       │   ├── step-1-home.png
-│       │   ├── step-2-before-anticon-anticon-close.png
-│       │   ├── step-3-after-anticon-anticon-close.png
-│       │   └── ...
-│       ├── 2026-03-04_09-15-22/
-│       │   ├── step-1-home.png
-│       │   ├── step-2-before-anticon-anticon-close.png
-│       │   └── ...
-│       └── 2026-03-04_10-30-45/
-│           └── ...
-└── pom/
-    └── 2026_03_02_10_20_26/
-        ├── 2026-03-04_08-34-09/
-        │   ├── step-1-home.png
-        │   ├── step-2-before-点击报销单.png
-        │   ├── step-3-after-点击报销单.png
-        │   └── ...
-        ├── 2026-03-04_09-15-28/
-        │   ├── step-1-home.png
-        │   └── ...
-        └── 2026-03-04_10-30-52/
-            └── ...
-```
-
-**说明**：
-- `optimized/` 目录：存放 .optimized 脚本生成的截图
-- `pom/` 目录：存放 .pom 脚本生成的截图
-- `2026_03_02_10_20_26` 是脚本名称（从文件名提取）
-- `2026-03-04_08-34-03` 是执行时间戳（每次执行自动生成）
-- 多次执行同一脚本会创建多个时间戳子目录，便于对比
+截图输出：
+- 优化脚本截图：`screenshots/optimized/`
+- POM 脚本截图：`screenshots/pom/`
 
 #### 3. POM 生成器 (`npm run generate-pom`)
 
 根据录制脚本自动生成页面对象模型：
 
 ```bash
-npm run generate-pom tests/raw-recordings/2026-03-02_10-20-26.spec.ts
+npm run generate-pom -- tests/raw-recordings/2026-03-02_10-20-26.spec.ts
 ```
 
 **生成内容**：
@@ -727,88 +676,7 @@ npm run optimize-chrome-recorder -- "tests/chrome-recorder/"
 
 **输出文件**：`tests/optimized/{原文件名}.optimized.spec.ts`
 
-**示例对比**：
-
-**优化前（Chrome Recorder 导出）**：
-```javascript
-test.describe("Recording 2026/3/18 at 14:48:15", () => {
-  test("tests Recording 2026/3/18 at 14:48:15", async ({ page }) => {
-    await page.setViewportSize({
-          width: 1344,
-          height: 928
-        })
-    await page.goto("https://stage.huilianyi.com/main/home");
-    await page.locator("li.ant-menu-item-active span").click()
-    await page.locator("td:nth-of-type(4) > span > span").click()
-    await page.locator("div:nth-of-type(2) > button").click()
-  });
-});
-```
-
-**优化后**：
-```typescript
-import { test, expect } from '@playwright/test';
-import fs from 'fs';
-import { screenshotWhenStable } from '../../utils/screenshot';
-
-test.use({
-  storageState: 'storage/loginState/stage.json'
-});
-
-test("tests Recording 2026/3/18 at 14:48:15", async ({ page }) => {
-  const tracingStarted = await page.context().tracing.start({ screenshots: true, snapshots: true }).catch(() => false);
-  const screenshotRoot = 'screenshots/Recording 2026_3_18 at 14_48_15';
-  const now = new Date();
-  const runTimestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
-  const testId = Math.random().toString(36).substring(2, 9);
-  let browserInfo = 'unknown';
-  let runDir = '';
-  const getScreenshotPath = (step: number, label: string) => `${runDir}/step-${step}-${label}.png`;
-  test.setTimeout(60000);
-
-  await page.goto("https://stage.huilianyi.com/main/home");
-  await expect(page).toHaveURL(/.*huilianyi.*/);
-  browserInfo = await page.context().browser()?.browserType().name() || 'unknown';
-  runDir = `${screenshotRoot}/${runTimestamp}-${browserInfo}-${testId}`;
-  if (!fs.existsSync(runDir)) {
-    fs.mkdirSync(runDir, { recursive: true });
-  }
-
-  await test.step('step-1-action', async () => {
-    const { path: beforePath, route: beforeRoute } = await screenshotWhenStable(page, getScreenshotPath(1, 'before-action'));
-    console.log('📍 当前路由:', beforeRoute);
-    try {
-      const _locator = page.locator("li.ant-menu-item span").first();
-      await _locator.waitFor({ state: 'attached', timeout: 15000 }).catch(() => {});
-      await _locator.click({ timeout: 30000, force: true });
-    } catch (error) {
-      console.log(`❌ 步骤执行失败: ${error instanceof Error ? error.message : String(error)}`);
-      throw error;
-    }
-    const { path: afterPath, route: afterRoute } = await screenshotWhenStable(page, getScreenshotPath(1, 'after-action'));
-    console.log('📍 当前路由:', afterRoute);
-  });
-
-  await test.step('step-2-action', async () => {
-    const { path: beforePath, route: beforeRoute } = await screenshotWhenStable(page, getScreenshotPath(2, 'before-action'));
-    console.log('📍 当前路由:', beforeRoute);
-    try {
-      const _locator = page.locator("td:nth-of-type(4) > span > span").first();
-      await _locator.waitFor({ state: 'attached', timeout: 15000 }).catch(() => {});
-      await _locator.click({ timeout: 30000, force: true });
-    } catch (error) {
-      console.log(`❌ 步骤执行失败: ${error instanceof Error ? error.message : String(error)}`);
-      throw error;
-    }
-    const { path: afterPath, route: afterRoute } = await screenshotWhenStable(page, getScreenshotPath(2, 'after-action'));
-    console.log('📍 当前路由:', afterRoute);
-  });
-
-  if (tracingStarted) {
-    await page.context().tracing.stop({ path: `${runDir}/trace.zip` });
-  }
-});
-```
+**示例**：省略（直接运行生成的 `tests/optimized/*.optimized.spec.ts`，结合 `screenshots/` 与 `trace.zip` 排查即可）
 
 **支持的操作类型**：
 - `click` - 点击操作
@@ -827,62 +695,7 @@ test("tests Recording 2026/3/18 at 14:48:15", async ({ page }) => {
 
 ### 优化前后对比
 
-#### 优化前（录制生成）
-
-```typescript
-import { test, expect } from '@playwright/test';
-
-test.use({
-  storageState: 'storage/loginState/stage.json'
-});
-
-test('test', async ({ page }) => {
-  await page.goto('https://stage.huilianyi.com/main/home');
-  await page.getByText('报销单').click();
-  await page.locator('.anticon.anticon-close > svg').click();
-  await page.getByRole('cell', { name: '1', exact: true }).click();
-  await page.getByRole('button', { name: '账本费用' }).click();
-  await page.locator('.ant-table-row.chooser-table-row > .ant-table-selection-column > span > .ant-checkbox-wrapper > .ant-checkbox > .ant-checkbox-input').check();
-  await page.getByRole('button', { name: '取 消' }).click();
-  await page.getByRole('button', { name: '返 回' }).click();
-});
-```
-
-#### 优化后（自动优化）
-
-```typescript
-import { test, expect } from '@playwright/test';
-
-/**
- * 优化的录制测试脚本
- * - 添加了适当的等待
- * - 添加了断言验证
- * - 改进了测试命名
- */
-
-test.use({
-  storageState: 'storage/loginState/stage.json'
-});
-
-test('应该能够访问首页', async ({ page }) => {
-  await page.goto('https://stage.huilianyi.com/main/home');
-  await page.waitForLoadState("networkidle");
-  await expect(page).toHaveURL(/.*huilianyi.*/);
-  await page.getByText('报销单').click();
-  await page.waitForTimeout(500);
-  await page.getByRole("button", { name: /关闭|close/i }).click();
-  await page.waitForTimeout(500);
-  await page.getByRole('cell', { name: '1', exact: true }).click();
-  await page.waitForTimeout(500);
-  await page.getByRole('button', { name: '账本费用' }).click();
-  await page.waitForTimeout(500);
-  await page.getByRole("checkbox").first().check();
-  await page.waitForTimeout(500);
-  await page.getByRole('button', { name: '取 消' }).click();
-  await page.waitForTimeout(500);
-  await page.getByRole('button', { name: '返 回' }).click();
-});
-```
+（示例代码已省略：对照 `tests/raw-recordings/` 与 `tests/optimized/` 的同名用例即可快速理解差异）
 
 #### 使用 POM（最佳实践）
 
@@ -918,6 +731,19 @@ test.describe('首页功能测试', () => {
 npm run auto-test
 ```
 
+可选（飞书通知样式）：
+
+```bash
+# 纯文本通知
+npm run auto-test:feishu-text
+
+# 卡片 + 链接（并创建飞书文档）
+npm run auto-test:feishu-links
+
+# 或者自定义参数（注意 npm 透传参数需要 `--`）
+npm run auto-test -- --feishu-mode=none
+```
+
 这个命令会自动执行以下步骤：
 1. 🎬 录制测试脚本
 2. ⚙️ 优化测试脚本
@@ -939,16 +765,16 @@ npm run auto-test
 npm run record
 
 # 2. 分析录制脚本
-npm run analyze-test tests/raw-recordings/2026-03-02_10-20-26.spec.ts
+npm run analyze-test -- tests/raw-recordings/2026-03-02_10-20-26.spec.ts
 
 # 3. 自动优化脚本
-npm run optimize tests/raw-recordings/2026-03-02_10-20-26.spec.ts
+npm run optimize -- tests/raw-recordings/2026-03-02_10-20-26.spec.ts
 
 # 4. 生成 POM（可选，推荐）
-npm run generate-pom tests/raw-recordings/2026-03-02_10-20-26.spec.ts
+npm run generate-pom -- tests/raw-recordings/2026-03-02_10-20-26.spec.ts
 
 # 5. 运行优化后的测试
-npx playwright test tests/optimized/2026-03-02_10-20-26.optimized.spec.ts --project=chromium --ui
+npx playwright test tests/optimized/2026-03-02_10-20-26.optimized.spec.ts --project=optimized --ui
 
 # 6. 生成截图对比报告
 npm run compare-screenshots
@@ -962,7 +788,7 @@ npm run compare-screenshots
 npm run optimize-chrome-recorder -- "tests/chrome-recorder/Recording 2026_3_18 at 14_48_15.js"
 
 # 3. 运行优化后的测试
-npx playwright test tests/optimized/Recording\ 2026_3_18\ at\ 14_48_15.optimized.spec.ts --project=chromium --ui
+npx playwright test tests/optimized/Recording\ 2026_3_18\ at\ 14_48_15.optimized.spec.ts --project=optimized --ui
 ```
 
 ### 最佳实践
