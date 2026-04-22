@@ -1,10 +1,10 @@
-import { chromium, FullConfig } from "@playwright/test";
+import { chromium } from "@playwright/test";
 import fs from "fs";
 import { LoginPage } from "../pages/LoginPage";
 import { curConfig } from "../../playwright.config";
 const STORAGE_PATH = curConfig.storageState;
 
-async function globalSetup(config: FullConfig) {
+async function globalSetup() {
     // 默认禁用：仓库已切到 Project Dependencies（setup 项目生成 storageState）
     // 回滚/启用：设置 ENABLE_GLOBAL_SETUP=1
     if (process.env.ENABLE_GLOBAL_SETUP !== '1') {

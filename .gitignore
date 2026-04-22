@@ -55,3 +55,10 @@ tests/deprecated/
 # Raw recordings / recorder outputs (may contain sensitive credentials)
 tests/raw-recordings/
 tests/chrome-recorder/
+
+# Development tools
+.cursor/
+.trae/
+
+# Backup files
+backup/
