@@ -15,6 +15,11 @@ export interface ImageComparison {
   browser?: string;
 }
 
+/** pixelmatch 额外选项；includeAA 默认 false 时会忽略抗锯齿像素，易导致 WebKit/Chrome 细边差异被算成 0%。 */
+export interface CompareImagesOptions {
+  includeAA?: boolean;
+}
+
 function readPNG(filePath: string): Promise<PNG> {
   return new Promise((resolve, reject) => {
     fs.createReadStream(filePath)
@@ -38,8 +43,10 @@ function writePNG(png: PNG, outputPath: string): Promise<void> {
 export async function compareImages(
   img1Path: string,
   img2Path: string,
-  threshold: number = 0.1
+  threshold: number = 0.1,
+  opts: CompareImagesOptions = {}
 ): Promise<ImageDiffResult> {
+  const includeAA = opts.includeAA ?? true;
   try {
     const img1 = await readPNG(img1Path);
     const img2 = await readPNG(img2Path);
@@ -81,7 +88,7 @@ export async function compareImages(
       diff.data,
       width,
       height,
-      { threshold }
+      { threshold, includeAA }
     );
 
     const totalPixels = width * height;
@@ -100,8 +107,10 @@ export async function compareImagesWithDiff(
   img1Path: string,
   img2Path: string,
   diffOutputPath: string,
-  threshold: number = 0.1
+  threshold: number = 0.1,
+  opts: CompareImagesOptions = {}
 ): Promise<ImageDiffResult> {
+  const includeAA = opts.includeAA ?? true;
   try {
     const img1 = await readPNG(img1Path);
     const img2 = await readPNG(img2Path);
@@ -143,7 +152,7 @@ export async function compareImagesWithDiff(
       diff.data,
       width,
       height,
-      { threshold }
+      { threshold, includeAA }
     );
 
     const totalPixels = width * height;
@@ -177,7 +186,8 @@ export async function compareMultipleImages(
       baseImagePath,
       compareImagePath,
       diffOutputPath,
-      threshold
+      threshold,
+      {}
     );
 
     results.push({
@@ -197,7 +207,8 @@ export function formatDifference(difference: number): string {
 }
 
 export function getDifferenceLevel(difference: number): 'low' | 'medium' | 'high' {
-  if (difference < 0.001) return 'low';
+  if (difference < 1e-12) return 'low';
+  if (difference < 0.00004) return 'low';
   if (difference < 0.01) return 'medium';
   return 'high';
 }
@@ -217,17 +228,10 @@ export function getDifferenceColor(difference: number): string {
 }
 
 export function getDifferenceLabel(difference: number): string {
-  const level = getDifferenceLevel(difference);
-  switch (level) {
-    case 'low':
-      return '无差异';
-    case 'medium':
-      return '轻微差异';
-    case 'high':
-      return '显著差异';
-    default:
-      return '未知';
-  }
+  if (difference < 1e-12) return '无差异';
+  if (difference < 0.00004) return '微小差异';
+  if (difference < 0.01) return '轻微差异';
+  return '显著差异';
 }
 
 export async function batchCompareImages(

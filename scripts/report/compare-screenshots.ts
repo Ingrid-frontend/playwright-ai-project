@@ -20,6 +20,42 @@ interface ScreenshotInfo {
 
 const POM_ENABLED = process.env.ENABLE_POM === '1';
 
+/**
+ * 「有差异」Tab：默认任意 difference>0 即展示（单像素在 4K 上约 1e-7，旧默认 0.004% 会整页漏检）。
+ * 需要过滤噪点时可设 PLAYWRIGHT_DIFF_TAB_MIN_RATIO，例如 0.0001。
+ */
+const DIFF_TAB_MIN_RATIO = (() => {
+  const v = process.env.PLAYWRIGHT_DIFF_TAB_MIN_RATIO;
+  if (v !== undefined && v !== '' && !Number.isNaN(Number.parseFloat(v))) {
+    return Number.parseFloat(v);
+  }
+  return 0;
+})();
+
+function passesDiffTabFilter(difference: number): boolean {
+  if (!(difference > 0)) return false;
+  if (DIFF_TAB_MIN_RATIO <= 0) return true;
+  return difference >= DIFF_TAB_MIN_RATIO;
+}
+
+/**
+ * pixelmatch 颜色阈值（0~1），越小越敏感。覆盖：PLAYWRIGHT_PIXELMATCH_THRESHOLD=0.05
+ */
+const PIXELMATCH_COLOR_THRESHOLD = (() => {
+  const v = process.env.PLAYWRIGHT_PIXELMATCH_THRESHOLD;
+  if (v !== undefined && v !== '' && !Number.isNaN(Number.parseFloat(v))) {
+    return Number.parseFloat(v);
+  }
+  return 0.06;
+})();
+
+/** pixelmatch includeAA：false 时抗锯齿像素不计入差异（易与肉眼不一致）。覆盖：PLAYWRIGHT_PIXELMATCH_INCLUDE_AA=0 */
+const PIXELMATCH_INCLUDE_AA = (() => {
+  const v = (process.env.PLAYWRIGHT_PIXELMATCH_INCLUDE_AA ?? '').toLowerCase();
+  if (v === '0' || v === 'false' || v === 'no') return false;
+  return true;
+})();
+
 interface StepComparison {
   stepNumber: number;
   stepName?: string;
@@ -80,7 +116,9 @@ async function generateComparisons(screenshots: ScreenshotInfo[], diffOutputDir:
     const result = await compareImagesWithDiff(
       screenshots[0].path,
       compareScreenshot.path,
-      diffOutputPath
+      diffOutputPath,
+      PIXELMATCH_COLOR_THRESHOLD,
+      { includeAA: PIXELMATCH_INCLUDE_AA },
     );
 
     comparisons.push({
@@ -534,8 +572,8 @@ function generateDiffStep(comp: StepComparison, type: 'pom' | 'optimized' | 'all
   
   const stepsToDisplay = sortedStepNames.map(stepName => {
     const comps = groupedByStepName.get(stepName)!;
-    const diffComps = onlyDiffs ? comps.filter(c => c.difference >= 0.001) : comps;
-    return { stepName, diffComps, hasDiffs: comps.some(c => c.difference >= 0.001) };
+    const diffComps = onlyDiffs ? comps.filter((c) => passesDiffTabFilter(c.difference)) : comps;
+    return { stepName, diffComps, hasDiffs: comps.some((c) => passesDiffTabFilter(c.difference)) };
   });
   
   if (onlyDiffs && stepsToDisplay.every(s => !s.hasDiffs)) {
@@ -583,7 +621,7 @@ function generateDiffStep(comp: StepComparison, type: 'pom' | 'optimized' | 'all
 function getOptimizedDiffCountsForScript(tdc: TestDirComparisons): { all: number; only: number } {
   const all = tdc.comparisons.reduce((sum, comp) => sum + (comp.optimizedComparisons?.length || 0), 0);
   const only = tdc.comparisons.reduce(
-    (sum, comp) => sum + (comp.optimizedComparisons?.filter((c) => c.difference >= 0.001).length || 0),
+    (sum, comp) => sum + (comp.optimizedComparisons?.filter((c) => passesDiffTabFilter(c.difference)).length || 0),
     0
   );
   return { all, only };
@@ -1720,9 +1758,11 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       });
       
       const targetTab = document.querySelector('.iteration-tab[data-iteration=\"' + iteration + '\"]');
-      const targetContent = document.querySelector('.iteration-content[data-iteration=\"' + iteration + '\"]');
+      // 每个主 Tab 内各有一份 .iteration-content；只打开第一份会导致差异 Tab 整段仍为 display:none。
+      document.querySelectorAll('.iteration-content[data-iteration=\"' + iteration + '\"]').forEach(function(content) {
+        content.style.display = 'block';
+      });
       if (targetTab) targetTab.classList.add('active');
-      if (targetContent) targetContent.style.display = 'block';
 
       const allScriptRows = document.querySelectorAll('.script-tabs-iteration');
       allScriptRows.forEach(function(row) {
@@ -1758,9 +1798,11 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       });
 
       const targetTab = document.querySelector('.script-tab[data-iteration=\"' + iteration + '\"][data-script=\"' + script + '\"]');
-      const targetContent = document.querySelector('.script-content[data-iteration=\"' + iteration + '\"][data-script=\"' + script + '\"]');
+      // 三个主 Tab 各有一份同名 .script-content；querySelector 只会打开 Optimized 里的第一份，差异 Tab 内面板会一直是 display:none。
+      document.querySelectorAll('.script-content[data-iteration=\"' + iteration + '\"][data-script=\"' + script + '\"]').forEach(function(panel) {
+        panel.style.display = 'block';
+      });
       if (targetTab) targetTab.classList.add('active');
-      if (targetContent) targetContent.style.display = 'block';
 
       const input = document.getElementById('scriptSearch');
       if (input) input.value = '';
@@ -1810,7 +1852,7 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       let found = false;
       panel.querySelectorAll('.comparison').forEach(function(comp) {
         if (window.getComputedStyle(comp).display === 'none') return;
-        if (comp.querySelector('.diff-card.diff-browser-content.active')) {
+        if (comp.querySelector('.diff-card.diff-browser-content')) {
           found = true;
         }
       });
@@ -1855,6 +1897,10 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       const tabs = document.querySelectorAll('.global-browser-tab');
       const sections = document.querySelectorAll('.browser-content-section');
       const diffCards = document.querySelectorAll('.diff-card.diff-browser-content');
+      const activeTabForDiff = document.querySelector('.tab-content.active');
+      const isDiffReportTab =
+        activeTabForDiff &&
+        (activeTabForDiff.id === 'diff-only-content' || activeTabForDiff.id === 'optimized-diff-content');
       
       tabs.forEach(function(tab) {
         tab.classList.remove('active');
@@ -1896,15 +1942,22 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
             }
           }
         });
-        const targetDiffCards = document.querySelectorAll('.diff-card.diff-browser-content[data-browser="' + effectiveBrowser + '"]');
-        if (targetDiffCards.length === 0 && diffCards.length > 0) {
-          diffCards.forEach(function(card) {
+        // 差异类 Tab：同一步骤常同时存在 chrome / webkit 等多套 diff；按全局浏览器过滤会导致未选中浏览器的卡片被 CSS 隐藏（display:none），看起来像「没生成差异」。此处始终展示当前 Tab 内全部 diff。
+        if (isDiffReportTab) {
+          activeTabForDiff.querySelectorAll('.diff-card.diff-browser-content').forEach(function(card) {
             card.classList.add('active');
           });
         } else {
-          targetDiffCards.forEach(function(card) {
-            card.classList.add('active');
-          });
+          const targetDiffCards = document.querySelectorAll('.diff-card.diff-browser-content[data-browser="' + effectiveBrowser + '"]');
+          if (targetDiffCards.length === 0 && diffCards.length > 0) {
+            diffCards.forEach(function(card) {
+              card.classList.add('active');
+            });
+          } else {
+            targetDiffCards.forEach(function(card) {
+              card.classList.add('active');
+            });
+          }
         }
       }
       
@@ -1925,14 +1978,8 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       
       const activeTab = document.querySelector('.tab-content.active');
       if (activeTab && (activeTab.id === 'diff-only-content' || activeTab.id === 'optimized-diff-content')) {
-        const comparisonsInTab = activeTab.querySelectorAll('.comparison');
-        comparisonsInTab.forEach(function(comparison) {
-          const hasActiveDiffCard = comparison.querySelector('.diff-card.diff-browser-content.active');
-          if (hasActiveDiffCard) {
-            comparison.style.display = 'block';
-          } else {
-            comparison.style.display = 'none';
-          }
+        activeTab.querySelectorAll('.comparison').forEach(function(comparison) {
+          comparison.style.display = 'block';
         });
       } else if (activeTab && activeTab.id === 'optimized-content') {
         const comparisonsInTab = activeTab.querySelectorAll('.comparison');
