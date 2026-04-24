@@ -721,6 +721,21 @@ function generateDiffCard(comparison: ImageComparison, type: string): string {
   </div>`;
 }
 
+/**
+ * 从脚本目录名中解析时间戳（如 我的审批_2026-04-23_19-29-05），用于 Tab 排序。
+ * 取字符串中最后一次匹配的 YYYY-MM-DD_HH-MM-SS；无时戳返回 0。
+ */
+function scriptDirTimestampMs(scriptDir: string): number {
+  const re = /(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})-(\d{2})/g;
+  let m: RegExpExecArray | null;
+  let last = 0;
+  while ((m = re.exec(scriptDir)) !== null) {
+    const t = Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}`);
+    if (!Number.isNaN(t)) last = t;
+  }
+  return last;
+}
+
 function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: string, optDirName: string, hasPomData: boolean, hasOptimizedData: boolean): string {
   const allComparisons = testDirComparisons.flatMap(tdc => tdc.comparisons);
   const optimizedSteps = hasOptimizedData ? allComparisons.map(comp => generateOptimizedStep(comp, optDirName)).join('') : '';
@@ -733,6 +748,17 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
     const script = rest.join('/') || tdc.testDir;
     if (!iterationMap.has(iter)) iterationMap.set(iter, []);
     iterationMap.get(iter)!.push({ ...tdc, testDir: script });
+  }
+  // 同一迭代下脚本 Tab：按目录名时间戳升序（日期早的在前）；解析不到时间戳的排最后
+  for (const scripts of iterationMap.values()) {
+    scripts.sort((a, b) => {
+      const ta = scriptDirTimestampMs(String(a.testDir));
+      const tb = scriptDirTimestampMs(String(b.testDir));
+      const ka = ta > 0 ? ta : Number.POSITIVE_INFINITY;
+      const kb = tb > 0 ? tb : Number.POSITIVE_INFINITY;
+      if (ka !== kb) return ka - kb;
+      return String(a.testDir).localeCompare(String(b.testDir), 'zh-CN');
+    });
   }
   const iterations = Array.from(iterationMap.keys());
   const firstIteration = iterations[0];
