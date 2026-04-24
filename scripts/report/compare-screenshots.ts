@@ -351,7 +351,7 @@ function generateStepSection(stepNumber: number, stepName: string | undefined, t
         const routeInfo = routeDisplay ? `<span class="route-info">📍 ${routeDisplay}</span>` : '';
         
         return `
-        <div class="step-subsection">
+        <div class="step-subsection" data-screenshot-total="${nameTotal}">
           <div class="step-subsection-header">
             <h3>${name}</h3>
             <span class="screenshot-badge subsection-count">${nameTotal}张</span>
@@ -386,14 +386,18 @@ function generateSection(title: string, screenshots: ScreenshotInfo[], dirName: 
   
   const groupedByBrowser = groupScreenshotsByBrowser(screenshots);
   const browserGroups = Array.from(groupedByBrowser.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-  
+  const availCsv = browserGroups.map(([b]) => b).join(',');
+
   return `
-  <div class="section">
+  <div class="section" data-available-browsers="${availCsv}">
     ${browserGroups.map(([browser, browserScreenshots]) => `
       <div class="browser-content-section ${browser === 'chrome' ? 'active' : ''}" data-browser="${browser}" data-count="${browserScreenshots.length}">
         ${generateBrowserContent(browser, browserScreenshots, dirName)}
       </div>
     `).join('')}
+    <div class="optimized-browser-empty-state" style="display: none;">
+      <div class="no-screenshots optimized-browser-empty-inner"></div>
+    </div>
   </div>`;
 }
 
@@ -1311,6 +1315,20 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
     .browser-content-section.active {
       display: block;
     }
+
+    .optimized-browser-empty-state {
+      margin-top: 4px;
+    }
+
+    .optimized-browser-empty-state .optimized-browser-empty-inner {
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    .optimized-browser-empty-state .optimized-browser-empty-inner strong {
+      color: #1677ff;
+      font-weight: 600;
+    }
     
     .browser-content-inner {
       padding: 16px;
@@ -1664,7 +1682,21 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
     .empty-state-description {
       font-size: 14px;
       color: #86909c;
-      line-height: 1.5;
+      line-height: 1.55;
+      text-align: left;
+      max-width: 520px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    
+    .empty-state-description .empty-state-hint {
+      margin: 0;
+      padding-left: 1.25em;
+      list-style: disc;
+    }
+    
+    .empty-state-description .empty-state-hint li + li {
+      margin-top: 0.45em;
     }
   </style>
 </head>
@@ -1743,18 +1775,30 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
   
   <div id="optimized-diff-content" class="tab-content">
     <div class="empty-state" id="optimized-diff-empty" style="display: none;">
-      <div class="empty-state-icon">🎉</div>
-      <div class="empty-state-title">暂无差异</div>
-      <div class="empty-state-description">diff 数据为空</div>
+      <div class="empty-state-icon">📋</div>
+      <div class="empty-state-title">暂无可展示的对比</div>
+      <div class="empty-state-description">
+        <ul class="empty-state-hint">
+          <li>同一脚本、同一浏览器下若只有一次运行，无法与另一张图做对比。</li>
+          <li>当前「浏览器」筛选下可能没有可对齐的截图。</li>
+          <li>可切换上方「浏览器」，或确认截图目录里是否有多次运行结果。</li>
+        </ul>
+      </div>
     </div>
     ${optimizedDiffByIteration}
   </div>
   
   <div id="diff-only-content" class="tab-content">
     <div class="empty-state" id="diff-only-empty" style="display: none;">
-      <div class="empty-state-icon">🎉</div>
-      <div class="empty-state-title">暂无差异</div>
-      <div class="empty-state-description">diff 数据为空</div>
+      <div class="empty-state-icon">📋</div>
+      <div class="empty-state-title">暂无需要单独关注的差异</div>
+      <div class="empty-state-description">
+        <ul class="empty-state-hint">
+          <li>本 Tab 只展示相对更明显的差异；更轻的对比不会列出，但在「Optimized 差异」里仍能看到全部结果。</li>
+          <li>若预期应有项却为空，可切换「浏览器」，或确认是否只有单次运行。</li>
+          <li>需要在本 Tab 看到更多项时，可调低生成报告时的「有差异」收录比例。</li>
+        </ul>
+      </div>
     </div>
     ${diffOnlyByIteration}
   </div>
@@ -1984,6 +2028,36 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       }
     }
     
+    function updateOptimizedBrowserEmptyStates(effectiveBrowser) {
+      const root = document.getElementById('optimized-content');
+      if (!root) return;
+      root.querySelectorAll('.optimized-browser-empty-state').forEach(function(placeholder) {
+        if (!effectiveBrowser) {
+          placeholder.style.display = 'none';
+          return;
+        }
+        const section = placeholder.closest('.section');
+        if (!section) return;
+        const hasBrowserBlock = section.querySelector('.browser-content-section[data-browser="' + effectiveBrowser + '"]');
+        const inner = placeholder.querySelector('.optimized-browser-empty-inner');
+        if (hasBrowserBlock) {
+          placeholder.style.display = 'none';
+          if (inner) inner.innerHTML = '';
+        } else {
+          placeholder.style.display = 'block';
+          const availStr = section.getAttribute('data-available-browsers') || '';
+          const avail = availStr.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+          const names = avail.length ? avail.join('、') : '无（可检查是否仅 Firefox 等被排除的浏览器）';
+          if (inner) {
+            inner.innerHTML =
+              '当前选中的浏览器下暂无截图。本小节数据仅在 <strong>' +
+              names +
+              '</strong> 下存在，请切换上方「浏览器」筛选。';
+          }
+        }
+      });
+    }
+
     function switchGlobalBrowser(browser) {
       const tabs = document.querySelectorAll('.global-browser-tab');
       const sections = document.querySelectorAll('.browser-content-section');
@@ -1992,6 +2066,7 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       const isDiffReportTab =
         activeTabForDiff &&
         (activeTabForDiff.id === 'diff-only-content' || activeTabForDiff.id === 'optimized-diff-content');
+      let browserForEmptyState = '';
       
       tabs.forEach(function(tab) {
         tab.classList.remove('active');
@@ -2019,19 +2094,11 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
         }
         targetTab.classList.add('active');
         const effectiveBrowser = targetTab.getAttribute('data-browser') || '';
+        browserForEmptyState = effectiveBrowser;
 
         const targetSections = document.querySelectorAll('.browser-content-section[data-browser="' + effectiveBrowser + '"]');
         targetSections.forEach(function(section) {
           section.classList.add('active');
-          const count = section.getAttribute('data-count');
-          if (count) {
-            const subsection = section.closest('.step-subsection');
-            
-            if (subsection) {
-              const subsectionCount = subsection.querySelector('.subsection-count');
-              if (subsectionCount) subsectionCount.textContent = count + '张';
-            }
-          }
         });
         // 差异类 Tab：同一步骤常同时存在 chrome / webkit 等多套 diff；按全局浏览器过滤会导致未选中浏览器的卡片被 CSS 隐藏（display:none），看起来像「没生成差异」。此处始终展示当前 Tab 内全部 diff。
         if (isDiffReportTab) {
@@ -2062,7 +2129,8 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
             const count = activeSection.getAttribute('data-count');
             subsectionCount.textContent = count + '张';
           } else {
-            subsectionCount.textContent = '0张';
+            const total = subsection.getAttribute('data-screenshot-total');
+            subsectionCount.textContent = (total != null && total !== '' ? total : '0') + '张';
           }
         }
       });
@@ -2073,14 +2141,8 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
           comparison.style.display = 'block';
         });
       } else if (activeTab && activeTab.id === 'optimized-content') {
-        const comparisonsInTab = activeTab.querySelectorAll('.comparison');
-        comparisonsInTab.forEach(function(comparison) {
-          const hasActiveSection = comparison.querySelector('.browser-content-section.active');
-          if (hasActiveSection) {
-            comparison.style.display = 'block';
-          } else {
-            comparison.style.display = 'none';
-          }
+        activeTab.querySelectorAll('.comparison').forEach(function(comparison) {
+          comparison.style.display = 'block';
         });
       } else if (activeTab) {
         activeTab.querySelectorAll('.comparison').forEach(function(comparison) {
@@ -2088,6 +2150,7 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
         });
       }
 
+      updateOptimizedBrowserEmptyStates(browserForEmptyState);
       updateDiffEmptyStates();
     }
     
