@@ -21,21 +21,22 @@ interface ScreenshotInfo {
 const POM_ENABLED = process.env.ENABLE_POM === '1';
 
 /**
- * 「有差异」Tab：默认任意 difference>0 即展示（单像素在 4K 上约 1e-7，旧默认 0.004% 会整页漏检）。
- * 需要过滤噪点时可设 PLAYWRIGHT_DIFF_TAB_MIN_RATIO，例如 0.0001。
+ * 「有差异」Tab：默认仅展示差异比例 ≥ 0.3%（difference ≥ 0.003）的对比。
+ * 低于约 0.3% 的像素差在整页截图上通常可忽略，故不收录；更严/更松可用 PLAYWRIGHT_DIFF_ONLY_TAB_MIN_RATIO。
+ * 设为 0 则任意 difference>0 都进该 Tab。
  */
-const DIFF_TAB_MIN_RATIO = (() => {
-  const v = process.env.PLAYWRIGHT_DIFF_TAB_MIN_RATIO;
+const DIFF_ONLY_TAB_MIN_RATIO = (() => {
+  const v = process.env.PLAYWRIGHT_DIFF_ONLY_TAB_MIN_RATIO;
   if (v !== undefined && v !== '' && !Number.isNaN(Number.parseFloat(v))) {
     return Number.parseFloat(v);
   }
-  return 0;
+  return 0.003;
 })();
 
-function passesDiffTabFilter(difference: number): boolean {
+function passesDiffOnlyTabFilter(difference: number): boolean {
   if (!(difference > 0)) return false;
-  if (DIFF_TAB_MIN_RATIO <= 0) return true;
-  return difference >= DIFF_TAB_MIN_RATIO;
+  if (DIFF_ONLY_TAB_MIN_RATIO <= 0) return true;
+  return difference >= DIFF_ONLY_TAB_MIN_RATIO;
 }
 
 /**
@@ -572,8 +573,11 @@ function generateDiffStep(comp: StepComparison, type: 'pom' | 'optimized' | 'all
   
   const stepsToDisplay = sortedStepNames.map(stepName => {
     const comps = groupedByStepName.get(stepName)!;
-    const diffComps = onlyDiffs ? comps.filter((c) => passesDiffTabFilter(c.difference)) : comps;
-    return { stepName, diffComps, hasDiffs: comps.some((c) => passesDiffTabFilter(c.difference)) };
+    const diffComps = onlyDiffs ? comps.filter((c) => passesDiffOnlyTabFilter(c.difference)) : comps;
+    const hasDiffs = onlyDiffs
+      ? comps.some((c) => passesDiffOnlyTabFilter(c.difference))
+      : comps.length > 0;
+    return { stepName, diffComps, hasDiffs };
   });
   
   if (onlyDiffs && stepsToDisplay.every(s => !s.hasDiffs)) {
@@ -621,7 +625,7 @@ function generateDiffStep(comp: StepComparison, type: 'pom' | 'optimized' | 'all
 function getOptimizedDiffCountsForScript(tdc: TestDirComparisons): { all: number; only: number } {
   const all = tdc.comparisons.reduce((sum, comp) => sum + (comp.optimizedComparisons?.length || 0), 0);
   const only = tdc.comparisons.reduce(
-    (sum, comp) => sum + (comp.optimizedComparisons?.filter((c) => passesDiffTabFilter(c.difference)).length || 0),
+    (sum, comp) => sum + (comp.optimizedComparisons?.filter((c) => passesDiffOnlyTabFilter(c.difference)).length || 0),
     0
   );
   return { all, only };

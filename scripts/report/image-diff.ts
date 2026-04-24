@@ -201,9 +201,25 @@ export async function compareMultipleImages(
   return results;
 }
 
+/**
+ * 与 getDifferenceLabel 对齐：比例 < 0.01% 时若仍用 toFixed(2) 会得到 0.00%，却标成「微小差异」。
+ * 对极小正比例逐步提高小数位，直到非零；与「无差异」（difference < 1e-12）仍显示 0.00%。
+ */
 export function formatDifference(difference: number): string {
-  const percentage = (difference * 100).toFixed(2);
-  return `${percentage}%`;
+  if (difference < 1e-12) {
+    return '0.00%';
+  }
+  const pct = difference * 100;
+  if (pct >= 0.01) {
+    return `${pct.toFixed(2)}%`;
+  }
+  for (let d = 4; d <= 14; d++) {
+    const rounded = Number.parseFloat(pct.toFixed(d));
+    if (rounded > 0) {
+      return `${rounded}%`;
+    }
+  }
+  return `${pct.toExponential(1)}%`;
 }
 
 export function getDifferenceLevel(difference: number): 'low' | 'medium' | 'high' {
