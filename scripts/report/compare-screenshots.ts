@@ -738,6 +738,25 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
     return name.replace(/_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$/, '');
   }
 
+  /** 多个脚本去掉时间戳后简称相同时，用 rawName 相对 base 的后缀区分（如 2026-04-23_19-29-05） */
+  function scriptTabDisambiguatorSuffix(rawName: string, base: string): string {
+    if (rawName === base) return rawName;
+    if (rawName.startsWith(base)) {
+      const rest = rawName.slice(base.length).replace(/^_+/, '');
+      return rest || rawName;
+    }
+    return rawName;
+  }
+
+  /** 将后缀中的 YYYY-MM-DD_HH-MM-SS 压成 YYMMDD_HH:MM:SS（展示用，如 260423_19:29:05） */
+  function formatScriptTabDisambiguatorSuffix(suffix: string): string {
+    const m = suffix.match(/^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})(.*)$/);
+    if (!m) return suffix;
+    const [, y, mo, d, h, mi, s, rest] = m;
+    const compact = `${y.slice(2)}${mo}${d}_${h}:${mi}:${s}`;
+    return rest ? `${compact}${rest}` : compact;
+  }
+
   const allBrowsers = new Set<string>();
   allComparisons.forEach(comp => {
     comp.optimizedScreenshots.forEach(s => {
@@ -758,16 +777,24 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
 
   function buildScriptTabs(iter: string): string {
     const scripts = iterationMap.get(iter) || [];
-    const displayCount = new Map<string, number>();
+    const baseCount = new Map<string, number>();
+    for (const tdc of scripts) {
+      const rawName = String(tdc.testDir);
+      const base = stripScriptTimestamp(rawName);
+      baseCount.set(base, (baseCount.get(base) || 0) + 1);
+    }
     return scripts
       .map((tdc, index) => {
         const rawName = String(tdc.testDir);
         const base = stripScriptTimestamp(rawName);
-        const next = (displayCount.get(base) || 0) + 1;
-        displayCount.set(base, next);
-        const display = next > 1 ? `${base} (${next})` : base;
+        const collide = (baseCount.get(base) || 0) > 1;
+        const rawSuffix = scriptTabDisambiguatorSuffix(rawName, base);
+        const compactSuffix = formatScriptTabDisambiguatorSuffix(rawSuffix);
+        const hasDateTimeSuffix = /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}/.test(rawSuffix);
+        const display =
+          collide || hasDateTimeSuffix ? `${base} · ${compactSuffix}` : base;
         return `
-      <button class="script-tab ${index === 0 ? 'active' : ''}" data-iteration="${iter}" data-script="${rawName}" onclick="switchScript('${iter}', '${rawName}')" title="${rawName}">
+      <button class="script-tab ${index === 0 ? 'active' : ''}" data-iteration="${iter}" data-script="${rawName}" onclick="switchScript('${iter}', '${rawName}')" title="${iter}/${rawName}">
         <span>${display}</span>
       </button>
     `;
@@ -938,16 +965,16 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
 
     .controls-row {
       display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
+      flex-direction: column;
+      align-items: stretch;
       gap: 16px;
-      flex-wrap: wrap;
       margin-bottom: 24px;
     }
 
     .filter-panel {
       flex: 1 1 auto;
-      min-width: 320px;
+      min-width: 0;
+      width: 100%;
       background: white;
       border: 1px solid #e8e8e8;
       border-radius: 10px;
@@ -984,11 +1011,36 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
 
     .controls-right {
       display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 8px;
+      width: 100%;
+    }
+
+    .controls-right-tools {
+      display: flex;
       gap: 12px;
       flex-wrap: wrap;
       align-items: center;
       justify-content: flex-end;
-      flex: 0 0 auto;
+      width: 100%;
+    }
+
+    .script-search-feedback {
+      font-size: 13px;
+      color: #d46b08;
+      width: 100%;
+      text-align: right;
+      line-height: 1.4;
+    }
+
+    .script-search-feedback:empty {
+      display: none;
+    }
+
+    .control-input.control-input-warn {
+      border-color: #faad14;
+      box-shadow: 0 0 0 2px rgba(250, 173, 20, 0.12);
     }
 
     .control-button {
@@ -1638,6 +1690,15 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
   </div>
   
   <div class="controls-row">
+    <div class="controls-right">
+      <div class="controls-right-tools">
+        <input class="control-input" id="scriptSearch" placeholder="搜索脚本：展示名、完整路径（如 20260515/我的审批_… 或关键词）" oninput="filterScripts(this.value)" />
+        <button class="control-button" onclick="collapseAll(true)">折叠全部</button>
+        <button class="control-button" onclick="collapseAll(false)">展开全部</button>
+      </div>
+      <span class="script-search-feedback" id="scriptSearchFeedback" role="status" aria-live="polite"></span>
+    </div>
+
     <div class="filter-panel" role="region" aria-label="筛选">
       <div class="filter-row">
         <span class="filter-label">迭代：</span>
@@ -1667,12 +1728,6 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
           `).join('')}
         </div>
       </div>` : ''}
-    </div>
-
-    <div class="controls-right">
-      <input class="control-input" id="scriptSearch" placeholder="搜索脚本（当前迭代）…" oninput="filterScripts(this.value)" />
-      <button class="control-button" onclick="collapseAll(true)">折叠全部</button>
-      <button class="control-button" onclick="collapseAll(false)">展开全部</button>
     </div>
   </div>
   
@@ -1820,6 +1875,16 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       switchGlobalBrowser(browser);
     }
 
+    function setScriptSearchFeedback(message) {
+      const fb = document.getElementById('scriptSearchFeedback');
+      const input = document.getElementById('scriptSearch');
+      if (fb) fb.textContent = message || '';
+      if (input) {
+        if (message) input.classList.add('control-input-warn');
+        else input.classList.remove('control-input-warn');
+      }
+    }
+
     function filterScripts(query) {
       const activeIterTab = document.querySelector('.iteration-tab.active');
       const iteration = activeIterTab ? activeIterTab.getAttribute('data-iteration') : null;
@@ -1827,13 +1892,35 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
 
       const q = String(query || '').trim().toLowerCase();
       const tabs = document.querySelectorAll('.script-tab[data-iteration=\"' + iteration + '\"]');
+      const tabArr = Array.prototype.slice.call(tabs);
 
-      tabs.forEach(function(tab) {
+      tabArr.forEach(function(tab) {
         const label = (tab.textContent || '').trim().toLowerCase();
         const title = (tab.getAttribute('title') || '').toLowerCase();
-        const hit = q.length === 0 || label.includes(q) || title.includes(q);
+        const scriptKey = (tab.getAttribute('data-script') || '').toLowerCase();
+        const hit = q.length === 0 || label.includes(q) || title.includes(q) || scriptKey.includes(q);
         tab.style.display = hit ? 'inline-flex' : 'none';
       });
+
+      if (q.length === 0) {
+        setScriptSearchFeedback('');
+        return;
+      }
+
+      const visible = tabArr.filter(function(t) { return t.style.display !== 'none'; });
+      if (visible.length === 0) {
+        setScriptSearchFeedback('当前迭代下无匹配脚本，已恢复显示全部');
+        tabArr.forEach(function(t) { t.style.display = 'inline-flex'; });
+        return;
+      }
+
+      setScriptSearchFeedback('');
+
+      const active = document.querySelector('.script-tab.active[data-iteration=\"' + iteration + '\"]');
+      if (!active || active.style.display === 'none') {
+        const script = visible[0].getAttribute('data-script');
+        if (script) switchScript(iteration, script);
+      }
     }
 
     function toggleStep(stepNumber) {
