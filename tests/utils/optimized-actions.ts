@@ -8,7 +8,17 @@ export async function maybePause(page: Page, reason: string): Promise<void> {
   await page.pause();
 }
 
-export async function smartClick(locator: Locator, stepName: string): Promise<void> {
+export type SmartClickOptions = {
+  /** 为 true 时在元素被浮层遮挡时仍尝试点击（慎用，仅当确认目标正确时使用） */
+  force?: boolean;
+};
+
+export async function smartClick(
+  locator: Locator,
+  stepName: string,
+  options: SmartClickOptions = {}
+): Promise<void> {
+  const { force = false } = options;
   console.log(`🧠 执行智能点击: ${stepName}`);
   console.log(`🔍 元素数量: ${await locator.count()}`);
 
@@ -27,7 +37,7 @@ export async function smartClick(locator: Locator, stepName: string): Promise<vo
     .catch(() => {});
 
   try {
-    await locator.click();
+    await locator.click({ force });
   } catch (e: any) {
     console.log(`⚠️ 点击失败: ${e?.message ?? String(e)}`);
     await maybePause(locator.page(), `点击失败: ${stepName}`);

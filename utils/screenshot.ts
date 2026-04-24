@@ -29,6 +29,17 @@ async function lockViewportForSnapshot(page: Page): Promise<void> {
   await page.setViewportSize(SNAPSHOT_VIEWPORT);
 }
 
+/**
+ * 多浏览器串跑时区分截图目录，便于 compare-screenshots 按浏览器归档。
+ * 目录名需包含 `-chromium-` / `-webkit-` 等片段（见 compare-screenshots 的 browser 检测）。
+ * `tests/optimized` 下 spec 请 `import { test, expect } from '../fixtures'`（相对日期子目录）：会按 Chromium/WebKit 自动设子目录；手动串跑仍可 export 本变量覆盖。
+ */
+export function withScreenshotRunSegment(baseScreenshotDir: string): string {
+  const seg = process.env.PLAYWRIGHT_SCREENSHOT_RUN_SEGMENT?.trim();
+  if (!seg) return baseScreenshotDir;
+  return path.join(baseScreenshotDir, seg);
+}
+
 function getRouteDisplayName(route: string): string {
   for (const [key, routeValue] of Object.entries(MENU_ROUTES)) {
     const normalizedRouteValue = String(routeValue).replace(/\//g, '_').replace(/^_/, '');

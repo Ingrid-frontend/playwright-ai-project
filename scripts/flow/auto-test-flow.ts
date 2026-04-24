@@ -8,7 +8,8 @@ type FeishuMode = 'interactive' | 'text' | 'links' | 'none';
 type CliOptions = {
   feishuMode: FeishuMode;
   createFeishuDoc: boolean;
-  playwrightProject: string;
+  /** 依次执行的 Playwright project（默认 Chromium optimized + WebKit optimized-webkit） */
+  playwrightProjects: string[];
   /** 显式指定录制根目录（相对 cwd）；未传则看 RAW_RECORDINGS_DIR，再自动回退 */
   rawRecordingsDir?: string;
 };
@@ -53,7 +54,7 @@ function printHelp(): void {
 选项:
   --feishu-mode=<interactive|text|links|none>  飞书通知样式（默认 interactive）
   --create-feishu-doc                           流程末尾执行 npm run create-feishu-doc
-  --playwright-project=<name>                 执行用例的 project（默认 optimized）
+  --playwright-project=<a>[,<b>...]          执行用例的 project，逗号分隔（默认 optimized,optimized-webkit）
   --raw-recordings-dir=<path>                 原始录制根目录（相对项目根；优先于环境变量）
   -h, --help                                  显示帮助
 
@@ -79,7 +80,7 @@ function parseCli(argv: string[]): CliOptions {
   }
 
   let createFeishuDoc = false;
-  let playwrightProject = 'optimized';
+  let playwrightProjects: string[] = ['optimized', 'optimized-webkit'];
   let rawRecordingsDir: string | undefined;
 
   for (const arg of argv) {
@@ -101,7 +102,14 @@ function parseCli(argv: string[]): CliOptions {
       continue;
     }
     if (arg.startsWith('--playwright-project=')) {
-      playwrightProject = arg.slice('--playwright-project='.length).trim() || 'optimized';
+      const raw = arg.slice('--playwright-project='.length).trim();
+      const list = raw
+        ? raw
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [];
+      playwrightProjects = list.length > 0 ? list : ['optimized', 'optimized-webkit'];
       continue;
     }
     if (arg.startsWith('--raw-recordings-dir=')) {
@@ -115,7 +123,7 @@ function parseCli(argv: string[]): CliOptions {
     }
   }
 
-  return { feishuMode, createFeishuDoc, playwrightProject, rawRecordingsDir };
+  return { feishuMode, createFeishuDoc, playwrightProjects, rawRecordingsDir };
 }
 
 async function sendFeishuNotification(mode: FeishuMode, summary: AutoTestNotifySummary): Promise<void> {
@@ -396,7 +404,7 @@ async function main(): Promise<void> {
 
   console.log('🎬 开始自动化测试流程...\n');
   console.log(
-    `⚙️  feishu-mode=${opts.feishuMode}, create-feishu-doc=${opts.createFeishuDoc}, project=${opts.playwrightProject}\n`,
+    `⚙️  feishu-mode=${opts.feishuMode}, create-feishu-doc=${opts.createFeishuDoc}, projects=${opts.playwrightProjects.join(',')}\n`,
   );
 
   const now = new Date();
@@ -456,8 +464,9 @@ async function main(): Promise<void> {
     }
     console.log(`📁 找到优化文件: ${optimizedTestPath}`);
 
+    const projectArgs = opts.playwrightProjects.map((p) => `--project=${p}`).join(' ');
     const testPassed = runCommand(
-      `npx playwright test "${optimizedTestPath}" --project=${opts.playwrightProject}`,
+      `npx playwright test "${optimizedTestPath}" ${projectArgs}`,
       '3. 执行优化后的测试',
       true,
     );

@@ -996,6 +996,15 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       flex-wrap: wrap;
     }
 
+    /* 脚本 Tab 多行换行时与「脚本：」标签顶部对齐，避免行与行贴太紧 */
+    .filter-row-scripts {
+      align-items: flex-start;
+    }
+
+    .filter-row-scripts .filter-label {
+      padding-top: 6px;
+    }
+
     .filter-label {
       font-size: 14px;
       font-weight: 500;
@@ -1208,7 +1217,7 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
-      align-items: center;
+      align-items: flex-start;
       flex: 1;
       min-width: 0;
     }
@@ -1216,14 +1225,19 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
     .script-tabs-iteration {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
-      align-items: center;
+      align-items: flex-start;
+      flex: 1 1 0;
+      min-width: 0;
+      width: 100%;
+      row-gap: 12px;
+      column-gap: 10px;
     }
     
     .script-tab {
       display: flex;
       align-items: center;
       gap: 8px;
+      margin: 0;
       padding: 6px 16px;
       background: #f7f8fa;
       border: 1px solid transparent;
@@ -1231,8 +1245,13 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       cursor: pointer;
       font-size: 14px;
       font-weight: 400;
+      font-family: inherit;
       color: #4e5969;
       transition: all 0.2s ease;
+      max-width: 100%;
+      line-height: 1.35;
+      flex-shrink: 0;
+      box-sizing: border-box;
     }
     
     .script-tab:hover {
@@ -1738,7 +1757,7 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
           ${iterationTabs}
         </div>
       </div>
-      <div class="filter-row">
+      <div class="filter-row filter-row-scripts">
         <span class="filter-label">脚本：</span>
         <div class="script-tabs-container">
           ${iterations
@@ -1872,13 +1891,19 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
         row.style.display = 'none';
       });
       const scriptRow = document.querySelector('.script-tabs-iteration[data-iteration=\"' + iteration + '\"]');
-      if (scriptRow) scriptRow.style.display = 'block';
+      // 必须用 flex（与 .script-tabs-iteration 样式一致）。设成 block 会取消 gap/换行间距，按钮会挤叠。
+      if (scriptRow) scriptRow.style.display = 'flex';
       
       // 激活该迭代下第一个脚本
       const firstScriptTab = scriptRow ? scriptRow.querySelector('.script-tab') : null;
       if (firstScriptTab) {
         const script = firstScriptTab.getAttribute('data-script');
         if (script) switchScript(iteration, script);
+      }
+
+      const searchInput = document.getElementById('scriptSearch');
+      if (searchInput && String(searchInput.value || '').trim()) {
+        filterScripts(searchInput.value);
       }
       
       const activeBrowserTab = document.querySelector('.global-browser-tab.active');
@@ -1906,10 +1931,6 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
         panel.style.display = 'block';
       });
       if (targetTab) targetTab.classList.add('active');
-
-      const input = document.getElementById('scriptSearch');
-      if (input) input.value = '';
-      filterScripts('');
 
       const activeBrowserTab = document.querySelector('.global-browser-tab.active');
       const gbTabs = document.querySelectorAll('.global-browser-tab');
@@ -1943,7 +1964,7 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
         const title = (tab.getAttribute('title') || '').toLowerCase();
         const scriptKey = (tab.getAttribute('data-script') || '').toLowerCase();
         const hit = q.length === 0 || label.includes(q) || title.includes(q) || scriptKey.includes(q);
-        tab.style.display = hit ? 'inline-flex' : 'none';
+        tab.style.display = hit ? 'flex' : 'none';
       });
 
       if (q.length === 0) {
@@ -1986,12 +2007,20 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       if (window.getComputedStyle(panel).display === 'none') return false;
       let found = false;
       panel.querySelectorAll('.comparison').forEach(function(comp) {
-        if (window.getComputedStyle(comp).display === 'none') return;
-        if (comp.querySelector('.diff-card.diff-browser-content')) {
+        if (comp.querySelector('.diff-card.diff-browser-content.active')) {
           found = true;
         }
       });
       return found;
+    }
+
+    /** 当前「浏览器」下无对比卡片时隐藏步骤骨架；有则按步骤显示（仅含当前浏览器有卡片的步骤）。 */
+    function updateDiffPanelComparisonVisibility(panel) {
+      if (!panel || window.getComputedStyle(panel).display === 'none') return;
+      panel.querySelectorAll('.comparison').forEach(function(comp) {
+        var hasActive = !!comp.querySelector('.diff-card.diff-browser-content.active');
+        comp.style.display = hasActive ? 'block' : 'none';
+      });
     }
     
     function updateDiffEmptyStates() {
@@ -2010,9 +2039,10 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
           '#optimized-diff-content .script-content[data-iteration=\"' + iteration + '\"][data-script=\"' + script + '\"]'
         );
         const empty = document.getElementById('optimized-diff-empty');
-        if (empty) {
-          const visible = scriptDiffPanelHasVisibleDiff(target);
+        if (empty && target) {
+          var visible = scriptDiffPanelHasVisibleDiff(target);
           empty.style.display = visible ? 'none' : 'flex';
+          updateDiffPanelComparisonVisibility(target);
         }
       }
 
@@ -2021,9 +2051,10 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
           '#diff-only-content .script-content[data-iteration=\"' + iteration + '\"][data-script=\"' + script + '\"]'
         );
         const empty = document.getElementById('diff-only-empty');
-        if (empty) {
-          const visible = scriptDiffPanelHasVisibleDiff(target);
-          empty.style.display = visible ? 'none' : 'flex';
+        if (empty && target) {
+          var visible2 = scriptDiffPanelHasVisibleDiff(target);
+          empty.style.display = visible2 ? 'none' : 'flex';
+          updateDiffPanelComparisonVisibility(target);
         }
       }
     }
@@ -2062,10 +2093,6 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       const tabs = document.querySelectorAll('.global-browser-tab');
       const sections = document.querySelectorAll('.browser-content-section');
       const diffCards = document.querySelectorAll('.diff-card.diff-browser-content');
-      const activeTabForDiff = document.querySelector('.tab-content.active');
-      const isDiffReportTab =
-        activeTabForDiff &&
-        (activeTabForDiff.id === 'diff-only-content' || activeTabForDiff.id === 'optimized-diff-content');
       let browserForEmptyState = '';
       
       tabs.forEach(function(tab) {
@@ -2100,23 +2127,11 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
         targetSections.forEach(function(section) {
           section.classList.add('active');
         });
-        // 差异类 Tab：同一步骤常同时存在 chrome / webkit 等多套 diff；按全局浏览器过滤会导致未选中浏览器的卡片被 CSS 隐藏（display:none），看起来像「没生成差异」。此处始终展示当前 Tab 内全部 diff。
-        if (isDiffReportTab) {
-          activeTabForDiff.querySelectorAll('.diff-card.diff-browser-content').forEach(function(card) {
-            card.classList.add('active');
-          });
-        } else {
-          const targetDiffCards = document.querySelectorAll('.diff-card.diff-browser-content[data-browser="' + effectiveBrowser + '"]');
-          if (targetDiffCards.length === 0 && diffCards.length > 0) {
-            diffCards.forEach(function(card) {
-              card.classList.add('active');
-            });
-          } else {
-            targetDiffCards.forEach(function(card) {
-              card.classList.add('active');
-            });
-          }
-        }
+        // 与 Optimized 一致：差异 Tab 也只展示当前「浏览器」筛选下的对比，避免选中 webkit 却仍看到 chrome 的 diff 造成误解。
+        const targetDiffCards = document.querySelectorAll('.diff-card.diff-browser-content[data-browser="' + effectiveBrowser + '"]');
+        targetDiffCards.forEach(function(card) {
+          card.classList.add('active');
+        });
       }
       
       const allSubsections = document.querySelectorAll('.step-subsection');
@@ -2124,22 +2139,37 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
         const hasActiveSection = subsection.querySelector('.browser-content-section.active');
         const subsectionCount = subsection.querySelector('.subsection-count');
         if (subsectionCount) {
-          if (hasActiveSection) {
-            const activeSection = subsection.querySelector('.browser-content-section.active');
-            const count = activeSection.getAttribute('data-count');
-            subsectionCount.textContent = count + '张';
-          } else {
+          // 有全局浏览器 Tab 时：徽章表示「当前选中浏览器」下的张数；无匹配浏览器时为 0，不能回退到 data-screenshot-total（那是全浏览器合计，会造成「显示有图但下方为空」的错觉）。
+          if (!hasActiveSection) {
+            subsectionCount.textContent = '0张';
+          } else if (tabs.length === 0) {
             const total = subsection.getAttribute('data-screenshot-total');
             subsectionCount.textContent = (total != null && total !== '' ? total : '0') + '张';
+          } else {
+            const activeSection = subsection.querySelector('.browser-content-section.active');
+            const count = activeSection ? activeSection.getAttribute('data-count') : null;
+            subsectionCount.textContent = (count != null && count !== '' ? count : '0') + '张';
           }
         }
       });
+
+      const optRoot = document.getElementById('optimized-content');
+      if (optRoot && tabs.length > 0) {
+        optRoot.querySelectorAll('.comparison').forEach(function(comparison) {
+          const badge = comparison.querySelector('.comparison-header .screenshot-badge');
+          if (!badge) return;
+          var sum = 0;
+          comparison.querySelectorAll('.browser-content-section.active').forEach(function(section) {
+            var c = parseInt(section.getAttribute('data-count') || '0', 10);
+            if (!isNaN(c)) sum += c;
+          });
+          badge.textContent = sum + '张';
+        });
+      }
       
       const activeTab = document.querySelector('.tab-content.active');
       if (activeTab && (activeTab.id === 'diff-only-content' || activeTab.id === 'optimized-diff-content')) {
-        activeTab.querySelectorAll('.comparison').forEach(function(comparison) {
-          comparison.style.display = 'block';
-        });
+        // 差异类 Tab：不显式全部 display:block，避免当前浏览器无数据时仍露出空步骤；由 updateDiffEmptyStates 按脚本面板设置。
       } else if (activeTab && activeTab.id === 'optimized-content') {
         activeTab.querySelectorAll('.comparison').forEach(function(comparison) {
           comparison.style.display = 'block';

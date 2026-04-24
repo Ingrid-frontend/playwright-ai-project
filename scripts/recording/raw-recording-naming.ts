@@ -47,19 +47,38 @@ export function inferBehavior(code: string): string {
     if (line.includes('.click(')) return 'click';
     if (line.includes('.fill(')) return 'fill';
     if (line.includes('.type(')) return 'type';
-    if (line.includes('page.goto(')) return 'goto';
     if (line.includes('.check(')) return 'check';
     if (line.includes('.selectOption(')) return 'select';
     if (line.includes('.press(')) return 'press';
   }
+  for (const line of lines) {
+    if (line.includes('page.goto(')) return 'goto';
+  }
   return 'script';
 }
 
+/**
+ * 从录制代码推断「功能名」slug。
+ * 优先用首个简短界面文案（如菜单 getByText('我的审批')），避免一律落成 huilianyi-goto 这类「域名+首个 goto」。
+ */
 export function inferFeature(code: string): string {
   const lines = code
     .split('\n')
     .map((l) => l.trim())
     .filter(Boolean);
+
+  for (const line of lines) {
+    const textMatch =
+      line.match(/getByText\(\s*['"]([^'"]+)['"]/i) ||
+      line.match(/getBy(?:Role|Label|Placeholder|AltText)\([^)]*name\s*:\s*['"]([^'"]+)['"]/i);
+    if (!textMatch?.[1]) continue;
+    const raw = textMatch[1].trim();
+    if (/^https?:\/\//i.test(raw)) continue;
+    // 太长多为整句文案/广告位，不适合做文件名前缀；过短略过
+    if (raw.length < 2 || raw.length > 20) continue;
+    const v = shortenSegment(raw, 12);
+    if (v && v !== 'unknown') return v;
+  }
 
   let sawRelativeGoto = false;
   for (const line of lines) {
@@ -91,13 +110,22 @@ export function inferFeature(code: string): string {
 
 /**
  * 与 generate-raw-recording 的 generateFileName 中 baseName 规则一致（不含路径与时间戳）。
+ * 未显式传 description 且推断行为为普通 click 时，不拼「-click」，便于与菜单名（如「我的审批」）一致。
  */
 export function buildRecordingBaseSlug(code: string, options: RecordingSlugOptions = {}): string {
+  const explicitDesc = options.description?.trim();
   const feature = shortenSegment(options.name?.trim() || inferFeature(code), 14);
-  const behavior = shortenSegment(options.description?.trim() || inferBehavior(code), 14);
-  const baseName =
-    `${feature}-${behavior}`.replace(/-+/g, '-').replace(/^-|-$/g, '').substring(0, 32) || 'recording-codegen';
-  return baseName;
+  const inferredBehavior = inferBehavior(code);
+  const behavior = shortenSegment(explicitDesc || inferredBehavior, 14);
+
+  let base: string;
+  if (!explicitDesc && inferredBehavior === 'click' && feature) {
+    base = feature;
+  } else {
+    base = `${feature}-${behavior}`.replace(/-+/g, '-').replace(/^-|-$/g, '');
+  }
+
+  return (base || 'recording-codegen').substring(0, 32);
 }
 
 /** 支持 YYYY-MM-DD 或 YYYYMMDD（与 raw-recordings 子目录分类一致） */

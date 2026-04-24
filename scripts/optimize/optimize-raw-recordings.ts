@@ -521,17 +521,17 @@ class RawRecordingOptimizer {
       ...(needsFill ? ['smartFill'] : []),
     ];
 
-    const template = `import { test, expect } from '@playwright/test';
+    const template = `import { test, expect } from '../fixtures';
 import fs from 'fs';
 import path from 'path';
-import { takeStepScreenshot, waitForPostInteractionPaint } from '../../../utils/screenshot';
+import { takeStepScreenshot, waitForPostInteractionPaint, withScreenshotRunSegment } from '../../../utils/screenshot';
 import { ${actionImports.join(', ')} } from '../../utils/optimized-actions';
 
 ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testName}', async ({ page }) => {
   ${this.options.addTimeout ? 'test.setTimeout(120000);' : ''}
 
-  // 初始化截图目录
-  const screenshotDir = '${screenshotDir}';
+  // 截图根目录；Chrome/WebKit 子目录由 ../fixtures 按引擎自动设置（仍可用 PLAYWRIGHT_SCREENSHOT_RUN_SEGMENT 手动覆盖）
+  const screenshotDir = withScreenshotRunSegment('${screenshotDir}');
   if (!fs.existsSync(screenshotDir)) {
     fs.mkdirSync(screenshotDir, { recursive: true });
   }

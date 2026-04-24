@@ -137,6 +137,19 @@ export default defineConfig({
       },
       dependencies: ['setup'],
     },
+
+    /** 与 optimized 相同视口，引擎为 WebKit（Safari） */
+    {
+      name: 'optimized-webkit',
+      testDir: './tests/optimized',
+      use: {
+        ...devices['Desktop Safari'],
+        storageState: curConfig.storageState,
+        viewport: { width: 1280, height: 720 },
+        deviceScaleFactor: 1,
+      },
+      dependencies: ['setup'],
+    },
   ],
 
   /* 5. 本地开发服务器配置（按需取消注释） */
