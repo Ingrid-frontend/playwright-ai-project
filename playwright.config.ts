@@ -21,6 +21,15 @@ function buildReporter() {
   return reporters;
 }
 
+/**
+ * Playwright：viewport 为 null 时不能同时带 device 预设里的 deviceScaleFactor，否则
+ * browser.newContext 报错。保留 userAgent 等其余字段。
+ */
+function useDeviceWithRealViewport(device: Record<string, unknown>, extra: Record<string, unknown> = {}) {
+  const { viewport: _vp, deviceScaleFactor: _dsf, ...rest } = device;
+  return { ...rest, viewport: null, ...extra };
+}
+
 export default defineConfig({
   // 1. 测试目录与并行度
   testDir: './tests',
@@ -54,7 +63,8 @@ export default defineConfig({
     extraHTTPHeaders: {
       'Accept-Language': 'zh-CN,zh;q=0.9'
     },
-    viewport: { width: 1280, height: 720 },
+    /* 不固定视口：跟随浏览器窗口，避免固定宽高导致页面留白/裁切与真实环境不一致 */
+    viewport: null,
     actionTimeout: 60000,  // 增加操作超时时间
     navigationTimeout: 60000,  // 增加导航超时时间
   },
@@ -98,10 +108,9 @@ export default defineConfig({
 
     {
       name: 'webkit',
-      use: { 
-        ...devices['Desktop Safari'],
-        storageState: curConfig.storageState
-      },
+      use: useDeviceWithRealViewport(devices['Desktop Safari'] as Record<string, unknown>, {
+        storageState: curConfig.storageState,
+      }),
       dependencies: ['setup'],
     },
 
@@ -119,9 +128,12 @@ export default defineConfig({
     {
       name: 'optimized',
       testDir: './tests/optimized',
-      use: { 
+      use: {
         ...devices['Desktop Chrome'],
-        storageState: curConfig.storageState
+        storageState: curConfig.storageState,
+        // 固定视口与 DPR，避免 viewport:null 时截图随窗口/显示器变化（如 1280×720 与 2560×1440 混用）
+        viewport: { width: 1280, height: 720 },
+        deviceScaleFactor: 1,
       },
       dependencies: ['setup'],
     },

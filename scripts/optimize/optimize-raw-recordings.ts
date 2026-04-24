@@ -334,8 +334,14 @@ class RawRecordingOptimizer {
     }
 
     // 3) 登录页里常见的 label 点击，仅在明确命中登录关键词时跳过
-    if ((line.includes("page.locator('label')") || line.includes('page.locator("label")')) &&
+    if ((line.includes("page.locator('label')") || line.includes('page.locator("label")') || line.includes("frameLocator('iframe').locator('label')")) &&
         (line.includes('账号登录') || line.includes('手机号') || line.includes('邮箱') || line.includes('用户协议') || line.includes('隐私协议'))) {
+      return true;
+    }
+
+    // 4) 检查是否在登录流程中的 label 点击（没有明确关键词但在登录相关操作附近）
+    // 简化处理：如果是简单的 label 点击，且在登录操作附近，也跳过
+    if (line.includes('.locator("label")') || line.includes(".locator('label')")) {
       return true;
     }
 
@@ -350,11 +356,11 @@ class RawRecordingOptimizer {
         return;
       }
       
-      const clickMatch = line.match(/await page\.(getBy\w*|locator)\(.+\)\.click\(\)/);
-      const fillMatch = line.match(/await page\.(getBy\w*|locator)\(.+\)\.(fill|type)\(.+\)/);
-      const checkMatch = line.match(/await page\.(getBy\w*|locator)\(.+\)\.check\(\)/);
-      const selectMatch = line.match(/await page\.(getBy\w*|locator)\(.+\)\.selectOption\(.+\)/);
-      const pressMatch = line.match(/await page\.(getBy\w*|locator)\(.+\)\.press\(.+\)/);
+      const clickMatch = line.match(/await page\.(?:frameLocator\(['"]iframe['"]\)\.)?(getBy\w*|locator)\(.+\)\.click\(\)/);
+      const fillMatch = line.match(/await page\.(?:frameLocator\(['"]iframe['"]\)\.)?(getBy\w*|locator)\(.+\)\.(fill|type)\(.+\)/);
+      const checkMatch = line.match(/await page\.(?:frameLocator\(['"]iframe['"]\)\.)?(getBy\w*|locator)\(.+\)\.check\(\)/);
+      const selectMatch = line.match(/await page\.(?:frameLocator\(['"]iframe['"]\)\.)?(getBy\w*|locator)\(.+\)\.selectOption\(.+\)/);
+      const pressMatch = line.match(/await page\.(?:frameLocator\(['"]iframe['"]\)\.)?(getBy\w*|locator)\(.+\)\.press\(.+\)/);
       const gotoMatch = line.match(/await page\.goto\(.+\)/);
 
       if (gotoMatch) {
@@ -412,7 +418,18 @@ class RawRecordingOptimizer {
   private identifyTestBlock(): void {
     const start = this.lines.findIndex(l => l.includes('test('));
     if (start === -1) {
-      this.testBlock = null;
+      // original/ 等备份常为「仅 await page.*」片段，无 test() 包装
+      const awaitLineIndices = this.lines
+        .map((l, i) => (/await\s+page\./.test(l) ? i : -1))
+        .filter((i) => i >= 0);
+      if (awaitLineIndices.length === 0) {
+        this.testBlock = null;
+        return;
+      }
+      const first = awaitLineIndices[0];
+      const last = awaitLineIndices[awaitLineIndices.length - 1];
+      console.log('ℹ️  未检测到 test()，按纯 Playwright 语句片段解析（常见于 original 备份或未封装的录制）');
+      this.testBlock = { start: first, end: last, bodyStart: first };
       return;
     }
 
@@ -499,6 +516,7 @@ class RawRecordingOptimizer {
     const needsFill = actions.some((a) => a.type === 'fill');
     const actionImports = [
       'step',
+      'maybePause',
       ...(needsClick ? ['smartClick'] : []),
       ...(needsFill ? ['smartFill'] : []),
     ];
@@ -506,7 +524,7 @@ class RawRecordingOptimizer {
     const template = `import { test, expect } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
-import { takeStepScreenshot } from '../../../utils/screenshot';
+import { takeStepScreenshot, waitForPostInteractionPaint } from '../../../utils/screenshot';
 import { ${actionImports.join(', ')} } from '../../utils/optimized-actions';
 
 ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testName}', async ({ page }) => {
@@ -520,30 +538,6 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const runDir = path.join(screenshotDir, timestamp);
-  ${this.hasIframe ? `// 定义 Iframe 引用
-  let iframeContent: any = null;
-  
-  await step('获取 Iframe 内容', async () => {
-    console.log('🔍 查找并获取 Iframe');
-    const iframe = page.locator('iframe').first();
-    // 某些页面的 iframe 可能是隐藏/延迟渲染的，不要强依赖 visible
-    await iframe.waitFor({ state: 'attached', timeout: 15000 }).catch(() => {});
-    
-    try {
-      iframeContent = await iframe.contentFrame();
-    } catch (e) {
-      console.log('⚠️ 获取 iframe contentFrame 失败:', e.message);
-      iframeContent = null;
-    }
-
-    if (!iframeContent) {
-      console.log('⚠️ 未能直接获取 iframe contentFrame，稍后会继续使用 page 上下文');
-    } else {
-      console.log('✅ Iframe 加载成功: 已获取');
-    }
-  });
-
-` : ''}
 
   // 检查是否有页面导航操作
   const hasGotoAction = ${actions.some(action => action.type === 'goto')};
@@ -554,7 +548,7 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
       console.log('🌐 导航到: / (基于 baseURL)');
       await page.goto('/', { waitUntil: 'networkidle' });
       await page.waitForLoadState('networkidle');
-      await takeStepScreenshot(page, path.join(runDir, \`step-1-导航到首页.png\`), { fullPage: true });
+      await takeStepScreenshot(page, path.join(runDir, \`step-1-导航到首页.png\`));
     });
   }
 
@@ -580,7 +574,7 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
     console.log('🌐 导航到: ${action.url}');
     await page.goto('${action.url}', { waitUntil: 'networkidle' });
     ${this.options.waitLoad ? 'await page.waitForLoadState(\'networkidle\');' : ''}
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-导航到页面.png\`), { fullPage: true });
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-导航到页面.png\`));
   });
 
 `;
@@ -595,6 +589,33 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
     return code;
   }
 
+  /** 该步是否写在录制里的 iframe / contentFrame 链上（与整文件是否含 iframe 无关） */
+  private actionUsesIframeContext(action: Action): boolean {
+    const s = action.selector;
+    return /contentFrame\s*\(\)/.test(s) || /frameLocator\s*\(\s*['"]iframe['"]\s*\)/.test(s);
+  }
+
+  /**
+   * iframe 内操作：用 page.frames() 取「非 main 的最后一帧」。业务页常有多个 iframe（埋点/空壳），
+   * locator('iframe').first() 常指向错误 frame；与录制里「当前 DOM 下唯一业务 iframe」更接近的是末级子 frame。
+   */
+  private buildLocatorDeclaration(action: Action, locatorCode: string): string {
+    if (this.hasIframe && this.actionUsesIframeContext(action)) {
+      return `await page.locator('iframe').last().waitFor({ state: 'attached', timeout: 20000 }).catch(() => {});
+    const _childFrames = page.frames().filter((f) => f !== page.mainFrame());
+    const baseContext = _childFrames.length > 0 ? _childFrames[_childFrames.length - 1]! : page.mainFrame();
+    const locator = ${locatorCode};`;
+    }
+    return `const locator = ${locatorCode};`;
+  }
+
+  private expectVisibleLine(action: Action, isKeyAction: boolean): string {
+    if (!this.options.addVisible || !isKeyAction) return '';
+    const iframeStep = this.hasIframe && this.actionUsesIframeContext(action);
+    const timeout = iframeStep ? 25_000 : 5_000;
+    return `await expect(locator).toBeVisible({ timeout: ${timeout} });`;
+  }
+
   private generateActionCode(action: Action, stepIndex: number, runDirVariable: string): string {
     const label = this.getActionLabel(action);
     const fileLabel = this.cleanLabel(label) || `step-${stepIndex}`;
@@ -605,13 +626,13 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
     switch (action.type) {
       case 'click':
         return `  await step('${label}', async () => {
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`), { fullPage: true });
-    ${this.hasIframe ? `const baseContext = iframeContent || page;
-    const locator = ${locatorCode.replace(/page\./g, 'baseContext.')};` : `const locator = ${locatorCode};`}
-    ${this.options.addVisible && isKeyAction ? `await expect(locator).toBeVisible();` : ''}
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`));
+    ${this.buildLocatorDeclaration(action, locatorCode)}
+    ${this.expectVisibleLine(action, isKeyAction)}
     await smartClick(locator, '${label}');
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { fullPage: true });
+    await waitForPostInteractionPaint(page);
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { mode: 'stable' });
   });
 
 `;
@@ -619,24 +640,23 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
       case 'type':
         const text = action.text || '';
         return `  await step('${label}', async () => {
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`), { fullPage: true });
-    ${this.hasIframe ? `const baseContext = iframeContent || page;
-    const locator = ${locatorCode.replace(/page\./g, 'baseContext.')};` : `const locator = ${locatorCode};`}
-    ${this.options.addVisible && isKeyAction ? `await expect(locator).toBeVisible();` : ''}
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`));
+    ${this.buildLocatorDeclaration(action, locatorCode)}
+    ${this.expectVisibleLine(action, isKeyAction)}
     await smartFill(locator, "${text}", '${label}');
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { fullPage: true });
+    await waitForPostInteractionPaint(page);
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { mode: 'stable' });
   });
 
 `;
       case 'check':
         return `  await step('${label}', async () => {
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`), { fullPage: true });
-    ${this.hasIframe ? `const baseContext = iframeContent || page;
-    const locator = ${locatorCode.replace(/page\./g, 'baseContext.')};` : `const locator = ${locatorCode};`}
-    ${this.options.addVisible && isKeyAction ? `await expect(locator).toBeVisible();` : ''}
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`));
+    ${this.buildLocatorDeclaration(action, locatorCode)}
+    ${this.expectVisibleLine(action, isKeyAction)}
     try {
-      await locator.waitFor({ state: 'visible', timeout: 10000 });
+      await locator.waitFor({ state: 'visible', timeout: this.actionUsesIframeContext(action) ? 25000 : 10000 });
     } catch (e) {
       console.log('⚠️ 元素不可见，尝试暂停调试');
       await maybePause(page, '元素不可见');
@@ -648,18 +668,18 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
       await maybePause(page, '勾选失败');
     }
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { fullPage: true });
+    await waitForPostInteractionPaint(page);
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { mode: 'stable' });
   });
 
 `;
       case 'selectOption':
         return `  await step('${label}', async () => {
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`), { fullPage: true });
-    ${this.hasIframe ? `const baseContext = iframeContent || page;
-    const locator = ${locatorCode.replace(/page\./g, 'baseContext.')};` : `const locator = ${locatorCode};`}
-    ${this.options.addVisible && isKeyAction ? `await expect(locator).toBeVisible();` : ''}
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`));
+    ${this.buildLocatorDeclaration(action, locatorCode)}
+    ${this.expectVisibleLine(action, isKeyAction)}
     try {
-      await locator.waitFor({ state: 'visible', timeout: 10000 });
+      await locator.waitFor({ state: 'visible', timeout: this.actionUsesIframeContext(action) ? 25000 : 10000 });
     } catch (e) {
       console.log('⚠️ 元素不可见，尝试暂停调试');
       await maybePause(page, '元素不可见');
@@ -671,18 +691,18 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
       await maybePause(page, '选择失败');
     }
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { fullPage: true });
+    await waitForPostInteractionPaint(page);
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { mode: 'stable' });
   });
 
 `;
       case 'press':
         return `  await step('${label}', async () => {
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`), { fullPage: true });
-    ${this.hasIframe ? `const baseContext = iframeContent || page;
-    const locator = ${locatorCode.replace(/page\./g, 'baseContext.')};` : `const locator = ${locatorCode};`}
-    ${this.options.addVisible && isKeyAction ? `await expect(locator).toBeVisible();` : ''}
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`));
+    ${this.buildLocatorDeclaration(action, locatorCode)}
+    ${this.expectVisibleLine(action, isKeyAction)}
     try {
-      await locator.waitFor({ state: 'visible', timeout: 10000 });
+      await locator.waitFor({ state: 'visible', timeout: this.actionUsesIframeContext(action) ? 25000 : 10000 });
     } catch (e) {
       console.log('⚠️ 元素不可见，尝试暂停调试');
       await maybePause(page, '元素不可见');
@@ -694,7 +714,8 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
       await maybePause(page, '按键失败');
     }
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { fullPage: true });
+    await waitForPostInteractionPaint(page);
+    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { mode: 'stable' });
   });
 
 `;
@@ -709,9 +730,12 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
     locator = locator.replace(/\.(click|fill|type|check|selectOption|press)\(.*\)\s*;?$/, '');
 
     // 处理 iframe 上下文：保留 iframe 语义，但切换为 iframeContent/baseContext
-    const iframePrefix = /^page\.locator\((['"])iframe\1\)\.contentFrame\(\)\./;
-    if (iframePrefix.test(locator)) {
-      locator = locator.replace(iframePrefix, this.hasIframe ? 'baseContext.' : 'page.');
+    const iframePrefix1 = /^page\.locator\((['"])iframe\1\)\.contentFrame\(\)\./;
+    const iframePrefix2 = /^page\.frameLocator\((['"])iframe\1\)\./;
+    if (iframePrefix1.test(locator)) {
+      locator = locator.replace(iframePrefix1, this.hasIframe ? 'baseContext.' : 'page.');
+    } else if (iframePrefix2.test(locator)) {
+      locator = locator.replace(iframePrefix2, this.hasIframe ? 'baseContext.' : 'page.');
     }
 
     // 应用定位器优化规则
@@ -760,7 +784,13 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
     // 3. 移除重复的click操作（Cleaner层只做删除）
     // 注意：这里只做简单的重复检测，复杂的重复检测由AI层处理
     
-    // 4. 不移除复杂的CSS选择器，也不转换语义选择器
+    // 4. 优化路径选择器，避免点击被拦截
+    // 如果是点击 path 元素，尝试点击其父元素
+    if (optimized.includes(' > path') && /\.click\(\)/.test(optimized)) {
+      optimized = optimized.replace(/ > path/g, '');
+    }
+    
+    // 5. 不移除复杂的CSS选择器，也不转换语义选择器
     // 保持原始选择器不变，由AI层进行智能优化
 
     return optimized;

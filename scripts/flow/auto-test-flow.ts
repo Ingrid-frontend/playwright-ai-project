@@ -9,7 +9,41 @@ type CliOptions = {
   feishuMode: FeishuMode;
   createFeishuDoc: boolean;
   playwrightProject: string;
+  /** 显式指定录制根目录（相对 cwd）；未传则看 RAW_RECORDINGS_DIR，再自动回退 */
+  rawRecordingsDir?: string;
 };
+
+/** 供飞书通知与最终退出码：反映「执行 / 对比 / 飞书文档」真实结果（录制、优化在此前失败会直接 throw） */
+type AutoTestNotifySummary = {
+  recordSkipped: boolean;
+  testPassed: boolean;
+  comparePassed: boolean;
+  feishuDocAttempted: boolean;
+  feishuDocPassed: boolean;
+};
+
+function buildNotifyResultMarkdown(s: AutoTestNotifySummary): string {
+  const lines = [
+    '**测试结果**：',
+    s.recordSkipped ? '⏭️ 录制：跳过（CI）' : '✅ 录制：成功',
+    '✅ 优化：成功',
+    `${s.testPassed ? '✅' : '❌'} 执行：${s.testPassed ? '成功' : '失败'}`,
+    `${s.comparePassed ? '✅' : '❌'} 对比：${s.comparePassed ? '成功' : '失败'}`,
+  ];
+  if (s.feishuDocAttempted) {
+    lines.push(`${s.feishuDocPassed ? '✅' : '❌'} 飞书文档：${s.feishuDocPassed ? '成功' : '失败'}`);
+  }
+  return lines.join('\n');
+}
+
+function notifyCardHeader(s: AutoTestNotifySummary): { title: string; template: string } {
+  const allOk =
+    s.testPassed && s.comparePassed && (!s.feishuDocAttempted || s.feishuDocPassed);
+  if (allOk) {
+    return { title: '🎉 Playwright AI 测试完成', template: 'green' };
+  }
+  return { title: '⚠️ Playwright AI 测试未完成', template: 'red' };
+}
 
 function printHelp(): void {
   console.log(`用法: tsx scripts/flow/auto-test-flow.ts [选项]
@@ -20,9 +54,11 @@ function printHelp(): void {
   --feishu-mode=<interactive|text|links|none>  飞书通知样式（默认 interactive）
   --create-feishu-doc                           流程末尾执行 npm run create-feishu-doc
   --playwright-project=<name>                 执行用例的 project（默认 optimized）
+  --raw-recordings-dir=<path>                 原始录制根目录（相对项目根；优先于环境变量）
   -h, --help                                  显示帮助
 
 环境变量 FEISHU_MODE 与 --feishu-mode 相同；命令行优先。
+环境变量 RAW_RECORDINGS_DIR：指定原始录制根目录；未设置且未传 --raw-recordings-dir 时，使用 tests/raw-recordings（须存在且含可用 .spec.ts，不含 original/）。
 
 feishu-mode 说明:
   interactive  简单卡片（默认）
@@ -44,6 +80,7 @@ function parseCli(argv: string[]): CliOptions {
 
   let createFeishuDoc = false;
   let playwrightProject = 'optimized';
+  let rawRecordingsDir: string | undefined;
 
   for (const arg of argv) {
     if (arg === '-h' || arg === '--help') {
@@ -67,12 +104,21 @@ function parseCli(argv: string[]): CliOptions {
       playwrightProject = arg.slice('--playwright-project='.length).trim() || 'optimized';
       continue;
     }
+    if (arg.startsWith('--raw-recordings-dir=')) {
+      const v = arg.slice('--raw-recordings-dir='.length).trim();
+      if (!v) {
+        console.error('❌ --raw-recordings-dir 不能为空');
+        process.exit(1);
+      }
+      rawRecordingsDir = v;
+      continue;
+    }
   }
 
-  return { feishuMode, createFeishuDoc, playwrightProject };
+  return { feishuMode, createFeishuDoc, playwrightProject, rawRecordingsDir };
 }
 
-async function sendFeishuNotification(mode: FeishuMode): Promise<void> {
+async function sendFeishuNotification(mode: FeishuMode, summary: AutoTestNotifySummary): Promise<void> {
   if (mode === 'none') {
     console.log('ℹ️  feishu-mode=none，跳过飞书通知');
     return;
@@ -96,6 +142,9 @@ async function sendFeishuNotification(mode: FeishuMode): Promise<void> {
     return;
   }
 
+  const resultMd = buildNotifyResultMarkdown(summary);
+  const { title: cardTitle, template: cardTemplate } = notifyCardHeader(summary);
+
   const timestamp = Math.floor(Date.now() / 1000);
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -104,10 +153,11 @@ async function sendFeishuNotification(mode: FeishuMode): Promise<void> {
   let body: object;
 
   if (mode === 'text') {
+    const headline = cardTitle.includes('未完成') ? '⚠️ Playwright AI 流程结束' : '🎉 Playwright AI 测试完成';
     body = {
       msg_type: 'text',
       content: {
-        text: `🎉 Playwright AI 测试完成\n\n**测试结果**：\n✅ 录制：成功\n✅ 优化：成功\n✅ 执行：成功\n✅ 对比：成功`,
+        text: `${headline}\n\n${resultMd}`,
       },
     };
   } else if (mode === 'links') {
@@ -123,16 +173,16 @@ async function sendFeishuNotification(mode: FeishuMode): Promise<void> {
         header: {
           title: {
             tag: 'plain_text' as const,
-            content: '🎉 Playwright AI 测试完成',
+            content: cardTitle,
           },
-          template: 'green' as const,
+          template: cardTemplate as 'green' | 'red',
         },
         elements: [
           {
             tag: 'div' as const,
             text: {
               tag: 'lark_md' as const,
-              content: '**测试结果**：\n✅ 录制：成功\n✅ 优化：成功\n✅ 执行：成功\n✅ 对比：成功',
+              content: resultMd,
             },
           },
           {
@@ -201,16 +251,16 @@ async function sendFeishuNotification(mode: FeishuMode): Promise<void> {
         header: {
           title: {
             tag: 'plain_text',
-            content: '🎉 Playwright AI 测试完成',
+            content: cardTitle,
           },
-          template: 'green',
+          template: cardTemplate,
         },
         elements: [
           {
             tag: 'div',
             text: {
               tag: 'lark_md',
-              content: `**测试结果**：\n✅ 录制：成功\n✅ 优化：成功\n✅ 执行：成功\n✅ 对比：成功`,
+              content: resultMd,
             },
           },
         ],
@@ -249,19 +299,21 @@ async function sendFeishuNotification(mode: FeishuMode): Promise<void> {
   }
 }
 
-function runCommand(command: string, description: string, continueOnError: boolean = false): void {
+/** @returns 是否执行成功；continueOnError 为 false 时失败会抛错，无返回值 */
+function runCommand(command: string, description: string, continueOnError: boolean = false): boolean {
   console.log(`\n📋 ${description}`);
   console.log(`🔧 执行命令: ${command}`);
   try {
     execSync(command, { stdio: 'inherit' });
     console.log(`✅ ${description} 完成`);
+    return true;
   } catch (error) {
     console.error(`❌ ${description} 失败`);
     if (continueOnError) {
       console.log(`⚠️  继续执行后续步骤...`);
-    } else {
-      throw error;
+      return false;
     }
+    throw error;
   }
 }
 
@@ -277,6 +329,66 @@ function findFiles(dir: string, pattern: RegExp): string[] {
     }
   }
   return files;
+}
+
+/** 与 optimize-raw-recordings 一致：跳过 original/ 备份，只选真实录制用例 */
+function isRawRecordingSpecPath(fullPath: string, rawRoot: string): boolean {
+  const rel = path.relative(rawRoot, fullPath);
+  return !rel.startsWith(`original${path.sep}`) && rel !== 'original';
+}
+
+/** 与本次录制对应的优化产物（basename 匹配），避免误跑其它 .optimized.spec.ts */
+function findOptimizedSpecForRawRecording(rawSpecPath: string, optimizedRoot: string): string | null {
+  const stem = path.basename(rawSpecPath, '.spec.ts');
+  const wantBase = `${stem}.optimized.spec.ts`;
+  const candidates = findFiles(optimizedRoot, /\.optimized\.spec\.ts$/).filter(
+    (p) => path.basename(p) === wantBase,
+  );
+  if (candidates.length === 0) return null;
+  if (candidates.length === 1) return candidates[0];
+  return candidates.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)[0];
+}
+
+/** 解析录制根目录：CLI > RAW_RECORDINGS_DIR > 默认路径回退（首个含可用 .spec.ts 的目录） */
+function resolveRawRecordingsRoot(cliDir: string | undefined): string {
+  const fromCli = cliDir?.trim();
+  const fromEnv = process.env.RAW_RECORDINGS_DIR?.trim();
+  const explicit = fromCli || fromEnv;
+
+  if (explicit) {
+    const abs = path.resolve(process.cwd(), explicit);
+    if (!fs.existsSync(abs)) {
+      throw new Error(
+        `录制目录不存在: ${abs}（来自 ${fromCli ? '--raw-recordings-dir' : 'RAW_RECORDINGS_DIR'}）`,
+      );
+    }
+    if (!fs.statSync(abs).isDirectory()) {
+      throw new Error(`录制路径不是目录: ${abs}`);
+    }
+    const specs = findFiles(abs, /\.spec\.ts$/).filter((p) => isRawRecordingSpecPath(p, abs));
+    if (specs.length === 0) {
+      throw new Error(`录制目录中未找到可用的 .spec.ts（已跳过 original/）: ${abs}`);
+    }
+    console.log(
+      `📂 使用录制根目录: ${path.relative(process.cwd(), abs) || '.'}（${fromCli ? 'CLI' : 'RAW_RECORDINGS_DIR'}）`,
+    );
+    return abs;
+  }
+
+  const defaultRawRoot = 'tests/raw-recordings';
+  const abs = path.resolve(process.cwd(), defaultRawRoot);
+  if (fs.existsSync(abs) && fs.statSync(abs).isDirectory()) {
+    const specs = findFiles(abs, /\.spec\.ts$/).filter((p) => isRawRecordingSpecPath(p, abs));
+    if (specs.length > 0) {
+      console.log(`📂 使用录制根目录: ${defaultRawRoot}`);
+      return abs;
+    }
+  }
+
+  throw new Error(
+    `未找到可用录制文件。请将用例放在 tests/raw-recordings/，或设置 RAW_RECORDINGS_DIR / --raw-recordings-dir。\n` +
+      `已检查: ${defaultRawRoot}（须含非 original 的 .spec.ts）`,
+  );
 }
 
 async function main(): Promise<void> {
@@ -301,7 +413,6 @@ async function main(): Promise<void> {
     '-' +
     String(now.getSeconds()).padStart(2, '0');
 
-  const rawRecordingsDir = 'tests/raw-recordings';
   const optimizedDir = 'tests/optimized';
 
   try {
@@ -320,9 +431,13 @@ async function main(): Promise<void> {
       runCommand('npm run record', '1. 录制测试脚本');
     }
 
-    const rawRecordingFiles = findFiles(rawRecordingsDir, /\.spec\.ts$/).sort((a, b) =>
-      b.localeCompare(a),
-    );
+    // 录制完成后再解析目录：Codegen 写入 tests/raw-recordings
+    const rawRecordingsDir = resolveRawRecordingsRoot(opts.rawRecordingsDir);
+
+    const rawRecordingFiles = findFiles(rawRecordingsDir, /\.spec\.ts$/)
+      .filter((p) => isRawRecordingSpecPath(p, rawRecordingsDir))
+      // 按 mtime 取「最近修改」的录制，避免仅靠路径字典序误选旧文件
+      .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
 
     if (rawRecordingFiles.length === 0) {
       throw new Error('录制文件不存在');
@@ -331,40 +446,58 @@ async function main(): Promise<void> {
     const rawRecordingPath = rawRecordingFiles[0];
     console.log(`📁 找到录制文件: ${rawRecordingPath}`);
 
-    runCommand(`npm run optimize -- "${rawRecordingPath}"`, '2. 优化测试脚本');
+    runCommand(`npm run optimize-raw-recordings -- "${rawRecordingPath}"`, '2. 优化测试脚本（raw 录制 → smartClick/step 管线）');
 
-    const optimizedFiles = findFiles(optimizedDir, /\.optimized\.spec\.ts$/).sort((a, b) =>
-      b.localeCompare(a),
-    );
-
-    if (optimizedFiles.length === 0) {
-      throw new Error('优化文件不存在');
+    const optimizedTestPath = findOptimizedSpecForRawRecording(rawRecordingPath, optimizedDir);
+    if (!optimizedTestPath) {
+      throw new Error(
+        `未找到与录制文件对应的优化产物（期望 tests/optimized/**/${path.basename(rawRecordingPath, '.spec.ts')}.optimized.spec.ts）。请确认 optimize-raw-recordings 已正常生成。`,
+      );
     }
-
-    const optimizedTestPath = optimizedFiles[0];
     console.log(`📁 找到优化文件: ${optimizedTestPath}`);
 
-    runCommand(
+    const testPassed = runCommand(
       `npx playwright test "${optimizedTestPath}" --project=${opts.playwrightProject}`,
       '3. 执行优化后的测试',
       true,
     );
 
-    runCommand('npm run compare-screenshots', '4. 生成截图对比报告');
+    const comparePassed = runCommand('npm run compare-screenshots', '4. 生成截图对比报告', true);
 
+    let feishuDocPassed = true;
     if (opts.createFeishuDoc) {
-      runCommand('npm run create-feishu-doc', '5. 创建飞书文档', true);
+      feishuDocPassed = runCommand('npm run create-feishu-doc', '5. 创建飞书文档', true);
     }
 
-    await sendFeishuNotification(opts.feishuMode);
+    const notifySummary: AutoTestNotifySummary = {
+      recordSkipped: isCI,
+      testPassed,
+      comparePassed,
+      feishuDocAttempted: opts.createFeishuDoc,
+      feishuDocPassed,
+    };
 
-    console.log('\n🎉 所有步骤执行成功！');
+    await sendFeishuNotification(opts.feishuMode, notifySummary);
+
+    const flowAllOk =
+      testPassed && comparePassed && (!opts.createFeishuDoc || feishuDocPassed);
+
     console.log(`\n📁 生成的文件:`);
     console.log(`  - 录制文件: ${rawRecordingPath}`);
     console.log(`  - 优化文件: ${optimizedTestPath}`);
     console.log(`  - 对比报告: results/screenshot-comparison.html`);
-  } catch {
+
+    if (flowAllOk) {
+      console.log('\n🎉 所有步骤执行成功！');
+    } else {
+      console.error('\n⚠️ 流程已结束，但存在失败步骤（见上方日志与飞书摘要）');
+      process.exit(1);
+    }
+  } catch (e) {
     console.error('\n❌ 流程执行失败，请检查错误信息');
+    if (e instanceof Error && e.message) {
+      console.error(e.message);
+    }
     process.exit(1);
   }
 }

@@ -8,6 +8,27 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MENU_ITEMS = JSON.parse(fs.readFileSync(path.join(__dirname, '../datasource/menu_items.json'), 'utf-8'));
 const MENU_ROUTES = JSON.parse(fs.readFileSync(path.join(__dirname, '../datasource/menu_routes.json'), 'utf-8'));
 
+/**
+ * 使用 CSS 像素尺寸出图（与 viewport 宽高一致）。
+ * 默认 scale=device 会按 DPR 放大（如 1280→2560），易与 playwright 里设置的视口不一致，并出现「截图比浏览器宽/高」、对比报告留白异常。
+ */
+const SCREENSHOT_SCALE: 'css' | 'device' = 'css';
+
+/**
+ * 与 playwright.config 中 `optimized` project 一致。
+ * 菜单/路由切换后，整页文档 scrollWidth、滚动条可能变化；fullPage 截图会按「文档最大宽高」出图，PNG 尺寸会漂移。
+ * 出图前强制 setViewportSize，保证视口一致；默认截图用视口（非 fullPage），宽度稳定为 1280。
+ */
+const SNAPSHOT_VIEWPORT = { width: 1280, height: 720 } as const;
+
+function useFullPageByDefault(): boolean {
+  return process.env.SCREENSHOT_FULL_PAGE === '1';
+}
+
+async function lockViewportForSnapshot(page: Page): Promise<void> {
+  await page.setViewportSize(SNAPSHOT_VIEWPORT);
+}
+
 function getRouteDisplayName(route: string): string {
   for (const [key, routeValue] of Object.entries(MENU_ROUTES)) {
     const normalizedRouteValue = String(routeValue).replace(/\//g, '_').replace(/^_/, '');
@@ -20,7 +41,9 @@ function getRouteDisplayName(route: string): string {
 }
 
 export async function screenshotWhenStable(page: Page, path: string, options: { fullPage?: boolean } = {}): Promise<{ path: string; route: string }> {
-  const { fullPage = false } = options;
+  const fullPage = options.fullPage ?? useFullPageByDefault();
+
+  await lockViewportForSnapshot(page);
 
   await waitForRouteStable(page, 3000);
 
@@ -54,9 +77,19 @@ export async function screenshotWhenStable(page: Page, path: string, options: { 
 
   const route = await getCurrentRoute(page);
   const routePath = addRouteToPath(path, route);
-  await page.screenshot({ path: routePath, fullPage });
+  await lockViewportForSnapshot(page);
+  await page.screenshot({ path: routePath, fullPage, scale: SCREENSHOT_SCALE });
   
   return { path: routePath, route };
+}
+
+/**
+ * 点击/填写等操作后：等待全局 loading 消失并留一帧给 Drawer/Tab CSS 动画，减少「after 截图花屏、空白、半开抽屉」。
+ */
+export async function waitForPostInteractionPaint(page: Page): Promise<void> {
+  await page.locator('.ant-spin-spinning, .ant-loading').first().waitFor({ state: 'hidden', timeout: 15_000 }).catch(() => {});
+  await page.locator('.page-loading-mask').first().waitFor({ state: 'hidden', timeout: 10_000 }).catch(() => {});
+  await page.waitForTimeout(350);
 }
 
 export async function takeStepScreenshot(
@@ -66,13 +99,14 @@ export async function takeStepScreenshot(
 ): Promise<{ path: string; route: string }> {
   const envMode = process.env.SCREENSHOT_MODE === 'stable' ? 'stable' : 'fast';
   const mode = options.mode ?? envMode;
-  const { fullPage = false } = options;
+  const fullPage = options.fullPage ?? useFullPageByDefault();
 
   if (mode === 'stable') {
     return await screenshotWhenStable(page, filePath, { fullPage });
   }
 
-  await page.screenshot({ path: filePath, fullPage });
+  await lockViewportForSnapshot(page);
+  await page.screenshot({ path: filePath, fullPage, scale: SCREENSHOT_SCALE });
   return { path: filePath, route: page.url() };
 }
 

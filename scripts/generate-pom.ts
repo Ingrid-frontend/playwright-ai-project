@@ -329,7 +329,7 @@ test.describe('${className.replace('Page', '')}测试', () => {
     const getScreenshotPath = (step: number, type: string, name: string) => \`\${runDir}/step-\${step}-\${type}-\${name}.png\`;
     
     // 截图: 页面加载完成
-    await page.screenshot({ path: getScreenshotPath(1, 'home', 'home'), fullPage: false });
+    await page.screenshot({ path: getScreenshotPath(1, 'home', 'home'), fullPage: false, scale: 'css' });
     
 ${this.generateTestSteps(className)}
   });
@@ -365,14 +365,14 @@ ${this.generateTestSteps(className)}
       const actionLabel = actionType === 'click' ? '点击' : actionType === 'fill' ? '填写' : actionType === 'type' ? '输入' : actionType === 'check' ? '勾选' : '操作';
       
       const beforeComment = `    // 截图: ${actionLabel}前 ${actionName}`;
-      const beforeScreenshot = `    await page.screenshot({ path: getScreenshotPath(${stepCounter}, 'before', '${actionName}'), fullPage: false });`;
+      const beforeScreenshot = `    await page.screenshot({ path: getScreenshotPath(${stepCounter}, 'before', '${actionName}'), fullPage: false, scale: 'css' });`;
       stepCounter++;
       
       const actionCall = `    await pageObject.${this.generateMethodName(action)}();`;
       
       const waitLine = `    await page.waitForTimeout(800);`;
       const afterComment = `    // 截图: ${actionLabel}后 ${actionName}`;
-      const afterScreenshot = `    await page.screenshot({ path: getScreenshotPath(${stepCounter}, 'after', '${actionName}'), fullPage: false });`;
+      const afterScreenshot = `    await page.screenshot({ path: getScreenshotPath(${stepCounter}, 'after', '${actionName}'), fullPage: false, scale: 'css' });`;
       stepCounter++;
       
       steps.push(beforeComment);

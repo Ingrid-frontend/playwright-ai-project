@@ -1,6 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import readline from 'readline';
+import {
+  buildRecordingBaseSlug,
+  getDateCategoryForCalendarDay,
+  writeOriginalRecordingBackup,
+} from './raw-recording-naming.js';
 
 interface GenerateOptions {
   code?: string;
@@ -11,303 +16,44 @@ interface GenerateOptions {
 
 class RawRecordingGenerator {
   private outputDir = 'tests/raw-recordings';
-  
+
   constructor() {
     this.ensureOutputDir();
   }
-  
+
   private ensureOutputDir(): void {
     if (!fs.existsSync(this.outputDir)) {
       fs.mkdirSync(this.outputDir, { recursive: true });
     }
   }
-  
+
   private generateTimestamp(): string {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
   }
-  
-  private extractContentInfo(code: string): string {
-    const lines = code.split('\n').map(line => line.trim()).filter(line => line.length > 0);
-    
-    if (lines.length === 0) {
-      return 'empty';
-    }
-    
-    const firstLine = lines[0];
-    
-    const patterns = [
-      { regex: /page\.goto\(['"]([^'"]+)['"]\)/, extract: (match: RegExpMatchArray) => `goto-${this.extractDomain(match[1])}` },
-      { regex: /page\.getBy(?:Role|Text|Label|Placeholder|AltText)\([^)]*name\s*:\s*['"]([^'"]+)['"]/i, extract: (match: RegExpMatchArray) => `click-${this.sanitizeName(match[1])}` },
-      { regex: /page\.getByText\(['"]([^'"]+)['"]/i, extract: (match: RegExpMatchArray) => `click-${this.sanitizeName(match[1])}` },
-      { regex: /page\.locator\(['"]([^'"]+)['"]/i, extract: (match: RegExpMatchArray) => `locator-${this.extractSelectorType(match[1])}` },
-      { regex: /page\.getByRole\(['"]([^'"]+)['"]/i, extract: (match: RegExpMatchArray) => `role-${match[1]}` },
-    ];
-    
-    for (const pattern of patterns) {
-      const match = firstLine.match(pattern.regex);
-      if (match) {
-        return pattern.extract(match);
-      }
-    }
-    
-    const firstAction = lines.find(line => 
-      line.includes('page.') && 
-      (line.includes('.click(') || line.includes('.fill(') || line.includes('.type('))
-    );
-    
-    if (firstAction) {
-      if (firstAction.includes('.click(')) return 'click-action';
-      if (firstAction.includes('.fill(')) return 'fill-action';
-      if (firstAction.includes('.type(')) return 'type-action';
-    }
-    
-    return 'test';
-  }
-  
-  private extractDomain(url: string): string {
-    try {
-      const urlObj = new URL(url);
-      const hostname = urlObj.hostname;
-      const parts = hostname.split('.');
-      if (parts.length >= 2) {
-        return parts[parts.length - 2];
-      }
-      return hostname;
-    } catch {
-      return 'unknown';
-    }
-  }
-  
-  private sanitizeName(name: string): string {
-    return name
-      .replace(/[^\w\u4e00-\u9fa5]/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '')
-      .substring(0, 20);
-  }
 
-  private sanitizePathSegment(name: string): string {
-    return name
-      .replace(/[^\w\u4e00-\u9fa5-]/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '')
-      .toLowerCase()
-      .substring(0, 18) || 'test';
-  }
-
-  private shortenSegment(name: string, maxLength = 8): string {
-    const cleaned = this.sanitizePathSegment(name);
-    return cleaned.length > maxLength ? cleaned.substring(0, maxLength) : cleaned;
-  }
-
-  private extractActionKeywords(code: string): string[] {
-    const keywords: string[] = [];
-    const lines = code.split('\n').map(line => line.trim()).filter(Boolean);
-
-    for (const line of lines) {
-      const gotoMatch = line.match(/page\.goto\(['"]([^'"]+)['"]\)/);
-      if (gotoMatch) {
-        // 域名保留更直观的前缀，不要裁得过短导致 example 变成 exampl
-        keywords.push(this.shortenSegment(this.extractDomain(gotoMatch[1]), 12));
-        continue;
-      }
-
-      const textMatch = line.match(/getBy(?:Role|Text|Label|Placeholder|AltText)\([^)]*name\s*:\s*['"]([^'"]+)['"]/i)
-        || line.match(/getByText\(['"]([^'"]+)['"]/i)
-        || line.match(/fill\(['"]([^'"]+)['"]/i)
-        || line.match(/type\(['"]([^'"]+)['"]/i);
-
-      if (textMatch) {
-        keywords.push(this.shortenSegment(textMatch[1], 10));
-      }
-
-      if (keywords.length >= 2) break;
-    }
-
-    return keywords.filter(Boolean);
-  }
-
-  private buildBaseName(code: string, customName?: string, description?: string): string {
-    const parts: string[] = [];
-
-    if (customName?.trim()) {
-      parts.push(this.shortenSegment(customName.trim(), 10));
-    }
-
-    if (description?.trim()) {
-      parts.push(this.shortenSegment(description.trim(), 10));
-    }
-
-    const actionKeywords = this.extractActionKeywords(code);
-    parts.push(...actionKeywords.map(keyword => this.shortenSegment(keyword, 10)));
-
-    if (parts.length === 0) {
-      return 'test';
-    }
-
-    const deduped: string[] = [];
-    for (const part of parts) {
-      if (!deduped.includes(part)) {
-        deduped.push(part);
-      }
-    }
-
-    return deduped.join('-').substring(0, 28);
-  }
-  
-  private extractSelectorType(selector: string): string {
-    if (selector.startsWith('.')) return 'class';
-    if (selector.startsWith('#')) return 'id';
-    if (selector.startsWith('[')) return 'attribute';
-    if (selector.includes('=')) return 'xpath';
-    return 'selector';
-  }
-
-  private inferBehavior(code: string): string {
-    const lines = code.split('\n').map(l => l.trim()).filter(Boolean);
-    for (const line of lines) {
-      if (line.includes('.click(')) return 'click';
-      if (line.includes('.fill(')) return 'fill';
-      if (line.includes('.type(')) return 'type';
-      if (line.includes('page.goto(')) return 'goto';
-      if (line.includes('.check(')) return 'check';
-      if (line.includes('.selectOption(')) return 'select';
-      if (line.includes('.press(')) return 'press';
-    }
-    return 'script';
-  }
-
-  private inferFeature(code: string): string {
-    const lines = code.split('\n').map(l => l.trim()).filter(Boolean);
-
-    // 1) URL（非相对路径）
-    let sawRelativeGoto = false;
-    for (const line of lines) {
-      const gotoMatch = line.match(/page\.goto\(['"]([^'"]+)['"]/);
-      if (!gotoMatch) continue;
-      const url = gotoMatch[1];
-      if (/^https?:\/\//i.test(url)) {
-        const domain = this.extractDomain(url);
-        if (domain && domain !== 'unknown') return domain;
-      } else {
-        // 相对路径：先记下，等待是否能命中更可读的“元素文本”
-        sawRelativeGoto = true;
-      }
-    }
-
-    // 3) 操作元素文本（如 getByText('登录') / getByRole({ name: '登录' })）
-    for (const line of lines) {
-      const textMatch =
-        line.match(/getByText\(\s*['"]([^'"]+)['"]/i) ||
-        line.match(/getBy(?:Role|Label|Placeholder|AltText)\([^)]*name\s*:\s*['"]([^'"]+)['"]/i);
-      if (textMatch?.[1]) {
-        const v = this.shortenSegment(textMatch[1], 12);
-        if (v && v !== 'unknown') return v;
-      }
-    }
-
-    // 2) 相对路径 → 固定为 home（仅在没有更好的元素文本时使用）
-    if (sawRelativeGoto) return 'home';
-
-    // 4) 最终兜底：action 本身（如 click）
-    return this.inferBehavior(code);
-  }
-  
   /**
    * Raw recordings 命名规范：<feature>-<behavior>_<timestamp>.spec.ts
-   *
-   * - feature：优先使用 --name（或从代码推断的关键词）
-   * - behavior：优先使用 --description（或从代码推断的关键词）
-   * - timestamp：固定 YYYY-MM-DD_HH-mm-ss
-   *
-   * 解析建议：以最后一个 '_' 分割，右侧即 timestamp
+   * 规则与 scripts/recording/raw-recording-naming.ts / npm run record 录制后处理一致。
    */
   private generateFileName(code: string, options: GenerateOptions = {}): string {
     const timestamp = this.generateTimestamp();
-
-    const feature = this.shortenSegment(options.name?.trim() || this.inferFeature(code), 14);
-    const behavior = this.shortenSegment(options.description?.trim() || this.inferBehavior(code), 14);
-    const baseName = `${feature}-${behavior}`.replace(/-+/g, '-').replace(/^-|-$/g, '').substring(0, 32) || 'recording-codegen';
-
+    const baseName = buildRecordingBaseSlug(code, {
+      name: options.name,
+      description: options.description,
+    });
     const fileName = `${baseName}_${timestamp}.spec.ts`;
-    
     const dateStr = timestamp.split('_')[0];
-    const dateCategory = this.getDateCategoryForDate(dateStr);
+    const dateCategory = getDateCategoryForCalendarDay(dateStr);
     const categoryDir = path.join(this.outputDir, dateCategory);
-    
+
     if (!fs.existsSync(categoryDir)) {
       fs.mkdirSync(categoryDir, { recursive: true });
     }
-    
+
     return path.join(categoryDir, fileName);
   }
-  
-  private saveOriginalCode(code: string, fileName: string): void {
-    // 创建原始代码保存目录
-    const originalDir = path.join(this.outputDir, 'original');
-    if (!fs.existsSync(originalDir)) {
-      fs.mkdirSync(originalDir, { recursive: true });
-    }
-    
-    // 提取日期分类
-    const baseNameWithTimestamp = path.basename(fileName, '.spec.ts');
-    // 从文件名中提取日期部分（格式：YYYY-MM-DD）
-    const dateMatch = baseNameWithTimestamp.match(/(\d{4}-\d{2}-\d{2})/);
-    if (!dateMatch) {
-      console.warn(`⚠️  无法从文件名提取日期: ${baseNameWithTimestamp}`);
-      return;
-    }
-    const dateStr = dateMatch[1];
-    const dateCategory = this.getDateCategoryForDate(dateStr);
-    const categoryDir = path.join(originalDir, dateCategory);
-    
-    if (!fs.existsSync(categoryDir)) {
-      fs.mkdirSync(categoryDir, { recursive: true });
-    }
-    
-    // 生成原始代码文件名：保持与录制文件相同的基础命名，仅放入 original 目录
-    const originalFileName = path.join(categoryDir, `${baseNameWithTimestamp}.spec.ts`);
-    
-    // 保存原始代码
-    fs.writeFileSync(originalFileName, code, 'utf-8');
-    console.log(`✅ 已保存原始代码: ${originalFileName}`);
-  }
-  
-  private getDateCategoryForDate(dateStr: string): string {
-    const configPath = path.join(process.cwd(), 'config', 'date-categories.json');
-    
-    if (!fs.existsSync(configPath)) {
-      console.warn(`⚠️  配置文件不存在: ${configPath}`);
-      return 'default';
-    }
-    
-    try {
-      const configContent = fs.readFileSync(configPath, 'utf-8');
-      const config = JSON.parse(configContent) as { dateCategories: string[] };
-      
-      // 解析日期字符串，确保使用本地时区
-      const [year, month, day] = dateStr.split('-').map(Number);
-      const fileDate = new Date(year, month - 1, day);
-      
-      for (const category of config.dateCategories) {
-        const catYear = parseInt(category.substring(0, 4));
-        const catMonth = parseInt(category.substring(4, 6)) - 1;
-        const catDay = parseInt(category.substring(6, 8));
-        const categoryDate = new Date(catYear, catMonth, catDay);
-        
-        if (fileDate <= categoryDate) {
-          return category;
-        }
-      }
-      
-      return config.dateCategories[config.dateCategories.length - 1];
-    } catch (error) {
-      console.warn(`⚠️  读取配置文件失败: ${error}`);
-      return 'default';
-    }
-  }
-  
+
   private processIframeCode(code: string): string {
     // 将 page.locator('iframe').contentFrame() 统一转换为 page.frameLocator('iframe')
     // 原来的实现直接删除这些行，会导致所有 iframe 内操作丢失，只剩下 goto。
@@ -407,9 +153,8 @@ class RawRecordingGenerator {
 
     const wrappedCode = this.wrapCodeInTest(normalizedCode);
     const fileName = this.generateFileName(code, options);
-    
-    // 保存原始代码
-    this.saveOriginalCode(normalizedCode, fileName);
+
+    writeOriginalRecordingBackup(normalizedCode, fileName, this.outputDir);
     
     fs.writeFileSync(fileName, wrappedCode, 'utf-8');
     

@@ -265,6 +265,19 @@ function generateOptimizedStep(comp: StepComparison, dirName: string): string {
   return generateStepSection(comp.stepNumber, comp.stepName, 'Optimized 版本', comp.optimizedScreenshots, dirName);
 }
 
+/** 同一步骤下多张子图：before 先于 after（文件名后缀 -before / -after） */
+function compareScreenshotSubsectionNames(a: string, b: string): number {
+  const aBefore = a.endsWith('-before');
+  const bBefore = b.endsWith('-before');
+  const aAfter = a.endsWith('-after');
+  const bAfter = b.endsWith('-after');
+  if (aBefore && bAfter) return -1;
+  if (aAfter && bBefore) return 1;
+  if (a.startsWith('before') && !b.startsWith('before')) return -1;
+  if (!a.startsWith('before') && b.startsWith('before')) return 1;
+  return a.localeCompare(b, 'zh-CN');
+}
+
 function generateStepSection(stepNumber: number, stepName: string | undefined, title: string, screenshots: ScreenshotInfo[], dirName: string): string {
   const groupedByStepName = new Map<string, ScreenshotInfo[]>();
   
@@ -276,11 +289,7 @@ function generateStepSection(stepNumber: number, stepName: string | undefined, t
     groupedByStepName.get(name)!.push(screenshot);
   });
   
-  const stepNames = Array.from(groupedByStepName.keys()).sort((a, b) => {
-    if (a.startsWith('before') && !b.startsWith('before')) return -1;
-    if (!a.startsWith('before') && b.startsWith('before')) return 1;
-    return a.localeCompare(b);
-  });
+  const stepNames = Array.from(groupedByStepName.keys()).sort(compareScreenshotSubsectionNames);
   
   const totalScreenshots = screenshots.length;
   
@@ -305,7 +314,7 @@ function generateStepSection(stepNumber: number, stepName: string | undefined, t
         return `
         <div class="step-subsection">
           <div class="step-subsection-header">
-            <h3>步骤 ${stepNumber} ${name}</h3>
+            <h3>${name}</h3>
             <span class="screenshot-badge subsection-count">${nameTotal}张</span>
             ${routeInfo}
           </div>
@@ -387,17 +396,84 @@ function generateBrowserContent(browser: string, screenshots: ScreenshotInfo[], 
   </div>`;
 }
 
+/** 从目录名、时间戳串等解析日历日，返回 YYYY-MM-DD 供分组合并 */
+function extractCalendarDayKey(raw: string): string | null {
+  if (!raw) return null;
+
+  const runMatch = raw.match(/(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})-(\d{2})/);
+  if (runMatch) return runMatch[1];
+
+  const iso = raw.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) {
+    const y = Number(iso[1]);
+    const mo = Number(iso[2]);
+    const d = Number(iso[3]);
+    const dt = new Date(y, mo - 1, d);
+    if (!Number.isNaN(dt.getTime())) {
+      return `${iso[1]}-${iso[2]}-${iso[3]}`;
+    }
+  }
+
+  const compact = raw.match(/(?:^|[^\d])(\d{4})(\d{2})(\d{2})(?:[^\d]|$)/);
+  if (compact) {
+    const y = Number(compact[1]);
+    const mo = Number(compact[2]);
+    const d = Number(compact[3]);
+    if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
+      const dt = new Date(y, mo - 1, d);
+      if (!Number.isNaN(dt.getTime())) {
+        return `${compact[1]}-${compact[2]}-${compact[3]}`;
+      }
+    }
+  }
+
+  return null;
+}
+
+function calendarDayKeyForScreenshot(s: ScreenshotInfo): string {
+  for (const raw of [s.date, s.timestamp]) {
+    if (!raw) continue;
+    const key = extractCalendarDayKey(String(raw));
+    if (key) return key;
+  }
+  const fallback = String(s.date || s.timestamp || 'unknown');
+  return `__unparsed__${fallback}`;
+}
+
+/** 分组键为 YYYY-MM-DD 时标题为 MMdd（如 0423）；无法解析时回退展示原文 */
+function formatDateGroupTitle(groupKey: string): string {
+  if (groupKey.startsWith('__unparsed__')) {
+    const raw = groupKey.slice('__unparsed__'.length);
+    return raw
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  const iso = groupKey.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) {
+    return `${iso[2]}${iso[3]}`;
+  }
+
+  return groupKey
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 function groupScreenshotsByDate(screenshots: ScreenshotInfo[]): Map<string, ScreenshotInfo[]> {
   const grouped = new Map<string, ScreenshotInfo[]>();
-  
-  screenshots.forEach(screenshot => {
-    const date = screenshot.date || screenshot.timestamp;
-    if (!grouped.has(date)) {
-      grouped.set(date, []);
+
+  screenshots.forEach((screenshot) => {
+    const key = calendarDayKeyForScreenshot(screenshot);
+    if (!grouped.has(key)) {
+      grouped.set(key, []);
     }
-    grouped.get(date)!.push(screenshot);
+    grouped.get(key)!.push(screenshot);
   });
-  
+
   return grouped;
 }
 
@@ -408,7 +484,7 @@ function generateDateGroup(date: string, screenshots: ScreenshotInfo[]): string 
   
   return `
   <div class="date-group">
-    <div class="date-title">${date}</div>
+    <div class="date-title">${formatDateGroupTitle(date)}</div>
     <div class="screenshot-grid">
       ${sortedScreenshots.map(s => generateScreenshotCard(s)).join('')}
     </div>
@@ -421,6 +497,19 @@ function generateScreenshotCard(screenshot: ScreenshotInfo): string {
     <div class="screenshot-time">${screenshot.displayTimestamp}</div>
     <img class="screenshot-image" src="${screenshot.relativePath}" alt="${screenshot.stepName}" onclick="openModal('${screenshot.relativePath}')">
   </div>`;
+}
+
+function groupImageComparisonsByCalendarDay(comparisons: ImageComparison[]): Map<string, ImageComparison[]> {
+  const grouped = new Map<string, ImageComparison[]>();
+  comparisons.forEach((c) => {
+    const key =
+      extractCalendarDayKey(c.image1Path) ||
+      extractCalendarDayKey(c.image2Path) ||
+      '__unparsed__其他';
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)!.push(c);
+  });
+  return grouped;
 }
 
 function generateDiffStep(comp: StepComparison, type: 'pom' | 'optimized' | 'all', onlyDiffs: boolean = false): string {
@@ -441,11 +530,7 @@ function generateDiffStep(comp: StepComparison, type: 'pom' | 'optimized' | 'all
     groupedByStepName.get(stepName)!.push(comp);
   });
   
-  const sortedStepNames = Array.from(groupedByStepName.keys()).sort((a, b) => {
-    if (a.startsWith('before') && !b.startsWith('before')) return -1;
-    if (!a.startsWith('before') && b.startsWith('before')) return 1;
-    return a.localeCompare(b);
-  });
+  const sortedStepNames = Array.from(groupedByStepName.keys()).sort(compareScreenshotSubsectionNames);
   
   const stepsToDisplay = sortedStepNames.map(stepName => {
     const comps = groupedByStepName.get(stepName)!;
@@ -472,12 +557,22 @@ function generateDiffStep(comp: StepComparison, type: 'pom' | 'optimized' | 'all
     </div>
     <div class="comparison-body">
       ${stepsWithContent.map(({ stepName, diffComps }) => {
+        const byDate = groupImageComparisonsByCalendarDay(diffComps);
+        const dateEntries = Array.from(byDate.entries()).sort((a, b) => a[0].localeCompare(b[0]));
         return `
         <div class="diff-step-group">
-          <div class="diff-step-name">步骤 ${comp.stepNumber} ${stepName}</div>
-          <div class="diff-grid">
-            ${diffComps.map(c => generateDiffCard(c, type)).join('')}
-          </div>
+          <div class="diff-step-name">${stepName}</div>
+          ${dateEntries
+            .map(
+              ([dateKey, comps]) => `
+          <div class="date-group">
+            <div class="date-title">${formatDateGroupTitle(dateKey)}</div>
+            <div class="diff-grid">
+              ${comps.map((c) => generateDiffCard(c, type)).join('')}
+            </div>
+          </div>`
+            )
+            .join('')}
         </div>
         `;
       }).join('')}
@@ -494,9 +589,14 @@ function getOptimizedDiffCountsForScript(tdc: TestDirComparisons): { all: number
   return { all, only };
 }
 
-function extractStepNameFromPath(path: string): string {
-  const match = path.match(/step-\d+-([^_]+(?:_[^_]+)*)__/);
-  return match ? match[1] : 'unknown';
+/** 与 getAllScreenshots 中 stepName 规则一致；勿依赖文件名里必须有 `__`（否则大量子图会落到 unknown，差异 Tab 分组错乱） */
+function extractStepNameFromPath(imagePath: string): string {
+  const base = path.basename(imagePath.replace(/\\/g, '/'));
+  const m = base.match(/^step-\d+-(.+)\.png$/);
+  if (!m) return 'unknown';
+  const rest = m[1];
+  const routeMatch = rest.match(/^(.+)__(.+)$/);
+  return routeMatch ? routeMatch[1] : rest;
 }
 
 function extractImageLabel(path: string, index: number): string {
@@ -699,83 +799,99 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       padding: 0;
       box-sizing: border-box;
     }
-    
+
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
-      background: #f5f5f5;
-      padding: 20px;
+      background: #f5f7fa;
+      padding: 24px;
+      color: #1d2129;
     }
     
     .header {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      padding: 30px;
-      border-radius: 10px;
-      margin-bottom: 30px;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      background: white;
+      color: #1d2129;
+      padding: 24px 32px;
+      border-radius: 8px;
+      margin-bottom: 24px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      border-bottom: 3px solid #1677ff;
     }
     
     .header h1 {
-      font-size: 32px;
-      margin-bottom: 10px;
-    }
-    
-    .header p {
-      font-size: 16px;
-      opacity: 0.9;
+      font-size: 24px;
+      font-weight: 600;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 12px;
     }
     
     .stats {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 20px;
-      margin-bottom: 30px;
+      gap: 16px;
+      margin-bottom: 24px;
     }
     
     .stat-card {
       background: white;
-      padding: 20px;
-      border-radius: 10px;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      padding: 20px 24px;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      transition: all 0.2s ease;
+      border: 1px solid #e8e8e8;
+    }
+    
+    .stat-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     }
     
     .stat-card h3 {
       font-size: 14px;
-      color: #666;
-      margin-bottom: 10px;
+      color: #86909c;
+      margin-bottom: 12px;
+      font-weight: 400;
     }
     
     .stat-card .value {
       font-size: 32px;
-      font-weight: bold;
-      color: #667eea;
+      font-weight: 700;
+      color: #1677ff;
     }
     
     .comparison {
       background: white;
-      border-radius: 10px;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-      margin-bottom: 30px;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      margin-bottom: 16px;
       overflow: hidden;
+      border: 1px solid #e8e8e8;
     }
     
     .comparison-header {
-      background: #f8f9fa;
-      padding: 10px 15px;
-      border-bottom: 1px solid #dee2e6;
+      background: #fafafa;
+      padding: 12px 20px;
+      border-bottom: 1px solid #e8e8e8;
       display: flex;
       align-items: center;
       justify-content: space-between;
       cursor: pointer;
+      transition: background-color 0.2s ease;
+    }
+    
+    .comparison-header:hover {
+      background: #f5f5f5;
     }
     
     .comparison-header h2 {
-      font-size: 16px;
-      color: #333;
+      font-size: 15px;
+      color: #1d2129;
       margin-bottom: 0;
       display: flex;
       align-items: center;
       gap: 10px;
+      font-weight: 600;
     }
 
     .controls-row {
@@ -784,20 +900,49 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       justify-content: space-between;
       gap: 16px;
       flex-wrap: wrap;
-      margin-bottom: 18px;
+      margin-bottom: 24px;
     }
 
-    .controls-left {
-      display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
+    .filter-panel {
       flex: 1 1 auto;
       min-width: 320px;
+      background: white;
+      border: 1px solid #e8e8e8;
+      border-radius: 10px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      padding: 16px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .filter-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .filter-label {
+      font-size: 14px;
+      font-weight: 500;
+      color: #4e5969;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .global-browser-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      flex: 1;
+      min-width: 0;
     }
 
     .controls-right {
       display: flex;
-      gap: 10px;
+      gap: 12px;
       flex-wrap: wrap;
       align-items: center;
       justify-content: flex-end;
@@ -805,55 +950,65 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
     }
 
     .control-button {
-      padding: 10px 14px;
+      padding: 8px 16px;
       background: white;
-      border: 1px solid #dee2e6;
-      border-radius: 10px;
+      border: 1px solid #d9d9d9;
+      border-radius: 6px;
       cursor: pointer;
-      font-size: 13px;
-      font-weight: 600;
-      color: #495057;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+      font-size: 14px;
+      font-weight: 400;
+      color: #1d2129;
       transition: all 0.2s ease;
     }
 
     .control-button:hover {
-      background: #f8f9fa;
-      transform: translateY(-1px);
+      color: #1677ff;
+      border-color: #1677ff;
+      background: #e6f4ff;
     }
 
     .control-input {
-      height: 40px;
+      height: 36px;
       padding: 0 12px;
-      border: 1px solid #dee2e6;
-      border-radius: 10px;
+      border: 1px solid #d9d9d9;
+      border-radius: 6px;
       background: white;
-      font-size: 13px;
+      font-size: 14px;
       min-width: 240px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+      transition: all 0.2s ease;
+      outline: none;
+    }
+
+    .control-input:hover {
+      border-color: #1677ff;
+    }
+
+    .control-input:focus {
+      border-color: #1677ff;
+      box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
     }
     
     .screenshot-badge {
       display: inline-block;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: #1677ff;
       color: white;
-      font-size: 11px;
-      font-weight: bold;
-      padding: 3px 10px;
-      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 2px 8px;
+      border-radius: 4px;
       white-space: nowrap;
     }
     
     .comparison-body {
-      padding: 12px;
+      padding: 16px;
     }
     
     .step-subsection {
-      margin-bottom: 20px;
-      background: #f8f9fa;
-      border-radius: 8px;
+      margin-bottom: 16px;
+      background: white;
+      border-radius: 6px;
       overflow: hidden;
-      border: 1px solid #dee2e6;
+      border: 1px solid #e8e8e8;
     }
     
     .step-subsection:last-child {
@@ -861,26 +1016,26 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
     }
     
     .step-subsection-header {
-      background: #e9ecef;
-      padding: 10px 15px;
+      background: #fafafa;
+      padding: 10px 16px;
       display: flex;
       align-items: center;
-      gap: 10px;
-      border-bottom: 1px solid #dee2e6;
+      gap: 12px;
+      border-bottom: 1px solid #e8e8e8;
     }
     
     .step-subsection-header h3 {
       font-size: 14px;
       font-weight: 600;
-      color: #495057;
+      color: #1d2129;
       margin: 0;
     }
     
     .route-info {
       font-size: 12px;
-      font-weight: 500;
-      color: #667eea;
-      background: #f0f3ff;
+      font-weight: 400;
+      color: #1677ff;
+      background: #e6f4ff;
       padding: 4px 10px;
       border-radius: 4px;
       white-space: nowrap;
@@ -916,90 +1071,54 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
     }
 
-    /* iteration/script 双层 tab：复用原 test-dir-tab 样式 */
-    .iteration-tabs {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 24px;
-      padding: 16px 20px;
-      background: white;
-      border-radius: 10px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    }
-    
-    .iteration-tabs-label {
-      font-size: 15px;
-      font-weight: 600;
-      color: #495057;
-      white-space: nowrap;
-    }
-    
     .iteration-tabs-container {
       display: flex;
       flex-wrap: wrap;
-      gap: 10px;
+      gap: 8px;
       align-items: center;
+      flex: 1;
+      min-width: 0;
     }
     
     .iteration-tab {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 12px 20px;
-      background: #f8f9fa;
-      border: 2px solid transparent;
-      border-radius: 8px;
+      padding: 6px 16px;
+      background: #f7f8fa;
+      border: 1px solid transparent;
+      border-radius: 4px;
       cursor: pointer;
       font-size: 14px;
-      font-weight: 500;
-      color: #495057;
+      font-weight: 400;
+      color: #4e5969;
       transition: all 0.2s ease;
     }
     
     .iteration-tab:hover {
-      background: #e9ecef;
-      color: #212529;
-      border-color: #dee2e6;
+      background: #e6f4ff;
+      color: #1677ff;
     }
     
     .iteration-tab.active {
-      background: #667eea;
+      background: #1677ff;
       color: white;
-      font-weight: 600;
-      border-color: #667eea;
-      box-shadow: 0 2px 6px rgba(102, 126, 234, 0.2);
+      font-weight: 500;
     }
 
-    .script-tabs {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 24px;
-      padding: 14px 18px;
-      background: white;
-      border-radius: 10px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-    }
-    
-    .script-tabs-label {
-      font-size: 14px;
-      font-weight: 600;
-      color: #495057;
-      white-space: nowrap;
-    }
-    
     .script-tabs-container {
       display: flex;
       flex-wrap: wrap;
-      gap: 10px;
+      gap: 8px;
       align-items: center;
+      flex: 1;
+      min-width: 0;
     }
 
     .script-tabs-iteration {
       display: flex;
       flex-wrap: wrap;
-      gap: 10px;
+      gap: 8px;
       align-items: center;
     }
     
@@ -1007,29 +1126,26 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 10px 16px;
-      background: #f8f9fa;
-      border: 2px solid transparent;
-      border-radius: 8px;
+      padding: 6px 16px;
+      background: #f7f8fa;
+      border: 1px solid transparent;
+      border-radius: 4px;
       cursor: pointer;
-      font-size: 13px;
-      font-weight: 500;
-      color: #495057;
+      font-size: 14px;
+      font-weight: 400;
+      color: #4e5969;
       transition: all 0.2s ease;
     }
     
     .script-tab:hover {
-      background: #e9ecef;
-      color: #212529;
-      border-color: #dee2e6;
+      background: #e6f4ff;
+      color: #1677ff;
     }
     
     .script-tab.active {
-      background: #667eea;
+      background: #1677ff;
       color: white;
-      font-weight: 600;
-      border-color: #667eea;
-      box-shadow: 0 2px 6px rgba(102, 126, 234, 0.18);
+      font-weight: 500;
     }
     
     .test-dir-tabs-label {
@@ -1068,51 +1184,30 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       box-shadow: 0 2px 6px rgba(102, 126, 234, 0.2);
     }
     
-    .global-browser-tabs {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 24px;
-      padding: 16px 20px;
-      background: white;
-      border-radius: 10px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    }
-    
-    .global-browser-tabs-label {
-      font-size: 15px;
-      font-weight: 600;
-      color: #495057;
-      white-space: nowrap;
-    }
-    
     .global-browser-tab {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 12px 20px;
-      background: #f8f9fa;
-      border: 2px solid transparent;
-      border-radius: 8px;
+      padding: 6px 16px;
+      background: #f7f8fa;
+      border: 1px solid transparent;
+      border-radius: 4px;
       cursor: pointer;
       font-size: 14px;
-      font-weight: 500;
-      color: #495057;
+      font-weight: 400;
+      color: #4e5969;
       transition: all 0.2s ease;
     }
     
     .global-browser-tab:hover {
-      background: #e9ecef;
-      color: #212529;
-      border-color: #dee2e6;
+      background: #e6f4ff;
+      color: #1677ff;
     }
     
     .global-browser-tab.active {
-      background: #667eea;
+      background: #1677ff;
       color: white;
-      font-weight: 600;
-      border-color: #667eea;
-      box-shadow: 0 2px 6px rgba(102, 126, 234, 0.2);
+      font-weight: 500;
     }
     
     .browser-content-section {
@@ -1125,108 +1220,99 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
     
     .browser-content-inner {
       padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
     }
     
     .date-group {
-      margin-bottom: 16px;
-      background: #fff;
+      min-width: 0;
+      width: 100%;
+      overflow-x: auto;
+      background: white;
       border-radius: 8px;
       padding: 16px;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-    }
-    
-    .date-group:last-child {
-      margin-bottom: 0;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      border: 1px solid #e8e8e8;
     }
     
     .date-title {
       font-size: 14px;
       font-weight: 600;
-      color: #2c3e50;
-      margin-bottom: 12px;
+      color: #1d2129;
+      margin-bottom: 16px;
       padding: 8px 12px;
-      background: #f8f9fa;
-      border-left: 3px solid #667eea;
+      background: #f7f8fa;
+      border-left: 3px solid #1677ff;
       border-radius: 4px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
     
     .date-title::before {
       content: '📅';
       font-size: 16px;
-      margin-right: 8px;
     }
     
     .screenshot-time {
-      background: #f8f9fa;
-      color: #495057;
-      font-size: 11px;
+      background: #f7f8fa;
+      color: #86909c;
+      font-size: 12px;
       font-weight: 500;
-      padding: 4px 8px;
+      padding: 6px 8px;
       text-align: center;
       white-space: nowrap;
-      border-bottom: 1px solid #e9ecef;
-    }
-    
-    .screenshot-route {
-      background: #fff3cd;
-      color: #fff;
-      font-size: 10px;
-      font-weight: 600;
-      padding: 3px 8px;
-      text-align: center;
-      border-bottom: 1px solid #e9ecef;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      border-bottom: 1px solid #e8e8e8;
     }
     
     .screenshot-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(500px, 1fr));
-      gap: 12px;
+      grid-template-columns: repeat(auto-fill, minmax(520px, 1fr));
+      gap: 24px;
+      width: 100%;
     }
     
     .screenshot-card {
-      background: #f8f9fa;
+      min-width: 0;
+      background: white;
       border-radius: 6px;
       overflow: hidden;
-      border: 1px solid #dee2e6;
+      border: 1px solid #e8e8e8;
       display: flex;
       flex-direction: column;
+      transition: box-shadow 0.2s ease, border-color 0.2s ease;
     }
     
     .screenshot-card:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-      transition: all 0.3s ease;
+      border-color: #e8e8e8;
+      box-shadow: 0 4px 16px rgba(22, 119, 255, 0.12), 0 2px 6px rgba(0, 0, 0, 0.06);
     }
     
     .screenshot-image {
+      display: block;
       width: 100%;
-      height: 350px;
-      object-fit: contain;
+      max-width: 100%;
+      min-width: 0;
+      height: auto;
       background: white;
       cursor: pointer;
     }
     
-    .screenshot-image:hover {
-      transform: scale(1.05);
-      transition: transform 0.3s ease;
-    }
-    
     .no-screenshots {
       text-align: center;
-      padding: 40px;
-      color: #999;
+      padding: 32px 16px;
+      color: #86909c;
       font-size: 14px;
-      background: #f8f9fa;
-      border-radius: 8px;
+      background: #f7f8fa;
+      border-radius: 6px;
     }
     
     .diff-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(900px, 1fr));
-      gap: 20px;
+      grid-template-columns: repeat(auto-fill, minmax(520px, 1fr));
+      gap: 24px;
+      width: 100%;
     }
     
     .diff-step-group {
@@ -1240,28 +1326,26 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
     .diff-step-name {
       font-size: 14px;
       font-weight: 600;
-      color: #495057;
+      color: #1d2129;
       margin-bottom: 12px;
       padding: 8px 12px;
-      background: #f8f9fa;
-      border-left: 3px solid #667eea;
+      background: #f7f8fa;
+      border-left: 3px solid #1677ff;
       border-radius: 4px;
-    }
-    
-    .diff-browser-content {
-      display: none;
-    }
-    
-    .diff-browser-content.active {
-      display: block;
     }
     
     .diff-card {
       background: white;
       border-radius: 8px;
       overflow: hidden;
-      border: 1px solid #dee2e6;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      border: 1px solid #e8e8e8;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      transition: box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+    
+    .diff-card:hover {
+      border-color: #e8e8e8;
+      box-shadow: 0 4px 16px rgba(22, 119, 255, 0.1), 0 2px 6px rgba(0, 0, 0, 0.05);
     }
     
     .diff-card.diff-browser-content {
@@ -1273,21 +1357,12 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
     }
     
     .diff-header {
-      background: #f8f9fa;
+      background: #f7f8fa;
       padding: 10px 15px;
       display: flex;
       align-items: center;
       gap: 10px;
-      border-bottom: 1px solid #dee2e6;
-    }
-    
-    .diff-type {
-      font-size: 12px;
-      font-weight: bold;
-      color: #667eea;
-      background: #e9ecef;
-      padding: 4px 8px;
-      border-radius: 4px;
+      border-bottom: 1px solid #e8e8e8;
     }
     
     .diff-badge {
@@ -1300,44 +1375,59 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
     
     .diff-percentage {
       font-size: 13px;
-      font-weight: bold;
-      color: #333;
+      font-weight: 600;
+      color: #1d2129;
       margin-left: auto;
     }
     
     .diff-images {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 10px;
-      padding: 10px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      padding: 12px;
+      align-items: start;
+    }
+    
+    @media (max-width: 640px) {
+      .diff-images {
+        grid-template-columns: 1fr;
+      }
     }
     
     .diff-image-container {
       display: flex;
       flex-direction: column;
-      gap: 5px;
+      gap: 6px;
+      min-width: 0;
+      overflow: hidden;
+      border-radius: 6px;
     }
     
     .diff-image-label {
-      font-size: 11px;
-      color: #666;
+      font-size: 12px;
+      color: #86909c;
       text-align: center;
       font-weight: 500;
     }
     
     .diff-image-container img {
+      display: block;
+      box-sizing: border-box;
       width: 100%;
-      height: 200px;
-      object-fit: contain;
+      max-width: 100%;
+      min-width: 0;
+      height: auto;
       background: white;
-      border: 1px solid #dee2e6;
-      border-radius: 4px;
+      border: 1px solid #e8e8e8;
+      border-radius: 6px;
       cursor: pointer;
-      transition: transform 0.3s ease;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      box-shadow: none;
     }
     
     .diff-image-container img:hover {
-      transform: scale(1.05);
+      border-color: #1677ff;
+      box-shadow: 0 4px 14px rgba(22, 119, 255, 0.1);
     }
     
     .modal {
@@ -1347,7 +1437,7 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(0, 0, 0, 0.9);
+      background: rgba(0, 0, 0, 0.75);
       z-index: 1000;
       justify-content: center;
       align-items: center;
@@ -1361,69 +1451,75 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       max-width: 90%;
       max-height: 90%;
       background: white;
-      border-radius: 10px;
-      overflow: hidden;
+      border-radius: 8px;
+      overflow: auto;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
     }
     
     .modal-image {
-      max-width: 100%;
+      width: auto;
+      height: auto;
+      max-width: min(100%, 100vw);
       max-height: 90vh;
       display: block;
-      transition: transform 0.3s ease;
-    }
-    
-    .modal-image:hover {
-      transform: scale(1.02);
     }
     
     .modal-close {
       position: absolute;
-      top: 20px;
-      right: 20px;
+      top: 24px;
+      right: 24px;
       background: white;
-      border: none;
-      width: 40px;
-      height: 40px;
+      border: 1px solid #e8e8e8;
+      width: 36px;
+      height: 36px;
       border-radius: 50%;
-      font-size: 24px;
+      font-size: 20px;
       cursor: pointer;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
       z-index: 1001;
+      color: #1d2129;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
     }
     
     .modal-close:hover {
-      background: #f0f0f0;
+      background: #f7f8fa;
+      border-color: #1677ff;
+      color: #1677ff;
     }
     
     .tabs {
       display: flex;
-      gap: 10px;
+      gap: 8px;
       margin-bottom: 20px;
-      border-bottom: 2px solid #dee2e6;
-      padding-bottom: 2px;
+      padding: 4px;
+      background: #f7f8fa;
+      border-radius: 8px;
     }
     
     .tab {
-      padding: 12px 24px;
-      background: white;
+      padding: 10px 20px;
+      background: transparent;
       border: none;
-      border-radius: 8px 8px 0 0;
+      border-radius: 6px;
       cursor: pointer;
-      font-size: 16px;
+      font-size: 14px;
       font-weight: 500;
-      color: #666;
-      transition: all 0.3s ease;
+      color: #86909c;
+      transition: all 0.2s ease;
     }
     
     .tab:hover {
-      background: #f8f9fa;
-      color: #333;
+      color: #1677ff;
+      background: rgba(22, 119, 255, 0.05);
     }
     
     .tab.active {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: #1677ff;
       color: white;
-      font-weight: bold;
+      font-weight: 600;
     }
     
     .tab-content {
@@ -1451,38 +1547,29 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 80px 20px;
+      padding: 60px 20px;
       text-align: center;
       background: white;
-      border-radius: 10px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      border: 1px solid #e8e8e8;
     }
     
     .empty-state-icon {
-      font-size: 64px;
-      margin-bottom: 20px;
-      animation: bounce 2s ease-in-out infinite;
-    }
-    
-    @keyframes bounce {
-      0%, 100% {
-        transform: translateY(0);
-      }
-      50% {
-        transform: translateY(-10px);
-      }
+      font-size: 48px;
+      margin-bottom: 16px;
     }
     
     .empty-state-title {
-      font-size: 20px;
+      font-size: 16px;
       font-weight: 600;
-      color: #495057;
-      margin-bottom: 10px;
+      color: #1d2129;
+      margin-bottom: 8px;
     }
     
     .empty-state-description {
       font-size: 14px;
-      color: #6c757d;
+      color: #86909c;
       line-height: 1.5;
     }
   </style>
@@ -1509,16 +1596,15 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
   </div>
   
   <div class="controls-row">
-    <div class="controls-left">
-      <div class="iteration-tabs">
-        <div class="iteration-tabs-label">选择迭代：</div>
+    <div class="filter-panel" role="region" aria-label="筛选">
+      <div class="filter-row">
+        <span class="filter-label">迭代：</span>
         <div class="iteration-tabs-container">
           ${iterationTabs}
         </div>
       </div>
-
-      <div class="script-tabs">
-        <div class="script-tabs-label">选择脚本：</div>
+      <div class="filter-row">
+        <span class="filter-label">脚本：</span>
         <div class="script-tabs-container">
           ${iterations
             .map((iter) => `<div class="script-tabs-iteration" data-iteration="${iter}" ${
@@ -1527,16 +1613,17 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
             .join('')}
         </div>
       </div>
-
       ${hasOptimizedData ? `
-      <div class="global-browser-tabs">
-        <div class="global-browser-tabs-label">选择浏览器：</div>
-        ${browserList.map((browser, index) => `
+      <div class="filter-row">
+        <span class="filter-label">浏览器：</span>
+        <div class="global-browser-buttons">
+          ${browserList.map((browser, index) => `
           <button class="global-browser-tab ${index === 0 ? 'active' : ''}" data-browser="${browser}" onclick="switchGlobalBrowser('${browser}')">
             ${getBrowserIcon(browser)}
             <span>${browser}</span>
           </button>
-        `).join('')}
+          `).join('')}
+        </div>
       </div>` : ''}
     </div>
 
@@ -1614,14 +1701,11 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       if (targetContent) targetContent.classList.add('active');
       
       const activeBrowserTab = document.querySelector('.global-browser-tab.active');
-      if (activeBrowserTab) {
-        const browser = activeBrowserTab.getAttribute('data-browser');
-        if (browser) {
-          switchGlobalBrowser(browser);
-        }
-      }
-
-      updateDiffEmptyStates();
+      const gbTabs = document.querySelectorAll('.global-browser-tab');
+      const browser = gbTabs.length
+        ? (activeBrowserTab ? activeBrowserTab.getAttribute('data-browser') : gbTabs[0].getAttribute('data-browser'))
+        : null;
+      switchGlobalBrowser(browser);
     }
     
     function switchIteration(iteration) {
@@ -1655,14 +1739,11 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       }
       
       const activeBrowserTab = document.querySelector('.global-browser-tab.active');
-      if (activeBrowserTab) {
-        const browser = activeBrowserTab.getAttribute('data-browser');
-        if (browser) {
-          switchGlobalBrowser(browser);
-        }
-      }
-
-      updateDiffEmptyStates();
+      const gbTabs = document.querySelectorAll('.global-browser-tab');
+      const browser = gbTabs.length
+        ? (activeBrowserTab ? activeBrowserTab.getAttribute('data-browser') : gbTabs[0].getAttribute('data-browser'))
+        : null;
+      switchGlobalBrowser(browser);
     }
 
     function switchScript(iteration, script) {
@@ -1686,14 +1767,11 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       filterScripts('');
 
       const activeBrowserTab = document.querySelector('.global-browser-tab.active');
-      if (activeBrowserTab) {
-        const browser = activeBrowserTab.getAttribute('data-browser');
-        if (browser) {
-          switchGlobalBrowser(browser);
-        }
-      }
-
-      updateDiffEmptyStates();
+      const gbTabs = document.querySelectorAll('.global-browser-tab');
+      const browser = gbTabs.length
+        ? (activeBrowserTab ? activeBrowserTab.getAttribute('data-browser') : gbTabs[0].getAttribute('data-browser'))
+        : null;
+      switchGlobalBrowser(browser);
     }
 
     function filterScripts(query) {
@@ -1726,6 +1804,19 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       });
     }
 
+    function scriptDiffPanelHasVisibleDiff(panel) {
+      if (!panel) return false;
+      if (window.getComputedStyle(panel).display === 'none') return false;
+      let found = false;
+      panel.querySelectorAll('.comparison').forEach(function(comp) {
+        if (window.getComputedStyle(comp).display === 'none') return;
+        if (comp.querySelector('.diff-card.diff-browser-content.active')) {
+          found = true;
+        }
+      });
+      return found;
+    }
+    
     function updateDiffEmptyStates() {
       const activeIterTab = document.querySelector('.iteration-tab.active');
       const iteration = activeIterTab ? activeIterTab.getAttribute('data-iteration') : null;
@@ -1741,18 +1832,22 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
         const target = document.querySelector(
           '#optimized-diff-content .script-content[data-iteration=\"' + iteration + '\"][data-script=\"' + script + '\"]'
         );
-        const all = target ? Number(target.getAttribute('data-diff-all') || '0') : 0;
         const empty = document.getElementById('optimized-diff-empty');
-        if (empty) empty.style.display = all === 0 ? 'flex' : 'none';
+        if (empty) {
+          const visible = scriptDiffPanelHasVisibleDiff(target);
+          empty.style.display = visible ? 'none' : 'flex';
+        }
       }
 
       if (activeTab.id === 'diff-only-content') {
         const target = document.querySelector(
           '#diff-only-content .script-content[data-iteration=\"' + iteration + '\"][data-script=\"' + script + '\"]'
         );
-        const only = target ? Number(target.getAttribute('data-diff-only') || '0') : 0;
         const empty = document.getElementById('diff-only-empty');
-        if (empty) empty.style.display = only === 0 ? 'flex' : 'none';
+        if (empty) {
+          const visible = scriptDiffPanelHasVisibleDiff(target);
+          empty.style.display = visible ? 'none' : 'flex';
+        }
       }
     }
     
@@ -1771,26 +1866,47 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
         card.classList.remove('active');
       });
       
-      const targetTab = document.querySelector('.global-browser-tab[data-browser="' + browser + '"]');
-      const targetSections = document.querySelectorAll('.browser-content-section[data-browser="' + browser + '"]');
-      const targetDiffCards = document.querySelectorAll('.diff-card.diff-browser-content[data-browser="' + browser + '"]');
-      
-      if (targetTab) targetTab.classList.add('active');
-      targetSections.forEach(function(section) {
-        section.classList.add('active');
-        const count = section.getAttribute('data-count');
-        if (count) {
-          const subsection = section.closest('.step-subsection');
-          
-          if (subsection) {
-            const subsectionCount = subsection.querySelector('.subsection-count');
-            if (subsectionCount) subsectionCount.textContent = count + '张';
-          }
+      if (tabs.length === 0) {
+        sections.forEach(function(section) {
+          section.classList.add('active');
+        });
+        diffCards.forEach(function(card) {
+          card.classList.add('active');
+        });
+      } else {
+        let targetTab = browser
+          ? document.querySelector('.global-browser-tab[data-browser="' + browser + '"]')
+          : null;
+        if (!targetTab) {
+          targetTab = tabs[0];
         }
-      });
-      targetDiffCards.forEach(function(card) {
-        card.classList.add('active');
-      });
+        targetTab.classList.add('active');
+        const effectiveBrowser = targetTab.getAttribute('data-browser') || '';
+
+        const targetSections = document.querySelectorAll('.browser-content-section[data-browser="' + effectiveBrowser + '"]');
+        targetSections.forEach(function(section) {
+          section.classList.add('active');
+          const count = section.getAttribute('data-count');
+          if (count) {
+            const subsection = section.closest('.step-subsection');
+            
+            if (subsection) {
+              const subsectionCount = subsection.querySelector('.subsection-count');
+              if (subsectionCount) subsectionCount.textContent = count + '张';
+            }
+          }
+        });
+        const targetDiffCards = document.querySelectorAll('.diff-card.diff-browser-content[data-browser="' + effectiveBrowser + '"]');
+        if (targetDiffCards.length === 0 && diffCards.length > 0) {
+          diffCards.forEach(function(card) {
+            card.classList.add('active');
+          });
+        } else {
+          targetDiffCards.forEach(function(card) {
+            card.classList.add('active');
+          });
+        }
+      }
       
       const allSubsections = document.querySelectorAll('.step-subsection');
       allSubsections.forEach(function(subsection) {
@@ -1809,8 +1925,8 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       
       const activeTab = document.querySelector('.tab-content.active');
       if (activeTab && (activeTab.id === 'diff-only-content' || activeTab.id === 'optimized-diff-content')) {
-        const allComparisons = document.querySelectorAll('.comparison');
-        allComparisons.forEach(function(comparison) {
+        const comparisonsInTab = activeTab.querySelectorAll('.comparison');
+        comparisonsInTab.forEach(function(comparison) {
           const hasActiveDiffCard = comparison.querySelector('.diff-card.diff-browser-content.active');
           if (hasActiveDiffCard) {
             comparison.style.display = 'block';
@@ -1818,27 +1934,9 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
             comparison.style.display = 'none';
           }
         });
-        
-        if (activeTab.id === 'diff-only-content') {
-          const emptyState = document.getElementById('diff-only-empty');
-          const hasAnyDiff = Array.from(allComparisons).some(function(comparison) {
-            return comparison.querySelector('.diff-card.diff-browser-content.active');
-          });
-          if (emptyState) {
-            emptyState.style.display = hasAnyDiff ? 'none' : 'flex';
-          }
-        } else if (activeTab.id === 'optimized-diff-content') {
-          const emptyState = document.getElementById('optimized-diff-empty');
-          const hasAnyDiff = Array.from(allComparisons).some(function(comparison) {
-            return comparison.querySelector('.diff-card.diff-browser-content.active');
-          });
-          if (emptyState) {
-            emptyState.style.display = hasAnyDiff ? 'none' : 'flex';
-          }
-        }
       } else if (activeTab && activeTab.id === 'optimized-content') {
-        const allComparisons = document.querySelectorAll('.comparison');
-        allComparisons.forEach(function(comparison) {
+        const comparisonsInTab = activeTab.querySelectorAll('.comparison');
+        comparisonsInTab.forEach(function(comparison) {
           const hasActiveSection = comparison.querySelector('.browser-content-section.active');
           if (hasActiveSection) {
             comparison.style.display = 'block';
@@ -1846,9 +1944,8 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
             comparison.style.display = 'none';
           }
         });
-      } else {
-        const allComparisons = document.querySelectorAll('.comparison');
-        allComparisons.forEach(function(comparison) {
+      } else if (activeTab) {
+        activeTab.querySelectorAll('.comparison').forEach(function(comparison) {
           comparison.style.display = 'block';
         });
       }
@@ -1857,13 +1954,12 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
     }
     
     document.addEventListener('DOMContentLoaded', function() {
-      const firstTab = document.querySelector('.global-browser-tab.active');
-      if (firstTab) {
-        const browser = firstTab.getAttribute('data-browser');
-        if (browser) {
-          switchGlobalBrowser(browser);
-        }
-      }
+      const activeGb = document.querySelector('.global-browser-tab.active');
+      const gbTabs = document.querySelectorAll('.global-browser-tab');
+      const browser = gbTabs.length
+        ? (activeGb ? activeGb.getAttribute('data-browser') : gbTabs[0].getAttribute('data-browser'))
+        : null;
+      switchGlobalBrowser(browser);
 
       const activeIterTab = document.querySelector('.iteration-tab.active');
       if (activeIterTab) {
