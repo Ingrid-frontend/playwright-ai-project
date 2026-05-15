@@ -100,6 +100,27 @@ export async function screenshotWhenStable(page: Page, path: string, options: { 
 export async function waitForPostInteractionPaint(page: Page): Promise<void> {
   await page.locator('.ant-spin-spinning, .ant-loading').first().waitFor({ state: 'hidden', timeout: 15_000 }).catch(() => {});
   await page.locator('.page-loading-mask').first().waitFor({ state: 'hidden', timeout: 10_000 }).catch(() => {});
+
+  const antdAnimationSelectors = [
+    '.ant-drawer-open',
+    '.ant-drawer.ant-drawer-open .ant-drawer-content-wrapper',
+    '.ant-modal-wrap',
+    '.ant-modal.ant-zoom-enter',
+    '.ant-modal.ant-zoom-enter-active',
+    '.ant-notification-notice',
+    '.ant-message-notice',
+    '.ant-dropdown.ant-slide-down-enter',
+    '.ant-dropdown.ant-slide-down-enter-active',
+    '.ant-select-dropdown.ant-slide-up-enter',
+    '.ant-select-dropdown.ant-slide-up-enter-active',
+    '.ant-tabs.ant-tabs-card > .ant-tabs-bar .ant-tabs-tab-active',
+    '.ant-collapse > .ant-collapse-item.ant-collapse-item-active',
+  ];
+
+  for (const sel of antdAnimationSelectors) {
+    await page.locator(sel).first().waitFor({ state: 'attached', timeout: 3_000 }).catch(() => {});
+  }
+
   await page.waitForTimeout(350);
 }
 

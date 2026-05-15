@@ -260,10 +260,22 @@ class RawRecordingOptimizer {
    * 检查是否是噪声背景点击
    */
   private isNoiseLine(line: string): boolean {
-    const m = line.match(/hasText:\s*['"](.+?)['"]/);
-    if (!m) return false;
-    // 长 hasText 内容 (>15 字符) 通常是父容器
-    if (m[1].length > 15) return true;
+    const hasTextMatch = line.match(/hasText:\s*['"](.+?)['"]/);
+    if (hasTextMatch) {
+      if (hasTextMatch[1].length > 15) return true;
+    }
+
+    const getByTextMatch = line.match(/getByText\(['"]([^'"]+)['"]\)/);
+    if (getByTextMatch) {
+      if (getByTextMatch[1].length > 15) return true;
+    }
+
+    const nthMatch = line.match(/\.nth\((\d+)\)/);
+    if (nthMatch) {
+      const n = parseInt(nthMatch[1], 10);
+      if (n > 5) return true;
+    }
+
     return false;
   }
 
@@ -356,11 +368,12 @@ class RawRecordingOptimizer {
         return;
       }
       
-      const clickMatch = line.match(/await page\.(?:frameLocator\(['"]iframe['"]\)\.)?(getBy\w*|locator)\(.+\)\.click\(\)/);
-      const fillMatch = line.match(/await page\.(?:frameLocator\(['"]iframe['"]\)\.)?(getBy\w*|locator)\(.+\)\.(fill|type)\(.+\)/);
-      const checkMatch = line.match(/await page\.(?:frameLocator\(['"]iframe['"]\)\.)?(getBy\w*|locator)\(.+\)\.check\(\)/);
-      const selectMatch = line.match(/await page\.(?:frameLocator\(['"]iframe['"]\)\.)?(getBy\w*|locator)\(.+\)\.selectOption\(.+\)/);
-      const pressMatch = line.match(/await page\.(?:frameLocator\(['"]iframe['"]\)\.)?(getBy\w*|locator)\(.+\)\.press\(.+\)/);
+      const iframePrefix = /(?:frameLocator\(['"]iframe['"]\)|locator\(['"]iframe['"]\)\.contentFrame\(\))/;
+      const clickMatch = line.match(new RegExp(`await page\\.(?:${iframePrefix.source}\\.)?(getBy\\w*|locator)\\(.+\\)\\.click\\(\\)`));
+      const fillMatch = line.match(new RegExp(`await page\\.(?:${iframePrefix.source}\\.)?(getBy\\w*|locator)\\(.+\\)\\.(fill|type)\\(.+\\)`));
+      const checkMatch = line.match(new RegExp(`await page\\.(?:${iframePrefix.source}\\.)?(getBy\\w*|locator)\\(.+\\)\\.check\\(\\)`));
+      const selectMatch = line.match(new RegExp(`await page\\.(?:${iframePrefix.source}\\.)?(getBy\\w*|locator)\\(.+\\)\\.selectOption\\(.+\\)`));
+      const pressMatch = line.match(new RegExp(`await page\\.(?:${iframePrefix.source}\\.)?(getBy\\w*|locator)\\(.+\\)\\.press\\(.+\\)`));
       const gotoMatch = line.match(/await page\.goto\(.+\)/);
 
       if (gotoMatch) {
@@ -596,14 +609,14 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
   }
 
   /**
-   * iframe 内操作：用 page.frames() 取「非 main 的最后一帧」。业务页常有多个 iframe（埋点/空壳），
-   * locator('iframe').first() 常指向错误 frame；与录制里「当前 DOM 下唯一业务 iframe」更接近的是末级子 frame。
+   * iframe 内操作：用 frameLocator('iframe').first() 取「第一个 iframe」。
+   * 录制器默认使用 page.locator('iframe').contentFrame() 匹配第一个 iframe，
+   * 因此回放时也应使用第一个 iframe 以保持一致。
    */
   private buildLocatorDeclaration(action: Action, locatorCode: string): string {
     if (this.hasIframe && this.actionUsesIframeContext(action)) {
-      return `await page.locator('iframe').last().waitFor({ state: 'attached', timeout: 20000 }).catch(() => {});
-    const _childFrames = page.frames().filter((f) => f !== page.mainFrame());
-    const baseContext = _childFrames.length > 0 ? _childFrames[_childFrames.length - 1]! : page.mainFrame();
+      return `await page.locator('iframe').first().waitFor({ state: 'attached', timeout: 20000 }).catch(() => {});
+    const baseContext = page.frameLocator('iframe').first();
     const locator = ${locatorCode};`;
     }
     return `const locator = ${locatorCode};`;
@@ -612,8 +625,18 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
   private expectVisibleLine(action: Action, isKeyAction: boolean): string {
     if (!this.options.addVisible || !isKeyAction) return '';
     const iframeStep = this.hasIframe && this.actionUsesIframeContext(action);
-    const timeout = iframeStep ? 25_000 : 5_000;
+    const timeout = iframeStep ? 25_000 : 15_000;
     return `await expect(locator).toBeVisible({ timeout: ${timeout} });`;
+  }
+
+  private isCriticalStep(label: string): boolean {
+    const criticalKeywords = [
+      '新建', '提交', '保存', '删除', '审批', '通过', '驳回',
+      '登录', '注册', '支付', '下单', '确认', '发送',
+      '新增', '编辑', '修改', '更新', '导入', '导出',
+      'Close', 'close', '取 消', '取消',
+    ];
+    return criticalKeywords.some((kw) => label.includes(kw));
   }
 
   private generateActionCode(action: Action, stepIndex: number, runDirVariable: string): string {
@@ -622,15 +645,29 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
     const selector = this.optimizeSelector(action.selector);
     const locatorCode = this.extractAndOptimizeLocator(selector);
     const isKeyAction = this.isKeyAction(action.selector);
+    const isCritical = this.isCriticalStep(label);
+
+    const skipGuard = isCritical
+      ? ''
+      : `    try {
+      await expect(locator).toBeVisible({ timeout: 6000 });
+    } catch {
+      console.log('ℹ️  ${label}：元素未出现（非关键步骤），跳过本步');
+      await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-skipped.png\`), { mode: 'stable' });
+      return;
+    }
+`;
+
+    const visibleLine = isCritical ? this.expectVisibleLine(action, isKeyAction) : '';
 
     switch (action.type) {
       case 'click':
         return `  await step('${label}', async () => {
     await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`));
     ${this.buildLocatorDeclaration(action, locatorCode)}
-    ${this.expectVisibleLine(action, isKeyAction)}
-    await smartClick(locator, '${label}');
-    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+${skipGuard}${visibleLine}    await smartClick(locator, '${label}');
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(2000);
     await waitForPostInteractionPaint(page);
     await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { mode: 'stable' });
   });
@@ -642,8 +679,7 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
         return `  await step('${label}', async () => {
     await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`));
     ${this.buildLocatorDeclaration(action, locatorCode)}
-    ${this.expectVisibleLine(action, isKeyAction)}
-    await smartFill(locator, "${text}", '${label}');
+${skipGuard}${visibleLine}    await smartFill(locator, "${text}", '${label}');
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
     await waitForPostInteractionPaint(page);
     await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { mode: 'stable' });
@@ -654,8 +690,7 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
         return `  await step('${label}', async () => {
     await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`));
     ${this.buildLocatorDeclaration(action, locatorCode)}
-    ${this.expectVisibleLine(action, isKeyAction)}
-    try {
+${skipGuard}${visibleLine}    try {
       await locator.waitFor({ state: 'visible', timeout: this.actionUsesIframeContext(action) ? 25000 : 10000 });
     } catch (e) {
       console.log('⚠️ 元素不可见，尝试暂停调试');
@@ -677,8 +712,7 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
         return `  await step('${label}', async () => {
     await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`));
     ${this.buildLocatorDeclaration(action, locatorCode)}
-    ${this.expectVisibleLine(action, isKeyAction)}
-    try {
+${skipGuard}${visibleLine}    try {
       await locator.waitFor({ state: 'visible', timeout: this.actionUsesIframeContext(action) ? 25000 : 10000 });
     } catch (e) {
       console.log('⚠️ 元素不可见，尝试暂停调试');
@@ -700,8 +734,7 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
         return `  await step('${label}', async () => {
     await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`));
     ${this.buildLocatorDeclaration(action, locatorCode)}
-    ${this.expectVisibleLine(action, isKeyAction)}
-    try {
+${skipGuard}${visibleLine}    try {
       await locator.waitFor({ state: 'visible', timeout: this.actionUsesIframeContext(action) ? 25000 : 10000 });
     } catch (e) {
       console.log('⚠️ 元素不可见，尝试暂停调试');

@@ -44,6 +44,8 @@
     "organize-files-by-date": "tsx scripts/recording/simple-organize-files.ts",
     "fix-screenshots-structure": "tsx scripts/report/fix-screenshots-structure.ts",
     "fix-html-image-paths": "tsx scripts/report/fix-html-image-paths.ts",
+    "preprocess-raw-recordings": "tsx scripts/preprocess/preprocess-raw-recordings.ts",
+    "pipeline-raw-to-optimized": "tsx scripts/preprocess/pipeline-raw-to-optimized.ts",
     "optimize-raw-recordings": "tsx scripts/optimize/optimize-raw-recordings.ts",
     "run-raw-recordings-optimized": "tsx scripts/report/run-raw-recordings-optimized.ts",
     "remove-iframe-logic": "tsx scripts/optimize/remove-iframe-logic.ts",
