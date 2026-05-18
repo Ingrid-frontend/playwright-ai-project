@@ -61,6 +61,19 @@ npm run dev
 
 ---
 
+## 工作模式（侧栏顶部）
+
+| 模式 | 流程 | 说明 |
+|------|------|------|
+| **新建用例** | 新建流程 1→4 步 | 录制 → 优化/生成用例 → 执行（草稿）→ 保存与报告 |
+| **运行用例** | 运行流程 1→3 步 | 在「测试用例」区选 **单个** 或 **批量** → 执行 → 截图对比报告 |
+
+- 模式选择写入 `sessionStorage`（`pw_studio_workflow_mode`），运行子模式为 `pw_studio_run_sub_mode`。
+- **运行 · 单个**：下拉选择 optimized，可载入编辑器；执行所选文件。
+- **运行 · 批量**：多选列表，可选「遇错停止」；顺序执行 `repo:batch-test`。
+
+---
+
 ## 界面布局（左侧双 Tab）
 
 左侧边栏顶部分为两个 Tab，中间编辑区与右侧控制台共用，不随 Tab 切换。
@@ -219,6 +232,7 @@ playwright-studio/
 | 2026-05-18 | 录制结束自动剥离登录步骤并注入 `test.use({ storageState })`，仅保留登录后操作 | `strip-login-from-recording.cjs`, `server.js`, `record.ts` |
 | 2026-05-18 | **项目流水线**：生成用例先写草稿 `studio-unsaved-draft.spec.ts` 再 pipeline，无需先保存；「保存到项目」一次提交录制+优化；对比报告需双脚本已保存且与编辑器一致 | `public/index.html`, `server.js` |
 | 2026-05-18 | **测试用例**独立侧栏区域；执行流程固定 `studio-unsaved-draft.optimized.spec.ts`；保存时从侧栏选择正式路径或自动命名 | `public/index.html`, `server.js` |
+| 2026-05-18 | **顶层双模式**：新建用例 / 运行用例；运行域支持单个与批量执行（`repo:batch-test`） | `public/index.html`, `server.js` |
 
 ### 测试环境切换（界面）
 

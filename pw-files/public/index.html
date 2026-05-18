@@ -118,6 +118,18 @@
   .sidebar-hint { font-size: var(--fs-xs); line-height: 1.55; color: var(--text-tertiary); margin-bottom: 8px; }
   .sidebar-hint code { color: var(--text-secondary); }
   .studio-hidden { display: none !important; }
+  .batch-spec-list {
+    max-height: 200px; overflow-y: auto; margin-bottom: 8px;
+    border: 1px solid var(--border); border-radius: var(--radius); padding: 8px; background: var(--bg3);
+  }
+  .batch-spec-item {
+    display: flex; align-items: flex-start; gap: 8px; padding: 5px 0;
+    font-size: var(--fs-xs); line-height: 1.45; border-bottom: 1px solid var(--border);
+  }
+  .batch-spec-item:last-child { border-bottom: none; }
+  .batch-spec-item label { flex: 1; cursor: pointer; color: var(--text-secondary); }
+  .batch-spec-toolbar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .batch-progress { font-size: var(--fs-xs); color: var(--teal); margin-bottom: 8px; min-height: 1.2em; }
   .api-key-block .api-key-label { font-size: var(--fs-xs); color: var(--muted); margin-bottom: 4px; }
   .api-key-block .url-input { width: 100%; }
   .api-key-block.active .api-key-label { color: var(--purple); }
@@ -217,6 +229,16 @@
     border-color: rgba(167,139,250,.5); color: var(--purple); background: rgba(167,139,250,.08);
   }
   .step-branch-chip.active[data-mode="repo"] {
+    border-color: rgba(77,159,255,.5); color: var(--blue); background: rgba(77,159,255,.08);
+  }
+  .step-branch-chip.active[data-workflow="new"] {
+    border-color: rgba(46,232,154,.55); color: var(--green); background: rgba(46,232,154,.1);
+  }
+  .step-branch-chip.active[data-workflow="run"] {
+    border-color: rgba(61,217,204,.55); color: var(--teal); background: rgba(61,217,204,.1);
+  }
+  .step-branch-chip.active[data-run-sub="single"],
+  .step-branch-chip.active[data-run-sub="batch"] {
     border-color: rgba(77,159,255,.5); color: var(--blue); background: rgba(77,159,255,.08);
   }
   .pipeline .step-action-panel {
@@ -460,7 +482,13 @@
         <button type="button" class="btn btn-full studio-hidden" id="btnAccountLogin" hidden aria-hidden="true" disabled>用配置账号登录</button>
       </div>
 
-
+      <div class="sidebar-section" id="workflowModeSection">
+        <div class="sidebar-label">工作模式</div>
+        <div class="provider-row step-branch-row" role="group" aria-label="工作模式">
+          <button type="button" class="step-branch-chip active" data-workflow="new" id="workflowModeNew" onclick="setWorkflowMode('new', this)">新建用例</button>
+          <button type="button" class="step-branch-chip" data-workflow="run" id="workflowModeRun" onclick="setWorkflowMode('run', this)">运行用例</button>
+        </div>
+      </div>
 
       <div class="sidebar-accordion" id="accordionRun">
         <button type="button" class="accordion-trigger" aria-expanded="false">
@@ -477,18 +505,33 @@
         </div>
       </div>
 
-      <div class="sidebar-section" id="repoSpecPickerSection">
+      <div class="sidebar-section studio-hidden" id="repoSpecPickerSection">
         <div class="sidebar-label">测试用例</div>
-        <p class="sidebar-hint" style="margin-bottom:6px">浏览历史用例；「保存到项目」时写入所选路径（不含草稿用例）。</p>
+        <div class="provider-row step-branch-row" role="group" aria-label="运行方式" style="margin-bottom:10px">
+          <button type="button" class="step-branch-chip active" data-run-sub="single" id="runSubSingle" onclick="setRunSubMode('single', this)">单个</button>
+          <button type="button" class="step-branch-chip" data-run-sub="batch" id="runSubBatch" onclick="setRunSubMode('batch', this)">批量</button>
+        </div>
+        <div id="runSpecSingle">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:8px">
-          <span class="sidebar-hint" style="margin:0">正式用例</span>
+          <span class="sidebar-hint" style="margin:0">选择用例</span>
           <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px;flex-shrink:0" onclick="refreshRepoOptimizedList()">刷新</button>
         </div>
-        <select class="url-input" id="repoOptimizedPick" style="margin-bottom:0;width:100%;color:var(--text)"></select>
+        <select class="url-input" id="repoOptimizedPick" style="margin-bottom:6px;width:100%;color:var(--text)"></select>
+          <button type="button" class="btn btn-full" onclick="loadSelectedOptimizedToEditor()">载入到编辑器</button>
+        </div>
+        <div id="runSpecBatch" class="studio-hidden">
+          <div class="batch-spec-toolbar">
+            <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="refreshRepoOptimizedList()">刷新</button>
+            <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="selectAllBatchSpecs(true)">全选</button>
+            <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="selectAllBatchSpecs(false)">全不选</button>
+          </div>
+          <div id="repoBatchSpecList" class="batch-spec-list"></div>
+          <label class="opt-chip" style="margin:0"><input type="checkbox" id="batchStopOnError"> 遇错停止</label>
+        </div>
       </div>
 
-      <div class="pipeline">
-        <div class="sidebar-label">执行流程</div>
+      <div class="pipeline" id="pipelineNew">
+        <div class="sidebar-label">新建流程</div>
         <div class="step-item active" id="step1" data-step="1" role="button" tabindex="0">
           <div class="step-bullet">1</div>
           <div class="step-info">
@@ -616,6 +659,43 @@
         </div>
       </div>
 
+      <div class="pipeline studio-hidden" id="pipelineRun">
+        <div class="sidebar-label">运行流程</div>
+        <div class="step-item active" id="runStep1" data-run-step="1" role="button" tabindex="0">
+          <div class="step-bullet">1</div>
+          <div class="step-info">
+            <div class="step-name">选择用例</div>
+            <div class="step-sub" id="runStepSub1">在上方选择单个或批量用例</div>
+          </div>
+        </div>
+        <div class="step-action-panel active" id="runStep1Panel">
+          <p class="sidebar-hint">用例列表见上方「测试用例」区域。</p>
+        </div>
+        <div class="step-item" id="runStep2" data-run-step="2" role="button" tabindex="0">
+          <div class="step-bullet">2</div>
+          <div class="step-info">
+            <div class="step-name">执行</div>
+            <div class="step-sub" id="runStepSub2">运行所选用例并截取步骤图</div>
+          </div>
+        </div>
+        <div class="step-action-panel" id="runStep2Panel">
+          <p class="sidebar-hint" style="margin-bottom:8px">运行模式见「执行设置」。</p>
+          <p class="batch-progress" id="batchProgressText"></p>
+          <button type="button" class="btn btn-run btn-full" id="btnRunExecute" onclick="event.stopPropagation(); handleRunExecuteClick()" data-default-label="执行（含截图）">执行（含截图）</button>
+        </div>
+        <div class="step-item" id="runStep3" data-run-step="3" role="button" tabindex="0">
+          <div class="step-bullet">3</div>
+          <div class="step-info">
+            <div class="step-name">报告</div>
+            <div class="step-sub" id="runStepSub3">生成截图对比报告</div>
+          </div>
+        </div>
+        <div class="step-action-panel" id="runStep3Panel">
+          <button type="button" class="btn btn-full" id="btnRunCompare" onclick="openRunCompareReportClick()" style="border-color:rgba(77,159,255,.35);color:var(--blue)">生成并打开截图对比报告</button>
+          <button type="button" class="btn btn-full" id="btnRunCompareCancel" style="font-size:var(--fs-sm);padding:6px 10px;margin-top:6px" disabled onclick="send('cancel:repo-compare')">取消对比报告生成</button>
+        </div>
+      </div>
+
 
       </div>
 
@@ -731,7 +811,7 @@
 // ── State ──────────────────────────────────────────────────────────────
 let ws = null;
 let state = { recording: false, hasRaw: false, hasOpt: false, hasRun: false };
-const busyState = { optimize: false, run: false, repoPipeline: false, repoCompare: false, accountLogin: false };
+const busyState = { optimize: false, run: false, repoPipeline: false, repoCompare: false, repoBatch: false, accountLogin: false };
 let recordTimer = null;
 let recordSeconds = 0;
 let lastOptimizeProvider = 'claude';
@@ -796,6 +876,17 @@ const STEP2_SUB = {
 let currentStep2Mode = 'ai';
 let currentPipelineStep = 1;
 let pendingRunKind = 'studio';
+const SS_WORKFLOW_MODE = 'pw_studio_workflow_mode';
+const SS_RUN_SUB_MODE = 'pw_studio_run_sub_mode';
+let workflowMode = 'new';
+let runSubMode = 'single';
+let currentRunPipelineStep = 1;
+const RUN_STEP_DEFAULTS = {
+  1: '在上方选择单个或批量用例',
+  2: '运行所选用例并截取步骤图',
+  3: '生成截图对比报告',
+};
+const runState = { lastRunComplete: false, lastBatchComplete: false };
 
 const SAMPLE_SCRIPT = `import { test, expect } from '@playwright/test';
 
@@ -1217,10 +1308,154 @@ function fillRepoOptimizedSelect(list) {
     sel.appendChild(o);
   });
   sel.selectedIndex = 0;
+  fillRepoBatchChecklist(items);
 }
 
 function refreshRepoOptimizedList() {
   send('repo:list-optimized');
+}
+
+function setWorkflowMode(mode, el) {
+  workflowMode = mode === 'run' ? 'run' : 'new';
+  document.querySelectorAll('[data-workflow]').forEach((chip) => {
+    chip.classList.toggle('active', chip.dataset.workflow === workflowMode);
+  });
+  try {
+    sessionStorage.setItem(SS_WORKFLOW_MODE, workflowMode);
+  } catch {
+    /* ignore */
+  }
+  document.getElementById('pipelineNew')?.classList.toggle('studio-hidden', workflowMode !== 'new');
+  document.getElementById('pipelineRun')?.classList.toggle('studio-hidden', workflowMode !== 'run');
+  document.getElementById('repoSpecPickerSection')?.classList.toggle('studio-hidden', workflowMode !== 'run');
+  if (workflowMode === 'run') {
+    expandRunPipelineStep(1);
+    refreshRepoOptimizedList();
+    switchTab('opt', document.querySelectorAll('.tab')[1]);
+  } else {
+    expandPipelineStep(currentPipelineStep || 1);
+  }
+  syncWorkflowUi();
+  if (el) el.blur();
+}
+
+function setRunSubMode(mode, el) {
+  runSubMode = mode === 'batch' ? 'batch' : 'single';
+  document.querySelectorAll('[data-run-sub]').forEach((chip) => {
+    chip.classList.toggle('active', chip.dataset.runSub === runSubMode);
+  });
+  document.getElementById('runSpecSingle')?.classList.toggle('studio-hidden', runSubMode !== 'single');
+  document.getElementById('runSpecBatch')?.classList.toggle('studio-hidden', runSubMode !== 'batch');
+  try {
+    sessionStorage.setItem(SS_RUN_SUB_MODE, runSubMode);
+  } catch {
+    /* ignore */
+  }
+  syncWorkflowUi();
+  if (el) el.blur();
+}
+
+function restoreWorkflowMode() {
+  try {
+    const saved = sessionStorage.getItem(SS_WORKFLOW_MODE);
+    if (saved === 'run' || saved === 'new') workflowMode = saved;
+    const sub = sessionStorage.getItem(SS_RUN_SUB_MODE);
+    if (sub === 'batch' || sub === 'single') runSubMode = sub;
+  } catch {
+    /* ignore */
+  }
+  document.querySelectorAll('[data-workflow]').forEach((chip) => {
+    chip.classList.toggle('active', chip.dataset.workflow === workflowMode);
+  });
+  document.querySelectorAll('[data-run-sub]').forEach((chip) => {
+    chip.classList.toggle('active', chip.dataset.runSub === runSubMode);
+  });
+  document.getElementById('pipelineNew')?.classList.toggle('studio-hidden', workflowMode !== 'new');
+  document.getElementById('pipelineRun')?.classList.toggle('studio-hidden', workflowMode !== 'run');
+  document.getElementById('repoSpecPickerSection')?.classList.toggle('studio-hidden', workflowMode !== 'run');
+  document.getElementById('runSpecSingle')?.classList.toggle('studio-hidden', runSubMode !== 'single');
+  document.getElementById('runSpecBatch')?.classList.toggle('studio-hidden', runSubMode !== 'batch');
+}
+
+function setRunStepSub(n, text) {
+  const sub = document.getElementById(`runStepSub${n}`);
+  if (sub) sub.textContent = text;
+}
+
+function setRunStep(n, status) {
+  const el = document.getElementById(`runStep${n}`);
+  if (!el) return;
+  el.className = `step-item ${status}`.trim();
+  const bullet = el.querySelector('.step-bullet');
+  if (status === 'done') bullet.textContent = '✓';
+  else if (status === 'running') bullet.textContent = '↻';
+  else bullet.textContent = String(n);
+  if (!status || status === 'done') setRunStepSub(n, RUN_STEP_DEFAULTS[n] || '');
+}
+
+function expandRunPipelineStep(n) {
+  currentRunPipelineStep = n;
+  document.querySelectorAll('#pipelineRun .step-item[data-run-step]').forEach((el) => {
+    el.classList.toggle('active', Number(el.dataset.runStep) === n);
+  });
+  document.querySelectorAll('#pipelineRun .step-action-panel').forEach((p) => p.classList.remove('active'));
+  const panel = document.getElementById(`runStep${n}Panel`);
+  if (panel) panel.classList.add('active');
+  document.getElementById(`runStep${n}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function fillRepoBatchChecklist(list) {
+  const box = document.getElementById('repoBatchSpecList');
+  if (!box) return;
+  box.innerHTML = '';
+  const items = (list || []).filter((p) => p && !isDraftOptimizedSpecPath(p));
+  if (!items.length) {
+    box.innerHTML = '<p class="sidebar-hint" style="margin:0">（暂无用例，请点刷新）</p>';
+    return;
+  }
+  items.forEach((rel, idx) => {
+    const row = document.createElement('div');
+    row.className = 'batch-spec-item';
+    const id = `batchSpec_${idx}_${rel.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 40)}`;
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.id = id;
+    cb.value = rel;
+    cb.checked = true;
+    const label = document.createElement('label');
+    label.htmlFor = id;
+    label.textContent = formatOptimizedSpecLabel(rel);
+    row.appendChild(cb);
+    row.appendChild(label);
+    box.appendChild(row);
+  });
+}
+
+function getSelectedBatchSpecs() {
+  const box = document.getElementById('repoBatchSpecList');
+  if (!box) return [];
+  return [...box.querySelectorAll('input[type="checkbox"]:checked')].map((cb) => cb.value).filter(Boolean);
+}
+
+function selectAllBatchSpecs(checked) {
+  document.querySelectorAll('#repoBatchSpecList input[type="checkbox"]').forEach((cb) => {
+    cb.checked = checked;
+  });
+  syncWorkflowUi();
+}
+
+function loadSelectedOptimizedToEditor() {
+  const spec = document.getElementById('repoOptimizedPick')?.value?.trim();
+  if (!spec) {
+    showToast('请先选择测试用例', 'err');
+    return;
+  }
+  send('repo:load-optimized', { specRelative: spec });
+}
+
+function syncWorkflowUi() {
+  syncRepoButtons();
+  syncActionButtons();
 }
 
 function scriptFingerprint(text) {
@@ -1254,40 +1489,74 @@ function markRepoArtifactsCommitted() {
 function syncRepoButtons() {
   const raw = document.getElementById('rawCode').value.trim();
   const opt = document.getElementById('optCode').value.trim();
-  const busyRepo = busyState.repoPipeline || busyState.repoCompare;
-  const rs = document.getElementById('btnRepoSave');
-  const rp = document.getElementById('btnRepoPipeline');
-  const rpc = document.getElementById('btnRepoPipelineCancel');
-  const rtx = document.getElementById('btnRepoTest');
-  const rc = document.getElementById('btnRepoCompare');
-  const rcc = document.getElementById('btnRepoCompareCancel');
+  const busyRepo = busyState.repoPipeline || busyState.repoCompare || busyState.repoBatch;
   const hasRaw = Boolean(raw);
   const hasOpt = Boolean(opt);
   const artifactsCommitted = isRepoArtifactsCommitted();
-  if (rs) rs.disabled = busyRepo || !hasRaw || !hasOpt;
-  if (rp) {
-    rp.disabled = busyState.repoPipeline ? true : busyRepo || !hasRaw;
+  const specPick = document.getElementById('repoOptimizedPick')?.value?.trim();
+  const batchCount = getSelectedBatchSpecs().length;
+
+  if (workflowMode === 'new') {
+    const rs = document.getElementById('btnRepoSave');
+    const rp = document.getElementById('btnRepoPipeline');
+    const rpc = document.getElementById('btnRepoPipelineCancel');
+    const rtx = document.getElementById('btnRepoTest');
+    const rc = document.getElementById('btnRepoCompare');
+    const rcc = document.getElementById('btnRepoCompareCancel');
+    if (rs) rs.disabled = busyRepo || !hasRaw || !hasOpt;
+    if (rp) rp.disabled = busyState.repoPipeline ? true : busyRepo || !hasRaw;
+    if (rpc) rpc.disabled = !busyState.repoPipeline;
+    const repoTestBusy = busyState.run && pendingRunKind === 'repo';
+    const repoTestDisabled = busyRepo || (!repoTestBusy && !hasOpt);
+    if (rtx) {
+      const defaultLabel = rtx.dataset.defaultLabel || '执行（含截图）';
+      if (repoTestBusy) {
+        rtx.classList.add('busy');
+        rtx.disabled = false;
+        rtx.textContent = '取消执行';
+      } else {
+        rtx.classList.remove('busy');
+        rtx.disabled = repoTestDisabled;
+        rtx.textContent = defaultLabel;
+      }
+    }
+    if (rc) {
+      rc.disabled =
+        busyState.repoCompare || busyState.repoPipeline || busyState.run || !artifactsCommitted;
+    }
+    if (rcc) rcc.disabled = !busyState.repoCompare;
+    return;
   }
-  if (rpc) rpc.disabled = !busyState.repoPipeline;
-  const repoTestBusy = busyState.run && pendingRunKind === 'repo';
-  const repoTestDisabled = busyRepo || (!repoTestBusy && !hasOpt);
-  if (rtx) {
-    const defaultLabel = rtx.dataset.defaultLabel || '执行（含截图）';
-    if (repoTestBusy) {
-      rtx.classList.add('busy');
-      rtx.disabled = false;
-      rtx.textContent = '取消执行';
+
+  const btnRun = document.getElementById('btnRunExecute');
+  const btnRunCompare = document.getElementById('btnRunCompare');
+  const btnRunCompareCancel = document.getElementById('btnRunCompareCancel');
+  const runBusy = busyState.run && pendingRunKind === 'repo';
+  const batchBusy = busyState.repoBatch;
+  let canExecute = false;
+  if (runSubMode === 'batch') canExecute = batchCount > 0;
+  else canExecute = Boolean(specPick);
+
+  if (btnRun) {
+    const defaultLabel = btnRun.dataset.defaultLabel || '执行（含截图）';
+    if (runBusy || batchBusy) {
+      btnRun.classList.add('busy');
+      btnRun.disabled = false;
+      btnRun.textContent = '取消执行';
     } else {
-      rtx.classList.remove('busy');
-      rtx.disabled = repoTestDisabled;
-      rtx.textContent = defaultLabel;
+      btnRun.classList.remove('busy');
+      btnRun.disabled = busyRepo || !canExecute;
+      btnRun.textContent = runSubMode === 'batch' ? `批量执行（${batchCount}）` : defaultLabel;
     }
   }
-  if (rc) {
-    rc.disabled =
-      busyState.repoCompare || busyState.repoPipeline || busyState.run || !artifactsCommitted;
+  const canCompare =
+    (runSubMode === 'batch' ? runState.lastBatchComplete : runState.lastRunComplete) &&
+    !busyState.run &&
+    !busyState.repoBatch;
+  if (btnRunCompare) {
+    btnRunCompare.disabled = busyRepo || !canCompare;
   }
-  if (rcc) rcc.disabled = !busyState.repoCompare;
+  if (btnRunCompareCancel) btnRunCompareCancel.disabled = !busyState.repoCompare;
 }
 
 function commitRepoArtifacts() {
@@ -1319,6 +1588,7 @@ function runRepoPipelineClick() {
 }
 
 function handleRepoTestClick() {
+  if (workflowMode !== 'new') return;
   if (busyState.run && pendingRunKind === 'repo') {
     send('cancel:repo-test');
     return;
@@ -1334,15 +1604,68 @@ function handleRepoTestClick() {
   });
 }
 
+function handleRunExecuteClick() {
+  if (workflowMode !== 'run') return;
+  if (busyState.run && pendingRunKind === 'repo') {
+    send('cancel:repo-test');
+    return;
+  }
+  if (busyState.repoBatch) {
+    send('cancel:repo-batch-test');
+    return;
+  }
+  pendingRunKind = 'repo';
+  expandRunPipelineStep(2);
+  const headed = isHeadedRunMode();
+  if (runSubMode === 'batch') {
+    const specs = getSelectedBatchSpecs();
+    if (!specs.length) {
+      showToast('请至少选择一个测试用例', 'err');
+      return;
+    }
+    runState.lastBatchComplete = false;
+    runState.lastRunComplete = false;
+    busyState.repoBatch = true;
+    syncWorkflowUi();
+    send('repo:batch-test', {
+      specRelatives: specs,
+      stopOnError: Boolean(document.getElementById('batchStopOnError')?.checked),
+      headed,
+    });
+    return;
+  }
+  const spec = document.getElementById('repoOptimizedPick')?.value?.trim();
+  if (!spec) {
+    showToast('请先选择测试用例', 'err');
+    return;
+  }
+  runState.lastRunComplete = false;
+  send('repo:test', { specRelative: spec, headed });
+}
+
 /** 生成完成后在新窗口打开对比报告（非 about:blank 再改 location，避免像「重定向」） */
 function openCompareReportClick() {
+  if (workflowMode !== 'new') return;
   if (!isRepoArtifactsCommitted()) {
     showToast('请先将录制与优化脚本保存到项目，且内容与编辑器一致', 'err');
     return;
   }
   expandPipelineStep(3);
   busyState.repoCompare = true;
-  syncRepoButtons();
+  syncWorkflowUi();
+  send('repo:compare-report', {});
+}
+
+function openRunCompareReportClick() {
+  if (workflowMode !== 'run') return;
+  const ok = runSubMode === 'batch' ? runState.lastBatchComplete : runState.lastRunComplete;
+  if (!ok) {
+    showToast('请先完成用例执行', 'err');
+    return;
+  }
+  expandRunPipelineStep(3);
+  busyState.repoCompare = true;
+  syncWorkflowUi();
   send('repo:compare-report', {});
 }
 
@@ -1430,10 +1753,10 @@ function finishBusyFromError() {
   setBusy('run', false);
   busyState.repoPipeline = false;
   busyState.repoCompare = false;
+  busyState.repoBatch = false;
   resetPipelineRunning();
   if (state.recording) setRecordButtonUi(false);
-  syncActionButtons();
-  syncRepoButtons();
+  syncWorkflowUi();
 }
 
 /** 根据当前脚本内容同步「AI 优化」「执行测试」是否可点（完成后可再次执行） */
@@ -1563,8 +1886,13 @@ function handleMessage(msg) {
     case 'run:start':
       setBusy('run', true);
       if (pendingRunKind === 'repo') {
-        setStep(3, 'running');
-        setStepSub(3, '正在执行（含截图）…');
+        if (workflowMode === 'run') {
+          setRunStep(2, 'running');
+          setRunStepSub(2, '正在执行（含截图）…');
+        } else {
+          setStep(3, 'running');
+          setStepSub(3, '正在执行（含截图）…');
+        }
       } else {
         setEditorRunStatus('正在执行…', 'running');
       }
@@ -1575,15 +1903,21 @@ function handleMessage(msg) {
     case 'run:done':
       setBusy('run', false);
       if (msg.repoTest) {
-        setStep(3, 'done');
-        setStepSub(3, STEP_DEFAULTS[3]);
+        if (workflowMode === 'run' && runSubMode === 'single') {
+          setRunStep(2, 'done');
+          setRunStepSub(2, RUN_STEP_DEFAULTS[2]);
+          runState.lastRunComplete = true;
+        } else {
+          setStep(3, 'done');
+          setStepSub(3, STEP_DEFAULTS[3]);
+        }
       } else {
         setEditorRunStatus('执行完成', 'done');
       }
       pendingRunKind = 'studio';
       state.hasRun = true;
       document.getElementById('btnReport').disabled = false;
-      syncActionButtons();
+      syncWorkflowUi();
       {
         const p = msg.passed ?? 0;
         const f = msg.failed ?? 0;
@@ -1617,14 +1951,20 @@ function handleMessage(msg) {
       break;
     case 'run:cancelled':
       setBusy('run', false);
+      busyState.repoBatch = false;
       if (pendingRunKind === 'repo') {
-        setStep(3, '');
-        setStepSub(3, STEP_DEFAULTS[3]);
+        if (workflowMode === 'run') {
+          setRunStep(2, '');
+          setRunStepSub(2, RUN_STEP_DEFAULTS[2]);
+        } else {
+          setStep(3, '');
+          setStepSub(3, STEP_DEFAULTS[3]);
+        }
       } else {
         syncEditorRunHint();
       }
       pendingRunKind = 'studio';
-      syncActionButtons();
+      syncWorkflowUi();
       log('warn', '测试执行已取消');
       showToast('测试执行已取消', 'err');
       break;
@@ -1700,7 +2040,8 @@ function handleMessage(msg) {
       if (Array.isArray(msg.optimizedSpecs)) {
         repoState.optimizedSpecs = msg.optimizedSpecs;
         fillRepoOptimizedSelect(msg.optimizedSpecs);
-        syncRepoButtons();
+        fillRepoBatchChecklist(msg.optimizedSpecs);
+        syncWorkflowUi();
       }
       if (msg.optimizeKeys) {
         optimizeKeyState.serverAnthropic = Boolean(msg.optimizeKeys.anthropic);
@@ -1716,8 +2057,63 @@ function handleMessage(msg) {
     case 'repo:list-optimized:done':
       repoState.optimizedSpecs = msg.optimizedSpecs || [];
       fillRepoOptimizedSelect(msg.optimizedSpecs);
-      syncRepoButtons();
+      fillRepoBatchChecklist(msg.optimizedSpecs);
+      syncWorkflowUi();
       log('info', `[repo] 已加载 ${(msg.optimizedSpecs || []).length} 个测试用例`);
+      break;
+    case 'repo:load-optimized:done':
+      document.getElementById('optCode').value = msg.code || '';
+      setOptMeta(msg.code, false);
+      state.hasOpt = true;
+      buildDiff();
+      switchTab('opt', document.querySelectorAll('.tab')[1]);
+      showToast('已载入优化脚本', 'ok');
+      syncWorkflowUi();
+      break;
+    case 'repo:batch-test:start':
+      busyState.repoBatch = true;
+      runState.lastBatchComplete = false;
+      setRunStep(2, 'running');
+      setRunStepSub(2, `批量执行 0/${msg.total || 0}…`);
+      document.getElementById('batchProgressText').textContent = `共 ${msg.total || 0} 个用例`;
+      syncWorkflowUi();
+      log('info', `[batch] 开始执行 ${msg.total || 0} 个用例`);
+      break;
+    case 'repo:batch-test:progress': {
+      const prog = document.getElementById('batchProgressText');
+      if (msg.phase === 'running') {
+        setRunStepSub(2, `正在执行 ${msg.index + 1}/${msg.total}…`);
+        if (prog) prog.textContent = `正在执行：${formatOptimizedSpecLabel(msg.specRelative || '')}`;
+      } else if (msg.phase === 'done') {
+        const ok = !msg.cancelled && msg.exitCode === 0 && !(msg.failed > 0);
+        if (prog) {
+          prog.textContent = `${msg.index + 1}/${msg.total} ${formatOptimizedSpecLabel(msg.specRelative || '')} ${ok ? '✓' : '✗'}`;
+        }
+      }
+      break;
+    }
+    case 'repo:batch-test:done':
+      busyState.repoBatch = false;
+      setBusy('run', false);
+      pendingRunKind = 'studio';
+      runState.lastBatchComplete = !msg.cancelled && (msg.results || []).length > 0;
+      if (msg.cancelled) {
+        setRunStep(2, '');
+        setRunStepSub(2, RUN_STEP_DEFAULTS[2]);
+        showToast('批量执行已取消', 'err');
+      } else if (msg.anyFail) {
+        setRunStep(2, '');
+        setRunStepSub(2, '部分用例失败');
+        showToast('批量执行完成，部分失败', 'err');
+      } else {
+        setRunStep(2, 'done');
+        setRunStepSub(2, RUN_STEP_DEFAULTS[2]);
+        showToast('批量执行完成', 'ok');
+        expandRunPipelineStep(3);
+      }
+      document.getElementById('batchProgressText').textContent = '';
+      syncWorkflowUi();
+      if (msg.screenshotHint) log('dim', `[batch] 截图目录: ${msg.screenshotHint}`);
       break;
     case 'repo:save:done':
       repoState.lastSavedRelative = msg.relativePath || '';
@@ -1784,12 +2180,12 @@ function handleMessage(msg) {
       break;
     case 'repo:compare-report:start':
       busyState.repoCompare = true;
-      syncRepoButtons();
+      syncWorkflowUi();
       log('info', '[repo] 正在生成截图对比报告…');
       break;
     case 'repo:compare-report:done': {
       busyState.repoCompare = false;
-      syncRepoButtons();
+      syncWorkflowUi();
       if (msg.ok && msg.openPath) {
         const url = new URL(msg.openPath, location.origin).href;
         if (openCompareReportInNewWindow(url)) {
@@ -1848,6 +2244,10 @@ function handleOptimizeClick() {
 }
 
 function handleRunClick() {
+  if (workflowMode === 'run') {
+    handleRunExecuteClick();
+    return;
+  }
   if (busyState.run) {
     if (pendingRunKind === 'repo') return;
     send('cancel:run');
@@ -2028,7 +2428,7 @@ function generateReport() {
 // ── UI Helpers ─────────────────────────────────────────────────────────
 function setStep2Mode(mode, el) {
   currentStep2Mode = mode === 'repo' ? 'repo' : 'ai';
-  document.querySelectorAll('.step-branch-chip').forEach((chip) => {
+  document.querySelectorAll('.step-branch-chip[data-mode]').forEach((chip) => {
     chip.classList.toggle('active', chip.dataset.mode === currentStep2Mode);
   });
   setStepSub(2, STEP2_SUB[currentStep2Mode] || STEP_DEFAULTS[2]);
@@ -2057,11 +2457,15 @@ function syncStep2PanelsVisible() {
 }
 
 function expandPipelineStep(n) {
+  if (workflowMode === 'run') {
+    expandRunPipelineStep(n);
+    return;
+  }
   currentPipelineStep = n;
-  document.querySelectorAll('.step-item[data-step]').forEach((el) => {
+  document.querySelectorAll('#pipelineNew .step-item[data-step]').forEach((el) => {
     el.classList.toggle('active', Number(el.dataset.step) === n);
   });
-  document.querySelectorAll('.pipeline .step-action-panel').forEach((p) => {
+  document.querySelectorAll('#pipelineNew .step-action-panel').forEach((p) => {
     p.classList.remove('active');
   });
   if (n === 1) {
@@ -2073,7 +2477,9 @@ function expandPipelineStep(n) {
   } else if (n === 4) {
     document.getElementById('step4Panel')?.classList.add('active');
   }
-  document.getElementById(`step${n}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  document.querySelectorAll('#pipelineNew .step-item[data-step]').forEach((el) => {
+    if (Number(el.dataset.step) === n) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
 }
 
 function focusStep2Repo() {
@@ -2082,7 +2488,8 @@ function focusStep2Repo() {
 }
 
 function focusStep3Repo() {
-  expandPipelineStep(3);
+  if (workflowMode === 'run') expandRunPipelineStep(2);
+  else expandPipelineStep(3);
 }
 
 function restoreStep2Mode() {
@@ -2284,7 +2691,7 @@ function openAccordion(id) {
   if (id === 'accordionAi') {
     if (currentStep2Mode !== 'ai') {
       currentStep2Mode = 'ai';
-      document.querySelectorAll('.step-branch-chip').forEach((chip) => {
+      document.querySelectorAll('.step-branch-chip[data-mode]').forEach((chip) => {
         chip.classList.toggle('active', chip.dataset.mode === 'ai');
       });
       setStepSub(2, STEP2_SUB.ai || STEP_DEFAULTS[2]);
@@ -2314,8 +2721,18 @@ function bindAccordions() {
 }
 
 function bindPipelineNav() {
-  document.querySelectorAll('.step-item[data-step]').forEach((el) => {
+  document.querySelectorAll('#pipelineNew .step-item[data-step]').forEach((el) => {
     const go = () => navigateToStep(Number(el.dataset.step));
+    el.addEventListener('click', go);
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        go();
+      }
+    });
+  });
+  document.querySelectorAll('#pipelineRun .step-item[data-run-step]').forEach((el) => {
+    const go = () => expandRunPipelineStep(Number(el.dataset.runStep));
     el.addEventListener('click', go);
     el.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
@@ -2407,7 +2824,8 @@ document.getElementById('targetUrl')?.addEventListener('input', () => {
   const el = document.getElementById('targetUrl');
   if (el) el.dataset.urlTouched = '1';
 });
-document.getElementById('repoOptimizedPick')?.addEventListener('change', syncRepoButtons);
+document.getElementById('repoOptimizedPick')?.addEventListener('change', syncWorkflowUi);
+document.getElementById('repoBatchSpecList')?.addEventListener('change', syncWorkflowUi);
 ['recordingFeatureName', 'recordingBehaviorName'].forEach((id) => {
   document.getElementById(id)?.addEventListener('change', () => {
     const raw = document.getElementById('rawCode')?.value?.trim();
@@ -2430,6 +2848,8 @@ document.getElementById('optCode').addEventListener('paste', () => queueMicrotas
   syncActionButtons();
   scheduleBuildDiff();
 }));
+restoreWorkflowMode();
+if (workflowMode === 'run') expandRunPipelineStep(1);
 syncActionButtons();
 updateRawEmptyOverlay();
 syncEditorRunBarVisibility();

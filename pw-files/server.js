@@ -1009,6 +1009,196 @@ async function runRepoTest(ws, session, msg) {
   logLine(ws, `[repo] 截图目录: ${path.join(repoRoot, 'screenshots')}`, 'dim');
 }
 
+function cancelRepoBatch(session) {
+  session.repoBatchCancelled = true;
+  if (session.repoTestProc) {
+    try {
+      session.repoTestProc.kill('SIGTERM');
+    } catch {
+      /* ignore */
+    }
+    session.repoTestProc = null;
+  }
+}
+
+async function executeRepoSpecForBatch(ws, session, specRel, headed) {
+  const repoRoot = resolveRepoRoot();
+  let absSpec;
+  try {
+    absSpec = assertAllowedOptimizedSpec(repoRoot, specRel);
+  } catch (e) {
+    return { exitCode: 1, passed: 0, failed: 1, total: 1, error: errText(e) };
+  }
+  if (!fs.existsSync(absSpec)) {
+    return { exitCode: 1, passed: 0, failed: 1, total: 1, error: `文件不存在: ${specRel}` };
+  }
+  const cli = getRepoPlaywrightCli(repoRoot);
+  if (!cli) {
+    return { exitCode: 1, passed: 0, failed: 1, total: 1, error: '未安装 @playwright/test' };
+  }
+
+  session.repoTestCancelled = false;
+  const args = [cli, 'test', specRel, '--project=optimized'];
+  if (headed) args.push('--headed');
+  else args.push('--reporter=json');
+
+  const proc = spawn(process.execPath, args, {
+    cwd: repoRoot,
+    env: buildRepoSpawnEnv(session),
+  });
+  session.repoTestProc = proc;
+
+  let stdout = '';
+  proc.stdout.on('data', (d) => {
+    stdout += d.toString();
+  });
+  proc.stderr.on('data', (d) => {
+    const t = stripAnsi(d.toString()).trim();
+    if (t) logLine(ws, `[batch] ${t}`, 'dim');
+  });
+
+  const exitCode = await new Promise((resolve) => {
+    proc.on('close', (c) => {
+      session.repoTestProc = null;
+      resolve(c == null ? 1 : c);
+    });
+  });
+
+  if (session.repoBatchCancelled || session.repoTestCancelled) {
+    return { exitCode: 130, passed: 0, failed: 0, total: 0, cancelled: true };
+  }
+
+  let passed = 0;
+  let failed = 0;
+  let total = 0;
+  if (!headed) {
+    try {
+      const result = JSON.parse(stdout);
+      const s = result.stats || {};
+      const expected = Number(s.expected) || 0;
+      const unexpected = Number(s.unexpected) || 0;
+      const skipped = Number(s.skipped) || 0;
+      const flaky = Number(s.flaky) || 0;
+      passed = expected + flaky;
+      failed = unexpected;
+      total = expected + unexpected + skipped + flaky;
+      if (exitCode !== 0 || failed > 0) logPlaywrightFailureReport(ws, result, session, exitCode);
+    } catch {
+      passed = exitCode === 0 ? 1 : 0;
+      failed = exitCode === 0 ? 0 : 1;
+      total = 1;
+    }
+  } else {
+    passed = exitCode === 0 ? 1 : 0;
+    failed = exitCode === 0 ? 0 : 1;
+    total = 1;
+  }
+
+  return { exitCode, passed, failed, total };
+}
+
+async function runRepoBatchTest(ws, session, msg) {
+  const repoRoot = resolveRepoRoot();
+  if (!fs.existsSync(path.join(repoRoot, 'playwright.config.ts'))) {
+    send(ws, 'error', { message: '未找到项目根，无法批量执行' });
+    return;
+  }
+
+  const specs = [
+    ...new Set(
+      (Array.isArray(msg.specRelatives) ? msg.specRelatives : [])
+        .map((s) => String(s || '').trim().replace(/\\/g, '/'))
+        .filter((s) => s && !isDraftOptimizedPath(s)),
+    ),
+  ];
+  if (!specs.length) {
+    send(ws, 'error', { message: '请至少选择一个测试用例' });
+    return;
+  }
+
+  const stopOnError = Boolean(msg.stopOnError);
+  const headed = Boolean(msg.headed);
+  session.repoBatchCancelled = false;
+  session.repoBatchRunning = true;
+  send(ws, 'repo:batch-test:start', { total: specs.length });
+  logLine(ws, `[batch] 开始批量执行 ${specs.length} 个用例`, 'info');
+
+  const results = [];
+  let stoppedEarly = false;
+  for (let i = 0; i < specs.length; i++) {
+    if (session.repoBatchCancelled) break;
+    const specRel = specs[i];
+    send(ws, 'repo:batch-test:progress', {
+      index: i,
+      total: specs.length,
+      specRelative: specRel,
+      phase: 'running',
+    });
+    const r = await executeRepoSpecForBatch(ws, session, specRel, headed);
+    const item = { specRelative: specRel, ...r };
+    results.push(item);
+    send(ws, 'repo:batch-test:progress', {
+      index: i,
+      total: specs.length,
+      specRelative: specRel,
+      phase: 'done',
+      exitCode: r.exitCode,
+      passed: r.passed,
+      failed: r.failed,
+      total: r.total,
+      cancelled: Boolean(r.cancelled),
+      error: r.error || null,
+    });
+    if (r.cancelled) break;
+    const failedRun = r.exitCode !== 0 || (r.failed != null && r.failed > 0);
+    if (failedRun) {
+      logLine(ws, `[batch] 失败: ${specRel}`, 'warn');
+      if (stopOnError) {
+        stoppedEarly = true;
+        break;
+      }
+    } else {
+      logLine(ws, `[batch] 完成: ${specRel}`, 'ok');
+    }
+  }
+
+  session.repoBatchRunning = false;
+  const anyFail = results.some((r) => r.exitCode !== 0 || (r.failed != null && r.failed > 0));
+  session.lastBatchRunComplete = !session.repoBatchCancelled && results.length > 0;
+  send(ws, 'repo:batch-test:done', {
+    results,
+    cancelled: session.repoBatchCancelled,
+    stoppedEarly,
+    anyFail,
+    screenshotHint: path.join(repoRoot, 'screenshots'),
+  });
+  logLine(
+    ws,
+    `[batch] 结束：${results.length}/${specs.length} 项${session.repoBatchCancelled ? '（已取消）' : ''}`,
+    anyFail ? 'warn' : 'ok',
+  );
+}
+
+async function repoLoadOptimized(ws, msg) {
+  const repoRoot = resolveRepoRoot();
+  const specRel = String(msg.specRelative || '').trim().replace(/\\/g, '/');
+  if (!specRel) {
+    send(ws, 'error', { message: '请指定 specRelative' });
+    return;
+  }
+  try {
+    const abs = assertAllowedOptimizedSpec(repoRoot, specRel);
+    if (!fs.existsSync(abs)) {
+      send(ws, 'error', { message: `文件不存在: ${specRel}` });
+      return;
+    }
+    const code = fs.readFileSync(abs, 'utf8');
+    send(ws, 'repo:load-optimized:done', { specRelative: specRel, code });
+  } catch (e) {
+    send(ws, 'error', { message: errText(e) });
+  }
+}
+
 /** 仅允许通过 Studio 暴露仓库内 results/ 与 screenshots/（对比报告 HTML 引用 ../screenshots） */
 function resolveRepoPublicReadFile(repoRoot, urlRel) {
   const rel = decodeURIComponent(String(urlRel || '').replace(/\\/g, '/')).replace(/^\/+/, '');
@@ -1151,6 +1341,9 @@ function makeSession() {
     repoTestCancelled: false,
     repoCompareProc: null,
     repoCompareCancelled: false,
+    repoBatchCancelled: false,
+    repoBatchRunning: false,
+    lastBatchRunComplete: false,
     lastSavedRelative: null,
     draftRelativePath: null,
     draftOptimizedRelative: DRAFT_OPTIMIZED_RELATIVE,
@@ -2280,12 +2473,24 @@ wss.on('connection', (ws) => {
         await runRepoTest(ws, session, msg);
         break;
 
+      case 'repo:batch-test':
+        await runRepoBatchTest(ws, session, msg);
+        break;
+
+      case 'repo:load-optimized':
+        await repoLoadOptimized(ws, msg);
+        break;
+
       case 'cancel:repo-pipeline':
         cancelRepoPipeline(session);
         break;
 
       case 'cancel:repo-test':
         cancelRepoTest(session);
+        break;
+
+      case 'cancel:repo-batch-test':
+        cancelRepoBatch(session);
         break;
 
       case 'repo:compare-report':
