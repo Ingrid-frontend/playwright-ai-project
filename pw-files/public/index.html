@@ -366,17 +366,18 @@
       <div class="sidebar-scroll">
       <div class="sidebar-section">
         <div class="sidebar-label">测试环境</div>
-        <p class="sidebar-hint" style="margin-bottom:8px">与主仓库 <code>PLAYWRIGHT_ENV</code>、<code>datasource/base-config.json</code> 一致。录制结束会自动将当前浏览器登录态写入对应 <code>storage/loginState/*.json</code>（需已连接主仓库）。</p>
+        <p class="sidebar-hint" style="margin-bottom:8px">与主仓库 <code>PLAYWRIGHT_ENV</code> 一致。<strong>模式 3（手动登录）</strong>：开始录制时若有登录态会自动加载；在浏览器完成登录后<strong>停止录制</strong>才写入 <code>storage/loginState/*.json</code>。换账号请先「清除登录态」。</p>
         <div class="provider-row" id="envChipRow"></div>
         <p class="sidebar-hint" id="envStorageHint" style="margin-top:6px;font-size:9px;color:var(--dim)"></p>
       </div>
 
       <div class="sidebar-section">
-        <div class="sidebar-label">测试账号</div>
-        <p class="sidebar-hint" style="margin-bottom:8px">与 <code>datasource/accounts.json</code> 的 <code>profiles</code> 对应；非 default 档案的登录态保存在 <code>storage/loginState/&lt;env&gt;/&lt;profile&gt;.json</code>。</p>
+        <div class="sidebar-label">登录态</div>
+        <p class="sidebar-hint" style="margin-bottom:8px">无需 <code>accounts.json</code> 也可录制：浏览器手动登录后<strong>停止录制</strong>即保存。有配置文件时可用自动登录。换账号请先「清除登录态」。</p>
         <select class="url-input" id="accountProfileSelect" style="width:100%;margin-bottom:8px" disabled>
           <option value="default">default</option>
         </select>
+        <button type="button" class="btn btn-full" id="btnClearStorage" style="margin-bottom:6px;background:var(--bg3);border:1px solid var(--border);color:var(--amber)" disabled onclick="clearAccountStorage()">清除当前登录态</button>
         <button type="button" class="btn btn-full" id="btnAccountLogin" style="margin-bottom:6px;background:var(--bg3);border:1px solid var(--border);color:var(--text)" disabled onclick="runAccountLogin()">用配置账号登录</button>
         <p class="sidebar-hint" id="accountStorageHint" style="font-size:9px;color:var(--dim)"></p>
       </div>
@@ -825,31 +826,35 @@ function updateEnvStorageHint(entry) {
 
 function updateAccountStorageHint() {
   const hint = document.getElementById('accountStorageHint');
-  const btn = document.getElementById('btnAccountLogin');
+  const btnLogin = document.getElementById('btnAccountLogin');
+  const btnClear = document.getElementById('btnClearStorage');
   const sel = document.getElementById('accountProfileSelect');
-  if (!hint || !btn || !sel) return;
+  if (!hint || !btnLogin || !btnClear || !sel) return;
   const prof = accountState.profiles.find((p) => p.id === accountState.current);
   const label = prof?.label || accountState.current;
   const user = prof?.maskedUsername ? ` · ${prof.maskedUsername}` : '';
   if (!envState.repoReady) {
     hint.textContent = '未连接主仓库';
-    btn.disabled = true;
+    btnLogin.disabled = true;
+    btnClear.disabled = true;
     sel.disabled = true;
     return;
   }
-  if (!accountState.hasAccountsFile) {
-    hint.textContent = '未找到 accounts.json，请复制 accounts.json.example';
-    hint.style.color = 'var(--amber)';
-  } else if (accountState.hasStorage) {
-    hint.textContent = `${label}${user} · 已就绪 ${accountState.storageState}`;
+  sel.disabled = busyState.accountLogin || accountState.profiles.length <= 1;
+  btnClear.disabled = busyState.accountLogin || !accountState.hasStorage;
+  btnLogin.disabled = busyState.accountLogin || !accountState.hasAccountsFile;
+  btnLogin.textContent = busyState.accountLogin ? '登录中…' : '用配置账号登录';
+
+  if (accountState.hasStorage) {
+    hint.textContent = `${envState.current} / ${label} · 已就绪 ${accountState.storageState}（开录将自动加载；换号请先清除）`;
     hint.style.color = 'var(--muted)';
+  } else if (accountState.hasAccountsFile) {
+    hint.textContent = `${label}${user} · 无登录态：可自动登录，或开录后在浏览器手动登录并停止录制保存`;
+    hint.style.color = 'var(--amber)';
   } else {
-    hint.textContent = `${label}${user} · 无登录态，请点击登录`;
+    hint.textContent = `无登录态：开始录制 → 浏览器手动登录 → 停止录制后写入 ${accountState.storageState || 'storage/loginState/…'}`;
     hint.style.color = 'var(--amber)';
   }
-  sel.disabled = busyState.accountLogin || accountState.profiles.length <= 1;
-  btn.disabled = busyState.accountLogin || !envState.repoReady || !accountState.hasAccountsFile;
-  btn.textContent = busyState.accountLogin ? '登录中…' : '用配置账号登录';
 }
 
 function renderAccountSelect() {
@@ -929,15 +934,54 @@ function applyAccountChanged(msg) {
   renderEnvChips();
 }
 
+function clearAccountStorage() {
+  if (!ws || ws.readyState !== 1) {
+    showToast('未连接服务器', 'err');
+    return;
+  }
+  if (!accountState.hasStorage) {
+    showToast('当前无登录态文件', 'err');
+    return;
+  }
+  const rel = accountState.storageState || 'storage/loginState/…';
+  if (
+    !confirm(
+      `确定清除当前环境的登录态？\n\n${rel}\n\n清除后：\n· 下次开始录制不会自动加载旧账号\n· 需在浏览器重新登录，并在停止录制时保存新登录态`,
+    )
+  ) {
+    return;
+  }
+  send('account:clear-storage', {});
+  log('info', `[account] 正在清除 ${rel}`);
+}
+
 function runAccountLogin() {
   if (!ws || ws.readyState !== 1) {
     showToast('未连接服务器', 'err');
     return;
   }
+  if (accountState.hasStorage) {
+    const rel = accountState.storageState;
+    if (
+      !confirm(
+        `将覆盖已有登录态：\n${rel}\n\n确定使用 accounts.json 中的账号自动登录？\n（若需换号且不用配置文件，请先「清除登录态」再手动录制）`,
+      )
+    ) {
+      return;
+    }
+  }
   busyState.accountLogin = true;
   updateAccountStorageHint();
   send('account:login', {});
   log('info', `[account] 开始登录 ${envState.current} / ${accountState.current}`);
+}
+
+function confirmRecordWithExistingStorage() {
+  if (!envState.repoReady || !accountState.hasStorage) return true;
+  const rel = accountState.storageState || '';
+  return confirm(
+    `将加载已有登录态开始录制：\n${rel}\n\n· 确定 = 使用当前登录态\n· 取消 = 暂不录制\n\n若要换账号，请先点击「清除当前登录态」。`,
+  );
 }
 
 function renderEnvChips() {
@@ -1248,6 +1292,7 @@ function finishBusyFromError() {
   busyState.repoPipeline = false;
   busyState.repoCompare = false;
   resetPipelineRunning();
+  if (state.recording) setRecordButtonUi(false);
   syncActionButtons();
 }
 
@@ -1257,10 +1302,32 @@ function syncActionButtons() {
   const opt = document.getElementById('optCode').value.trim();
   const btnOpt = document.getElementById('btnOptimize');
   const btnRun = document.getElementById('btnRun');
+  const btnRecord = document.getElementById('btnRecord');
   if (!busyState.optimize) btnOpt.disabled = !raw;
   if (!busyState.run) btnRun.disabled = !(opt || raw);
+  if (btnRecord) btnRecord.disabled = busyState.optimize || busyState.run || busyState.repoPipeline;
   updateRawEmptyOverlay();
   syncRepoButtons();
+}
+
+const RECORD_BTN_ICON_START =
+  '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>';
+const RECORD_BTN_ICON_STOP =
+  '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2" fill="currentColor"/></svg>';
+
+/** 同步录制按钮与 state.recording（关闭浏览器后由 record:done 调用） */
+function setRecordButtonUi(recording) {
+  state.recording = Boolean(recording);
+  const btn = document.getElementById('btnRecord');
+  if (!btn) return;
+  if (state.recording) {
+    btn.innerHTML = `${RECORD_BTN_ICON_STOP}停止录制 <span id="recTime">00:00</span>`;
+    btn.classList.add('recording');
+  } else {
+    btn.innerHTML = `${RECORD_BTN_ICON_START}开始录制`;
+    btn.classList.remove('recording');
+    stopRecordTimer();
+  }
 }
 
 function handleMessage(msg) {
@@ -1270,6 +1337,7 @@ function handleMessage(msg) {
     case 'record:data':
       appendRaw(msg.code); break;
     case 'record:done':
+      setRecordButtonUi(false);
       setStep(1, 'done');
       document.getElementById('rawCode').value = msg.code;
       setRawMeta(msg.code);
@@ -1280,14 +1348,13 @@ function handleMessage(msg) {
       requestRepoSuggestPath(msg.code, { force: true });
       log('ok', `录制完成，共 ${msg.lines} 行`);
       if (msg.storageSaved && msg.storageState) {
-        log('ok', `[env] 登录态已保存: ${msg.storageState}`);
+        log('ok', `[env] 登录态已保存（停止录制时写入）: ${msg.storageState}`);
         showToast('录制完成，登录态已保存', 'ok');
       } else if (msg.storageState) {
         showToast('录制完成（未检测到有效登录态文件）', 'err');
       } else {
         showToast('录制完成', 'ok');
       }
-      stopRecordTimer();
       break;
     case 'env:storage-saved': {
       const entry = envState.environments.find((e) => e.id === msg.env);
@@ -1451,6 +1518,15 @@ function handleMessage(msg) {
       if (msg.ok) showToast('账号登录成功', 'ok');
       else showToast('账号登录失败', 'err');
       break;
+    case 'account:storage-cleared':
+      applyAccountChanged({
+        profile: msg.profile,
+        storageState: msg.storageState,
+        hasStorage: false,
+      });
+      showToast(msg.removed ? '已清除登录态' : '登录态文件本不存在', msg.removed ? 'ok' : 'err');
+      log('info', `[account] ${msg.removed ? '已清除' : '无需清除'}: ${msg.storageState || ''}`);
+      break;
     case 'repo:info': {
       repoState.repoRoot = msg.repoRoot || '';
       const el = document.getElementById('repoRootLabel');
@@ -1544,21 +1620,15 @@ function startRecord() {
   const url = document.getElementById('targetUrl').value.trim();
   if (!url) { showToast('请填写目标 URL', 'err'); return; }
 
-  const btn = document.getElementById('btnRecord');
   if (state.recording) {
-    // Stop
     send('record:stop');
-    state.recording = false;
-    btn.innerHTML = `<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>开始录制`;
-    btn.classList.remove('recording');
-    stopRecordTimer();
+    setRecordButtonUi(false);
   } else {
     const raw = document.getElementById('rawCode').value.trim();
     if (raw && !confirm('开始新录制将清空当前脚本，是否继续？')) return;
+    if (!confirmRecordWithExistingStorage()) return;
     send('record:start', { url, env: envState.current });
-    state.recording = true;
-    btn.innerHTML = `<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2" fill="currentColor"/></svg>停止录制 <span id="recTime">00:00</span>`;
-    btn.classList.add('recording');
+    setRecordButtonUi(true);
     startRecordTimer();
     document.getElementById('rawCode').value = '';
     updateRawEmptyOverlay();

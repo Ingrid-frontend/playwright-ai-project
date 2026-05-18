@@ -147,6 +147,47 @@ function sendAccountInfo(ws, session, repoRoot, repoReady) {
   });
 }
 
+function clearSessionStorage(ws, session) {
+  const repoRoot = resolveRepoRoot();
+  if (!fs.existsSync(path.join(repoRoot, 'playwright.config.ts'))) {
+    send(ws, 'error', { message: '未找到项目根，无法清除登录态' });
+    return;
+  }
+  const envId = getSessionPlaywrightEnv(session);
+  const profile = getSessionAccountProfile(session, repoRoot);
+  const storageRel = repoEnv.resolveStorageStateRel(repoRoot, envId, profile);
+  if (!storageRel) {
+    send(ws, 'error', { message: '当前环境未配置 storageState' });
+    return;
+  }
+  const storageAbs = path.resolve(repoRoot, storageRel);
+  let removed = false;
+  if (fs.existsSync(storageAbs)) {
+    try {
+      fs.unlinkSync(storageAbs);
+      removed = true;
+    } catch (e) {
+      send(ws, 'error', { message: `清除失败: ${errText(e)}` });
+      return;
+    }
+  }
+  if (removed) {
+    logLine(ws, `[account] 已清除登录态: ${storageRel}`, 'ok');
+  } else {
+    logLine(ws, `[account] 登录态文件不存在: ${storageRel}`, 'dim');
+  }
+  send(ws, 'account:storage-cleared', {
+    env: envId,
+    profile,
+    storageState: storageRel,
+    hasStorage: false,
+    removed,
+  });
+  const repoReady = true;
+  sendEnvInfo(ws, session, repoRoot, repoReady);
+  sendAccountInfo(ws, session, repoRoot, repoReady);
+}
+
 function setSessionAccountProfile(ws, session, profileId) {
   const repoRoot = resolveRepoRoot();
   if (!fs.existsSync(path.join(repoRoot, 'playwright.config.ts'))) {
@@ -1082,6 +1123,11 @@ async function startRecording(ws, session, url) {
       );
     }
     logLine(ws, `[env] 录制结束将写入 ${envEntry.storageState}`, 'dim');
+    logLine(
+      ws,
+      '[env] 模式3：开始录制仅加载登录态；停止录制才保存；换账号请先用「清除当前登录态」',
+      'dim',
+    );
   }
   codegenArgs.push('--output', outFile, recordUrl);
 
@@ -1098,7 +1144,7 @@ async function startRecording(ws, session, url) {
       `playwright codegen 已启动 [${envId}] ${recordUrl}${envEntry?.hasStorage ? '（已加载登录态）' : ''}`,
       'info',
     );
-    logLine(ws, '请在浏览器中操作，完成后点击「停止录制」', 'dim');
+    logLine(ws, '请在浏览器中操作；完成后点击「停止录制」或直接关闭 codegen 浏览器窗口', 'dim');
 
     proc.stderr.on('data', (d) => {
       const text = d.toString().trim();
@@ -1109,6 +1155,13 @@ async function startRecording(ws, session, url) {
       if (!session.recording) return;
       stopRecording(ws, session).catch((e) => {
         logLine(ws, `停止录制异常: ${errText(e)}`, 'err');
+        session._stoppingRecord = false;
+        send(ws, 'record:done', {
+          code: session.rawCode || '',
+          lines: 0,
+          storageSaved: false,
+          aborted: true,
+        });
       });
     });
 
@@ -1128,8 +1181,10 @@ async function stopRecording(ws, session) {
   const storageAbs = session.recordSaveStorageAbs;
   const storageRel = session.recordSaveStorageRel;
 
-  if (session.recordProc) {
-    const proc = session.recordProc;
+  const proc = session.recordProc;
+  session.recordProc = null;
+  // 用户关闭 codegen 浏览器时进程可能已退出，勿再 SIGTERM 并空等 12s
+  if (proc && proc.exitCode === null && proc.signalCode === null) {
     await new Promise((resolve) => {
       const forceKill = setTimeout(() => {
         try {
@@ -1150,7 +1205,6 @@ async function stopRecording(ws, session) {
         resolve();
       }
     });
-    session.recordProc = null;
   }
 
   let code = '';
@@ -1837,6 +1891,10 @@ wss.on('connection', (ws) => {
 
       case 'account:login':
         await runAccountLogin(ws, session);
+        break;
+
+      case 'account:clear-storage':
+        clearSessionStorage(ws, session);
         break;
 
       case 'record:stop':
