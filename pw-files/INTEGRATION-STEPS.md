@@ -27,11 +27,18 @@
 3. **package.json**：根目录 `studio` 脚本。
 4. **README.md**：`cd pw-files`、端口 3001、流水线说明。
 
+### 2026-05-18
+
+1. **server.js**：`repo:pipeline` 支持 `code` 写草稿 `studio-unsaved-draft.spec.ts`；新增 `repo:commit-artifacts` 一次保存录制 + 优化。
+2. **index.html**：「生成用例」不依赖先保存；「保存到项目」；对比报告需双脚本已保存且与编辑器一致。
+3. **README.md** / **INTEGRATION-STEPS.md**：更新推荐流程与验证清单。
+
 ---
 
 ## 验证清单
 
 1. 仓库根 `npm install`，再 `cd pw-files && npm install`，`npm start`，浏览器打开 `http://localhost:3001`，侧栏项目根应显示为仓库路径且非红色告警（需存在 `playwright.config.ts`）。
-2. 录制或粘贴脚本 → **保存录制到项目** → 对应 `tests/raw-recordings/original/.../*.spec.ts` 出现。
-3. **运行 pipeline** → 日志含 `[pipeline]`，且 `tests/optimized/.../*.optimized.spec.ts` 更新；下拉框出现候选路径。
-4. **在项目内执行 optimized** → 日志含截图目录；`screenshots/` 是否有新图取决于用例是否含 `takeStepScreenshot`。
+2. 录制或粘贴脚本 → **生成用例**（无需先保存）→ 日志含 `[repo] 草稿已写入` 与 `[pipeline]`；`tests/raw-recordings/original/<dateCategory>/studio-unsaved-draft.spec.ts` 出现；`tests/optimized/.../*.optimized.spec.ts` 更新；「优化脚本」Tab 自动载入内容。
+3. **执行（含截图）** → 选择下拉中的用例执行；`screenshots/` 是否有新图取决于用例是否含 `takeStepScreenshot`。
+4. **保存到项目** → 正式 `original/.../<feature>_<timestamp>.spec.ts` 与 optimized 文件落盘；草稿 `studio-unsaved-draft.spec.ts` 被删除。
+5. **生成并打开截图对比报告** → 仅第 4 步完成且未改编辑器时可点；新开窗口打开 `results/screenshot-comparison.html`。

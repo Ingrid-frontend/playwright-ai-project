@@ -19,6 +19,9 @@ const express = require('express');
 const { WebSocketServer } = require('ws');
 const Anthropic = require('@anthropic-ai/sdk');
 const repoEnv = require('./repo-env');
+const { postprocessRecordedScript } = require(path.join(__dirname, '../src/utils/strip-login-from-recording.cjs'));
+const { annotateStorageStateMeta } = require(path.join(__dirname, '../src/utils/storage-state-meta.cjs'));
+const { extractFromCode } = require(path.join(__dirname, '../src/utils/extract-login-account.cjs'));
 
 const PORT = process.env.PORT || 3001;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
@@ -117,6 +120,22 @@ function buildRepoSpawnEnv(session) {
   return env;
 }
 
+/** Studio 临时目录执行脚本：storageState / baseURL 须用仓库根绝对路径 */
+function buildStudioRunEnv(session) {
+  const env = buildRepoSpawnEnv(session);
+  const repoRoot = resolveRepoRoot();
+  const envId = getSessionPlaywrightEnv(session);
+  const profile = getSessionAccountProfile(session, repoRoot);
+  const resolved = getEnvEntryResolved(repoRoot, envId, profile);
+  if (resolved?.storageState) {
+    env.STORAGE_STATE_PATH = path.resolve(repoRoot, resolved.storageState);
+  }
+  if (resolved?.baseURL) {
+    env.PLAYWRIGHT_BASE_URL = resolved.baseURL;
+  }
+  return { env, resolved, repoRoot };
+}
+
 function sendAccountInfo(ws, session, repoRoot, repoReady) {
   if (!repoReady) {
     send(ws, 'account:info', {
@@ -206,7 +225,7 @@ function setSessionAccountProfile(ws, session, profileId) {
   });
   logLine(ws, `[account] 已切换为 ${envId} / ${resolved}`, 'info');
   if (!entry?.hasStorage && entry?.storageState) {
-    logLine(ws, `[account] 未找到 ${entry.storageState}，可点击「用配置账号登录」生成`, 'warn');
+    logLine(ws, `[account] 未找到 ${entry.storageState}，请开始录制后在浏览器登录并停止录制`, 'warn');
   }
 }
 
@@ -326,7 +345,7 @@ function setSessionPlaywrightEnv(ws, session, envId) {
   if (!resolved?.hasStorage) {
     logLine(
       ws,
-      `[env] ${entry.id} 的 storageState 不存在: ${resolved?.storageState || entry.storageState}，请先 npm run login 或 Studio「用配置账号登录」`,
+      `[env] ${entry.id} 的 storageState 不存在: ${resolved?.storageState || entry.storageState}，请开始录制后在浏览器登录并停止录制`,
       'warn',
     );
   }
@@ -435,14 +454,104 @@ function resolveOptimizedSpecsAfterPipeline(repoRoot, sinceMs, targetRelative) {
   return specs.slice(0, 40);
 }
 
+const DRAFT_RECORDING_BASENAME = 'studio-unsaved-draft.spec.ts';
+const DRAFT_OPTIMIZED_BASENAME = 'studio-unsaved-draft.optimized.spec.ts';
+const DRAFT_OPTIMIZED_RELATIVE = `tests/optimized/${DRAFT_OPTIMIZED_BASENAME}`;
+
+function isDraftRecordingPath(relativePath) {
+  const norm = (relativePath || '').trim().replace(/\\/g, '/');
+  return /studio-unsaved-draft\.spec\.ts$/i.test(norm);
+}
+
+function isDraftOptimizedPath(relativePath) {
+  const norm = (relativePath || '').trim().replace(/\\/g, '/');
+  return norm === DRAFT_OPTIMIZED_RELATIVE || /studio-unsaved-draft\.optimized\.spec\.ts$/i.test(norm);
+}
+
+/** pipeline 后将产物归并到固定草稿 optimized 路径，供 Studio 执行流程使用 */
+function ensureDraftOptimizedAtCanonical(repoRoot, sinceMs, targetRelative) {
+  const canonicalAbs = assertAllowedOptimizedSpec(repoRoot, DRAFT_OPTIMIZED_RELATIVE);
+  if (fs.existsSync(canonicalAbs)) {
+    try {
+      const st = fs.statSync(canonicalAbs);
+      if (sinceMs == null || st.mtimeMs >= sinceMs - 3000) {
+        return DRAFT_OPTIMIZED_RELATIVE;
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+  const byName = listOptimizedSpecs(repoRoot, {
+    limit: 20,
+    nameIncludes: 'studio-unsaved-draft',
+  });
+  const draftCandidate = byName.find((s) => s.endsWith(DRAFT_OPTIMIZED_BASENAME)) || byName[0];
+  const recent = resolveOptimizedSpecsAfterPipeline(repoRoot, sinceMs, targetRelative);
+  const srcRel = draftCandidate || recent[0];
+  if (!srcRel) {
+    return fs.existsSync(canonicalAbs) ? DRAFT_OPTIMIZED_RELATIVE : null;
+  }
+  if (srcRel === DRAFT_OPTIMIZED_RELATIVE && fs.existsSync(canonicalAbs)) {
+    return DRAFT_OPTIMIZED_RELATIVE;
+  }
+  try {
+    const srcAbs = assertAllowedOptimizedSpec(repoRoot, srcRel);
+    fs.mkdirSync(path.dirname(canonicalAbs), { recursive: true });
+    fs.copyFileSync(srcAbs, canonicalAbs);
+    return DRAFT_OPTIMIZED_RELATIVE;
+  } catch {
+    return fs.existsSync(canonicalAbs) ? DRAFT_OPTIMIZED_RELATIVE : null;
+  }
+}
+
+function syncDraftOptimizedFromEditor(repoRoot, optimizedCode) {
+  const code = String(optimizedCode || '');
+  if (!code.trim()) return;
+  const abs = assertAllowedOptimizedSpec(repoRoot, DRAFT_OPTIMIZED_RELATIVE);
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  fs.writeFileSync(abs, code, 'utf8');
+}
+
 function isPlaceholderRecordingPath(relativePath) {
   const norm = (relativePath || '').trim().replace(/\\/g, '/');
   if (!norm) return true;
+  if (isDraftRecordingPath(norm)) return true;
   if (/studio-recording\.spec\.ts$/i.test(norm)) return true;
   if (/tests\/raw-recordings\/original\/\d{8}\/studio-recording\.spec\.ts$/i.test(norm)) {
     return true;
   }
   return false;
+}
+
+function buildDraftRecordingRelative(resolved) {
+  const dir = path.posix.dirname(resolved.relativePath.replace(/\\/g, '/'));
+  return `${dir}/${DRAFT_RECORDING_BASENAME}`;
+}
+
+async function ensureDraftRecordingPath(repoRoot, { code, name, description }) {
+  const resolved = await resolveRecordingPathViaRepo(repoRoot, {
+    code,
+    name,
+    description,
+    target: 'original',
+  });
+  const draftRelative = buildDraftRecordingRelative(resolved);
+  const abs = assertAllowedSavePath(repoRoot, draftRelative);
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  fs.writeFileSync(abs, String(code || ''), 'utf8');
+  return { draftRelative, formalHint: resolved.relativePath };
+}
+
+function removeDraftRecordingIfAny(repoRoot, session) {
+  const draftRel = session.draftRelativePath;
+  if (!draftRel) return;
+  try {
+    const draftAbs = assertAllowedSavePath(repoRoot, draftRel);
+    if (fs.existsSync(draftAbs)) fs.unlinkSync(draftAbs);
+  } catch {
+    /* ignore */
+  }
+  session.draftRelativePath = null;
 }
 
 function resolveRecordingPathViaRepo(repoRoot, { code, name, description, target = 'original' }) {
@@ -583,15 +692,127 @@ async function repoSave(ws, session, msg) {
   send(ws, 'repo:save:done', { relativePath, repoRoot });
 }
 
+async function repoCommitArtifacts(ws, session, msg) {
+  const repoRoot = resolveRepoRoot();
+  if (!fs.existsSync(path.join(repoRoot, 'playwright.config.ts'))) {
+    send(ws, 'error', {
+      message: '未找到项目根（含 playwright.config.ts）。请设置 PLAYWRIGHT_REPO_ROOT 或将 pw-files 放在仓库子目录下。',
+    });
+    return;
+  }
+  const rawCode = typeof msg.code === 'string' ? msg.code : session.rawCode;
+  if (!rawCode || !String(rawCode).trim()) {
+    send(ws, 'error', { message: '保存失败：录制脚本为空' });
+    return;
+  }
+  let optimizedRelative = String(msg.optimizedRelative || '').trim().replace(/\\/g, '/');
+  if (isDraftOptimizedPath(optimizedRelative)) {
+    optimizedRelative = '';
+  }
+  if (!optimizedRelative && Array.isArray(session.optimizedSpecs)) {
+    const formal = session.optimizedSpecs.find((s) => !isDraftOptimizedPath(s));
+    optimizedRelative = formal || '';
+  }
+  const optCode = typeof msg.optimizedCode === 'string' ? msg.optimizedCode : '';
+  let optContent = optCode.trim();
+  if (!optContent) {
+    const readFrom =
+      optimizedRelative || session.draftOptimizedRelative || DRAFT_OPTIMIZED_RELATIVE;
+    try {
+      optContent = fs.readFileSync(assertAllowedOptimizedSpec(repoRoot, readFrom), 'utf8');
+    } catch (e) {
+      send(ws, 'error', { message: `无法读取优化脚本: ${errText(e)}` });
+      return;
+    }
+  }
+  if (!optContent.trim()) {
+    send(ws, 'error', { message: '优化脚本为空' });
+    return;
+  }
+
+  let relativePath = (msg.relativePath || '').trim().replace(/\\/g, '/');
+  if (isPlaceholderRecordingPath(relativePath)) {
+    try {
+      const resolved = await resolveRecordingPathViaRepo(repoRoot, {
+        code: rawCode,
+        name: msg.name,
+        description: msg.description,
+        target: 'original',
+      });
+      relativePath = resolved.relativePath;
+      logLine(ws, `[repo] 录制落盘: ${relativePath}`, 'dim');
+    } catch (e) {
+      send(ws, 'error', { message: `无法解析录制保存路径: ${errText(e)}` });
+      return;
+    }
+  }
+  if (!optimizedRelative) {
+    const norm = relativePath.replace(/\\/g, '/');
+    const parts = norm.split('/');
+    const stem = path.basename(norm, '.spec.ts');
+    const dateCategory = parts[parts.length - 2];
+    optimizedRelative =
+      parts.includes('original') && /^\d{8}$/.test(dateCategory)
+        ? `tests/optimized/${dateCategory}/${stem}.optimized.spec.ts`
+        : `tests/optimized/${stem}.optimized.spec.ts`;
+  }
+  let rawAbs;
+  let optAbs;
+  try {
+    rawAbs = assertAllowedSavePath(repoRoot, relativePath);
+    optAbs = assertAllowedOptimizedSpec(repoRoot, optimizedRelative);
+  } catch (e) {
+    send(ws, 'error', { message: errText(e) });
+    return;
+  }
+  fs.mkdirSync(path.dirname(rawAbs), { recursive: true });
+  fs.writeFileSync(rawAbs, rawCode, 'utf8');
+  fs.mkdirSync(path.dirname(optAbs), { recursive: true });
+  fs.writeFileSync(optAbs, optContent, 'utf8');
+
+  session.lastSavedRelative = relativePath;
+  session.lastPrimaryOptimizedRelative = optimizedRelative;
+  session.rawCode = rawCode;
+  session.optCode = optContent;
+  removeDraftRecordingIfAny(repoRoot, session);
+
+  logLine(ws, `[repo] 已保存录制: ${relativePath}`, 'ok');
+  logLine(ws, `[repo] 已保存优化: ${optimizedRelative}`, 'ok');
+  send(ws, 'repo:commit-artifacts:done', {
+    relativePath,
+    optimizedRelative,
+    repoRoot,
+  });
+}
+
 async function runRepoPipeline(ws, session, msg) {
   const repoRoot = resolveRepoRoot();
   if (!fs.existsSync(path.join(repoRoot, 'playwright.config.ts'))) {
     send(ws, 'error', { message: '未找到项目根，无法运行 pipeline' });
     return;
   }
-  let targetArg = (msg.targetRelative || session.lastSavedRelative || '').trim().replace(/\\/g, '/');
+  let targetArg = (msg.targetRelative || '').trim().replace(/\\/g, '/');
+  const pipelineCode = typeof msg.code === 'string' ? msg.code : '';
+  if (pipelineCode.trim()) {
+    try {
+      const { draftRelative, formalHint } = await ensureDraftRecordingPath(repoRoot, {
+        code: pipelineCode,
+        name: msg.name,
+        description: msg.description,
+      });
+      targetArg = draftRelative;
+      session.draftRelativePath = draftRelative;
+      session.suggestedFormalRelative = formalHint;
+      logLine(ws, `[repo] 草稿已写入: ${draftRelative}`, 'dim');
+    } catch (e) {
+      send(ws, 'error', { message: errText(e) });
+      return;
+    }
+  } else if (!targetArg) {
+    targetArg = (session.draftRelativePath || session.lastSavedRelative || '').trim().replace(/\\/g, '/');
+  }
   if (!targetArg) {
-    send(ws, 'error', { message: '请先「保存录制到项目」或在消息中指定 targetRelative' });
+    send(ws, 'error', { message: '无可用录制脚本，请先录制或粘贴内容' });
     return;
   }
   try {
@@ -644,9 +865,28 @@ async function runRepoPipeline(ws, session, msg) {
   }
 
   const optimizedSpecs = resolveOptimizedSpecsAfterPipeline(repoRoot, since, targetArg);
+  session.optimizedSpecs = optimizedSpecs;
+  const draftOptimizedRelative =
+    ensureDraftOptimizedAtCanonical(repoRoot, since, targetArg) || DRAFT_OPTIMIZED_RELATIVE;
+  session.draftOptimizedRelative = draftOptimizedRelative;
+  session.lastPrimaryOptimizedRelative = draftOptimizedRelative;
+  let optimizedCode = '';
+  try {
+    optimizedCode = fs.readFileSync(
+      assertAllowedOptimizedSpec(repoRoot, draftOptimizedRelative),
+      'utf8',
+    );
+    session.optCode = optimizedCode;
+  } catch {
+    /* ignore */
+  }
   send(ws, 'repo:pipeline:done', {
     exitCode,
     optimizedSpecs,
+    primaryOptimizedRelative: draftOptimizedRelative,
+    draftOptimizedRelative,
+    optimizedCode,
+    draftRelativePath: session.draftRelativePath || null,
     repoRoot,
     hint: optimizedSpecs.length
       ? '已加载 tests/optimized 下用例（按最近修改排序）'
@@ -657,10 +897,20 @@ async function runRepoPipeline(ws, session, msg) {
 
 async function runRepoTest(ws, session, msg) {
   const repoRoot = resolveRepoRoot();
-  const specRel = (msg.specRelative || '').trim().replace(/\\/g, '/');
+  let specRel = (msg.specRelative || session.draftOptimizedRelative || DRAFT_OPTIMIZED_RELATIVE)
+    .trim()
+    .replace(/\\/g, '/');
   if (!specRel) {
     send(ws, 'error', { message: '请指定 specRelative（tests/optimized/.../*.optimized.spec.ts）' });
     return;
+  }
+  if (isDraftOptimizedPath(specRel) && typeof msg.optimizedCode === 'string' && msg.optimizedCode.trim()) {
+    try {
+      syncDraftOptimizedFromEditor(repoRoot, msg.optimizedCode);
+    } catch (e) {
+      send(ws, 'error', { message: `同步草稿用例失败: ${errText(e)}` });
+      return;
+    }
   }
   let absSpec;
   try {
@@ -902,6 +1152,11 @@ function makeSession() {
     repoCompareProc: null,
     repoCompareCancelled: false,
     lastSavedRelative: null,
+    draftRelativePath: null,
+    draftOptimizedRelative: DRAFT_OPTIMIZED_RELATIVE,
+    suggestedFormalRelative: null,
+    lastPrimaryOptimizedRelative: null,
+    optimizedSpecs: [],
     playwrightEnv: process.env.PLAYWRIGHT_ENV || DEFAULT_PLAYWRIGHT_ENV,
     accountProfile: process.env.PLAYWRIGHT_ACCOUNT || 'default',
   };
@@ -1212,6 +1467,45 @@ async function stopRecording(ws, session) {
     code = fs.readFileSync(outFile, 'utf8');
   } else {
     code = generateSampleScript(session.lastUrl || 'https://example.com');
+  }
+  const rawRecordedCode = code;
+
+  const repoRoot = resolveRepoRoot();
+  if (fs.existsSync(path.join(repoRoot, 'playwright.config.ts'))) {
+    const envId = getSessionPlaywrightEnv(session);
+    const profile = getSessionAccountProfile(session, repoRoot);
+    const storageRelForUse = storageRel || repoEnv.resolveStorageStateRel(repoRoot, envId, profile);
+
+    let storageSavedForMeta = false;
+    if (storageAbs && fs.existsSync(storageAbs)) {
+      try {
+        storageSavedForMeta = fs.statSync(storageAbs).size > 10;
+      } catch {
+        storageSavedForMeta = false;
+      }
+    }
+    if (storageSavedForMeta && storageAbs) {
+      annotateStorageStateMeta(storageAbs, {
+        loginAccount: extractFromCode(rawRecordedCode) || undefined,
+        code: rawRecordedCode,
+        env: envId,
+        source: 'studio-record',
+      });
+    }
+
+    const post = postprocessRecordedScript(code, { storageRel: storageRelForUse });
+    if (post.removedLoginLines > 0) {
+      logLine(ws, `[record] 已移除录制中的登录步骤 ${post.removedLoginLines} 行（请依赖 storageState）`, 'info');
+    }
+    code = post.code;
+    code = repoEnv.prependRecordingAccountHeader(repoRoot, code, envId, profile, { code: rawRecordedCode });
+    if (fs.existsSync(outFile)) {
+      try {
+        fs.writeFileSync(outFile, code, 'utf8');
+      } catch {
+        /* 临时目录写入失败不影响回传编辑器 */
+      }
+    }
   }
 
   session.rawCode = code;
@@ -1616,6 +1910,23 @@ async function runScript(ws, session, code, runOpts = {}) {
   useOpts.navigationTimeout = navigationTimeout;
   useOpts.actionTimeout = actionTimeout;
 
+  const { env: runEnv, resolved: envResolved } = buildStudioRunEnv(session);
+  if (envResolved?.baseURL) {
+    useOpts.baseURL = envResolved.baseURL;
+  }
+  if (runEnv.STORAGE_STATE_PATH && !fs.existsSync(runEnv.STORAGE_STATE_PATH)) {
+    logLine(
+      ws,
+      `[run] 登录态不存在: ${envResolved?.storageState || runEnv.STORAGE_STATE_PATH}，请先在该环境录制并登录`,
+      'warn',
+    );
+  } else if (runEnv.STORAGE_STATE_PATH) {
+    logLine(ws, `[run] STORAGE_STATE_PATH=${runEnv.STORAGE_STATE_PATH}`, 'dim');
+  }
+  if (envResolved?.baseURL) {
+    logLine(ws, `[run] baseURL=${envResolved.baseURL}`, 'dim');
+  }
+
   fs.writeFileSync(
     configFile,
     `module.exports = ${JSON.stringify({
@@ -1654,7 +1965,7 @@ async function runScript(ws, session, code, runOpts = {}) {
     const proc = spawn(process.execPath, pwArgs, {
       cwd: session.tmpDir,
       env: {
-        ...process.env,
+        ...runEnv,
         NODE_PATH: path.join(__dirname, 'node_modules'),
       },
     });
@@ -1863,6 +2174,11 @@ wss.on('connection', (ws) => {
     repoRoot: root,
     repoReady,
     optimizedSpecs,
+    draftOptimizedRelative: DRAFT_OPTIMIZED_RELATIVE,
+    optimizeKeys: {
+      anthropic: Boolean(ANTHROPIC_API_KEY),
+      deepseek: Boolean(DEEPSEEK_API_KEY),
+    },
   });
   sendEnvInfo(ws, session, root, repoReady);
 
@@ -1935,6 +2251,10 @@ wss.on('connection', (ws) => {
 
       case 'repo:save':
         await repoSave(ws, session, msg);
+        break;
+
+      case 'repo:commit-artifacts':
+        await repoCommitArtifacts(ws, session, msg);
         break;
 
       case 'repo:suggest-path':

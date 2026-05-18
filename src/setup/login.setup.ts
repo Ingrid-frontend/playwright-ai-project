@@ -2,8 +2,17 @@ import { test as setup, expect } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
 import { env, curConfig } from '../../playwright.config';
+import { createRequire } from 'node:module';
 import { getLoginCredentials } from '../utils/credentials';
 import { resolveStorageState, shouldRefreshStorageState } from '../utils/env-config';
+
+const require = createRequire(import.meta.url);
+const { annotateStorageStateMeta } = require('../utils/storage-state-meta.cjs') as {
+  annotateStorageStateMeta: (
+    storagePath: string,
+    opts: { loginAccount?: string; env?: string; source?: string },
+  ) => boolean;
+};
 
 /**
  * 使用 Project Setup 模式
@@ -53,6 +62,11 @@ setup('🔐 全局登录并持久化状态', { timeout: 120_000 }, async ({ page
   await expect(page).not.toHaveURL(/.*login.*/, { timeout: 60_000 });
 
   await page.context().storageState({ path: STORAGE_PATH });
+  annotateStorageStateMeta(STORAGE_PATH, {
+    loginAccount: ACCOUNT.username,
+    env,
+    source: 'login-setup',
+  });
 
   console.log(`✅ 登录成功，状态已保存至: ${STORAGE_PATH}`);
 });

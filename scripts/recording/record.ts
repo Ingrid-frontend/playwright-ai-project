@@ -3,6 +3,16 @@ import fs from 'fs';
 import path from 'path';
 import { env, curConfig } from '../../playwright.config';
 import { resolveStorageState } from '../../src/utils/env-config.js';
+import { prependRecordingAccountComment } from '../../src/utils/recording-meta.js';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const { postprocessRecordedScript } = require('../../src/utils/strip-login-from-recording.cjs') as {
+  postprocessRecordedScript: (
+    code: string,
+    opts: { storageRel?: string },
+  ) => { code: string; removedLoginLines: number };
+};
 import {
   buildRecordingBaseSlug,
   extractSnippetFromPlaywrightSpec,
@@ -117,11 +127,19 @@ if (!fs.existsSync(codegenOutputFile)) {
   process.exit(0);
 }
 
-const recorded = fs.readFileSync(codegenOutputFile, 'utf-8');
+let recorded = fs.readFileSync(codegenOutputFile, 'utf-8');
 if (!recorded.trim()) {
   console.warn('⚠️  录制文件为空，跳过智能命名');
   process.exit(0);
 }
+
+const profile = process.env.PLAYWRIGHT_ACCOUNT?.trim();
+const post = postprocessRecordedScript(recorded, { storageRel: storagePath });
+if (post.removedLoginLines > 0) {
+  console.log(`📎 已移除录制中的登录步骤 ${post.removedLoginLines} 行（执行时依赖 storageState）`);
+}
+recorded = prependRecordingAccountComment(post.code, env, profile, { storagePath });
+fs.writeFileSync(codegenOutputFile, recorded, 'utf-8');
 
 const slug = buildRecordingBaseSlug(recorded, slugOpts);
 const finalBase = `${slug}_${timestamp}`;

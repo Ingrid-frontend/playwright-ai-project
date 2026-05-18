@@ -16,23 +16,40 @@
     --bg4: #1c2230;
     --border: rgba(255,255,255,0.07);
     --border2: rgba(255,255,255,0.12);
-    --text: #e8edf5;
-    --muted: #6b7a99;
-    --dim: #3d4a63;
-    --green: #00d97e;
-    --green2: #00b569;
-    --teal: #00c4b4;
-    --amber: #f5a623;
-    --red: #ff4d6a;
-    --blue: #4d9fff;
-    --purple: #a78bfa;
+    --text: #eef2f8;
+    --text-secondary: #a8b6cc;
+    --text-tertiary: #8899b2;
+    --muted: var(--text-secondary);
+    --dim: var(--text-tertiary);
+    --green: #2ee89a;
+    --green2: #00c978;
+    --teal: #3dd9cc;
+    --amber: #ffbe55;
+    --red: #ff6b84;
+    --blue: #6eb3ff;
+    --purple: #b89afc;
     --font-mono: 'JetBrains Mono', monospace;
     --font-head: 'Syne', sans-serif;
     --radius: 10px;
     --radius-lg: 14px;
+    --fs-2xs: 11px;
+    --fs-xs: 12px;
+    --fs-sm: 13px;
+    --fs-base: 14px;
+    --fs-md: 15px;
+    --fs-lg: 20px;
+    --fs-xl: 26px;
+    --fs-display: 36px;
   }
 
-  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font-mono); }
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: var(--fs-sm);
+    line-height: 1.5;
+  }
 
   /* Layout */
   .app { display: grid; grid-template-rows: 56px 1fr; height: 100vh; }
@@ -43,29 +60,24 @@
     padding: 0 24px; border-bottom: 1px solid var(--border);
     background: var(--bg2);
   }
-  .logo { display: flex; align-items: center; gap: 10px; font-family: var(--font-head); font-size: 17px; font-weight: 700; }
+  .logo { display: flex; align-items: center; gap: 10px; font-family: var(--font-head); font-size: var(--fs-lg); font-weight: 700; }
   .logo-icon { width: 28px; height: 28px; background: var(--green); border-radius: 6px; display: flex; align-items: center; justify-content: center; }
   .logo-icon svg { width: 16px; height: 16px; fill: #000; }
-  .header-meta { display: flex; align-items: center; gap: 16px; font-size: 11px; color: var(--muted); }
+  .header-meta { display: flex; align-items: center; gap: 16px; font-size: var(--fs-sm); color: var(--muted); }
   .ws-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--dim); display: inline-block; transition: background .3s; }
   .ws-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
 
   /* Main grid */
-  .main { display: grid; grid-template-columns: 280px 1fr 340px; overflow: hidden; min-height: 0; }
+  .main {
+    display: grid;
+    grid-template-columns: 280px minmax(0, 1fr) 340px;
+    grid-template-rows: minmax(0, 1fr);
+    overflow: hidden;
+    min-height: 0;
+  }
 
   /* Sidebar：整块一列可滚动，避免顶部区块撑出视口后无法下拉 */
   .sidebar { border-right: 1px solid var(--border); background: var(--bg2); display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
-  .sidebar-tabs {
-    display: flex; flex-shrink: 0; border-bottom: 1px solid var(--border); background: var(--bg3);
-  }
-  .sidebar-tab {
-    flex: 1; padding: 11px 8px; border: none; border-bottom: 2px solid transparent;
-    background: transparent; color: var(--muted); font-family: var(--font-mono);
-    font-size: 10px; letter-spacing: .04em; cursor: pointer; transition: all .2s;
-  }
-  .sidebar-tab:hover { color: var(--text); background: var(--bg2); }
-  .sidebar-tab.active { color: var(--green); border-bottom-color: var(--green); background: var(--bg2); }
-  .sidebar-tab[data-tab="repo"].active { color: var(--blue); border-bottom-color: var(--blue); }
   .env-chip.on { border-color: rgba(0,196,180,.45); color: var(--teal); background: rgba(0,196,180,.08); }
   .env-chip.missing-storage { opacity: .85; border-style: dashed; }
   .sidebar-panel { display: none; flex: 1; flex-direction: column; min-height: 0; overflow: hidden; }
@@ -84,27 +96,29 @@
   .accordion-trigger {
     width: 100%; display: flex; align-items: center; justify-content: space-between;
     padding: 12px 16px; background: transparent; border: none; color: var(--muted);
-    font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em;
+    font-family: var(--font-mono); font-size: var(--fs-xs); letter-spacing: .12em;
     text-transform: uppercase; cursor: pointer; text-align: left;
   }
   .accordion-trigger:hover { color: var(--text); background: var(--bg3); }
-  .accordion-trigger .acc-chevron { transition: transform .2s; font-size: 12px; }
+  .accordion-trigger .acc-chevron { transition: transform .2s; font-size: var(--fs-base); }
   .sidebar-accordion.open .accordion-trigger .acc-chevron { transform: rotate(90deg); }
   .accordion-body { display: none; padding: 0 16px 16px; }
   .sidebar-accordion.open .accordion-body { display: block; }
   .api-key-summary {
-    font-size: 10px; padding: 6px 8px; border-radius: 6px; border: 1px dashed var(--border);
+    font-size: var(--fs-xs); padding: 6px 8px; border-radius: 6px; border: 1px dashed var(--border);
     color: var(--muted); cursor: pointer; margin-bottom: 6px; transition: all .15s;
   }
   .api-key-summary:hover { border-color: var(--border2); color: var(--text); }
   .api-key-block.collapsed { display: none; }
   .api-key-block.expanded { display: block; }
-  .api-key-details { font-size: 9px; color: var(--dim); margin-top: 8px; }
+  .api-key-details { font-size: var(--fs-xs); color: var(--text-tertiary); margin-top: 8px; }
   .api-key-details summary { cursor: pointer; color: var(--muted); margin-bottom: 4px; }
-  .api-key-status-line { font-size: 10px; line-height: 1.5; color: var(--teal); margin: 8px 0 0; }
-  .sidebar-label { font-size: 10px; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; margin-bottom: 12px; }
-  .sidebar-hint { font-size: 9px; line-height: 1.45; color: var(--dim); margin-bottom: 8px; }
-  .api-key-block .api-key-label { font-size: 10px; color: var(--muted); margin-bottom: 4px; }
+  .api-key-status-line { font-size: var(--fs-xs); line-height: 1.5; color: var(--teal); margin: 8px 0 0; }
+  .sidebar-label { font-size: var(--fs-xs); letter-spacing: .12em; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 12px; font-weight: 500; }
+  .sidebar-hint { font-size: var(--fs-xs); line-height: 1.55; color: var(--text-tertiary); margin-bottom: 8px; }
+  .sidebar-hint code { color: var(--text-secondary); }
+  .studio-hidden { display: none !important; }
+  .api-key-block .api-key-label { font-size: var(--fs-xs); color: var(--muted); margin-bottom: 4px; }
   .api-key-block .url-input { width: 100%; }
   .api-key-block.active .api-key-label { color: var(--purple); }
   .api-key-block.active .url-input { border-color: rgba(167,139,250,.45); }
@@ -115,22 +129,34 @@
   .url-wrap { display: flex; gap: 6px; }
   .url-input {
     flex: 1; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius);
-    color: var(--text); font-family: var(--font-mono); font-size: 11px; padding: 7px 10px; outline: none;
+    color: var(--text); font-family: var(--font-mono); font-size: var(--fs-sm); padding: 9px 12px; outline: none;
     transition: border-color .2s;
   }
   .url-input:focus { border-color: var(--green); }
+  select.url-input {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    padding-right: 36px;
+    cursor: pointer;
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 12px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  }
+  .pipeline .step-action-panel select.url-input { background-color: var(--bg2); }
 
   /* Buttons */
   .btn {
     display: flex; align-items: center; justify-content: center; gap: 7px;
-    padding: 8px 14px; border-radius: var(--radius); border: 1px solid var(--border);
+    padding: 10px 16px; border-radius: var(--radius); border: 1px solid var(--border);
     background: var(--bg3); color: var(--text); font-family: var(--font-mono);
-    font-size: 12px; cursor: pointer; transition: all .15s; white-space: nowrap;
+    font-size: var(--fs-base); cursor: pointer; transition: all .15s; white-space: nowrap;
   }
   .btn:hover { background: var(--bg4); border-color: var(--border2); }
   .btn:active { transform: scale(0.97); }
   .btn:disabled { opacity: .35; cursor: not-allowed; transform: none; }
-  .btn-icon { width: 14px; height: 14px; flex-shrink: 0; }
+  .btn-icon { width: 16px; height: 16px; flex-shrink: 0; }
 
   .btn-record { border-color: rgba(255,77,106,.4); color: var(--red); }
   .btn-record:hover { background: rgba(255,77,106,.08); border-color: rgba(255,77,106,.6); }
@@ -168,28 +194,76 @@
   .step-item.active { background: var(--bg3); border-color: var(--border); }
   .step-item.done { border-color: rgba(0,217,126,.2); }
   .step-bullet {
-    width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--dim);
+    width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid var(--dim);
     display: flex; align-items: center; justify-content: center;
-    font-size: 10px; color: var(--muted); flex-shrink: 0; transition: all .3s;
+    font-size: var(--fs-xs); color: var(--muted); flex-shrink: 0; transition: all .3s;
   }
   .step-item.active .step-bullet { border-color: var(--amber); color: var(--amber); }
   .step-item.done .step-bullet { border-color: var(--green); background: rgba(0,217,126,.15); color: var(--green); }
   .step-item.running .step-bullet { border-color: var(--teal); color: var(--teal); animation: spin .8s linear infinite; }
   .step-info { flex: 1; min-width: 0; }
-  .step-name { font-size: 12px; font-weight: 500; margin-bottom: 2px; }
-  .step-sub { font-size: 10px; color: var(--muted); line-height: 1.4; }
+  .step-name { font-size: var(--fs-base); font-weight: 500; margin-bottom: 2px; }
+  .step-sub { font-size: var(--fs-xs); color: var(--text-tertiary); line-height: 1.45; }
+  .step-branch-row {
+    display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap;
+  }
+  .step-branch-chip {
+    flex: 1; min-width: 0; padding: 6px 8px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--bg2); color: var(--text-secondary);
+    font-family: var(--font-mono); font-size: var(--fs-xs); cursor: pointer; transition: all .15s;
+  }
+  .step-branch-chip:hover { border-color: var(--border2); color: var(--text); }
+  .step-branch-chip.active[data-mode="ai"] {
+    border-color: rgba(167,139,250,.5); color: var(--purple); background: rgba(167,139,250,.08);
+  }
+  .step-branch-chip.active[data-mode="repo"] {
+    border-color: rgba(77,159,255,.5); color: var(--blue); background: rgba(77,159,255,.08);
+  }
+  .pipeline .step-action-panel {
+    display: none; margin: 0 0 12px; padding: 12px; border-radius: var(--radius);
+    border: 1px solid var(--border); background: var(--bg3);
+  }
+  .pipeline .step-action-panel.active { display: block; }
+  .pipeline .step-action-panel .btn-full { margin-bottom: 6px; }
+  .pipeline .step-action-panel .btn-full:last-child { margin-bottom: 0; }
+  .pipeline .step-action-panel .sidebar-accordion {
+    border-bottom: none; margin-bottom: 10px;
+    border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+  }
+  .pipeline .step-action-panel .accordion-trigger { padding: 10px 12px; }
+  .pipeline .step-action-panel .accordion-body { padding: 0 12px 12px; }
 
+  .editor-run-bar {
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+    padding: 10px 16px;
+  }
+  .editor-run-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+  .editor-run-row .btn-run { flex-shrink: 0; }
+  .editor-run-status {
+    font-size: var(--fs-xs);
+    color: var(--text-tertiary);
+    line-height: 1.4;
+  }
+  .editor-run-status.running { color: var(--amber); }
+  .editor-run-status.done { color: var(--green); }
   @keyframes spin { to { transform: rotate(360deg); } }
 
   /* Center editor area */
-  .center { display: flex; flex-direction: column; overflow: hidden; }
+  .center { display: flex; flex-direction: column; overflow: hidden; min-height: 0; min-width: 0; }
 
   .tab-bar {
     display: flex; border-bottom: 1px solid var(--border);
     background: var(--bg2); padding: 0 16px; gap: 0;
   }
   .tab {
-    padding: 12px 16px; font-size: 11px; color: var(--muted);
+    padding: 12px 16px; font-size: var(--fs-sm); color: var(--text-secondary);
     border-bottom: 2px solid transparent; cursor: pointer; transition: all .2s;
     display: flex; align-items: center; gap: 6px;
   }
@@ -197,52 +271,64 @@
   .tab.active { color: var(--green); border-bottom-color: var(--green); }
   .tab-badge {
     background: var(--bg4); border-radius: 99px; padding: 1px 6px;
-    font-size: 10px; color: var(--muted);
+    font-size: var(--fs-xs); color: var(--text-tertiary);
   }
   .tab.active .tab-badge { background: rgba(0,217,126,.15); color: var(--green); }
   .tab-badge.demo { background: rgba(245,166,35,.15); color: var(--amber); }
 
-  .editor-wrap { flex: 1; overflow: hidden; position: relative; }
-  .editor-pane { display: none; height: 100%; flex-direction: column; }
+  .editor-wrap {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .editor-pane { display: none; flex: 1; min-height: 0; flex-direction: column; }
   .editor-pane.active { display: flex; }
 
   .code-editor {
     flex: 1; background: transparent; border: none; outline: none;
-    color: var(--text); font-family: var(--font-mono); font-size: 12px;
+    color: var(--text); font-family: var(--font-mono); font-size: var(--fs-base);
     line-height: 1.7; padding: 20px; resize: none; overflow-y: auto;
     tab-size: 2;
   }
-  .code-editor::placeholder { color: var(--dim); }
+  .code-editor::placeholder { color: var(--text-tertiary); opacity: 0.95; }
 
   .editor-toolbar {
     display: flex; align-items: center; justify-content: space-between;
     padding: 6px 16px; border-top: 1px solid var(--border);
-    background: var(--bg2); font-size: 10px; color: var(--muted);
+    background: var(--bg2); font-size: var(--fs-xs); color: var(--text-secondary);
   }
+  .editor-meta { color: var(--text-tertiary); }
   .editor-actions { display: flex; gap: 6px; }
 
   /* Right panel - log/report */
-  .right-panel { border-left: 1px solid var(--border); background: var(--bg2); display: flex; flex-direction: column; overflow: hidden; }
+  .right-panel {
+    border-left: 1px solid var(--border); background: var(--bg2);
+    display: flex; flex-direction: column; overflow: hidden; min-height: 0; min-width: 0;
+  }
   .panel-head {
     padding: 12px 16px; border-bottom: 1px solid var(--border);
     display: flex; align-items: center; justify-content: space-between;
-    font-size: 11px; font-weight: 500;
+    font-size: var(--fs-sm); font-weight: 500; color: var(--text);
   }
+  .panel-head-title { color: var(--text-secondary); }
   .panel-tabs { display: flex; gap: 0; }
   .ptab {
-    padding: 4px 10px; font-size: 10px; border-radius: var(--radius); cursor: pointer;
+    padding: 4px 10px; font-size: var(--fs-xs); border-radius: var(--radius); cursor: pointer;
     color: var(--muted); transition: all .2s;
   }
   .ptab.active { background: var(--bg3); color: var(--text); }
 
-  .log-stream { flex: 1; overflow-y: auto; padding: 12px 16px; font-size: 11px; line-height: 1.8; }
+  .log-stream { flex: 1; overflow-y: auto; padding: 12px 16px; font-size: var(--fs-sm); line-height: 1.8; }
   .log-line { display: flex; gap: 8px; margin-bottom: 1px; }
-  .log-time { color: var(--dim); flex-shrink: 0; }
+  .log-time { color: var(--text-tertiary); flex-shrink: 0; }
   .log-ok { color: var(--green); }
   .log-err { color: var(--red); }
   .log-info { color: var(--teal); }
   .log-warn { color: var(--amber); }
-  .log-dim { color: var(--muted); }
+  .log-dim { color: var(--text-secondary); }
 
   /* Report panel */
   .report-body { flex: 1; overflow-y: auto; padding: 16px; display: none; }
@@ -253,23 +339,23 @@
     background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius);
     padding: 12px;
   }
-  .stat-val { font-size: 22px; font-weight: 600; font-family: var(--font-head); margin-bottom: 2px; }
-  .stat-lbl { font-size: 10px; color: var(--muted); }
+  .stat-val { font-size: var(--fs-xl); font-weight: 600; font-family: var(--font-head); margin-bottom: 2px; }
+  .stat-lbl { font-size: var(--fs-xs); color: var(--muted); }
   .stat-ok { color: var(--green); }
   .stat-fail { color: var(--red); }
   .stat-warn { color: var(--amber); }
   .stat-info { color: var(--blue); }
 
   .report-section { margin-bottom: 16px; }
-  .report-title { font-size: 10px; letter-spacing: .1em; color: var(--muted); text-transform: uppercase; margin-bottom: 8px; }
+  .report-title { font-size: var(--fs-xs); letter-spacing: .1em; color: var(--muted); text-transform: uppercase; margin-bottom: 8px; }
   .report-row {
     display: flex; align-items: center; justify-content: space-between;
     padding: 7px 10px; background: var(--bg3); border-radius: 6px; margin-bottom: 4px;
-    font-size: 11px;
+    font-size: var(--fs-sm);
   }
   .report-row-name { color: var(--muted); }
   .badge {
-    font-size: 10px; padding: 2px 8px; border-radius: 99px;
+    font-size: var(--fs-xs); padding: 2px 8px; border-radius: 99px;
     font-family: var(--font-mono);
   }
   .badge-ok { background: rgba(0,217,126,.12); color: var(--green); }
@@ -291,9 +377,9 @@
   .provider-row { display: flex; flex-wrap: wrap; gap: 6px; }
   .opt-chip {
     display: flex; align-items: center; gap: 5px;
-    font-size: 10px; padding: 4px 8px; border-radius: 6px;
+    font-size: var(--fs-xs); padding: 4px 8px; border-radius: 6px;
     border: 1px solid var(--border); background: var(--bg3); cursor: pointer;
-    color: var(--muted); transition: all .2s; user-select: none;
+    color: var(--text-secondary); transition: all .2s; user-select: none;
   }
   .opt-chip.on { border-color: rgba(167,139,250,.4); color: var(--purple); background: rgba(167,139,250,.08); }
   .opt-chip input { display: none; }
@@ -302,7 +388,7 @@
   .toast {
     position: fixed; bottom: 20px; right: 20px; z-index: 999;
     background: var(--bg4); border: 1px solid var(--border2);
-    border-radius: var(--radius); padding: 10px 16px; font-size: 12px;
+    border-radius: var(--radius); padding: 10px 16px; font-size: var(--fs-base);
     opacity: 0; transform: translateY(10px); transition: all .25s;
     pointer-events: none;
   }
@@ -312,9 +398,9 @@
 
   .empty-hint {
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    height: 100%; color: var(--dim); font-size: 12px; gap: 8px; text-align: center;
+    height: 100%; color: var(--text-secondary); font-size: var(--fs-base); gap: 8px; text-align: center;
   }
-  .empty-icon { font-size: 32px; margin-bottom: 4px; }
+  .empty-icon { font-size: var(--fs-display); margin-bottom: 4px; }
 
   .raw-empty-overlay {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -325,9 +411,9 @@
   .raw-empty-overlay .btn { margin-top: 4px; }
 
   @media (max-width: 1100px) {
-    .main { grid-template-columns: 260px 1fr; grid-template-rows: 1fr minmax(200px, 32vh); }
-    .right-panel { grid-column: 1 / -1; border-left: none; border-top: 1px solid var(--border); }
-    .sidebar { max-height: 42vh; }
+    .main { grid-template-columns: 260px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(200px, 32vh); }
+    .right-panel { grid-column: 1 / -1; border-left: none; border-top: 1px solid var(--border); min-height: 0; }
+    .sidebar { min-height: 0; }
   }
   @media (max-width: 720px) {
     .main { grid-template-columns: 1fr; grid-template-rows: auto 1fr minmax(180px, 28vh); }
@@ -348,7 +434,7 @@
     </div>
     <div class="header-meta">
       <span><span class="ws-dot" id="wsDot"></span> <span id="wsStatus">未连接</span></span>
-      <span id="headerEnv" style="padding:2px 8px;border-radius:6px;background:var(--bg3);color:var(--teal);font-size:10px" title="当前 PLAYWRIGHT_ENV">env: —</span>
+      <span id="headerEnv" style="padding:2px 8px;border-radius:6px;background:var(--bg3);color:var(--teal);font-size:var(--fs-xs)" title="当前环境">env: —</span>
       <span id="headerTime">--</span>
     </div>
   </header>
@@ -357,182 +443,182 @@
 
     <!-- Sidebar -->
     <aside class="sidebar">
-      <div class="sidebar-tabs" role="tablist">
-        <button type="button" class="sidebar-tab active" role="tab" aria-selected="true" data-tab="manual" id="sidebarTabManual" onclick="switchSidebarTab('manual', this)">手动录制</button>
-        <button type="button" class="sidebar-tab" role="tab" aria-selected="false" data-tab="repo" id="sidebarTabRepo" onclick="switchSidebarTab('repo', this)">项目流水线</button>
-      </div>
-
-      <div class="sidebar-panel active" id="sidebarPanelManual" role="tabpanel" aria-labelledby="sidebarTabManual">
       <div class="sidebar-scroll">
       <div class="sidebar-section">
         <div class="sidebar-label">测试环境</div>
-        <p class="sidebar-hint" style="margin-bottom:8px">与主仓库 <code>PLAYWRIGHT_ENV</code> 一致。<strong>模式 3（手动登录）</strong>：开始录制时若有登录态会自动加载；在浏览器完成登录后<strong>停止录制</strong>才写入 <code>storage/loginState/*.json</code>。换账号请先「清除登录态」。</p>
         <div class="provider-row" id="envChipRow"></div>
-        <p class="sidebar-hint" id="envStorageHint" style="margin-top:6px;font-size:9px;color:var(--dim)"></p>
-      </div>
-
-      <div class="sidebar-section">
-        <div class="sidebar-label">登录态</div>
-        <p class="sidebar-hint" style="margin-bottom:8px">无需 <code>accounts.json</code> 也可录制：浏览器手动登录后<strong>停止录制</strong>即保存。有配置文件时可用自动登录。换账号请先「清除登录态」。</p>
-        <select class="url-input" id="accountProfileSelect" style="width:100%;margin-bottom:8px" disabled>
+        <p class="sidebar-hint" style="margin:10px 0 6px;color:var(--text-secondary)">目标 URL</p>
+        <div class="url-wrap">
+          <input class="url-input" id="targetUrl" placeholder="随环境自动填入，可手动修改" value="">
+        </div>
+        <p class="sidebar-hint" style="margin:14px 0 6px;color:var(--text-secondary)">登录态</p>
+        <p class="sidebar-hint" style="margin-bottom:8px">开录自动加载；浏览器登录后<strong>停止录制</strong>即保存。换账号请先清除。</p>
+        <select class="url-input studio-hidden" id="accountProfileSelect" style="width:100%;margin-bottom:8px" disabled hidden aria-hidden="true">
           <option value="default">default</option>
         </select>
-        <button type="button" class="btn btn-full" id="btnClearStorage" style="margin-bottom:6px;background:var(--bg3);border:1px solid var(--border);color:var(--amber)" disabled onclick="clearAccountStorage()">清除当前登录态</button>
-        <button type="button" class="btn btn-full" id="btnAccountLogin" style="margin-bottom:6px;background:var(--bg3);border:1px solid var(--border);color:var(--text)" disabled onclick="runAccountLogin()">用配置账号登录</button>
-        <p class="sidebar-hint" id="accountStorageHint" style="font-size:9px;color:var(--dim)"></p>
+        <button type="button" class="btn btn-full" id="btnClearStorage" style="background:var(--bg3);border:1px solid var(--border);color:var(--amber)" disabled onclick="clearAccountStorage()">清除登录态</button>
+        <button type="button" class="btn btn-full studio-hidden" id="btnAccountLogin" hidden aria-hidden="true" disabled>用配置账号登录</button>
       </div>
 
-      <div class="sidebar-section">
-        <div class="sidebar-label">目标 URL</div>
-        <div class="url-wrap">
-          <input class="url-input" id="targetUrl" placeholder="选择环境后自动填入 baseURL，也可手动修改" value="">
+
+
+      <div class="sidebar-accordion" id="accordionRun">
+        <button type="button" class="accordion-trigger" aria-expanded="false">
+          执行设置 <span class="acc-chevron">›</span>
+        </button>
+        <div class="accordion-body">
+          <p class="sidebar-hint">四选一运行模式；「执行用例」「执行脚本」共用。调试/UI 需在本机窗口内操作。</p>
+          <div class="opt-grid provider-row run-mode-row">
+            <label class="opt-chip on" title="弹出浏览器窗口，脚本自动执行"><input type="radio" name="pwRunMode" value="headed" checked> 有界面</label>
+            <label class="opt-chip" title="Playwright Inspector 单步调试"><input type="radio" name="pwRunMode" value="debug"> 调试</label>
+            <label class="opt-chip" title="Playwright Test UI 可视化面板"><input type="radio" name="pwRunMode" value="ui"> UI 模式</label>
+            <label class="opt-chip" title="无头运行并输出 JSON 报告"><input type="radio" name="pwRunMode" value="headless"> 无头</label>
+          </div>
         </div>
       </div>
 
-      <div class="sidebar-section">
-        <div class="sidebar-label">保存命名（可选）</div>
-        <p class="sidebar-hint" style="margin-bottom:6px">与 <code>npm run record</code> 的 <code>--name</code> / <code>--description</code> 一致；留空则按录制脚本推断。</p>
-        <input type="text" class="url-input" id="recordingFeatureName" style="margin-bottom:6px;width:100%" placeholder="功能名，如：我的审批" spellcheck="false">
-        <input type="text" class="url-input" id="recordingBehaviorName" style="margin-bottom:8px;width:100%" placeholder="行为，如：click（普通点击可留空）" spellcheck="false">
-      </div>
-
-      <div class="sidebar-section">
-        <div class="sidebar-label">操作流程</div>
-        <button class="btn btn-record btn-full" id="btnRecord" onclick="startRecord()">
-          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
-          开始录制
-        </button>
-        <button class="btn btn-optimize btn-full" id="btnOptimize" onclick="handleOptimizeClick()" disabled data-default-label="AI 优化脚本">
-          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2 7h7l-5.5 4 2 7L12 16l-5.5 4 2-7L3 9h7z"/></svg>
-          <span class="btn-label">AI 优化脚本</span>
-        </button>
-        <button class="btn btn-run btn-full" id="btnRun" onclick="handleRunClick()" disabled data-default-label="执行测试">
-          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 19,12 5,21" fill="currentColor"/></svg>
-          <span class="btn-label">执行测试</span>
-        </button>
-        <button class="btn btn-report btn-full" id="btnReport" onclick="generateReport()" disabled>
-          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>
-          生成报告
-        </button>
-        <p class="sidebar-hint" style="margin-top:10px">保存到主仓库、运行 pipeline 与截图对比，请切换到「<button type="button" style="background:none;border:none;padding:0;color:var(--blue);cursor:pointer;font:inherit;text-decoration:underline" onclick="switchSidebarTabByName('repo')">项目流水线</button>」。</p>
+      <div class="sidebar-section" id="repoSpecPickerSection">
+        <div class="sidebar-label">测试用例</div>
+        <p class="sidebar-hint" style="margin-bottom:6px">浏览历史用例；「保存到项目」时写入所选路径（不含草稿用例）。</p>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:8px">
+          <span class="sidebar-hint" style="margin:0">正式用例</span>
+          <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px;flex-shrink:0" onclick="refreshRepoOptimizedList()">刷新</button>
+        </div>
+        <select class="url-input" id="repoOptimizedPick" style="margin-bottom:0;width:100%;color:var(--text)"></select>
       </div>
 
       <div class="pipeline">
-        <div class="sidebar-label">执行管线</div>
-        <div class="step-item" id="step1" data-step="1" role="button" tabindex="0">
+        <div class="sidebar-label">执行流程</div>
+        <div class="step-item active" id="step1" data-step="1" role="button" tabindex="0">
           <div class="step-bullet">1</div>
           <div class="step-info">
-            <div class="step-name">录制脚本</div>
-            <div class="step-sub" id="stepSub1">playwright codegen 录制用户操作</div>
+            <div class="step-name">开始录制</div>
+            <div class="step-sub" id="stepSub1">在浏览器中录制操作</div>
+          </div>
+        </div>
+
+        <div class="step-action-panel active" id="step1Panel" data-step-panel="1">
+          <p class="sidebar-hint" style="margin-bottom:8px">在弹出窗口中操作，停止后写入「录制脚本」。</p>
+          <button type="button" class="btn btn-record btn-full" id="btnRecord" onclick="event.stopPropagation(); startRecord()">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
+            开始录制
+          </button>
+          <div class="sidebar-accordion" id="accordionRecordingNames">
+            <button type="button" class="accordion-trigger" aria-expanded="false">
+              保存命名（可选） <span class="acc-chevron">›</span>
+            </button>
+            <div class="accordion-body">
+              <p class="sidebar-hint" style="margin-bottom:6px">留空则按录制内容自动命名。</p>
+              <input type="text" class="url-input" id="recordingFeatureName" style="margin-bottom:6px;width:100%" placeholder="功能名，如：我的审批" spellcheck="false">
+              <input type="text" class="url-input" id="recordingBehaviorName" style="width:100%" placeholder="行为，如：click（普通点击可留空）" spellcheck="false">
+            </div>
           </div>
         </div>
         <div class="step-item" id="step2" data-step="2" role="button" tabindex="0">
           <div class="step-bullet">2</div>
           <div class="step-info">
-            <div class="step-name">AI 优化</div>
+            <div class="step-name">优化 / 入库</div>
             <div class="step-sub" id="stepSub2">Claude 或 DeepSeek 重构选择器 / 断言 / 结构</div>
+            <div class="step-branch-row" role="group" aria-label="第二步方式">
+              <button type="button" class="step-branch-chip active" data-mode="ai" id="step2ModeAi" onclick="event.stopPropagation(); setStep2Mode('ai', this)">AI 优化脚本</button>
+              <button type="button" class="step-branch-chip" data-mode="repo" id="step2ModeRepo" onclick="event.stopPropagation(); setStep2Mode('repo', this)">保存并生成用例</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="step-action-panel" id="step2PanelAi" data-mode="ai">
+          <p class="sidebar-hint" style="margin-bottom:8px">对当前录制脚本做 AI 重构，请先配置模型与优化选项。</p>
+          <div class="sidebar-accordion" id="accordionAi">
+            <button type="button" class="accordion-trigger" aria-expanded="false">
+              AI 与优化 <span class="acc-chevron">›</span>
+            </button>
+            <div class="accordion-body">
+              <p class="sidebar-hint">选择模型并填写对应密钥；留空则使用服务器环境变量。</p>
+              <div class="provider-row" style="margin-bottom:10px">
+                <label class="opt-chip on"><input type="radio" name="aiProvider" id="providerClaude" value="claude" checked> Claude</label>
+                <label class="opt-chip"><input type="radio" name="aiProvider" id="providerDeepseek" value="deepseek"> DeepSeek</label>
+              </div>
+              <div class="api-key-summary" id="apiKeySummaryAnthropic" data-provider="claude" style="display:none"></div>
+              <div class="api-key-block expanded active" id="apiKeyBlockAnthropic" data-provider="claude">
+                <div class="api-key-label">Anthropic（Claude）</div>
+                <input type="password" class="url-input" id="apiKeyAnthropic" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
+              </div>
+              <div class="api-key-summary" id="apiKeySummaryDeepseek" data-provider="deepseek"></div>
+              <div class="api-key-block collapsed" id="apiKeyBlockDeepseek" data-provider="deepseek">
+                <div class="api-key-label">DeepSeek</div>
+                <input type="password" class="url-input" id="apiKeyDeepseek" placeholder="sk-..." autocomplete="off" spellcheck="false">
+              </div>
+              <p id="apiKeyStatus" class="api-key-status-line">Claude · 使用环境变量或界面密钥</p>
+              <div class="key-tools">
+                <label class="opt-chip"><input type="checkbox" id="showApiKeys">显示密钥</label>
+                <label class="opt-chip"><input type="checkbox" id="persistEncryptedApiKeys">加密保存到浏览器</label>
+              </div>
+              <details class="api-key-details">
+                <summary>密钥与保存说明</summary>
+                仅当前选中的模型会使用对应密钥；两个都填时不会混用。加密保存使用 AES-GCM 写入 localStorage，解密密钥在 sessionStorage，关闭浏览器后需重新输入。
+              </details>
+              <div class="sidebar-label" style="margin-top:14px;margin-bottom:8px">优化选项</div>
+              <div class="opt-grid">
+                <label class="opt-chip on"><input type="checkbox" id="optSelector" checked>选择器优化</label>
+                <label class="opt-chip on"><input type="checkbox" id="optAssert" checked>补充断言</label>
+                <label class="opt-chip on"><input type="checkbox" id="optWait" checked>移除硬等待</label>
+                <label class="opt-chip on"><input type="checkbox" id="optEnv" checked>环境变量</label>
+                <label class="opt-chip"><input type="checkbox" id="optPom">Page Object</label>
+                <label class="opt-chip"><input type="checkbox" id="optComment">中文注释</label>
+              </div>
+            </div>
+          </div>
+          <button type="button" class="btn btn-optimize btn-full" id="btnOptimize" onclick="event.stopPropagation(); handleOptimizeClick()" disabled data-default-label="AI 优化脚本">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2 7h7l-5.5 4 2 7L12 16l-5.5 4 2-7L3 9h7z"/></svg>
+            <span class="btn-label">AI 优化脚本</span>
+          </button>
+        </div>
+
+        <div class="step-action-panel" id="step2PanelRepo" data-mode="repo">
+          <p class="sidebar-hint" style="margin-bottom:8px">可直接生成用例（草稿写入项目）；调试完成后再保存到项目。</p>
+          <button type="button" class="btn btn-full" id="btnRepoSave" onclick="commitRepoArtifacts()" style="border-color:rgba(77,159,255,.35);color:var(--blue);margin-bottom:8px">保存到项目</button>
+          <div style="display:flex;gap:6px">
+            <button type="button" class="btn" style="flex:1" id="btnRepoPipeline" onclick="runRepoPipelineClick()">生成用例</button>
+            <button type="button" class="btn" style="flex:1" id="btnRepoPipelineCancel" onclick="send('cancel:repo-pipeline')">取消生成</button>
           </div>
         </div>
         <div class="step-item" id="step3" data-step="3" role="button" tabindex="0">
           <div class="step-bullet">3</div>
           <div class="step-info">
-            <div class="step-name">执行测试</div>
-            <div class="step-sub" id="stepSub3">playwright test 运行并采集结果</div>
+            <div class="step-name">执行用例（含截图）</div>
+            <div class="step-sub" id="stepSub3">执行用例并自动截取步骤图</div>
           </div>
         </div>
+
+        <div class="step-action-panel" id="step3PanelRepo">
+          <p class="sidebar-hint" style="margin-bottom:8px">运行模式见上方「执行设置」。</p>
+          <button type="button" class="btn btn-run btn-full" id="btnRepoTest" onclick="event.stopPropagation(); handleRepoTestClick()" data-default-label="执行（含截图）">执行（含截图）</button>
+          <p class="sidebar-hint" style="margin-top:10px;margin-bottom:8px">需已将录制与优化脚本保存到项目且与编辑器一致后，方可生成对比报告。</p>
+          <button type="button" class="btn btn-full" id="btnRepoCompare" onclick="openCompareReportClick()" style="border-color:rgba(77,159,255,.35);color:var(--blue)">生成并打开截图对比报告</button>
+          <button type="button" class="btn btn-full" id="btnRepoCompareCancel" style="font-size:var(--fs-sm);padding:6px 10px;margin-top:6px" disabled onclick="send('cancel:repo-compare')">取消对比报告生成</button>
+        </div>
+
+
         <div class="step-item" id="step4" data-step="4" role="button" tabindex="0">
           <div class="step-bullet">4</div>
           <div class="step-info">
             <div class="step-name">生成报告</div>
-            <div class="step-sub" id="stepSub4">HTML 报告 + 下载 spec 文件</div>
+            <div class="step-sub" id="stepSub4">查看结果并下载脚本</div>
           </div>
         </div>
-      </div>
 
-        <div class="sidebar-accordion open" id="accordionAi">
-          <button type="button" class="accordion-trigger" aria-expanded="true">
-            AI 与优化 <span class="acc-chevron">›</span>
+        <div class="step-action-panel" id="step4Panel" data-step-panel="4">
+          <p class="sidebar-hint" style="margin-bottom:8px">生成报告后可在右侧「报告」面板查看。</p>
+          <button type="button" class="btn btn-report btn-full" id="btnReport" onclick="event.stopPropagation(); generateReport()" disabled>
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>
+            生成报告
           </button>
-          <div class="accordion-body">
-            <p class="sidebar-hint">选择模型并填写对应密钥；留空则使用服务器环境变量。</p>
-            <div class="provider-row" style="margin-bottom:10px">
-              <label class="opt-chip on"><input type="radio" name="aiProvider" id="providerClaude" value="claude" checked> Claude</label>
-              <label class="opt-chip"><input type="radio" name="aiProvider" id="providerDeepseek" value="deepseek"> DeepSeek</label>
-            </div>
-            <div class="api-key-summary" id="apiKeySummaryAnthropic" data-provider="claude" style="display:none"></div>
-            <div class="api-key-block expanded active" id="apiKeyBlockAnthropic" data-provider="claude">
-              <div class="api-key-label">Anthropic（Claude）</div>
-              <input type="password" class="url-input" id="apiKeyAnthropic" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
-            </div>
-            <div class="api-key-summary" id="apiKeySummaryDeepseek" data-provider="deepseek"></div>
-            <div class="api-key-block collapsed" id="apiKeyBlockDeepseek" data-provider="deepseek">
-              <div class="api-key-label">DeepSeek</div>
-              <input type="password" class="url-input" id="apiKeyDeepseek" placeholder="sk-..." autocomplete="off" spellcheck="false">
-            </div>
-            <p id="apiKeyStatus" class="api-key-status-line">Claude · 使用环境变量或界面密钥</p>
-            <div class="key-tools">
-              <label class="opt-chip"><input type="checkbox" id="showApiKeys">显示密钥</label>
-              <label class="opt-chip"><input type="checkbox" id="persistEncryptedApiKeys">加密保存到浏览器</label>
-            </div>
-            <details class="api-key-details">
-              <summary>密钥与保存说明</summary>
-              仅当前选中的模型会使用对应密钥；两个都填时不会混用。加密保存使用 AES-GCM 写入 localStorage，解密密钥在 sessionStorage，关闭浏览器后需重新输入。
-            </details>
-            <div class="sidebar-label" style="margin-top:14px;margin-bottom:8px">优化选项</div>
-            <div class="opt-grid">
-              <label class="opt-chip on"><input type="checkbox" id="optSelector" checked>选择器优化</label>
-              <label class="opt-chip on"><input type="checkbox" id="optAssert" checked>补充断言</label>
-              <label class="opt-chip on"><input type="checkbox" id="optWait" checked>移除硬等待</label>
-              <label class="opt-chip on"><input type="checkbox" id="optEnv" checked>环境变量</label>
-              <label class="opt-chip"><input type="checkbox" id="optPom">Page Object</label>
-              <label class="opt-chip"><input type="checkbox" id="optComment">中文注释</label>
-            </div>
-          </div>
         </div>
-
-        <div class="sidebar-accordion" id="accordionRun">
-          <button type="button" class="accordion-trigger" aria-expanded="false">
-            执行设置 <span class="acc-chevron">›</span>
-          </button>
-          <div class="accordion-body">
-            <p class="sidebar-hint">四选一运行模式；调试/UI 需在本机窗口内操作。</p>
-            <div class="opt-grid provider-row run-mode-row">
-              <label class="opt-chip on" title="弹出浏览器窗口，脚本自动执行"><input type="radio" name="pwRunMode" value="headed" checked> 有界面</label>
-              <label class="opt-chip" title="Playwright Inspector 单步调试"><input type="radio" name="pwRunMode" value="debug"> 调试</label>
-              <label class="opt-chip" title="Playwright Test UI 可视化面板"><input type="radio" name="pwRunMode" value="ui"> UI 模式</label>
-              <label class="opt-chip" title="无头运行并输出 JSON 报告"><input type="radio" name="pwRunMode" value="headless"> 无头</label>
-            </div>
-          </div>
-        </div>
-      </div>
       </div>
 
-      <!-- Tab: 项目流水线（主仓库） -->
-      <div class="sidebar-panel" id="sidebarPanelRepo" role="tabpanel" aria-labelledby="sidebarTabRepo">
-      <div class="sidebar-scroll">
-      <div class="sidebar-section" id="repoBridgeSection">
-        <div class="sidebar-label">主仓库流水线</div>
-        <p class="sidebar-hint" style="margin-bottom:8px">将录制保存到 <code>tests/raw-recordings/original/</code>，运行根目录 <code>pipeline-raw-to-optimized</code>，并在项目内执行 <code>tests/optimized/*.optimized.spec.ts</code> 以生成截图。</p>
-        <div class="sidebar-hint" style="margin-bottom:6px;font-size:10px;color:var(--muted)">项目根：<span id="repoRootLabel">探测中…</span></div>
-        <input type="text" class="url-input" id="repoSaveRelative" style="margin-bottom:8px;width:100%" placeholder="录制完成后自动建议，如 tests/raw-recordings/original/20260515/我的审批_2026-05-18_12-00-00.spec.ts" spellcheck="false">
-        <button type="button" class="btn btn-full" id="btnRepoSave" onclick="saveRepoRecording()" style="margin-bottom:6px;border-color:rgba(77,159,255,.35);color:var(--blue)">保存录制到项目</button>
-        <div style="display:flex;gap:6px;margin-bottom:6px">
-          <button type="button" class="btn" style="flex:1" id="btnRepoPipeline" onclick="runRepoPipelineClick()">运行 pipeline</button>
-          <button type="button" class="btn" style="flex:1" id="btnRepoPipelineCancel" onclick="send('cancel:repo-pipeline')">取消 pipeline</button>
-        </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:8px">
-          <label class="sidebar-hint" style="margin:0">选择 optimized 用例</label>
-          <button type="button" class="btn" style="font-size:10px;padding:4px 8px;flex-shrink:0" onclick="refreshRepoOptimizedList()">刷新列表</button>
-        </div>
-        <select class="url-input" id="repoOptimizedPick" style="margin-bottom:8px;width:100%;background:var(--bg3);color:var(--text)"></select>
-        <label class="opt-chip" style="margin-bottom:8px;display:inline-flex"><input type="checkbox" id="repoTestHeaded"> 有界面执行（headed）</label>
-        <button type="button" class="btn btn-run btn-full" id="btnRepoTest" onclick="runRepoTestClick()">在项目内执行 optimized</button>
-        <p class="sidebar-hint" style="margin-top:10px;margin-bottom:8px">对比报告由仓库脚本生成；下方一键会在<strong>项目根</strong>执行 <code>npm run compare-screenshots</code>，完成后用 <code>window.open</code> <strong>新开窗口</strong>打开同源报告（图片从 <code>screenshots/</code> 加载）。若浏览器拦截弹窗，请允许本站弹出窗口或复制日志中的完整链接。</p>
-        <button type="button" class="btn btn-full" id="btnRepoCompare" onclick="openCompareReportClick()" style="margin-bottom:6px;border-color:rgba(77,159,255,.35);color:var(--blue)">生成并打开截图对比报告</button>
-        <button type="button" class="btn btn-full" style="font-size:11px;padding:6px 10px" onclick="send('cancel:repo-compare')">取消对比报告生成</button>
+
       </div>
-      </div>
-      </div>
+
     </aside>
 
     <!-- Center editor -->
@@ -549,13 +635,23 @@
         </div>
       </div>
 
+      <div class="editor-run-bar" id="editorRunBar">
+        <div class="editor-run-row">
+          <button type="button" class="btn btn-run" id="btnRun" onclick="handleRunClick()" disabled data-default-label="执行脚本">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 19,12 5,21" fill="currentColor"/></svg>
+            <span class="btn-label">执行脚本</span>
+          </button>
+          <span class="editor-run-status" id="editorRunStatus"></span>
+        </div>
+      </div>
+
       <div class="editor-wrap">
         <!-- Raw -->
         <div class="editor-pane active" id="pane-raw">
           <div class="raw-empty-overlay" id="rawEmptyOverlay">
             <div class="empty-hint">
               <div class="empty-icon">⌨</div>
-              <div>粘贴 Playwright 脚本，或点击「开始录制」</div>
+              <div>粘贴测试脚本，或点击「开始录制」</div>
               <button type="button" class="btn" onclick="pasteSampleScript()">粘贴示例脚本</button>
             </div>
           </div>
@@ -563,10 +659,10 @@
             placeholder="// 点击「开始录制」后，录制的脚本将显示在此处
 // 录制完成后可手动编辑，再点「AI 优化」进行重构"></textarea>
           <div class="editor-toolbar">
-            <span id="rawInfo" style="color:var(--dim)">等待录制...</span>
+            <span id="rawInfo" class="editor-meta">等待录制...</span>
             <div class="editor-actions">
-              <button class="btn" style="font-size:11px;padding:4px 10px" onclick="copyCode('raw')">复制</button>
-              <button class="btn" style="font-size:11px;padding:4px 10px" onclick="clearCode('raw')">清空</button>
+              <button class="btn" style="font-size:var(--fs-sm);padding:4px 10px" onclick="copyCode('raw')">复制</button>
+              <button class="btn" style="font-size:var(--fs-sm);padding:4px 10px" onclick="clearCode('raw')">清空</button>
             </div>
           </div>
         </div>
@@ -577,11 +673,11 @@
             placeholder="// AI 优化后的脚本将显示在此处
 // 优化包含：语义化选择器、expect 断言、环境变量抽取等"></textarea>
           <div class="editor-toolbar">
-            <span id="optInfo" style="color:var(--dim)">等待优化...</span>
+            <span id="optInfo" class="editor-meta">等待优化...</span>
             <div class="editor-actions">
-              <button class="btn" style="font-size:11px;padding:4px 10px" onclick="copyCode('opt')">复制</button>
-              <button class="btn" style="font-size:11px;padding:4px 10px" onclick="exportSpec()">
-                导出 .spec.ts
+              <button class="btn" style="font-size:var(--fs-sm);padding:4px 10px" onclick="copyCode('opt')">复制</button>
+              <button class="btn" style="font-size:var(--fs-sm);padding:4px 10px" onclick="exportSpec()">
+                导出脚本
               </button>
             </div>
           </div>
@@ -589,7 +685,7 @@
 
         <!-- Diff -->
         <div class="editor-pane" id="pane-diff">
-          <div style="flex:1;overflow-y:auto;padding:16px;font-size:11px;line-height:1.8" id="diffView">
+          <div style="flex:1;overflow-y:auto;padding:16px;font-size:var(--fs-sm);line-height:1.8" id="diffView">
             <div class="empty-hint">
               <div class="empty-icon">⇄</div>
               <div>先完成录制和优化，再查看 Diff</div>
@@ -602,7 +698,7 @@
     <!-- Right panel -->
     <div class="right-panel">
       <div class="panel-head">
-        <span style="color:var(--muted)">控制台</span>
+        <span class="panel-head-title">控制台</span>
         <div class="panel-tabs">
           <div class="ptab active" onclick="switchPanel('log',this)">日志</div>
           <div class="ptab" onclick="switchPanel('report',this)">报告</div>
@@ -639,7 +735,19 @@ const busyState = { optimize: false, run: false, repoPipeline: false, repoCompar
 let recordTimer = null;
 let recordSeconds = 0;
 let lastOptimizeProvider = 'claude';
-const repoState = { lastSavedRelative: '', repoRoot: '', optimizedSpecs: [] };
+const REPO_DRAFT_OPTIMIZED_SPEC = 'tests/optimized/studio-unsaved-draft.optimized.spec.ts';
+const repoState = {
+  lastSavedRelative: '',
+  suggestedRelative: '',
+  draftRelativePath: '',
+  draftOptimizedRelative: REPO_DRAFT_OPTIMIZED_SPEC,
+  lastPrimaryOptimizedRelative: '',
+  committedRawFingerprint: '',
+  committedOptFingerprint: '',
+  repoRoot: '',
+  optimizedSpecs: [],
+};
+const optimizeKeyState = { serverAnthropic: false, serverDeepseek: false };
 const envState = { current: 'stage', environments: [], repoReady: false };
 const accountState = {
   current: 'default',
@@ -652,11 +760,42 @@ const SS_PLAYWRIGHT_ENV = 'pw_studio_playwright_env';
 const SS_ACCOUNT_PROFILE = 'pw_studio_account_profile';
 
 const STEP_DEFAULTS = {
-  1: 'playwright codegen 录制用户操作',
+  1: '在浏览器中录制操作',
   2: 'Claude 或 DeepSeek 重构选择器 / 断言 / 结构',
-  3: 'playwright test 运行并采集结果',
-  4: 'HTML 报告 + 下载 spec 文件',
+  3: '执行用例并自动截取步骤图',
+  4: '查看结果并下载脚本',
 };
+function getActiveEditorTab() {
+  if (document.getElementById('pane-opt')?.classList.contains('active')) return 'opt';
+  if (document.getElementById('pane-raw')?.classList.contains('active')) return 'raw';
+  if (document.getElementById('pane-diff')?.classList.contains('active')) return 'diff';
+  return 'raw';
+}
+
+function getActiveScriptCode() {
+  const tab = getActiveEditorTab();
+  if (tab === 'opt') return document.getElementById('optCode')?.value?.trim() || '';
+  if (tab === 'raw') return document.getElementById('rawCode')?.value?.trim() || '';
+  return '';
+}
+
+function syncEditorRunHint() {
+  if (getActiveEditorTab() === 'diff') return;
+  if (busyState.run && pendingRunKind !== 'repo') return;
+  setEditorRunStatus('', '');
+}
+
+function isHeadedRunMode(mode) {
+  const m = mode || getPwRunMode();
+  return m === 'headed' || m === 'debug' || m === 'ui';
+}
+const STEP2_SUB = {
+  ai: 'Claude 或 DeepSeek 重构选择器 / 断言 / 结构',
+  repo: '生成用例或保存到项目',
+};
+let currentStep2Mode = 'ai';
+let currentPipelineStep = 1;
+let pendingRunKind = 'studio';
 
 const SAMPLE_SCRIPT = `import { test, expect } from '@playwright/test';
 
@@ -667,7 +806,7 @@ test('sample', async ({ page }) => {
 
 const LS_ENC_API_KEYS = 'pw_studio_api_keys_enc';
 const SS_WRAP_KEY_B64 = 'pw_studio_wrap_key_b64';
-const SS_SIDEBAR_TAB = 'pw_studio_sidebar_tab';
+const SS_STEP2_MODE = 'pw_studio_step2_mode';
 
 function uint8ToB64(u8) {
   let s = '';
@@ -748,6 +887,7 @@ async function tryLoadEncryptedApiKeys() {
   } catch (e) {
     console.warn('无法解密已保存的 API 密钥', e);
   }
+  updateApiKeyStatus();
 }
 
 function bindApiKeyControls() {
@@ -804,57 +944,10 @@ function updateHeaderEnvLabel() {
   if (el) el.textContent = `env: ${envState.current || '—'}`;
 }
 
-function updateEnvStorageHint(entry) {
-  const hint = document.getElementById('envStorageHint');
-  if (!hint) return;
-  if (!envState.repoReady) {
-    hint.textContent = '未检测到项目根，环境列表不可用';
-    return;
-  }
-  if (!entry) {
-    hint.textContent = '';
-    return;
-  }
-  const prof = accountState.current || 'default';
-  const storage = accountState.storageState || entry.storageState;
-  const has = accountState.storageState ? accountState.hasStorage : entry.hasStorage;
-  hint.textContent = has
-    ? `${entry.id} / ${prof} · 已找到 ${storage}`
-    : `${entry.id} / ${prof} · 未找到 ${storage}，请先登录（npm run login 或下方按钮）`;
-  hint.style.color = has ? 'var(--muted)' : 'var(--amber)';
-}
-
-function updateAccountStorageHint() {
-  const hint = document.getElementById('accountStorageHint');
-  const btnLogin = document.getElementById('btnAccountLogin');
+function syncLoginStateControls() {
   const btnClear = document.getElementById('btnClearStorage');
-  const sel = document.getElementById('accountProfileSelect');
-  if (!hint || !btnLogin || !btnClear || !sel) return;
-  const prof = accountState.profiles.find((p) => p.id === accountState.current);
-  const label = prof?.label || accountState.current;
-  const user = prof?.maskedUsername ? ` · ${prof.maskedUsername}` : '';
-  if (!envState.repoReady) {
-    hint.textContent = '未连接主仓库';
-    btnLogin.disabled = true;
-    btnClear.disabled = true;
-    sel.disabled = true;
-    return;
-  }
-  sel.disabled = busyState.accountLogin || accountState.profiles.length <= 1;
-  btnClear.disabled = busyState.accountLogin || !accountState.hasStorage;
-  btnLogin.disabled = busyState.accountLogin || !accountState.hasAccountsFile;
-  btnLogin.textContent = busyState.accountLogin ? '登录中…' : '用配置账号登录';
-
-  if (accountState.hasStorage) {
-    hint.textContent = `${envState.current} / ${label} · 已就绪 ${accountState.storageState}（开录将自动加载；换号请先清除）`;
-    hint.style.color = 'var(--muted)';
-  } else if (accountState.hasAccountsFile) {
-    hint.textContent = `${label}${user} · 无登录态：可自动登录，或开录后在浏览器手动登录并停止录制保存`;
-    hint.style.color = 'var(--amber)';
-  } else {
-    hint.textContent = `无登录态：开始录制 → 浏览器手动登录 → 停止录制后写入 ${accountState.storageState || 'storage/loginState/…'}`;
-    hint.style.color = 'var(--amber)';
-  }
+  if (!btnClear) return;
+  btnClear.disabled = !envState.repoReady || !accountState.hasStorage;
 }
 
 function renderAccountSelect() {
@@ -877,7 +970,7 @@ function renderAccountSelect() {
       if (sel.value) setAccountProfile(sel.value);
     });
   }
-  updateAccountStorageHint();
+  syncLoginStateControls();
 }
 
 function setAccountProfile(profileId, opts = {}) {
@@ -946,7 +1039,7 @@ function clearAccountStorage() {
   const rel = accountState.storageState || 'storage/loginState/…';
   if (
     !confirm(
-      `确定清除当前环境的登录态？\n\n${rel}\n\n清除后：\n· 下次开始录制不会自动加载旧账号\n· 需在浏览器重新登录，并在停止录制时保存新登录态`,
+      '确定清除当前环境的登录态？\n\n清除后需重新登录，停止录制时会保存新登录态',
     )
   ) {
     return;
@@ -955,32 +1048,11 @@ function clearAccountStorage() {
   log('info', `[account] 正在清除 ${rel}`);
 }
 
-function runAccountLogin() {
-  if (!ws || ws.readyState !== 1) {
-    showToast('未连接服务器', 'err');
-    return;
-  }
-  if (accountState.hasStorage) {
-    const rel = accountState.storageState;
-    if (
-      !confirm(
-        `将覆盖已有登录态：\n${rel}\n\n确定使用 accounts.json 中的账号自动登录？\n（若需换号且不用配置文件，请先「清除登录态」再手动录制）`,
-      )
-    ) {
-      return;
-    }
-  }
-  busyState.accountLogin = true;
-  updateAccountStorageHint();
-  send('account:login', {});
-  log('info', `[account] 开始登录 ${envState.current} / ${accountState.current}`);
-}
-
 function confirmRecordWithExistingStorage() {
   if (!envState.repoReady || !accountState.hasStorage) return true;
   const rel = accountState.storageState || '';
   return confirm(
-    `将加载已有登录态开始录制：\n${rel}\n\n· 确定 = 使用当前登录态\n· 取消 = 暂不录制\n\n若要换账号，请先点击「清除当前登录态」。`,
+    '将使用已保存的登录态开始录制。换账号请先「清除登录态」。',
   );
 }
 
@@ -989,7 +1061,7 @@ function renderEnvChips() {
   if (!row) return;
   row.innerHTML = '';
   if (!envState.environments.length) {
-    row.innerHTML = '<span class="sidebar-hint">请确认 pw-files 位于仓库内且存在 datasource/base-config.json</span>';
+    row.innerHTML = '<span class="sidebar-hint">未检测到可用环境，请检查工作区连接</span>';
     return;
   }
   envState.environments.forEach((e) => {
@@ -1009,8 +1081,6 @@ function renderEnvChips() {
     label.appendChild(document.createTextNode(e.id));
     row.appendChild(label);
   });
-  const entry = envState.environments.find((x) => x.id === envState.current);
-  updateEnvStorageHint(entry);
   updateHeaderEnvLabel();
 }
 
@@ -1096,52 +1166,46 @@ function getRecordingSlugOptions() {
   };
 }
 
-function isPlaceholderRepoSavePath(rel) {
-  const norm = (rel || '').trim().replace(/\\/g, '/');
-  if (!norm) return true;
-  return /studio-recording\.spec\.ts$/i.test(norm);
+function applyRepoSuggestPath(result) {
+  if (!result?.relativePath) return;
+  repoState.suggestedRelative = result.relativePath;
+  log('dim', `[repo] 将保存至: ${result.relativePath}`);
 }
 
-function applyRepoSuggestPath(result, opts = {}) {
-  const el = document.getElementById('repoSaveRelative');
-  if (!el || !result?.relativePath) return;
-  const force = opts.force === true;
-  if (!force && el.dataset.touched === '1' && !isPlaceholderRepoSavePath(el.value)) return;
-  el.value = result.relativePath;
-  el.placeholder = result.relativePath;
-  el.dataset.autoSuggested = '1';
-  log('dim', `[repo] 建议保存: ${result.relativePath}`);
-}
-
-function requestRepoSuggestPath(code, opts = {}) {
+function requestRepoSuggestPath(code) {
   if (!code?.trim()) return;
   const slug = getRecordingSlugOptions();
   send('repo:suggest-path', {
     code,
     name: slug.name,
     description: slug.description,
-    force: Boolean(opts.force),
   });
 }
 
-function initRepoSavePathInput() {
-  const el = document.getElementById('repoSaveRelative');
-  if (!el || el.dataset.inited === '1') return;
-  el.placeholder = '录制完成后将按项目规则自动建议路径…';
-  el.value = '';
-  el.dataset.inited = '1';
-  el.addEventListener('input', () => { el.dataset.touched = '1'; });
+const OPTIMIZED_SPEC_PREFIX = 'tests/optimized/';
+
+function isDraftOptimizedSpecPath(relativePath) {
+  return /studio-unsaved-draft\.optimized\.spec\.ts$/i.test(String(relativePath || ''));
+}
+
+function getRepoExecutionSpec() {
+  return repoState.draftOptimizedRelative || REPO_DRAFT_OPTIMIZED_SPEC;
+}
+
+function formatOptimizedSpecLabel(relativePath) {
+  const p = String(relativePath || '').replace(/\\/g, '/');
+  return p.startsWith(OPTIMIZED_SPEC_PREFIX) ? p.slice(OPTIMIZED_SPEC_PREFIX.length) : p;
 }
 
 function fillRepoOptimizedSelect(list) {
   const sel = document.getElementById('repoOptimizedPick');
   if (!sel) return;
   sel.innerHTML = '';
-  const items = (list || []).filter(Boolean);
+  const items = (list || []).filter((p) => p && !isDraftOptimizedSpecPath(p));
   if (!items.length) {
     const o = document.createElement('option');
     o.value = '';
-    o.textContent = '（暂无 optimized 用例，请先运行 pipeline 或点刷新）';
+    o.textContent = '（暂无用例，可留空由保存时自动命名）';
     o.disabled = true;
     sel.appendChild(o);
     return;
@@ -1149,7 +1213,7 @@ function fillRepoOptimizedSelect(list) {
   items.forEach((p) => {
     const o = document.createElement('option');
     o.value = p;
-    o.textContent = p;
+    o.textContent = formatOptimizedSpecLabel(p);
     sel.appendChild(o);
   });
   sel.selectedIndex = 0;
@@ -1159,48 +1223,124 @@ function refreshRepoOptimizedList() {
   send('repo:list-optimized');
 }
 
+function scriptFingerprint(text) {
+  const s = String(text || '');
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(36);
+}
+
+function isRepoArtifactsCommitted() {
+  if (!repoState.committedRawFingerprint || !repoState.committedOptFingerprint) return false;
+  const raw = document.getElementById('rawCode').value.trim();
+  const opt = document.getElementById('optCode').value.trim();
+  if (!raw || !opt) return false;
+  return (
+    scriptFingerprint(raw) === repoState.committedRawFingerprint &&
+    scriptFingerprint(opt) === repoState.committedOptFingerprint
+  );
+}
+
+function markRepoArtifactsCommitted() {
+  const raw = document.getElementById('rawCode').value.trim();
+  const opt = document.getElementById('optCode').value.trim();
+  repoState.committedRawFingerprint = raw ? scriptFingerprint(raw) : '';
+  repoState.committedOptFingerprint = opt ? scriptFingerprint(opt) : '';
+}
+
 function syncRepoButtons() {
   const raw = document.getElementById('rawCode').value.trim();
+  const opt = document.getElementById('optCode').value.trim();
   const busyRepo = busyState.repoPipeline || busyState.repoCompare;
   const rs = document.getElementById('btnRepoSave');
   const rp = document.getElementById('btnRepoPipeline');
+  const rpc = document.getElementById('btnRepoPipelineCancel');
   const rtx = document.getElementById('btnRepoTest');
   const rc = document.getElementById('btnRepoCompare');
-  if (rs) rs.disabled = busyRepo || !raw;
-  if (rp) rp.disabled = busyRepo;
-  if (rtx) rtx.disabled = busyState.run || busyRepo || !document.getElementById('repoOptimizedPick')?.value;
-  if (rc) rc.disabled = busyRepo || busyState.run;
+  const rcc = document.getElementById('btnRepoCompareCancel');
+  const hasRaw = Boolean(raw);
+  const hasOpt = Boolean(opt);
+  const artifactsCommitted = isRepoArtifactsCommitted();
+  if (rs) rs.disabled = busyRepo || !hasRaw || !hasOpt;
+  if (rp) {
+    rp.disabled = busyState.repoPipeline ? true : busyRepo || !hasRaw;
+  }
+  if (rpc) rpc.disabled = !busyState.repoPipeline;
+  const repoTestBusy = busyState.run && pendingRunKind === 'repo';
+  const repoTestDisabled = busyRepo || (!repoTestBusy && !hasOpt);
+  if (rtx) {
+    const defaultLabel = rtx.dataset.defaultLabel || '执行（含截图）';
+    if (repoTestBusy) {
+      rtx.classList.add('busy');
+      rtx.disabled = false;
+      rtx.textContent = '取消执行';
+    } else {
+      rtx.classList.remove('busy');
+      rtx.disabled = repoTestDisabled;
+      rtx.textContent = defaultLabel;
+    }
+  }
+  if (rc) {
+    rc.disabled =
+      busyState.repoCompare || busyState.repoPipeline || busyState.run || !artifactsCommitted;
+  }
+  if (rcc) rcc.disabled = !busyState.repoCompare;
 }
 
-function saveRepoRecording() {
-  const rel = document.getElementById('repoSaveRelative').value.trim();
+function commitRepoArtifacts() {
   const code = document.getElementById('rawCode').value;
+  const optimizedCode = document.getElementById('optCode').value;
   if (!code.trim()) { showToast('请先录制或粘贴脚本', 'err'); return; }
-  switchSidebarTabByName('repo');
+  if (!optimizedCode.trim()) { showToast('请先生成用例或填写优化脚本', 'err'); return; }
+  const pick = document.getElementById('repoOptimizedPick')?.value?.trim();
+  const optimizedRelative = pick && !isDraftOptimizedSpecPath(pick) ? pick : '';
+  expandPipelineStep(2);
+  setStep2Mode('repo');
   const slug = getRecordingSlugOptions();
-  send('repo:save', { relativePath: rel, code, name: slug.name, description: slug.description });
+  send('repo:commit-artifacts', {
+    code,
+    optimizedCode,
+    optimizedRelative: optimizedRelative || undefined,
+    name: slug.name,
+    description: slug.description,
+  });
 }
 
 function runRepoPipelineClick() {
-  switchSidebarTabByName('repo');
-  const inp = document.getElementById('repoSaveRelative');
-  const target = (inp?.value || '').trim() || repoState.lastSavedRelative;
-  if (!target) { showToast('请填写保存路径或先保存录制', 'err'); return; }
-  send('repo:pipeline', { targetRelative: target });
+  expandPipelineStep(2);
+  setStep2Mode('repo');
+  const rawCode = document.getElementById('rawCode').value.trim();
+  if (!rawCode) { showToast('请先完成录制', 'err'); return; }
+  const slug = getRecordingSlugOptions();
+  send('repo:pipeline', { code: rawCode, name: slug.name, description: slug.description });
 }
 
-function runRepoTestClick() {
-  switchSidebarTabByName('repo');
-  const sel = document.getElementById('repoOptimizedPick');
-  const spec = sel?.value?.trim();
-  if (!spec) { showToast('请先运行 pipeline 或手动选择用例路径', 'err'); return; }
-  const headed = Boolean(document.getElementById('repoTestHeaded')?.checked);
-  send('repo:test', { specRelative: spec, headed });
+function handleRepoTestClick() {
+  if (busyState.run && pendingRunKind === 'repo') {
+    send('cancel:repo-test');
+    return;
+  }
+  pendingRunKind = 'repo';
+  expandPipelineStep(3);
+  const optimizedCode = document.getElementById('optCode').value;
+  if (!optimizedCode.trim()) { showToast('请先生成用例或填写优化脚本', 'err'); return; }
+  send('repo:test', {
+    specRelative: getRepoExecutionSpec(),
+    optimizedCode,
+    headed: isHeadedRunMode(),
+  });
 }
 
 /** 生成完成后在新窗口打开对比报告（非 about:blank 再改 location，避免像「重定向」） */
 function openCompareReportClick() {
-  switchSidebarTabByName('repo');
+  if (!isRepoArtifactsCommitted()) {
+    showToast('请先将录制与优化脚本保存到项目，且内容与编辑器一致', 'err');
+    return;
+  }
+  expandPipelineStep(3);
   busyState.repoCompare = true;
   syncRepoButtons();
   send('repo:compare-report', {});
@@ -1238,7 +1378,6 @@ function connectWS() {
     setBusy('run', false);
     busyState.repoPipeline = false;
     busyState.repoCompare = false;
-    initRepoSavePathInput();
     syncActionButtons();
     log('info', '已连接到 Playwright Studio 服务');
   };
@@ -1294,6 +1433,7 @@ function finishBusyFromError() {
   resetPipelineRunning();
   if (state.recording) setRecordButtonUi(false);
   syncActionButtons();
+  syncRepoButtons();
 }
 
 /** 根据当前脚本内容同步「AI 优化」「执行测试」是否可点（完成后可再次执行） */
@@ -1303,11 +1443,16 @@ function syncActionButtons() {
   const btnOpt = document.getElementById('btnOptimize');
   const btnRun = document.getElementById('btnRun');
   const btnRecord = document.getElementById('btnRecord');
-  if (!busyState.optimize) btnOpt.disabled = !raw;
-  if (!busyState.run) btnRun.disabled = !(opt || raw);
+  if (!busyState.optimize) btnOpt.disabled = !raw || !hasOptimizeApiKeyForProvider();
+  if (!busyState.run) {
+    const tab = getActiveEditorTab();
+    btnRun.disabled = tab === 'diff' || !getActiveScriptCode();
+  }
+  else if (pendingRunKind === 'repo') btnRun.disabled = true;
   if (btnRecord) btnRecord.disabled = busyState.optimize || busyState.run || busyState.repoPipeline;
   updateRawEmptyOverlay();
   syncRepoButtons();
+  syncEditorRunHint();
 }
 
 const RECORD_BTN_ICON_START =
@@ -1345,8 +1490,9 @@ function handleMessage(msg) {
       updateRawEmptyOverlay();
       syncActionButtons();
       syncRepoButtons();
-      requestRepoSuggestPath(msg.code, { force: true });
+      requestRepoSuggestPath(msg.code);
       log('ok', `录制完成，共 ${msg.lines} 行`);
+      expandPipelineStep(2);
       if (msg.storageSaved && msg.storageState) {
         log('ok', `[env] 登录态已保存（停止录制时写入）: ${msg.storageState}`);
         showToast('录制完成，登录态已保存', 'ok');
@@ -1367,11 +1513,11 @@ function handleMessage(msg) {
         accountState.hasStorage = true;
       }
       renderEnvChips();
-      updateAccountStorageHint();
+      syncLoginStateControls();
       break;
     }
     case 'repo:suggest-path:done':
-      applyRepoSuggestPath(msg, { force: true });
+      applyRepoSuggestPath(msg);
       syncRepoButtons();
       break;
     case 'optimize:start': {
@@ -1392,7 +1538,7 @@ function handleMessage(msg) {
     case 'optimize:done':
       setBusy('optimize', false);
       setStep(2, 'done');
-      setStepSub(2, STEP_DEFAULTS[2]);
+      setStepSub(2, STEP2_SUB[currentStep2Mode] || STEP_DEFAULTS[2]);
       document.getElementById('optCode').value = msg.code;
       setOptMeta(msg.code, Boolean(msg.demo));
       buildDiff();
@@ -1409,23 +1555,32 @@ function handleMessage(msg) {
     case 'optimize:cancelled':
       setBusy('optimize', false);
       setStep(2, '');
-      setStepSub(2, STEP_DEFAULTS[2]);
+      setStepSub(2, STEP2_SUB[currentStep2Mode] || STEP_DEFAULTS[2]);
       syncActionButtons();
       log('warn', '优化已取消');
       showToast('优化已取消', 'err');
       break;
     case 'run:start':
       setBusy('run', true);
-      setStep(3, 'running');
-      setStepSub(3, 'Playwright 执行中…');
-      log('info', '启动 Playwright 执行引擎...');
+      if (pendingRunKind === 'repo') {
+        setStep(3, 'running');
+        setStepSub(3, '正在执行（含截图）…');
+      } else {
+        setEditorRunStatus('正在执行…', 'running');
+      }
+      log('info', '正在启动执行…');
       break;
     case 'run:log':
       log(msg.level || 'dim', msg.text); break;
     case 'run:done':
       setBusy('run', false);
-      setStep(3, 'done');
-      setStepSub(3, STEP_DEFAULTS[3]);
+      if (msg.repoTest) {
+        setStep(3, 'done');
+        setStepSub(3, STEP_DEFAULTS[3]);
+      } else {
+        setEditorRunStatus('执行完成', 'done');
+      }
+      pendingRunKind = 'studio';
       state.hasRun = true;
       document.getElementById('btnReport').disabled = false;
       syncActionButtons();
@@ -1439,9 +1594,9 @@ function handleMessage(msg) {
         const interactive = msg.uiMode || msg.runMode === 'debug' || msg.runMode === 'ui';
         if (interactive && t === 0) {
           const label = msg.runMode === 'debug' ? '调试' : 'UI';
-          summary = `Playwright ${label} 已结束，耗时 ${dur}s（请在窗口中查看各用例结果）`;
+          summary = `${label} 模式已结束，耗时 ${dur}s（请在窗口中查看结果）`;
         } else if (msg.repoTest && msg.runMode === 'headed' && t === 0) {
-          summary = `项目内 headed 执行已结束，耗时 ${dur}s（请在浏览器窗口查看结果；截图见日志中的目录）`;
+          summary = `有界面执行已结束，耗时 ${dur}s（请在浏览器窗口查看结果）`;
         } else if (t === 0) {
           summary = `测试未统计到用例（0 项），耗时 ${dur}s，请查看日志中的报错`;
         } else {
@@ -1462,8 +1617,13 @@ function handleMessage(msg) {
       break;
     case 'run:cancelled':
       setBusy('run', false);
-      setStep(3, '');
-      setStepSub(3, STEP_DEFAULTS[3]);
+      if (pendingRunKind === 'repo') {
+        setStep(3, '');
+        setStepSub(3, STEP_DEFAULTS[3]);
+      } else {
+        syncEditorRunHint();
+      }
+      pendingRunKind = 'studio';
       syncActionButtons();
       log('warn', '测试执行已取消');
       showToast('测试执行已取消', 'err');
@@ -1506,7 +1666,7 @@ function handleMessage(msg) {
       break;
     case 'account:login:start':
       busyState.accountLogin = true;
-      updateAccountStorageHint();
+      syncLoginStateControls();
       break;
     case 'account:login:done':
       busyState.accountLogin = false;
@@ -1529,19 +1689,27 @@ function handleMessage(msg) {
       break;
     case 'repo:info': {
       repoState.repoRoot = msg.repoRoot || '';
+      if (msg.draftOptimizedRelative) {
+        repoState.draftOptimizedRelative = msg.draftOptimizedRelative;
+      }
       const el = document.getElementById('repoRootLabel');
       if (el) {
-        el.textContent = msg.repoReady ? msg.repoRoot : `${msg.repoRoot || '未知'}（未检测到 playwright.config.ts）`;
-        el.title = msg.repoRoot || '';
+        el.textContent = msg.repoReady ? '已连接' : '未连接';
+        if (el) { el.title = msg.repoReady ? (msg.repoRoot || '') : ''; }
       }
       if (Array.isArray(msg.optimizedSpecs)) {
         repoState.optimizedSpecs = msg.optimizedSpecs;
         fillRepoOptimizedSelect(msg.optimizedSpecs);
         syncRepoButtons();
       }
+      if (msg.optimizeKeys) {
+        optimizeKeyState.serverAnthropic = Boolean(msg.optimizeKeys.anthropic);
+        optimizeKeyState.serverDeepseek = Boolean(msg.optimizeKeys.deepseek);
+        syncActionButtons();
+      }
       if (!msg.repoReady) {
-        switchSidebarTabByName('repo');
-        showToast('项目根未就绪：设置 PLAYWRIGHT_REPO_ROOT 或将 pw-files 放在仓库内', 'err');
+        focusStep2Repo();
+        showToast('工作区未就绪，请检查 Studio 安装位置', 'err');
       }
       break;
     }
@@ -1549,42 +1717,70 @@ function handleMessage(msg) {
       repoState.optimizedSpecs = msg.optimizedSpecs || [];
       fillRepoOptimizedSelect(msg.optimizedSpecs);
       syncRepoButtons();
-      log('info', `[repo] 已加载 ${(msg.optimizedSpecs || []).length} 个 optimized 用例`);
+      log('info', `[repo] 已加载 ${(msg.optimizedSpecs || []).length} 个测试用例`);
       break;
     case 'repo:save:done':
       repoState.lastSavedRelative = msg.relativePath || '';
-      if (msg.relativePath) {
-        const inp = document.getElementById('repoSaveRelative');
-        if (inp) { inp.value = msg.relativePath; inp.dataset.touched = '1'; }
-      }
-      showToast('已保存到项目: ' + (msg.relativePath || ''), 'ok');
+      if (msg.relativePath) repoState.suggestedRelative = msg.relativePath;
+      showToast('保存成功', 'ok');
       log('ok', '[repo] 保存完成: ' + (msg.relativePath || ''));
+      syncRepoButtons();
+      break;
+    case 'repo:commit-artifacts:done':
+      repoState.lastSavedRelative = msg.relativePath || '';
+      if (msg.relativePath) repoState.suggestedRelative = msg.relativePath;
+      repoState.lastPrimaryOptimizedRelative = msg.optimizedRelative || repoState.lastPrimaryOptimizedRelative;
+      repoState.draftRelativePath = '';
+      markRepoArtifactsCommitted();
+      showToast('已保存录制与优化脚本到项目', 'ok');
+      log('ok', '[repo] 已保存: ' + (msg.relativePath || '') + ' · ' + (msg.optimizedRelative || ''));
       syncRepoButtons();
       break;
     case 'repo:pipeline:start':
       busyState.repoPipeline = true;
+      setStep2Mode('repo');
+      setStep(2, 'running');
+      setStepSub(2, '正在生成测试用例…');
       syncRepoButtons();
       syncActionButtons();
-      log('info', '[repo] pipeline 开始…');
+      log('info', '[repo] 开始生成用例…');
       break;
     case 'repo:pipeline:done':
       busyState.repoPipeline = false;
       repoState.optimizedSpecs = msg.optimizedSpecs || [];
+      if (msg.draftRelativePath) repoState.draftRelativePath = msg.draftRelativePath;
+      if (msg.draftOptimizedRelative) {
+        repoState.draftOptimizedRelative = msg.draftOptimizedRelative;
+      }
+      if (msg.primaryOptimizedRelative) {
+        repoState.lastPrimaryOptimizedRelative = msg.primaryOptimizedRelative;
+      }
       fillRepoOptimizedSelect(msg.optimizedSpecs);
+      if (msg.optimizedCode) {
+        document.getElementById('optCode').value = msg.optimizedCode;
+        setOptMeta(msg.optimizedCode, false);
+        state.hasOpt = true;
+        buildDiff();
+      }
       syncRepoButtons();
       syncActionButtons();
       if (msg.exitCode !== 0) {
-        showToast('pipeline 退出码: ' + msg.exitCode, 'err');
-        log('err', '[repo] pipeline 退出码 ' + msg.exitCode);
+        setStep(2, '');
+        setStepSub(2, STEP2_SUB.repo);
+        showToast('生成失败（退出码 ' + msg.exitCode + '）', 'err');
+        log('err', '[repo] 生成失败，退出码 ' + msg.exitCode);
       } else {
-        showToast('pipeline 完成', 'ok');
+        setStep(2, 'done');
+        setStepSub(2, STEP2_SUB.repo);
+        showToast('用例生成完成', 'ok');
+        focusStep3Repo();
       }
       break;
     case 'repo:pipeline:cancelled':
       busyState.repoPipeline = false;
       syncRepoButtons();
       syncActionButtons();
-      log('warn', '[repo] pipeline 已取消');
+      log('warn', '[repo] 生成已取消');
       break;
     case 'repo:compare-report:start':
       busyState.repoCompare = true;
@@ -1628,6 +1824,7 @@ function startRecord() {
     if (raw && !confirm('开始新录制将清空当前脚本，是否继续？')) return;
     if (!confirmRecordWithExistingStorage()) return;
     send('record:start', { url, env: envState.current });
+    expandPipelineStep(1);
     setRecordButtonUi(true);
     startRecordTimer();
     document.getElementById('rawCode').value = '';
@@ -1642,14 +1839,21 @@ function handleOptimizeClick() {
     send('cancel:optimize');
     return;
   }
+  if (!hasOptimizeApiKeyForProvider()) {
+    showToast('请先在「AI 与优化」中配置当前模型的 API 密钥', 'err');
+    openAccordion('accordionAi');
+    return;
+  }
   runOptimize();
 }
 
 function handleRunClick() {
   if (busyState.run) {
+    if (pendingRunKind === 'repo') return;
     send('cancel:run');
     return;
   }
+  pendingRunKind = 'studio';
   runScript();
 }
 
@@ -1695,6 +1899,20 @@ function getAiProvider() {
   return document.querySelector('input[name="aiProvider"]:checked')?.value || 'claude';
 }
 
+function hasUiApiKeyForProvider(provider) {
+  const p = provider || getAiProvider();
+  if (p === 'claude') return Boolean(document.getElementById('apiKeyAnthropic')?.value.trim());
+  return Boolean(document.getElementById('apiKeyDeepseek')?.value.trim());
+}
+
+function hasOptimizeApiKeyForProvider(provider) {
+  const p = provider || getAiProvider();
+  if (p === 'claude') {
+    return hasUiApiKeyForProvider('claude') || optimizeKeyState.serverAnthropic;
+  }
+  return hasUiApiKeyForProvider('deepseek') || optimizeKeyState.serverDeepseek;
+}
+
 function updateApiKeyStatus() {
   const provider = getAiProvider();
   const hasA = Boolean(document.getElementById('apiKeyAnthropic')?.value.trim());
@@ -1731,11 +1949,17 @@ function updateApiKeyStatus() {
   setCollapsed('deepseek');
 
   if (!statusEl) return;
+  const hasKey = hasOptimizeApiKeyForProvider(provider);
   if (provider === 'claude') {
-    statusEl.textContent = `Claude · ${hasA ? '界面密钥' : '环境变量'}`;
+    statusEl.textContent = hasKey
+      ? `Claude · ${hasA ? '界面密钥' : '环境变量'}`
+      : 'Claude · 未配置密钥，无法优化';
   } else {
-    statusEl.textContent = `DeepSeek · ${hasD ? '界面密钥' : '环境变量'}`;
+    statusEl.textContent = hasKey
+      ? `DeepSeek · ${hasD ? '界面密钥' : '环境变量'}`
+      : 'DeepSeek · 未配置密钥，无法优化';
   }
+  syncActionButtons();
 }
 
 function bindAiProviderAndApiKeys() {
@@ -1760,9 +1984,16 @@ function bindAiProviderAndApiKeys() {
 }
 
 function runScript() {
-  const code = document.getElementById('optCode').value.trim()
-    || document.getElementById('rawCode').value.trim();
-  if (!code) { showToast('没有可执行的脚本', 'err'); return; }
+  const tab = getActiveEditorTab();
+  if (tab === 'diff') {
+    showToast('请切换到「录制脚本」或「优化脚本」后再执行', 'err');
+    return;
+  }
+  const code = getActiveScriptCode();
+  if (!code) {
+    showToast(tab === 'opt' ? '优化脚本为空' : '录制脚本为空', 'err');
+    return;
+  }
 
   if (!localStorage.getItem('pwStudioHintsRunMode')) {
     openAccordion('accordionRun');
@@ -1795,35 +2026,86 @@ function generateReport() {
 }
 
 // ── UI Helpers ─────────────────────────────────────────────────────────
-function switchSidebarTab(name, el) {
-  const manual = document.getElementById('sidebarPanelManual');
-  const repo = document.getElementById('sidebarPanelRepo');
-  document.querySelectorAll('.sidebar-tab').forEach((t) => {
-    const on = t.dataset.tab === name;
-    t.classList.toggle('active', on);
-    t.setAttribute('aria-selected', on ? 'true' : 'false');
+function setStep2Mode(mode, el) {
+  currentStep2Mode = mode === 'repo' ? 'repo' : 'ai';
+  document.querySelectorAll('.step-branch-chip').forEach((chip) => {
+    chip.classList.toggle('active', chip.dataset.mode === currentStep2Mode);
   });
-  if (manual) manual.classList.toggle('active', name === 'manual');
-  if (repo) repo.classList.toggle('active', name === 'repo');
+  setStepSub(2, STEP2_SUB[currentStep2Mode] || STEP_DEFAULTS[2]);
   try {
-    sessionStorage.setItem(SS_SIDEBAR_TAB, name);
+    sessionStorage.setItem(SS_STEP2_MODE, currentStep2Mode);
+  } catch {
+    /* ignore */
+  }
+  if (el) {
+    expandPipelineStep(2);
+    if (currentStep2Mode === 'ai') {
+      switchTab('opt', document.querySelectorAll('.tab')[1]);
+    } else {
+      switchTab('raw', document.querySelectorAll('.tab')[0]);
+    }
+  } else if (currentPipelineStep === 2) {
+    syncStep2PanelsVisible();
+  }
+}
+
+function syncStep2PanelsVisible() {
+  const panelAi = document.getElementById('step2PanelAi');
+  const panelRepo = document.getElementById('step2PanelRepo');
+  if (panelAi) panelAi.classList.toggle('active', currentStep2Mode === 'ai');
+  if (panelRepo) panelRepo.classList.toggle('active', currentStep2Mode === 'repo');
+}
+
+function expandPipelineStep(n) {
+  currentPipelineStep = n;
+  document.querySelectorAll('.step-item[data-step]').forEach((el) => {
+    el.classList.toggle('active', Number(el.dataset.step) === n);
+  });
+  document.querySelectorAll('.pipeline .step-action-panel').forEach((p) => {
+    p.classList.remove('active');
+  });
+  if (n === 1) {
+    document.getElementById('step1Panel')?.classList.add('active');
+  } else if (n === 2) {
+    syncStep2PanelsVisible();
+  } else if (n === 3) {
+    document.getElementById('step3PanelRepo')?.classList.add('active');
+  } else if (n === 4) {
+    document.getElementById('step4Panel')?.classList.add('active');
+  }
+  document.getElementById(`step${n}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function focusStep2Repo() {
+  setStep2Mode('repo');
+  expandPipelineStep(2);
+}
+
+function focusStep3Repo() {
+  expandPipelineStep(3);
+}
+
+function restoreStep2Mode() {
+  try {
+    const saved = sessionStorage.getItem(SS_STEP2_MODE);
+    if (saved === 'repo' || saved === 'ai') setStep2Mode(saved);
   } catch {
     /* ignore */
   }
 }
 
-function switchSidebarTabByName(name) {
-  const tab = document.querySelector(`.sidebar-tab[data-tab="${name}"]`);
-  if (tab) switchSidebarTab(name, tab);
+function setEditorRunStatus(text, status) {
+  const el = document.getElementById('editorRunStatus');
+  if (!el) return;
+  el.textContent = text || '';
+  el.style.display = text ? '' : 'none';
+  el.className = 'editor-run-status' + (status ? ` ${status}` : '');
 }
 
-function restoreSidebarTab() {
-  try {
-    const saved = sessionStorage.getItem(SS_SIDEBAR_TAB);
-    if (saved === 'repo') switchSidebarTabByName('repo');
-  } catch {
-    /* ignore */
-  }
+function syncEditorRunBarVisibility() {
+  const bar = document.getElementById('editorRunBar');
+  const isDiff = document.getElementById('pane-diff')?.classList.contains('active');
+  if (bar) bar.style.display = isDiff ? 'none' : 'block';
 }
 
 function switchTab(name, el) {
@@ -1831,6 +2113,9 @@ function switchTab(name, el) {
   document.querySelectorAll('.editor-pane').forEach(p => p.classList.remove('active'));
   if (el) el.classList.add('active');
   document.getElementById(`pane-${name}`).classList.add('active');
+  syncEditorRunBarVisibility();
+  syncEditorRunHint();
+  syncActionButtons();
 }
 
 function switchPanel(name, el) {
@@ -1854,7 +2139,8 @@ function setStep(n, status) {
   else if (status === 'running') bullet.textContent = '↻';
   else bullet.textContent = String(n);
   if (!status || status === 'done') {
-    setStepSub(n, STEP_DEFAULTS[n] || '');
+    if (n === 2) setStepSub(2, STEP2_SUB[currentStep2Mode] || STEP_DEFAULTS[2]);
+    else setStepSub(n, STEP_DEFAULTS[n] || '');
   }
 }
 
@@ -1910,7 +2196,7 @@ function buildDiff() {
       if (o !== undefined) html += `<div style="color:var(--green);padding:1px 0">+ ${escHtml(o)}</div>`;
     }
   }
-  document.getElementById('diffView').innerHTML = `<div style="font-size:11px;line-height:1.8">${html}</div>`;
+  document.getElementById('diffView').innerHTML = `<div style="font-size:var(--fs-sm);line-height:1.8">${html}</div>`;
 }
 
 function renderReport(data) {
@@ -1995,6 +2281,22 @@ function pasteSampleScript() {
 function openAccordion(id) {
   const acc = document.getElementById(id);
   if (!acc) return;
+  if (id === 'accordionAi') {
+    if (currentStep2Mode !== 'ai') {
+      currentStep2Mode = 'ai';
+      document.querySelectorAll('.step-branch-chip').forEach((chip) => {
+        chip.classList.toggle('active', chip.dataset.mode === 'ai');
+      });
+      setStepSub(2, STEP2_SUB.ai || STEP_DEFAULTS[2]);
+      try {
+        sessionStorage.setItem(SS_STEP2_MODE, 'ai');
+      } catch {
+        /* ignore */
+      }
+    }
+    if (currentPipelineStep !== 2) expandPipelineStep(2);
+    else syncStep2PanelsVisible();
+  }
   acc.classList.add('open');
   const trigger = acc.querySelector('.accordion-trigger');
   if (trigger) trigger.setAttribute('aria-expanded', 'true');
@@ -2025,23 +2327,25 @@ function bindPipelineNav() {
 }
 
 function navigateToStep(n) {
+  expandPipelineStep(n);
   if (n === 1) {
     switchTab('raw', document.querySelectorAll('.tab')[0]);
-    document.getElementById('rawCode').focus();
+    document.getElementById('btnRecord')?.focus();
     return;
   }
   if (n === 2) {
-    openAccordion('accordionAi');
-    switchTab('opt', document.querySelectorAll('.tab')[1]);
+    if (currentStep2Mode === 'ai') {
+      switchTab('opt', document.querySelectorAll('.tab')[1]);
+    }
     return;
   }
   if (n === 3) {
-    openAccordion('accordionRun');
-    document.getElementById('btnRun')?.focus();
+    document.getElementById('btnRepoTest')?.focus();
     return;
   }
   if (n === 4) {
     switchPanel('report', document.querySelectorAll('.ptab')[1]);
+    document.getElementById('btnReport')?.focus();
   }
 }
 
@@ -2128,10 +2432,13 @@ document.getElementById('optCode').addEventListener('paste', () => queueMicrotas
 }));
 syncActionButtons();
 updateRawEmptyOverlay();
+syncEditorRunBarVisibility();
+syncEditorRunHint();
 
 (async () => {
   await tryLoadEncryptedApiKeys();
-  restoreSidebarTab();
+  restoreStep2Mode();
+  expandPipelineStep(1);
   connectWS();
 })();
 </script>

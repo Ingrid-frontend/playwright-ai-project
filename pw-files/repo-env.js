@@ -109,6 +109,61 @@ function storageExists(repoRoot, storageRel) {
   }
 }
 
+const META_MARKERS = /录制元信息|录制环境:/;
+
+const { extractLoginAccount, extractFromCode } = require(path.join(__dirname, '../src/utils/extract-login-account.cjs'));
+const {
+  readLoginStateMeta,
+  formatLoginAccountLabel,
+} = require(path.join(__dirname, '../src/utils/storage-state-meta.cjs'));
+
+function isLikelyInternalUserId(value) {
+  return typeof value === 'string' && /^\d{4,}$/.test(value.trim());
+}
+
+function resolveLoginUsernameForComment(repoRoot, envId, profileId, opts = {}) {
+  const prof = resolveAccountProfile(repoRoot, envId, profileId);
+  const storageRel = resolveStorageStateRel(repoRoot, envId, prof) || '';
+  const storageAbs = opts.storagePath || (storageRel ? path.resolve(repoRoot, storageRel) : '');
+  const fromCode = extractFromCode(opts.code);
+  if (fromCode) return fromCode;
+  const fromMeta = formatLoginAccountLabel(readLoginStateMeta(storageAbs));
+  if (fromMeta) return fromMeta;
+  const detected = extractLoginAccount({ code: opts.code, storagePath: storageAbs });
+  if (detected && !isLikelyInternalUserId(detected)) return detected;
+  return null;
+}
+
+/** 录制脚本头部注释（不含密码；登录账号优先读 storageState._loginStateMeta） */
+function buildRecordingAccountHeader(repoRoot, envId, profileId, opts = {}) {
+  const prof = resolveAccountProfile(repoRoot, envId, profileId);
+  const storageRel = resolveStorageStateRel(repoRoot, envId, prof) || '';
+  const storageAbs = opts.storagePath || (storageRel ? path.resolve(repoRoot, storageRel) : '');
+  const meta = readLoginStateMeta(storageAbs) || {};
+  const recordedAt = new Date().toISOString();
+  const loginAccount = resolveLoginUsernameForComment(repoRoot, envId, prof, { ...opts, storagePath: storageAbs });
+  const detectedId = extractLoginAccount({ storagePath: storageAbs });
+  const userId = meta.userId || (isLikelyInternalUserId(detectedId || '') ? detectedId : null);
+
+  const lines = ['// Playwright 录制元信息（勿在仓库中提交密码）'];
+  if (loginAccount) {
+    lines.push(`// 环境: ${envId} | 登录账号: ${loginAccount}`);
+  } else if (userId) {
+    lines.push(`// 环境: ${envId} | 登录账号: 未识别`);
+    lines.push(`// 用户ID: ${userId}`);
+  } else {
+    lines.push(`// 环境: ${envId} | 登录账号: 浏览器手动登录（未识别账号）`);
+  }
+  lines.push(`// storageState: ${storageRel}`, `// 录制时间: ${recordedAt}`, '');
+  return lines.join('\n');
+}
+
+function prependRecordingAccountHeader(repoRoot, code, envId, profileId) {
+  if (!code || !String(code).trim()) return code;
+  if (META_MARKERS.test(String(code).slice(0, 600))) return code;
+  return buildRecordingAccountHeader(repoRoot, envId, profileId, { code }) + String(code).replace(/^\s*/, '');
+}
+
 module.exports = {
   getEnvAccountConfig,
   resolveAccountProfile,
@@ -116,4 +171,6 @@ module.exports = {
   maskUsername,
   listAccountProfiles,
   storageExists,
+  buildRecordingAccountHeader,
+  prependRecordingAccountHeader,
 };
