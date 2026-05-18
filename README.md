@@ -38,12 +38,18 @@ npm run init-agents
 cp datasource/accounts.json.example datasource/accounts.json
 ```
 
-2. 编辑 `datasource/accounts.json`，填入真实的账号密码：
+2. 编辑 `datasource/accounts.json`，填入真实的账号密码（支持单账号或 `profiles` 多档案，见 `accounts.json.example`）：
 ```json
 {
   "stage": {
-    "username": "your-account@example.com",
-    "password": "your-password"
+    "defaultProfile": "default",
+    "profiles": {
+      "default": {
+        "label": "默认账号",
+        "username": "your-account@example.com",
+        "password": "your-password"
+      }
+    }
   }
 }
 ```
@@ -107,7 +113,29 @@ PLAYWRIGHT_ENV=uat npx playwright test --project=optimized
 环境配置来源：
 
 - `datasource/base-config.json`：每个环境的 `baseURL` 与 `storageState` 路径
-- `datasource/accounts.json`：每个环境的登录账号/密码
+- `datasource/accounts.json`：每个环境的登录账号/密码（或 `profiles` 多档案）
+
+### 换测试账号（三步）
+
+1. 在 `datasource/accounts.json` 为目标环境配置 `profiles`（或使用旧版单 `username`/`password`，等价于 `default` 档案）。
+2. 选择档案并**强制重新登录**（已有 `storageState` 文件时不会自动换账号）：
+   ```bash
+   # 默认档案
+   npm run login:force
+
+   # 指定档案（如 admin）
+   PLAYWRIGHT_ACCOUNT=admin npm run login:force
+   ```
+3. 运行测试或录制时带上相同环境变量：
+   ```bash
+   PLAYWRIGHT_ENV=stage PLAYWRIGHT_ACCOUNT=admin npm run record
+   ```
+
+说明：
+
+- `default` 档案沿用 `base-config.json` 中的 `storageState`（如 `storage/loginState/stage.json`）。
+- 其它档案默认写入 `storage/loginState/stage/<profile>.json`，也可在 `base-config.json` 用 `storageStates` 自定义路径。
+- Playwright Studio（`npm run studio`）侧栏可选择账号档案并点击「用配置账号登录」。
 
 ## ⚙️ 常用开关（环境变量速查）
 
@@ -125,6 +153,8 @@ PLAYWRIGHT_ENV=uat npx playwright test --project=optimized
 | `ENABLE_POM` | 0 | 启用 POM 生成相关能力（默认关闭，避免误用） | `ENABLE_POM=1` |
 | `ENABLE_GLOBAL_SETUP` | 0 | 回退启用 `globalSetup`（默认走 project dependencies） | `ENABLE_GLOBAL_SETUP=1` |
 | `ENABLE_LEGACY_LOGIN_FIXTURE` | 0 | 回退到“每个用例内登录”（需要 `TEST_USERNAME/TEST_PASSWORD`） | `ENABLE_LEGACY_LOGIN_FIXTURE=1` |
+| `PLAYWRIGHT_ACCOUNT` | default | 账号档案 ID（对应 `accounts.json` 的 `profiles`） | `PLAYWRIGHT_ACCOUNT=admin` |
+| `PLAYWRIGHT_REFRESH_STORAGE` | 0 | 强制重新登录并覆盖已有 `storageState` | `PLAYWRIGHT_REFRESH_STORAGE=1` 或 `npm run login:force` |
 
 飞书相关（如需通知/文档）：
 

@@ -1,18 +1,46 @@
 {
   "dev": {
-    "username": "your-dev-username",
-    "password": "your-dev-password"
+    "defaultProfile": "default",
+    "profiles": {
+      "default": {
+        "label": "默认账号",
+        "username": "your-dev-username",
+        "password": "your-dev-password"
+      },
+      "reviewer": {
+        "label": "审批人",
+        "username": "reviewer-dev@example.com",
+        "password": "your-dev-password"
+      }
+    }
   },
   "uat": {
-    "username": "your-uat-username",
-    "password": "your-uat-password"
+    "defaultProfile": "default",
+    "profiles": {
+      "default": {
+        "label": "默认账号",
+        "username": "your-uat-username",
+        "password": "your-uat-password"
+      }
+    }
   },
   "stage9084": {
     "username": "your-stage9084-username",
     "password": "your-stage9084-password"
   },
   "stage": {
-    "username": "your-stage-username",
-    "password": "your-stage-password"
+    "defaultProfile": "default",
+    "profiles": {
+      "default": {
+        "label": "默认账号",
+        "username": "your-stage-username",
+        "password": "your-stage-password"
+      },
+      "admin": {
+        "label": "管理员",
+        "username": "admin-stage@example.com",
+        "password": "your-stage-password"
+      }
+    }
   }
 }

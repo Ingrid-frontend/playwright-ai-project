@@ -18,6 +18,7 @@ const { execFile, spawn } = require('child_process');
 const express = require('express');
 const { WebSocketServer } = require('ws');
 const Anthropic = require('@anthropic-ai/sdk');
+const repoEnv = require('./repo-env');
 
 const PORT = process.env.PORT || 3001;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
@@ -89,11 +90,144 @@ function getEnvEntry(repoRoot, envId) {
   return environments.find((e) => e.id === envId) || null;
 }
 
+function getSessionAccountProfile(session, repoRoot) {
+  const envId = getSessionPlaywrightEnv(session);
+  return repoEnv.resolveAccountProfile(repoRoot, envId, session.accountProfile);
+}
+
+function getEnvEntryResolved(repoRoot, envId, profileId) {
+  const entry = getEnvEntry(repoRoot, envId);
+  if (!entry) return null;
+  const storageRel = repoEnv.resolveStorageStateRel(repoRoot, envId, profileId);
+  return {
+    ...entry,
+    storageState: storageRel,
+    hasStorage: repoEnv.storageExists(repoRoot, storageRel),
+    accountProfile: repoEnv.resolveAccountProfile(repoRoot, envId, profileId),
+  };
+}
+
 function buildRepoSpawnEnv(session) {
   const env = { ...process.env };
   const id = getSessionPlaywrightEnv(session);
   if (id) env.PLAYWRIGHT_ENV = id;
+  const repoRoot = resolveRepoRoot();
+  const prof = getSessionAccountProfile(session, repoRoot);
+  if (prof) env.PLAYWRIGHT_ACCOUNT = prof;
   return env;
+}
+
+function sendAccountInfo(ws, session, repoRoot, repoReady) {
+  if (!repoReady) {
+    send(ws, 'account:info', {
+      repoReady: false,
+      profiles: [],
+      current: 'default',
+      hasStorage: false,
+      storageState: '',
+    });
+    return;
+  }
+  const envId = getSessionPlaywrightEnv(session);
+  const cfg = repoEnv.getEnvAccountConfig(repoRoot, envId);
+  if (!session.accountProfile || (cfg && !cfg.profiles[session.accountProfile])) {
+    session.accountProfile = cfg?.defaultProfile || 'default';
+  }
+  const profile = getSessionAccountProfile(session, repoRoot);
+  const storageRel = repoEnv.resolveStorageStateRel(repoRoot, envId, profile);
+  send(ws, 'account:info', {
+    repoReady: true,
+    env: envId,
+    current: profile,
+    defaultProfile: cfg?.defaultProfile || 'default',
+    profiles: repoEnv.listAccountProfiles(repoRoot, envId),
+    hasStorage: repoEnv.storageExists(repoRoot, storageRel),
+    storageState: storageRel,
+    hasAccountsFile: Boolean(cfg),
+  });
+}
+
+function setSessionAccountProfile(ws, session, profileId) {
+  const repoRoot = resolveRepoRoot();
+  if (!fs.existsSync(path.join(repoRoot, 'playwright.config.ts'))) {
+    send(ws, 'error', { message: '未找到项目根，无法切换账号' });
+    return;
+  }
+  const envId = getSessionPlaywrightEnv(session);
+  const resolved = repoEnv.resolveAccountProfile(repoRoot, envId, profileId);
+  session.accountProfile = resolved;
+  const entry = getEnvEntryResolved(repoRoot, envId, resolved);
+  send(ws, 'account:changed', {
+    env: envId,
+    profile: resolved,
+    storageState: entry?.storageState || '',
+    hasStorage: entry?.hasStorage ?? false,
+  });
+  logLine(ws, `[account] 已切换为 ${envId} / ${resolved}`, 'info');
+  if (!entry?.hasStorage && entry?.storageState) {
+    logLine(ws, `[account] 未找到 ${entry.storageState}，可点击「用配置账号登录」生成`, 'warn');
+  }
+}
+
+function runAccountLogin(ws, session) {
+  const repoRoot = resolveRepoRoot();
+  const cli = getRepoPlaywrightCli(repoRoot);
+  if (!cli) {
+    send(ws, 'error', { message: '未找到 @playwright/test，请在项目根执行 npm install' });
+    return Promise.resolve();
+  }
+  const envId = getSessionPlaywrightEnv(session);
+  const profile = getSessionAccountProfile(session, repoRoot);
+  const storageRel = repoEnv.resolveStorageStateRel(repoRoot, envId, profile);
+
+  logLine(ws, `[account] 正在登录 ${envId} / ${profile}…`, 'info');
+  send(ws, 'account:login:start', { env: envId, profile });
+
+  return new Promise((resolve) => {
+    const proc = spawn(
+      process.execPath,
+      [cli, 'test', 'src/setup/login.setup.ts'],
+      {
+        cwd: repoRoot,
+        env: {
+          ...buildRepoSpawnEnv(session),
+          PLAYWRIGHT_REFRESH_STORAGE: '1',
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
+
+    proc.stdout.on('data', (d) => {
+      const text = d.toString().trim();
+      if (text) logLine(ws, text, 'dim');
+    });
+    proc.stderr.on('data', (d) => {
+      const text = d.toString().trim();
+      if (text) logLine(ws, text, 'warn');
+    });
+
+    proc.on('close', (code) => {
+      const ok = code === 0 && repoEnv.storageExists(repoRoot, storageRel);
+      send(ws, 'account:login:done', {
+        env: envId,
+        profile,
+        exitCode: code,
+        ok,
+        storageState: storageRel,
+        hasStorage: ok,
+      });
+      if (ok) {
+        logLine(ws, `[account] 登录成功: ${storageRel}`, 'ok');
+        send(ws, 'env:storage-saved', { env: envId, storageState: storageRel, hasStorage: true });
+      } else {
+        logLine(ws, `[account] 登录失败（退出码 ${code}）`, 'err');
+      }
+      const repoReady = fs.existsSync(path.join(repoRoot, 'playwright.config.ts'));
+      sendEnvInfo(ws, session, repoRoot, repoReady);
+      sendAccountInfo(ws, session, repoRoot, repoReady);
+      resolve();
+    });
+  });
 }
 
 function sendEnvInfo(ws, session, repoRoot, repoReady) {
@@ -110,7 +244,8 @@ function sendEnvInfo(ws, session, repoRoot, repoReady) {
   if (!session.playwrightEnv || !info.environments.some((e) => e.id === session.playwrightEnv)) {
     session.playwrightEnv = info.defaultEnv;
   }
-  const current = getEnvEntry(repoRoot, session.playwrightEnv);
+  const profile = getSessionAccountProfile(session, repoRoot);
+  const current = getEnvEntryResolved(repoRoot, session.playwrightEnv, profile);
   send(ws, 'env:info', {
     ...info,
     current: session.playwrightEnv,
@@ -118,7 +253,9 @@ function sendEnvInfo(ws, session, repoRoot, repoReady) {
     baseURL: current?.baseURL || '',
     hasStorage: current?.hasStorage ?? false,
     storageState: current?.storageState || '',
+    accountProfile: profile,
   });
+  sendAccountInfo(ws, session, repoRoot, true);
 }
 
 function setSessionPlaywrightEnv(ws, session, envId) {
@@ -135,19 +272,24 @@ function setSessionPlaywrightEnv(ws, session, envId) {
     return;
   }
   session.playwrightEnv = entry.id;
-  if (!entry.hasStorage) {
+  const cfg = repoEnv.getEnvAccountConfig(repoRoot, entry.id);
+  session.accountProfile = cfg?.defaultProfile || 'default';
+  const resolved = getEnvEntryResolved(repoRoot, entry.id, session.accountProfile);
+  if (!resolved?.hasStorage) {
     logLine(
       ws,
-      `[env] ${entry.id} 的 storageState 不存在: ${entry.storageState}，请先 npm run test:setup 或登录生成`,
+      `[env] ${entry.id} 的 storageState 不存在: ${resolved?.storageState || entry.storageState}，请先 npm run login 或 Studio「用配置账号登录」`,
       'warn',
     );
   }
   send(ws, 'env:changed', {
     env: entry.id,
     baseURL: entry.baseURL,
-    storageState: entry.storageState,
-    hasStorage: entry.hasStorage,
+    storageState: resolved?.storageState || '',
+    hasStorage: resolved?.hasStorage ?? false,
+    accountProfile: session.accountProfile,
   });
+  sendAccountInfo(ws, session, repoRoot, true);
   logLine(ws, `[env] 已切换为 ${entry.id} · ${entry.baseURL}`, 'info');
 }
 
@@ -713,6 +855,7 @@ function makeSession() {
     repoCompareCancelled: false,
     lastSavedRelative: null,
     playwrightEnv: process.env.PLAYWRIGHT_ENV || DEFAULT_PLAYWRIGHT_ENV,
+    accountProfile: process.env.PLAYWRIGHT_ACCOUNT || 'default',
   };
 }
 
@@ -905,7 +1048,8 @@ async function startRecording(ws, session, url) {
   const repoRoot = resolveRepoRoot();
   const repoReady = fs.existsSync(path.join(repoRoot, 'playwright.config.ts'));
   const envId = getSessionPlaywrightEnv(session);
-  const envEntry = repoReady ? getEnvEntry(repoRoot, envId) : null;
+  const profile = repoReady ? getSessionAccountProfile(session, repoRoot) : 'default';
+  const envEntry = repoReady ? getEnvEntryResolved(repoRoot, envId, profile) : null;
   const recordUrl = (url && String(url).trim()) || envEntry?.baseURL || url;
   session.lastUrl = recordUrl;
 
@@ -1678,6 +1822,14 @@ wss.on('connection', (ws) => {
 
       case 'env:set':
         setSessionPlaywrightEnv(ws, session, String(msg.env || ''));
+        break;
+
+      case 'account:set':
+        setSessionAccountProfile(ws, session, String(msg.profile || ''));
+        break;
+
+      case 'account:login':
+        await runAccountLogin(ws, session);
         break;
 
       case 'record:stop':

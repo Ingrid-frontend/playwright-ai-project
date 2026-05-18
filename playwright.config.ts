@@ -3,6 +3,7 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import baseConfig from './datasource/base-config.json' assert { type: 'json' };
+import { resolveStorageState } from './src/utils/env-config.js';
 
 /**
  * 环境处理逻辑
@@ -10,6 +11,7 @@ import baseConfig from './datasource/base-config.json' assert { type: 'json' };
 const defaultEnv = "stage";
 export const env = process.env.PLAYWRIGHT_ENV || process.env.NODE_ENV || defaultEnv;
 export const curConfig = (baseConfig as Record<string, any>)[env] || (baseConfig as Record<string, any>)[defaultEnv];
+export const storageStatePath = resolveStorageState(env);
 
 function buildReporter() {
   const reporters: any[] = [['html']];
@@ -109,7 +111,7 @@ export default defineConfig({
     {
       name: 'webkit',
       use: useDeviceWithRealViewport(devices['Desktop Safari'] as Record<string, unknown>, {
-        storageState: curConfig.storageState,
+        storageState: storageStatePath,
       }),
       dependencies: ['setup'],
     },
@@ -130,7 +132,7 @@ export default defineConfig({
       testDir: './tests/optimized',
       use: {
         ...devices['Desktop Chrome'],
-        storageState: curConfig.storageState,
+        storageState: storageStatePath,
         // 固定视口与 DPR，避免 viewport:null 时截图随窗口/显示器变化（如 1280×720 与 2560×1440 混用）
         viewport: { width: 1280, height: 720 },
         deviceScaleFactor: 1,
@@ -144,7 +146,7 @@ export default defineConfig({
       testDir: './tests/optimized',
       use: {
         ...devices['Desktop Safari'],
-        storageState: curConfig.storageState,
+        storageState: storageStatePath,
         viewport: { width: 1280, height: 720 },
         deviceScaleFactor: 1,
       },

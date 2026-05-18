@@ -372,6 +372,16 @@
       </div>
 
       <div class="sidebar-section">
+        <div class="sidebar-label">测试账号</div>
+        <p class="sidebar-hint" style="margin-bottom:8px">与 <code>datasource/accounts.json</code> 的 <code>profiles</code> 对应；非 default 档案的登录态保存在 <code>storage/loginState/&lt;env&gt;/&lt;profile&gt;.json</code>。</p>
+        <select class="url-input" id="accountProfileSelect" style="width:100%;margin-bottom:8px" disabled>
+          <option value="default">default</option>
+        </select>
+        <button type="button" class="btn btn-full" id="btnAccountLogin" style="margin-bottom:6px;background:var(--bg3);border:1px solid var(--border);color:var(--text)" disabled onclick="runAccountLogin()">用配置账号登录</button>
+        <p class="sidebar-hint" id="accountStorageHint" style="font-size:9px;color:var(--dim)"></p>
+      </div>
+
+      <div class="sidebar-section">
         <div class="sidebar-label">目标 URL</div>
         <div class="url-wrap">
           <input class="url-input" id="targetUrl" placeholder="选择环境后自动填入 baseURL，也可手动修改" value="">
@@ -624,13 +634,21 @@
 // ── State ──────────────────────────────────────────────────────────────
 let ws = null;
 let state = { recording: false, hasRaw: false, hasOpt: false, hasRun: false };
-const busyState = { optimize: false, run: false, repoPipeline: false, repoCompare: false };
+const busyState = { optimize: false, run: false, repoPipeline: false, repoCompare: false, accountLogin: false };
 let recordTimer = null;
 let recordSeconds = 0;
 let lastOptimizeProvider = 'claude';
 const repoState = { lastSavedRelative: '', repoRoot: '', optimizedSpecs: [] };
 const envState = { current: 'stage', environments: [], repoReady: false };
+const accountState = {
+  current: 'default',
+  profiles: [],
+  hasStorage: false,
+  storageState: '',
+  hasAccountsFile: false,
+};
 const SS_PLAYWRIGHT_ENV = 'pw_studio_playwright_env';
+const SS_ACCOUNT_PROFILE = 'pw_studio_account_profile';
 
 const STEP_DEFAULTS = {
   1: 'playwright codegen 录制用户操作',
@@ -796,10 +814,130 @@ function updateEnvStorageHint(entry) {
     hint.textContent = '';
     return;
   }
-  hint.textContent = entry.hasStorage
-    ? `${entry.id} · 已找到 ${entry.storageState}`
-    : `${entry.id} · 未找到 ${entry.storageState}，录制/执行可能需先登录（test:setup）`;
-  hint.style.color = entry.hasStorage ? 'var(--muted)' : 'var(--amber)';
+  const prof = accountState.current || 'default';
+  const storage = accountState.storageState || entry.storageState;
+  const has = accountState.storageState ? accountState.hasStorage : entry.hasStorage;
+  hint.textContent = has
+    ? `${entry.id} / ${prof} · 已找到 ${storage}`
+    : `${entry.id} / ${prof} · 未找到 ${storage}，请先登录（npm run login 或下方按钮）`;
+  hint.style.color = has ? 'var(--muted)' : 'var(--amber)';
+}
+
+function updateAccountStorageHint() {
+  const hint = document.getElementById('accountStorageHint');
+  const btn = document.getElementById('btnAccountLogin');
+  const sel = document.getElementById('accountProfileSelect');
+  if (!hint || !btn || !sel) return;
+  const prof = accountState.profiles.find((p) => p.id === accountState.current);
+  const label = prof?.label || accountState.current;
+  const user = prof?.maskedUsername ? ` · ${prof.maskedUsername}` : '';
+  if (!envState.repoReady) {
+    hint.textContent = '未连接主仓库';
+    btn.disabled = true;
+    sel.disabled = true;
+    return;
+  }
+  if (!accountState.hasAccountsFile) {
+    hint.textContent = '未找到 accounts.json，请复制 accounts.json.example';
+    hint.style.color = 'var(--amber)';
+  } else if (accountState.hasStorage) {
+    hint.textContent = `${label}${user} · 已就绪 ${accountState.storageState}`;
+    hint.style.color = 'var(--muted)';
+  } else {
+    hint.textContent = `${label}${user} · 无登录态，请点击登录`;
+    hint.style.color = 'var(--amber)';
+  }
+  sel.disabled = busyState.accountLogin || accountState.profiles.length <= 1;
+  btn.disabled = busyState.accountLogin || !envState.repoReady || !accountState.hasAccountsFile;
+  btn.textContent = busyState.accountLogin ? '登录中…' : '用配置账号登录';
+}
+
+function renderAccountSelect() {
+  const sel = document.getElementById('accountProfileSelect');
+  if (!sel) return;
+  sel.innerHTML = '';
+  const items = accountState.profiles.length
+    ? accountState.profiles
+    : [{ id: 'default', label: 'default', maskedUsername: '' }];
+  items.forEach((p) => {
+    const o = document.createElement('option');
+    o.value = p.id;
+    o.textContent = p.label && p.label !== p.id ? `${p.label} (${p.id})` : p.id;
+    o.selected = p.id === accountState.current;
+    sel.appendChild(o);
+  });
+  if (!sel.dataset.inited) {
+    sel.dataset.inited = '1';
+    sel.addEventListener('change', () => {
+      if (sel.value) setAccountProfile(sel.value);
+    });
+  }
+  updateAccountStorageHint();
+}
+
+function setAccountProfile(profileId, opts = {}) {
+  accountState.current = profileId;
+  try {
+    sessionStorage.setItem(SS_ACCOUNT_PROFILE, profileId);
+  } catch {
+    /* ignore */
+  }
+  renderAccountSelect();
+  if (opts.syncServer !== false && ws && ws.readyState === 1) {
+    send('account:set', { profile: profileId });
+  }
+}
+
+function applyAccountInfo(msg) {
+  accountState.current = msg.current || accountState.current || 'default';
+  accountState.profiles = msg.profiles || [];
+  accountState.hasStorage = Boolean(msg.hasStorage);
+  accountState.storageState = msg.storageState || '';
+  accountState.hasAccountsFile = Boolean(msg.hasAccountsFile);
+  try {
+    const saved = sessionStorage.getItem(SS_ACCOUNT_PROFILE);
+    if (saved && accountState.profiles.some((p) => p.id === saved)) {
+      accountState.current = saved;
+    }
+  } catch {
+    /* ignore */
+  }
+  renderAccountSelect();
+  const entry = envState.environments.find((e) => e.id === envState.current);
+  if (entry && msg.storageState) {
+    entry.hasStorage = accountState.hasStorage;
+    entry.storageState = accountState.storageState;
+  }
+  renderEnvChips();
+}
+
+function applyAccountChanged(msg) {
+  accountState.current = msg.profile || accountState.current;
+  accountState.hasStorage = Boolean(msg.hasStorage);
+  accountState.storageState = msg.storageState || '';
+  try {
+    sessionStorage.setItem(SS_ACCOUNT_PROFILE, accountState.current);
+  } catch {
+    /* ignore */
+  }
+  renderAccountSelect();
+  const entry = envState.environments.find((e) => e.id === envState.current);
+  if (entry) {
+    entry.hasStorage = accountState.hasStorage;
+    entry.storageState = accountState.storageState;
+  }
+  renderEnvChips();
+}
+
+function runAccountLogin() {
+  if (!ws || ws.readyState !== 1) {
+    showToast('未连接服务器', 'err');
+    return;
+  }
+  busyState.accountLogin = true;
+  updateAccountStorageHint();
+  send('account:login', {});
+  log('info', `[account] 开始登录 ${envState.current} / ${accountState.current}`);
 }
 
 function renderEnvChips() {
@@ -871,6 +1009,7 @@ function applyEnvChanged(msg) {
   const prev = envState.current;
   const next = msg.env || prev;
   envState.current = next;
+  if (msg.accountProfile) accountState.current = msg.accountProfile;
   try {
     sessionStorage.setItem(SS_PLAYWRIGHT_ENV, envState.current);
   } catch {
@@ -880,6 +1019,11 @@ function applyEnvChanged(msg) {
   if (entry) {
     entry.hasStorage = msg.hasStorage;
     entry.baseURL = msg.baseURL || entry.baseURL;
+    entry.storageState = msg.storageState || entry.storageState;
+  }
+  if (msg.storageState) {
+    accountState.storageState = msg.storageState;
+    accountState.hasStorage = Boolean(msg.hasStorage);
   }
   renderEnvChips();
   const baseURL = msg.baseURL || entry?.baseURL;
@@ -1147,8 +1291,16 @@ function handleMessage(msg) {
       break;
     case 'env:storage-saved': {
       const entry = envState.environments.find((e) => e.id === msg.env);
-      if (entry) entry.hasStorage = true;
+      if (entry) {
+        entry.hasStorage = true;
+        if (msg.storageState) entry.storageState = msg.storageState;
+      }
+      if (msg.storageState) {
+        accountState.storageState = msg.storageState;
+        accountState.hasStorage = true;
+      }
       renderEnvChips();
+      updateAccountStorageHint();
       break;
     }
     case 'repo:suggest-path:done':
@@ -1265,6 +1417,11 @@ function handleMessage(msg) {
           ? saved
           : msg.current || msg.defaultEnv || 'stage';
       envState.current = initial;
+      if (msg.accountProfile) accountState.current = msg.accountProfile;
+      if (msg.storageState) {
+        accountState.storageState = msg.storageState;
+        accountState.hasStorage = Boolean(msg.hasStorage);
+      }
       renderEnvChips();
       const entry = envState.environments.find((e) => e.id === initial);
       if (entry?.baseURL) applyEnvToTargetUrl(entry.baseURL, null);
@@ -1273,6 +1430,26 @@ function handleMessage(msg) {
     }
     case 'env:changed':
       applyEnvChanged(msg);
+      break;
+    case 'account:info':
+      applyAccountInfo(msg);
+      break;
+    case 'account:changed':
+      applyAccountChanged(msg);
+      break;
+    case 'account:login:start':
+      busyState.accountLogin = true;
+      updateAccountStorageHint();
+      break;
+    case 'account:login:done':
+      busyState.accountLogin = false;
+      applyAccountChanged({
+        profile: msg.profile,
+        storageState: msg.storageState,
+        hasStorage: msg.hasStorage,
+      });
+      if (msg.ok) showToast('账号登录成功', 'ok');
+      else showToast('账号登录失败', 'err');
       break;
     case 'repo:info': {
       repoState.repoRoot = msg.repoRoot || '';

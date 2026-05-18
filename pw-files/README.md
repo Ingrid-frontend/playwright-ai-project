@@ -171,6 +171,7 @@ playwright-studio/
 | 2026-05-18 | 界面切换测试环境（dev/uat/stage9084/stage）：读取 `datasource/base-config.json`；录制带 `--load-storage`；pipeline/项目内执行/对比报告传递 `PLAYWRIGHT_ENV` | `public/index.html`, `server.js` |
 | 2026-05-18 | 修复切换环境后目标 URL 不更新：点击环境芯片即同步 baseURL；未手动改过 URL 时随环境联动 | `public/index.html` |
 | 2026-05-18 | 录制结束自动保存登录态：codegen `--save-storage` 写入当前环境 `storage/loginState/*.json`；停止时 SIGTERM 优雅退出 | `server.js`, `public/index.html` |
+| 2026-05-18 | **多账号档案**：侧栏账号下拉 +「用配置账号登录」；`PLAYWRIGHT_ACCOUNT` 透传 pipeline/录制；storage 按 profile 解析（`repo-env.js` 对齐 `src/utils/env-config.ts`） | `public/index.html`, `server.js`, `repo-env.js` |
 
 ### 测试环境切换（界面）
 
@@ -181,4 +182,11 @@ playwright-studio/
 - 界面选择会写入浏览器 `sessionStorage`（`pw_studio_playwright_env`），刷新后保持
 - **开始录制**：使用当前环境的 `baseURL`（目标 URL 可改）；若已有 `storage/loginState/<env>.json` 则 `--load-storage` 加载；**停止录制**时 codegen 以 `--save-storage` 写回同路径（在浏览器中完成登录后停止即可生成/更新登录态）
 - **项目流水线**（保存 / pipeline / 执行 optimized / 对比报告）：子进程携带 `PLAYWRIGHT_ENV=<所选环境>`
-- 若某环境显示虚线边框，表示 `storageState` 文件尚不存在；可在该环境下录制并在浏览器登录后停止，会自动写入；也可在仓库根执行 `PLAYWRIGHT_ENV=<env> npx playwright test src/setup/login.setup.ts`
+- 若某环境显示虚线边框，表示当前账号档案的 `storageState` 文件尚不存在；可在该环境下录制并在浏览器登录后停止，会自动写入；也可在侧栏点击「用配置账号登录」，或在仓库根执行 `PLAYWRIGHT_ACCOUNT=<profile> npm run login:force`
+
+### 测试账号档案（界面）
+
+- 配置来源：`datasource/accounts.json`（`profiles` 或旧版单账号，见仓库根 `accounts.json.example`）
+- `default` 档案使用 `base-config.json` 的 `storageState`；其它档案默认 `storage/loginState/<env>/<profile>.json`
+- 界面选择写入 `sessionStorage`（`pw_studio_account_profile`）；子进程携带 `PLAYWRIGHT_ACCOUNT`
+- **用配置账号登录**：在仓库根执行 `login.setup.ts` 并设置 `PLAYWRIGHT_REFRESH_STORAGE=1` 强制覆盖已有登录态

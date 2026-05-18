@@ -2,6 +2,7 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { env, curConfig } from '../../playwright.config';
+import { resolveStorageState } from '../../src/utils/env-config.js';
 import {
   buildRecordingBaseSlug,
   extractSnippetFromPlaywrightSpec,
@@ -41,10 +42,17 @@ if (isCI) {
   process.exit(0);
 }
 
-const storagePath = curConfig.storageState;
+const storagePath = resolveStorageState(env);
 if (!fs.existsSync(storagePath) || fs.statSync(storagePath).size <= 10) {
   console.log('🔐 登录状态文件不存在或无效，正在执行登录...');
-  execSync('npx playwright test src/setup/login.setup.ts', { stdio: 'inherit' });
+  execSync('npx playwright test src/setup/login.setup.ts', {
+    stdio: 'inherit',
+    env: {
+      ...process.env,
+      PLAYWRIGHT_ENV: env,
+      ...(process.env.PLAYWRIGHT_ACCOUNT ? { PLAYWRIGHT_ACCOUNT: process.env.PLAYWRIGHT_ACCOUNT } : {}),
+    },
+  });
 }
 
 /**
@@ -82,7 +90,11 @@ const slugOpts = {
   description: getArgValue('--description') || getArgValue('--behavior') || getArgValue('--action'),
 };
 
-const command = `npx playwright codegen ${curConfig.baseURL} --load-storage=${curConfig.storageState} -o ${codegenOutputFile}`;
+const loadStorage =
+  fs.existsSync(storagePath) && fs.statSync(storagePath).size > 10
+    ? ` --load-storage=${storagePath}`
+    : '';
+const command = `npx playwright codegen ${curConfig.baseURL}${loadStorage} -o ${codegenOutputFile}`;
 
 console.log(`🚀 开始录制，Codegen 输出: ${codegenOutputFile}`);
 console.log(`📌 环境: ${env}`);
