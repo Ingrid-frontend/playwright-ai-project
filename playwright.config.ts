@@ -80,6 +80,9 @@ export default defineConfig({
       testDir: './src/setup',
       testMatch: /.*\.setup\.ts/, // 匹配你的登录脚本
       // setup 项目不应该加载 storageState，而是生成它
+      // 登录含 iframe + 跳转，默认 30s 易超时；与 use.navigationTimeout 对齐
+      timeout: 120_000,
+      retries: 0,
     },
 
     /* --- 浏览器测试项目 --- */

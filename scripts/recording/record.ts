@@ -45,14 +45,17 @@ if (isCI) {
 const storagePath = resolveStorageState(env);
 if (!fs.existsSync(storagePath) || fs.statSync(storagePath).size <= 10) {
   console.log('🔐 登录状态文件不存在或无效，正在执行登录...');
-  execSync('npx playwright test src/setup/login.setup.ts', {
-    stdio: 'inherit',
-    env: {
-      ...process.env,
-      PLAYWRIGHT_ENV: env,
-      ...(process.env.PLAYWRIGHT_ACCOUNT ? { PLAYWRIGHT_ACCOUNT: process.env.PLAYWRIGHT_ACCOUNT } : {}),
+  execSync(
+    'npx playwright test src/setup/login.setup.ts --project=setup --retries=0 --timeout=120000',
+    {
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        PLAYWRIGHT_ENV: env,
+        ...(process.env.PLAYWRIGHT_ACCOUNT ? { PLAYWRIGHT_ACCOUNT: process.env.PLAYWRIGHT_ACCOUNT } : {}),
+      },
     },
-  });
+  );
 }
 
 /**

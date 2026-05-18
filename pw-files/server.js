@@ -186,7 +186,14 @@ function runAccountLogin(ws, session) {
   return new Promise((resolve) => {
     const proc = spawn(
       process.execPath,
-      [cli, 'test', 'src/setup/login.setup.ts'],
+      [
+        cli,
+        'test',
+        'src/setup/login.setup.ts',
+        '--project=setup',
+        '--retries=0',
+        '--timeout=120000',
+      ],
       {
         cwd: repoRoot,
         env: {
