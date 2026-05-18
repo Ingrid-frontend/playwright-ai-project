@@ -1,0 +1,4 @@
+node_modules/
+.pw-studio/
+test-results/
+playwright-report/

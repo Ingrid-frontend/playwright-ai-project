@@ -24,6 +24,7 @@
     "test:stage": "npm run test:env --env=stage",
     "report": "playwright show-report",
     "record": "tsx scripts/recording/record.ts",
+    "studio": "npm --prefix pw-files start",
     "auto-test": "tsx scripts/flow/auto-test-flow.ts",
     "auto-test:feishu-text": "tsx scripts/flow/auto-test-flow.ts --feishu-mode=text",
     "auto-test:feishu-links": "tsx scripts/flow/auto-test-flow.ts --feishu-mode=links --create-feishu-doc",

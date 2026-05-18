@@ -74,6 +74,8 @@ interface OptimizeMetrics {
   totalRemoved: number;
 }
 
+type OptimizedImportLayout = 'nested' | 'flat';
+
 class RawRecordingOptimizer {
   private filePath: string;
   private content: string;
@@ -82,6 +84,8 @@ class RawRecordingOptimizer {
   private testBlock: TestBlock | null = null;
   private hasIframe: boolean = false;
   private options: OptimizeOptions;
+  /** `nested`: `tests/optimized/<date>/x.optimized.spec.ts`；`flat`: `tests/optimized/x.optimized.spec.ts`（无日期子目录时） */
+  private optimizedImportLayout: OptimizedImportLayout = 'nested';
 
   constructor(filePath: string) {
     this.filePath = filePath;
@@ -89,6 +93,32 @@ class RawRecordingOptimizer {
     this.lines = this.content.split('\n');
     this.detectIframe();
     this.options = this.getDefaultOptions();
+  }
+
+  setOptimizedImportLayout(layout: OptimizedImportLayout): void {
+    this.optimizedImportLayout = layout;
+  }
+
+  private getOptimizedImportPaths(): {
+    fixtures: string;
+    screenshot: string;
+    optimizedActions: string;
+    fixturesCommentPhrase: string;
+  } {
+    if (this.optimizedImportLayout === 'flat') {
+      return {
+        fixtures: './fixtures',
+        screenshot: '../../utils/screenshot',
+        optimizedActions: '../utils/optimized-actions',
+        fixturesCommentPhrase: './fixtures',
+      };
+    }
+    return {
+      fixtures: '../fixtures',
+      screenshot: '../../../utils/screenshot',
+      optimizedActions: '../../utils/optimized-actions',
+      fixturesCommentPhrase: '../fixtures',
+    };
   }
 
   private getDefaultOptions(): OptimizeOptions {
@@ -533,17 +563,18 @@ class RawRecordingOptimizer {
       ...(needsClick ? ['smartClick'] : []),
       ...(needsFill ? ['smartFill'] : []),
     ];
+    const imp = this.getOptimizedImportPaths();
 
-    const template = `import { test, expect } from '../fixtures';
+    const template = `import { test, expect } from '${imp.fixtures}';
 import fs from 'fs';
 import path from 'path';
-import { takeStepScreenshot, waitForPostInteractionPaint, withScreenshotRunSegment } from '../../../utils/screenshot';
-import { ${actionImports.join(', ')} } from '../../utils/optimized-actions';
+import { takeStepScreenshot, waitForPostInteractionPaint, withScreenshotRunSegment } from '${imp.screenshot}';
+import { ${actionImports.join(', ')} } from '${imp.optimizedActions}';
 
 ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testName}', async ({ page }) => {
   ${this.options.addTimeout ? 'test.setTimeout(120000);' : ''}
 
-  // 截图根目录；Chrome/WebKit 子目录由 ../fixtures 按引擎自动设置（仍可用 PLAYWRIGHT_SCREENSHOT_RUN_SEGMENT 手动覆盖）
+  // 截图根目录；Chrome/WebKit 子目录由 ${imp.fixturesCommentPhrase} 按引擎自动设置（仍可用 PLAYWRIGHT_SCREENSHOT_RUN_SEGMENT 手动覆盖）
   const screenshotDir = withScreenshotRunSegment('${screenshotDir}');
   if (!fs.existsSync(screenshotDir)) {
     fs.mkdirSync(screenshotDir, { recursive: true });
@@ -559,8 +590,7 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
     // 如果没有页面导航，添加一个默认的
     await step('导航到首页', async () => {
       console.log('🌐 导航到: / (基于 baseURL)');
-      await page.goto('/', { waitUntil: 'networkidle' });
-      await page.waitForLoadState('networkidle');
+      await page.goto('/', { waitUntil: 'load' });
       await takeStepScreenshot(page, path.join(runDir, \`step-1-导航到首页.png\`));
     });
   }
@@ -585,8 +615,8 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
       if (action.type === 'goto') {
         code += `  await step('导航到页面', async () => {
     console.log('🌐 导航到: ${action.url}');
-    await page.goto('${action.url}', { waitUntil: 'networkidle' });
-    ${this.options.waitLoad ? 'await page.waitForLoadState(\'networkidle\');' : ''}
+    await page.goto('${action.url}', { waitUntil: 'load' });
+    ${this.options.waitLoad ? 'await page.waitForLoadState(\'networkidle\', { timeout: 10000 }).catch(() => {});' : ''}
     await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-导航到页面.png\`));
   });
 
@@ -634,7 +664,8 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
       '新建', '提交', '保存', '删除', '审批', '通过', '驳回',
       '登录', '注册', '支付', '下单', '确认', '发送',
       '新增', '编辑', '修改', '更新', '导入', '导出',
-      'Close', 'close', '取 消', '取消',
+      // Close / 关闭类多为弹层关闭，未弹出时不应卡死整用例（与「跳过非关键步骤」策略一致）
+      '取 消', '取消',
     ];
     return criticalKeywords.some((kw) => label.includes(kw));
   }
@@ -946,15 +977,15 @@ if (!fs.existsSync(outputDir)) {
 async function processFile(filePath: string): Promise<void> {
   console.log(`🔄 开始优化文件: ${filePath}`);
   const optimizer = new RawRecordingOptimizer(filePath);
+  const fileName = path.basename(filePath, '.spec.ts');
+  const dateStr = optimizer.extractDateFromFileName(fileName);
+  optimizer.setOptimizedImportLayout(dateStr ? 'nested' : 'flat');
   const result = optimizer.optimize();
   if (!result || result.trim().length === 0) {
     console.log(`❌ 优化失败（未生成内容），跳过写入: ${filePath}`);
     return;
   }
 
-  const fileName = path.basename(filePath, '.spec.ts');
-  
-  const dateStr = optimizer.extractDateFromFileName(fileName);
   let finalOutputDir = outputDir;
   
   if (dateStr) {
