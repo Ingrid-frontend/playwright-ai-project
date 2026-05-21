@@ -1360,7 +1360,7 @@ const RUN_STEP_DEFAULTS = {
   3: '生成截图对比报告',
 };
 const runState = { lastRunComplete: false, lastBatchComplete: false, lastBatchResults: [] };
-const dateCategoryState = { loaded: false, loading: false, list: [], description: '', dirty: false };
+const dateCategoryState = { loaded: false, loading: false, list: [], description: '', dirty: false, selected: '' };
 
 const SAMPLE_SCRIPT = `import { test, expect } from '@playwright/test';
 
@@ -2708,6 +2708,7 @@ function handleMessage(msg) {
           )
         : [];
       dateCategoryState.dirty = false;
+      dateCategoryState.selected = getCurrentDateCategoryCode();
       renderDateCategoryList();
       showToast('迭代配置已保存', 'ok');
       log('ok', `[config] 已保存 ${msg.configPath || 'date-categories.json'}`);
@@ -3486,6 +3487,31 @@ function sortDateCategoryList(list) {
   return [...list].sort((a, b) => parseDateCategoryToTime(a) - parseDateCategoryToTime(b));
 }
 
+/** 今日日期归属的迭代（与 getDateCategoryForCalendarDay / 录制落盘规则一致，非列表最大日期） */
+function getCurrentDateCategoryCode(list = dateCategoryState.list) {
+  const sorted = sortDateCategoryList(list || []);
+  if (!sorted.length) return '';
+  const now = new Date();
+  const todayTime = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  for (const code of sorted) {
+    if (todayTime <= parseDateCategoryToTime(code)) return code;
+  }
+  return sorted[sorted.length - 1];
+}
+
+function applyDefaultDateCategorySelection() {
+  const sel = document.getElementById('dateCategorySelect');
+  if (!sel || sel.disabled || !dateCategoryState.list.length) return;
+  const current = getCurrentDateCategoryCode();
+  if (!current) return;
+  sel.value = current;
+  if (sel.value !== current) {
+    const idx = dateCategoryState.list.indexOf(current);
+    if (idx >= 0) sel.selectedIndex = idx;
+  }
+  dateCategoryState.selected = sel.value || current;
+}
+
 function applyDateCategoriesFromServer(msg) {
   if (!Array.isArray(msg.dateCategories)) return false;
   dateCategoryState.loaded = true;
@@ -3504,6 +3530,7 @@ function applyDateCategoriesFromServer(msg) {
     dateCategoryState.description = msg.description || msg.dateCategoriesDescription || '';
   }
   dateCategoryState.dirty = false;
+  dateCategoryState.selected = getCurrentDateCategoryCode(dateCategoryState.list);
   return true;
 }
 
@@ -3541,7 +3568,7 @@ function renderDateCategoryOptions() {
     .map((d) => `<option value="${escHtml(d)}">${escHtml(d)}</option>`)
     .join('');
   sel.disabled = false;
-  sel.selectedIndex = dateCategoryState.list.length - 1;
+  applyDefaultDateCategorySelection();
 }
 
 function renderDateCategoryList() {
@@ -3604,6 +3631,7 @@ function addDateCategory() {
     return;
   }
   dateCategoryState.list = sortDateCategoryList([...dateCategoryState.list, short]);
+  dateCategoryState.selected = getCurrentDateCategoryCode();
   if (input) input.value = '';
   markDateCategoriesDirty();
 }
