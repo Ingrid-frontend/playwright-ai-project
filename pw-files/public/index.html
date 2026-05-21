@@ -575,7 +575,10 @@
         </div>
         <input type="text" class="url-input" id="repoSpecSearch" placeholder="搜索用例路径…" style="margin-bottom:6px;width:100%" spellcheck="false">
         <select class="url-input" id="repoOptimizedPick" style="margin-bottom:6px;width:100%;color:var(--text)"></select>
-          <button type="button" class="btn btn-full" onclick="loadSelectedOptimizedToEditor()">载入到编辑器</button>
+          <div style="display:flex;gap:6px;margin-bottom:6px">
+            <button type="button" class="btn btn-full" style="flex:1" onclick="loadSelectedOptimizedToEditor()">载入到编辑器</button>
+            <button type="button" class="btn btn-full" id="btnDeleteSpecSingle" style="flex:1;border-color:rgba(248,113,113,.35);color:var(--red)" onclick="deleteSelectedOptimizedSpecs()">删除所选用例</button>
+          </div>
         </div>
         <div id="runSpecBatch" class="studio-hidden">
           <input type="text" class="url-input" id="repoBatchSpecSearch" placeholder="筛选批量列表…" style="margin-bottom:6px;width:100%" spellcheck="false">
@@ -583,6 +586,7 @@
             <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="refreshRepoOptimizedList()">刷新</button>
             <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="selectAllBatchSpecs(true)">全选</button>
             <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="selectAllBatchSpecs(false)">全不选</button>
+            <button type="button" class="btn" id="btnDeleteSpecBatch" style="font-size:var(--fs-xs);padding:4px 8px;color:var(--red)" onclick="deleteSelectedOptimizedSpecs()">删除所选</button>
           </div>
           <div id="repoBatchSpecList" class="batch-spec-list"></div>
           <label class="opt-chip" style="margin:0"><input type="checkbox" id="batchStopOnError"> 遇错停止</label>
@@ -1917,6 +1921,32 @@ function loadSelectedOptimizedToEditor() {
   send('repo:load-optimized', { specRelative: spec });
 }
 
+function getSpecsToDelete() {
+  if (runSubMode === 'batch') return getSelectedBatchSpecs();
+  const spec = document.getElementById('repoOptimizedPick')?.value?.trim();
+  return spec ? [spec] : [];
+}
+
+function deleteSelectedOptimizedSpecs() {
+  const specs = getSpecsToDelete().filter((p) => p && !isDraftOptimizedSpecPath(p));
+  if (!specs.length) {
+    showToast(runSubMode === 'batch' ? '请至少勾选一个正式用例' : '请先选择要删除的用例', 'err');
+    return;
+  }
+  const label =
+    specs.length === 1
+      ? formatOptimizedSpecLabel(specs[0])
+      : `${specs.length} 个用例`;
+  if (
+    !window.confirm(
+      `确定删除 ${label}？\n\n将永久删除 tests/optimized 下对应文件，不可恢复。`,
+    )
+  ) {
+    return;
+  }
+  send('repo:delete-spec', { specRelatives: specs });
+}
+
 function syncWorkflowUi() {
   syncExecScopeHint();
   syncCompareChecklists();
@@ -2032,6 +2062,12 @@ function syncRepoButtons() {
     btnRunCompare.disabled = busyRepo || !canCompare;
   }
   if (btnRunCompareCancel) btnRunCompareCancel.disabled = !busyState.repoCompare;
+  const btnDelSingle = document.getElementById('btnDeleteSpecSingle');
+  const btnDelBatch = document.getElementById('btnDeleteSpecBatch');
+  const canDelete = runSubMode === 'batch' ? batchCount > 0 : Boolean(specPick);
+  const delDisabled = busyRepo || busyState.run || busyState.repoBatch;
+  if (btnDelSingle) btnDelSingle.disabled = delDisabled || !canDelete || runSubMode === 'batch';
+  if (btnDelBatch) btnDelBatch.disabled = delDisabled || !canDelete || runSubMode !== 'batch';
 }
 
 function commitRepoArtifacts() {
@@ -2625,6 +2661,36 @@ function handleMessage(msg) {
       showToast('已载入优化脚本', 'ok');
       syncWorkflowUi();
       break;
+    case 'repo:delete-spec:done': {
+      repoState.optimizedSpecs = msg.optimizedSpecs || [];
+      fillRepoOptimizedSelect(msg.optimizedSpecs);
+      fillRepoBatchChecklist(msg.optimizedSpecs);
+      const deleted = msg.deleted || [];
+      const failed = msg.failed || [];
+      if (deleted.length) {
+        const deletedSet = new Set(deleted);
+        const pick = document.getElementById('repoOptimizedPick')?.value?.trim();
+        if (pick && deletedSet.has(pick)) {
+          document.getElementById('optCode').value = '';
+          document.getElementById('optBadge').textContent = '空';
+          state.hasOpt = false;
+          resetDiffView();
+        }
+        repoState.committedOptFingerprint = '';
+        repoState.committedRawFingerprint = '';
+      }
+      syncWorkflowUi();
+      if (deleted.length && !failed.length) {
+        showToast(`已删除 ${deleted.length} 个用例`, 'ok');
+        log('ok', `[repo] 已删除: ${deleted.join(', ')}`);
+      } else if (deleted.length && failed.length) {
+        showToast(`已删除 ${deleted.length} 个，${failed.length} 个失败`, 'err');
+        failed.forEach((f) => log('err', `[repo] 删除失败 ${f.specRelative}: ${f.error}`));
+      } else {
+        showToast(failed[0]?.error || '删除失败', 'err');
+      }
+      break;
+    }
     case 'repo:batch-test:start':
       busyState.repoBatch = true;
       runState.lastBatchComplete = false;

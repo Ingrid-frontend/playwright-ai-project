@@ -1247,6 +1247,58 @@ async function repoLoadOptimized(ws, msg) {
   }
 }
 
+async function repoDeleteOptimizedSpecs(ws, msg) {
+  const repoRoot = resolveRepoRoot();
+  if (!fs.existsSync(path.join(repoRoot, 'playwright.config.ts'))) {
+    send(ws, 'error', { message: '未找到项目根，无法删除用例' });
+    return;
+  }
+  const list = Array.isArray(msg.specRelatives)
+    ? msg.specRelatives
+    : msg.specRelative
+      ? [msg.specRelative]
+      : [];
+  const specs = [...new Set(list.map((s) => String(s || '').trim().replace(/\\/g, '/')).filter(Boolean))];
+  if (!specs.length) {
+    send(ws, 'error', { message: '请指定要删除的 tests/optimized/.../*.optimized.spec.ts' });
+    return;
+  }
+
+  const deleted = [];
+  const failed = [];
+  for (const specRel of specs) {
+    if (isDraftOptimizedPath(specRel)) {
+      failed.push({ specRelative: specRel, error: '不允许删除草稿用例' });
+      continue;
+    }
+    try {
+      const abs = assertAllowedOptimizedSpec(repoRoot, specRel);
+      if (!fs.existsSync(abs)) {
+        failed.push({ specRelative: specRel, error: '文件不存在' });
+        continue;
+      }
+      fs.unlinkSync(abs);
+      deleted.push(specRel);
+      logLine(ws, `[repo] 已删除用例: ${specRel}`, 'ok');
+    } catch (e) {
+      failed.push({ specRelative: specRel, error: errText(e) });
+    }
+  }
+
+  const optimizedSpecs = listOptimizedSpecs(repoRoot, { limit: 40 });
+  send(ws, 'repo:delete-spec:done', {
+    deleted,
+    failed,
+    optimizedSpecs,
+    repoRoot,
+  });
+  if (deleted.length && failed.length) {
+    logLine(ws, `[repo] 删除完成：成功 ${deleted.length}，失败 ${failed.length}`, 'warn');
+  } else if (failed.length) {
+    logLine(ws, `[repo] 删除失败 ${failed.length} 项`, 'err');
+  }
+}
+
 /** 仅允许通过 Studio 暴露仓库内 results/ 与 screenshots/（对比报告 HTML 引用 ../screenshots） */
 function resolveRepoPublicReadFile(repoRoot, urlRel) {
   const rel = decodeURIComponent(String(urlRel || '').replace(/\\/g, '/')).replace(/^\/+/, '');
@@ -2541,6 +2593,10 @@ wss.on('connection', (ws) => {
 
       case 'repo:load-optimized':
         await repoLoadOptimized(ws, msg);
+        break;
+
+      case 'repo:delete-spec':
+        await repoDeleteOptimizedSpecs(ws, msg);
         break;
 
       case 'cancel:repo-pipeline':

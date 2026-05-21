@@ -69,8 +69,9 @@ npm run dev
 | **运行用例** | 运行流程 1→3 步 | 在「测试用例」区选 **单个** 或 **批量** → 执行 → 截图对比报告 |
 
 - 模式选择写入 `sessionStorage`（`pw_studio_workflow_mode`），运行子模式为 `pw_studio_run_sub_mode`。
-- **运行 · 单个**：下拉选择 optimized，可载入编辑器；执行所选文件。
-- **运行 · 批量**：多选列表，支持搜索筛选，可选「遇错停止」；顺序执行 `repo:batch-test`；步骤 2 展示进度与结果表。
+- **运行 · 单个**：下拉选择 optimized，可载入编辑器或**删除所选用例**；执行所选文件。
+- **运行 · 批量**：多选列表，支持搜索筛选、**删除所选**，可选「遇错停止」；顺序执行 `repo:batch-test`；步骤 2 展示进度与结果表。
+- **删除用例**：仅允许删除 `tests/optimized/` 下正式 `*.optimized.spec.ts`（不含草稿 `studio-unsaved-draft`），删除后不可恢复。
 - 编辑器 Tab 选择会记住（`pw_studio_editor_tab`）；切换工作模式前会确认是否保留编辑器内容。
 
 ---
