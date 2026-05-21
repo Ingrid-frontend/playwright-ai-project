@@ -63,7 +63,8 @@
   .logo { display: flex; align-items: center; gap: 10px; font-family: var(--font-head); font-size: var(--fs-lg); font-weight: 700; }
   .logo-icon { width: 28px; height: 28px; background: var(--green); border-radius: 6px; display: flex; align-items: center; justify-content: center; }
   .logo-icon svg { width: 16px; height: 16px; fill: #000; }
-  .header-meta { display: flex; align-items: center; gap: 16px; font-size: var(--fs-sm); color: var(--muted); }
+  .header-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; max-width: 55%; }
+  .header-meta { display: flex; align-items: center; gap: 16px; font-size: var(--fs-sm); color: var(--muted); flex-wrap: wrap; justify-content: flex-end; }
   .ws-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--dim); display: inline-block; transition: background .3s; }
   .ws-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
 
@@ -130,6 +131,48 @@
   .batch-spec-item label { flex: 1; cursor: pointer; color: var(--text-secondary); }
   .batch-spec-toolbar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
   .batch-progress { font-size: var(--fs-xs); color: var(--teal); margin-bottom: 8px; min-height: 1.2em; }
+  .studio-status-bar {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    font-size: var(--fs-xs); color: var(--text-tertiary); margin-top: 6px;
+  }
+  .studio-status-bar .status-pill {
+    padding: 2px 8px; border-radius: 6px; background: var(--bg3); border: 1px solid var(--border);
+    max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .studio-status-bar .status-pill.ok { color: var(--green); border-color: rgba(52,211,153,.25); }
+  .studio-status-bar .status-pill.warn { color: var(--amber); border-color: rgba(251,191,36,.25); }
+  .studio-status-bar .status-pill.err { color: var(--red); border-color: rgba(248,113,113,.25); }
+  .global-task-bar { font-size: var(--fs-xs); color: var(--teal); margin-left: 8px; }
+  .exec-scope-hint { font-size: var(--fs-xs); color: var(--text-secondary); line-height: 1.5; margin-bottom: 10px; }
+  .compare-checklist { list-style: none; margin: 0 0 10px; padding: 0; font-size: var(--fs-xs); }
+  .compare-checklist li { padding: 3px 0; color: var(--text-tertiary); }
+  .compare-checklist li.ok { color: var(--green); }
+  .compare-checklist li.fail { color: var(--amber); }
+  .run-spec-summary {
+    font-size: var(--fs-xs); line-height: 1.55; color: var(--text-secondary);
+    padding: 8px 10px; border-radius: var(--radius); background: var(--bg3); border: 1px solid var(--border);
+    margin-bottom: 8px; word-break: break-all;
+  }
+  .batch-results-wrap {
+    max-height: 160px; overflow: auto; margin-top: 8px; border: 1px solid var(--border);
+    border-radius: var(--radius); font-size: var(--fs-xs);
+  }
+  .batch-results-table { width: 100%; border-collapse: collapse; }
+  .batch-results-table th, .batch-results-table td {
+    padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--border);
+  }
+  .batch-results-table tr:last-child td { border-bottom: none; }
+  .batch-results-table .fail-row { color: var(--red); }
+  .report-hub-tabs { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+  .report-hub-tab {
+    font-size: var(--fs-xs); padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg3); color: var(--text-secondary); cursor: pointer;
+  }
+  .report-hub-tab.active { border-color: rgba(167,139,250,.4); color: var(--purple); }
+  .report-hub-pane { display: none; }
+  .report-hub-pane.active { display: block; }
+  .tab-badge.dirty { background: rgba(251,191,36,.15); color: var(--amber); border: 1px solid rgba(251,191,36,.3); }
+  .tab-badge.saved { background: rgba(52,211,153,.1); color: var(--green); }
   .api-key-block .api-key-label { font-size: var(--fs-xs); color: var(--muted); margin-bottom: 4px; }
   .api-key-block .url-input { width: 100%; }
   .api-key-block.active .api-key-label { color: var(--purple); }
@@ -454,10 +497,18 @@
       </div>
       Playwright Studio
     </div>
-    <div class="header-meta">
-      <span><span class="ws-dot" id="wsDot"></span> <span id="wsStatus">未连接</span></span>
-      <span id="headerEnv" style="padding:2px 8px;border-radius:6px;background:var(--bg3);color:var(--teal);font-size:var(--fs-xs)" title="当前环境">env: —</span>
-      <span id="headerTime">--</span>
+    <div class="header-right">
+      <div class="header-meta">
+        <span><span class="ws-dot" id="wsDot"></span> <span id="wsStatus">未连接</span></span>
+        <span id="headerEnv" style="padding:2px 8px;border-radius:6px;background:var(--bg3);color:var(--teal);font-size:var(--fs-xs)" title="当前环境">env: —</span>
+        <span class="global-task-bar" id="globalTaskBar"></span>
+        <span id="headerTime">--</span>
+      </div>
+      <div class="studio-status-bar" id="studioStatusBar">
+        <span class="status-pill" id="statusRepo" title="">仓库 —</span>
+        <span class="status-pill" id="statusDraft">草稿 —</span>
+        <span class="status-pill" id="statusStorage">登录态 —</span>
+      </div>
     </div>
   </header>
 
@@ -495,12 +546,18 @@
           执行设置 <span class="acc-chevron">›</span>
         </button>
         <div class="accordion-body">
-          <p class="sidebar-hint">四选一运行模式；「执行用例」「执行脚本」共用。调试/UI 需在本机窗口内操作。</p>
+          <p class="exec-scope-hint" id="execScopeHint">—</p>
+          <p class="sidebar-hint">运行模式四选一；浏览器可多选（至少保留一个）。</p>
           <div class="opt-grid provider-row run-mode-row">
             <label class="opt-chip on" title="弹出浏览器窗口，脚本自动执行"><input type="radio" name="pwRunMode" value="headed" checked> 有界面</label>
             <label class="opt-chip" title="Playwright Inspector 单步调试"><input type="radio" name="pwRunMode" value="debug"> 调试</label>
             <label class="opt-chip" title="Playwright Test UI 可视化面板"><input type="radio" name="pwRunMode" value="ui"> UI 模式</label>
             <label class="opt-chip" title="无头运行并输出 JSON 报告"><input type="radio" name="pwRunMode" value="headless"> 无头</label>
+          </div>
+          <p class="sidebar-hint" style="margin-top:12px;margin-bottom:8px">浏览器（可多选，至少保留一个）</p>
+          <div class="opt-grid provider-row" id="browserProjectRow">
+            <label class="opt-chip on"><input type="checkbox" name="pwBrowserProject" value="optimized" checked> Chrome</label>
+            <label class="opt-chip on"><input type="checkbox" name="pwBrowserProject" value="optimized-webkit" checked> Safari</label>
           </div>
         </div>
       </div>
@@ -516,10 +573,12 @@
           <span class="sidebar-hint" style="margin:0">选择用例</span>
           <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px;flex-shrink:0" onclick="refreshRepoOptimizedList()">刷新</button>
         </div>
+        <input type="text" class="url-input" id="repoSpecSearch" placeholder="搜索用例路径…" style="margin-bottom:6px;width:100%" spellcheck="false">
         <select class="url-input" id="repoOptimizedPick" style="margin-bottom:6px;width:100%;color:var(--text)"></select>
           <button type="button" class="btn btn-full" onclick="loadSelectedOptimizedToEditor()">载入到编辑器</button>
         </div>
         <div id="runSpecBatch" class="studio-hidden">
+          <input type="text" class="url-input" id="repoBatchSpecSearch" placeholder="筛选批量列表…" style="margin-bottom:6px;width:100%" spellcheck="false">
           <div class="batch-spec-toolbar">
             <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="refreshRepoOptimizedList()">刷新</button>
             <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="selectAllBatchSpecs(true)">全选</button>
@@ -636,8 +695,8 @@
         <div class="step-action-panel" id="step3PanelRepo">
           <p class="sidebar-hint" style="margin-bottom:8px">运行模式见上方「执行设置」。</p>
           <button type="button" class="btn btn-run btn-full" id="btnRepoTest" onclick="event.stopPropagation(); handleRepoTestClick()" data-default-label="执行（含截图）">执行（含截图）</button>
-          <p class="sidebar-hint" style="margin-top:10px;margin-bottom:8px">需已将录制与优化脚本保存到项目且与编辑器一致后，方可生成对比报告。</p>
-          <button type="button" class="btn btn-full" id="btnRepoCompare" onclick="openCompareReportClick()" style="border-color:rgba(77,159,255,.35);color:var(--blue)">生成并打开截图对比报告</button>
+          <ul class="compare-checklist" id="compareChecklistNew"></ul>
+          <button type="button" class="btn btn-full" id="btnRepoCompare" onclick="openCompareReportClick()" style="border-color:rgba(77,159,255,.35);color:var(--blue)">打开报告中心 · 截图对比</button>
           <button type="button" class="btn btn-full" id="btnRepoCompareCancel" style="font-size:var(--fs-sm);padding:6px 10px;margin-top:6px" disabled onclick="send('cancel:repo-compare')">取消对比报告生成</button>
         </div>
 
@@ -669,7 +728,7 @@
           </div>
         </div>
         <div class="step-action-panel active" id="runStep1Panel">
-          <p class="sidebar-hint">用例列表见上方「测试用例」区域。</p>
+          <div class="run-spec-summary" id="runStep1Summary">请在上方「测试用例」选择要运行的用例。</div>
         </div>
         <div class="step-item" id="runStep2" data-run-step="2" role="button" tabindex="0">
           <div class="step-bullet">2</div>
@@ -681,6 +740,12 @@
         <div class="step-action-panel" id="runStep2Panel">
           <p class="sidebar-hint" style="margin-bottom:8px">运行模式见「执行设置」。</p>
           <p class="batch-progress" id="batchProgressText"></p>
+          <div class="batch-results-wrap studio-hidden" id="batchResultsWrap">
+            <table class="batch-results-table" id="batchResultsTable">
+              <thead><tr><th>用例</th><th>结果</th><th>操作</th></tr></thead>
+              <tbody id="batchResultsBody"></tbody>
+            </table>
+          </div>
           <button type="button" class="btn btn-run btn-full" id="btnRunExecute" onclick="event.stopPropagation(); handleRunExecuteClick()" data-default-label="执行（含截图）">执行（含截图）</button>
         </div>
         <div class="step-item" id="runStep3" data-run-step="3" role="button" tabindex="0">
@@ -691,7 +756,8 @@
           </div>
         </div>
         <div class="step-action-panel" id="runStep3Panel">
-          <button type="button" class="btn btn-full" id="btnRunCompare" onclick="openRunCompareReportClick()" style="border-color:rgba(77,159,255,.35);color:var(--blue)">生成并打开截图对比报告</button>
+          <ul class="compare-checklist" id="compareChecklistRun"></ul>
+          <button type="button" class="btn btn-full" id="btnRunCompare" onclick="openRunCompareReportClick()" style="border-color:rgba(77,159,255,.35);color:var(--blue)">打开报告中心 · 截图对比</button>
           <button type="button" class="btn btn-full" id="btnRunCompareCancel" style="font-size:var(--fs-sm);padding:6px 10px;margin-top:6px" disabled onclick="send('cancel:repo-compare')">取消对比报告生成</button>
         </div>
       </div>
@@ -717,9 +783,9 @@
 
       <div class="editor-run-bar" id="editorRunBar">
         <div class="editor-run-row">
-          <button type="button" class="btn btn-run" id="btnRun" onclick="handleRunClick()" disabled data-default-label="执行脚本">
+          <button type="button" class="btn btn-run" id="btnRun" onclick="handleRunClick()" disabled data-default-label="执行脚本（编辑器）">
             <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 19,12 5,21" fill="currentColor"/></svg>
-            <span class="btn-label">执行脚本</span>
+            <span class="btn-label" id="btnRunLabel">执行脚本（编辑器）</span>
           </button>
           <span class="editor-run-status" id="editorRunStatus"></span>
         </div>
@@ -794,10 +860,26 @@
       </div>
 
       <!-- Report panel -->
-      <div class="report-body" id="reportPanel">
-        <div class="empty-hint">
-          <div class="empty-icon">📊</div>
-          <div>执行测试后点击「生成报告」</div>
+      <div class="report-body" id="reportPanel" style="display:none">
+        <div class="report-hub-tabs" role="tablist">
+          <button type="button" class="report-hub-tab active" data-report-hub="stats" onclick="switchReportHub('stats', this)">运行统计</button>
+          <button type="button" class="report-hub-tab" data-report-hub="compare" onclick="switchReportHub('compare', this)">截图对比</button>
+          <button type="button" class="report-hub-tab" data-report-hub="history" onclick="switchReportHub('history', this)">执行历史</button>
+        </div>
+        <div class="report-hub-pane active" id="reportHubStats">
+          <div class="empty-hint" id="reportStatsEmpty">
+            <div class="empty-icon">📊</div>
+            <div>执行测试后点击「生成报告」，或完成项目内执行</div>
+          </div>
+          <div id="reportStatsContent"></div>
+        </div>
+        <div class="report-hub-pane" id="reportHubCompare">
+          <ul class="compare-checklist" id="compareChecklistHub"></ul>
+          <p class="sidebar-hint" id="compareHubHint">完成执行并满足条件后可生成截图对比 HTML。</p>
+          <button type="button" class="btn btn-full" id="btnHubCompare" onclick="openCompareFromHub()" style="border-color:rgba(77,159,255,.35);color:var(--blue)">生成并打开截图对比</button>
+        </div>
+        <div class="report-hub-pane" id="reportHubHistory">
+          <div id="runHistoryList" class="sidebar-hint">暂无执行记录</div>
         </div>
       </div>
     </div>
@@ -825,7 +907,12 @@ const repoState = {
   committedRawFingerprint: '',
   committedOptFingerprint: '',
   repoRoot: '',
+  repoReady: false,
+  draftOptimizedExists: false,
+  draftRecordingExists: false,
   optimizedSpecs: [],
+  rawFingerprintAtPipeline: '',
+  lastCompareReportUrl: '',
 };
 const optimizeKeyState = { serverAnthropic: false, serverDeepseek: false };
 const envState = { current: 'stage', environments: [], repoReady: false };
@@ -869,6 +956,356 @@ function isHeadedRunMode(mode) {
   const m = mode || getPwRunMode();
   return m === 'headed' || m === 'debug' || m === 'ui';
 }
+
+function getSelectedBrowserProjects() {
+  const checked = [
+    ...document.querySelectorAll('#browserProjectRow input[name="pwBrowserProject"]:checked'),
+  ];
+  return checked.map((cb) => cb.value);
+}
+
+function restoreBrowserProjects(preferredIds) {
+  const row = document.getElementById('browserProjectRow');
+  if (!row) return;
+  const allowed = new Set(
+    [...row.querySelectorAll('input[name="pwBrowserProject"]')].map((cb) => cb.value),
+  );
+  let list = Array.isArray(preferredIds)
+    ? preferredIds.filter((id) => allowed.has(id))
+    : [];
+  if (!list.length) {
+    try {
+      const raw = sessionStorage.getItem(SS_BROWSER_PROJECTS);
+      if (raw) list = JSON.parse(raw).filter((id) => allowed.has(id));
+    } catch {
+      /* ignore */
+    }
+  }
+  if (!list.length) list = ['optimized'];
+  row.querySelectorAll('input[name="pwBrowserProject"]').forEach((cb) => {
+    cb.checked = list.includes(cb.value);
+    const chip = cb.closest('.opt-chip');
+    if (chip) chip.className = 'opt-chip' + (cb.checked ? ' on' : '');
+  });
+}
+
+function persistBrowserProjects() {
+  try {
+    sessionStorage.setItem(SS_BROWSER_PROJECTS, JSON.stringify(getSelectedBrowserProjects()));
+  } catch {
+    /* ignore */
+  }
+}
+
+function syncBrowserProjectChips() {
+  document.querySelectorAll('#browserProjectRow input[name="pwBrowserProject"]').forEach((cb) => {
+    const chip = cb.closest('.opt-chip');
+    if (chip) chip.className = 'opt-chip' + (cb.checked ? ' on' : '');
+  });
+}
+
+function bindBrowserProjectControls() {
+  const row = document.getElementById('browserProjectRow');
+  if (!row || row.dataset.boundBrowser) return;
+  row.dataset.boundBrowser = '1';
+  row.addEventListener('change', (e) => {
+    const cb = e.target;
+    if (!cb || cb.name !== 'pwBrowserProject') return;
+    const checkedCount = getSelectedBrowserProjects().length;
+    if (!cb.checked && checkedCount === 0) {
+      cb.checked = true;
+      showToast('请至少保留一个浏览器', 'err');
+      syncBrowserProjectChips();
+      return;
+    }
+    syncBrowserProjectChips();
+    persistBrowserProjects();
+    syncWorkflowUi();
+  });
+}
+
+function syncExecScopeHint() {
+  const el = document.getElementById('execScopeHint');
+  if (!el) return;
+  const browsers = getSelectedBrowserProjects().join(', ') || '—';
+  if (workflowMode === 'run') {
+    el.textContent =
+      `作用于：运行流程「执行」与中栏按钮（项目内 playwright test，浏览器：${browsers}）。`;
+  } else {
+    el.textContent =
+      `作用于：新建流程步骤 3「执行（含截图）」；中栏「执行脚本」在优化脚本 Tab 且仓库就绪时同样走项目内执行（浏览器：${browsers}），录制脚本 Tab 仍为沙箱快速验证。`;
+  }
+}
+
+function updateStudioStatusBar() {
+  const repoEl = document.getElementById('statusRepo');
+  const draftEl = document.getElementById('statusDraft');
+  const storageEl = document.getElementById('statusStorage');
+  if (repoEl) {
+    if (repoState.repoReady) {
+      repoEl.textContent = '仓库 已连接';
+      repoEl.className = 'status-pill ok';
+      repoEl.title = repoState.repoRoot || '';
+    } else {
+      repoEl.textContent = '仓库 未就绪';
+      repoEl.className = 'status-pill err';
+      repoEl.title = '未找到 playwright.config.ts';
+    }
+  }
+  if (draftEl) {
+    const parts = [];
+    if (repoState.draftRecordingExists) parts.push('录制草稿');
+    if (repoState.draftOptimizedExists) parts.push('优化草稿');
+    draftEl.textContent = parts.length ? `草稿 ${parts.join(' · ')}` : '草稿 无';
+    draftEl.className = 'status-pill' + (parts.length ? ' ok' : '');
+  }
+  if (storageEl) {
+    storageEl.textContent = accountState.hasStorage ? '登录态 已保存' : '登录态 未保存';
+    storageEl.className = 'status-pill' + (accountState.hasStorage ? ' ok' : ' warn');
+    if (accountState.storageState) storageEl.title = accountState.storageState;
+  }
+}
+
+function updateGlobalTaskBar() {
+  const el = document.getElementById('globalTaskBar');
+  if (!el) return;
+  if (state.recording) {
+    el.textContent = '● 录制中';
+    return;
+  }
+  if (busyState.optimize) {
+    el.textContent = '● AI 优化中';
+    return;
+  }
+  if (busyState.repoPipeline) {
+    el.textContent = '● 生成用例中';
+    return;
+  }
+  if (busyState.repoCompare) {
+    el.textContent = '● 对比报告中';
+    return;
+  }
+  if (busyState.repoBatch) {
+    el.textContent = '● 批量执行中';
+    return;
+  }
+  if (busyState.run) {
+    el.textContent = pendingRunKind === 'repo' ? '● 项目执行中' : '● 沙箱执行中';
+    return;
+  }
+  if (busyState.accountLogin) {
+    el.textContent = '● 登录中';
+    return;
+  }
+  el.textContent = '';
+}
+
+function getCompareChecklistItems() {
+  const items = [];
+  if (workflowMode === 'new') {
+    items.push({
+      ok: isRepoArtifactsCommitted(),
+      label: '录制与优化脚本已保存到项目，且与编辑器内容一致',
+    });
+    items.push({ ok: runState.lastRunComplete || state.hasRun, label: '已完成至少一次「执行（含截图）」' });
+  } else {
+    const ok = runSubMode === 'batch' ? runState.lastBatchComplete : runState.lastRunComplete;
+    items.push({ ok, label: '已完成用例执行（单个或批量）' });
+  }
+  items.push({ ok: repoState.repoReady, label: '工作区已连接' });
+  return items;
+}
+
+function syncCompareChecklists() {
+  const items = getCompareChecklistItems();
+  const html = items
+    .map((it) => `<li class="${it.ok ? 'ok' : 'fail'}">${it.ok ? '✓' : '○'} ${escHtml(it.label)}</li>`)
+    .join('');
+  ['compareChecklistNew', 'compareChecklistRun', 'compareChecklistHub'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = html;
+  });
+  const hubBtn = document.getElementById('btnHubCompare');
+  if (hubBtn) {
+    hubBtn.disabled = busyState.repoCompare || !items.every((it) => it.ok);
+  }
+}
+
+function syncDirtyTabBadges() {
+  const raw = document.getElementById('rawCode')?.value?.trim() || '';
+  const opt = document.getElementById('optCode')?.value?.trim() || '';
+  const rawBadge = document.getElementById('rawBadge');
+  const optBadge = document.getElementById('optBadge');
+  if (rawBadge) {
+    if (!raw) rawBadge.textContent = '空';
+    else if (!repoState.rawFingerprintAtPipeline || scriptFingerprint(raw) !== repoState.rawFingerprintAtPipeline) {
+      rawBadge.textContent = '未生成';
+      rawBadge.className = 'tab-badge dirty';
+    } else {
+      const lines = raw.split('\n').length;
+      rawBadge.textContent = `${lines}L`;
+      rawBadge.className = 'tab-badge';
+    }
+  }
+  if (optBadge && !optBadge.classList.contains('demo')) {
+    if (!opt) optBadge.textContent = '空';
+    else if (isRepoArtifactsCommitted()) {
+      optBadge.textContent = '已入库';
+      optBadge.className = 'tab-badge saved';
+    } else if (opt) {
+      const lines = opt.split('\n').length;
+      optBadge.textContent = `${lines}L`;
+      optBadge.className = 'tab-badge';
+    }
+  }
+}
+
+function syncRunStep1Summary() {
+  const el = document.getElementById('runStep1Summary');
+  if (!el || workflowMode !== 'run') return;
+  if (runSubMode === 'batch') {
+    const n = getSelectedBatchSpecs().length;
+    const total = repoState.optimizedSpecs.filter((p) => p && !isDraftOptimizedSpecPath(p)).length;
+    el.textContent = n
+      ? `已选 ${n} / ${total} 个用例（${getSelectedBrowserProjects().length} 个浏览器）`
+      : '请在上方批量列表勾选要执行的用例';
+    return;
+  }
+  const spec = document.getElementById('repoOptimizedPick')?.value?.trim();
+  if (!spec) {
+    el.textContent = '请在上方下拉框选择单个测试用例';
+    return;
+  }
+  el.textContent = `当前：${formatOptimizedSpecLabel(spec)}`;
+}
+
+function filterSpecList(list) {
+  const q = (document.getElementById('repoSpecSearch')?.value || '').trim().toLowerCase();
+  const bq = (document.getElementById('repoBatchSpecSearch')?.value || '').trim().toLowerCase();
+  const query = workflowMode === 'run' && runSubMode === 'batch' ? bq : q;
+  if (!query) return list || [];
+  return (list || []).filter((p) => {
+    const full = String(p).toLowerCase();
+    const short = formatOptimizedSpecLabel(p).toLowerCase();
+    return full.includes(query) || short.includes(query);
+  });
+}
+
+function switchReportHub(name, el) {
+  document.querySelectorAll('.report-hub-tab').forEach((t) => {
+    t.classList.toggle('active', t === el || t.dataset.reportHub === name);
+  });
+  document.querySelectorAll('.report-hub-pane').forEach((p) => p.classList.remove('active'));
+  const pane = document.getElementById(
+    name === 'compare' ? 'reportHubCompare' : name === 'history' ? 'reportHubHistory' : 'reportHubStats',
+  );
+  if (pane) pane.classList.add('active');
+}
+
+function openReportHub(tab) {
+  switchPanel('report', document.querySelectorAll('.ptab')[1]);
+  const tabEl = document.querySelector(`.report-hub-tab[data-report-hub="${tab || 'stats'}"]`);
+  switchReportHub(tab || 'stats', tabEl);
+}
+
+function openCompareFromHub() {
+  if (workflowMode === 'new') openCompareReportClick();
+  else openRunCompareReportClick();
+}
+
+function pushRunHistory(entry) {
+  try {
+    const raw = sessionStorage.getItem(SS_RUN_HISTORY);
+    const list = raw ? JSON.parse(raw) : [];
+    list.unshift({
+      at: new Date().toISOString(),
+      ...entry,
+    });
+    sessionStorage.setItem(SS_RUN_HISTORY, JSON.stringify(list.slice(0, RUN_HISTORY_MAX)));
+  } catch {
+    /* ignore */
+  }
+  renderRunHistory();
+}
+
+function renderRunHistory() {
+  const el = document.getElementById('runHistoryList');
+  if (!el) return;
+  let list = [];
+  try {
+    const raw = sessionStorage.getItem(SS_RUN_HISTORY);
+    if (raw) list = JSON.parse(raw);
+  } catch {
+    /* ignore */
+  }
+  if (!list.length) {
+    el.innerHTML = '<p class="sidebar-hint" style="margin:0">暂无执行记录</p>';
+    return;
+  }
+  el.innerHTML = list
+    .map((h) => {
+      const t = new Date(h.at).toLocaleString('zh-CN');
+      const spec = h.spec ? formatOptimizedSpecLabel(h.spec) : h.kind || '沙箱';
+      const st = h.ok ? 'ok' : 'fail';
+      return `<div class="report-row" style="margin-bottom:6px">
+        <span class="report-row-name">${escHtml(t)} · ${escHtml(spec)}</span>
+        <span class="badge badge-${st}">${h.ok ? '通过' : '失败'}</span>
+      </div>`;
+    })
+    .join('');
+}
+
+function renderBatchResultsTable(results) {
+  const wrap = document.getElementById('batchResultsWrap');
+  const body = document.getElementById('batchResultsBody');
+  if (!wrap || !body) return;
+  if (!results?.length) {
+    wrap.classList.add('studio-hidden');
+    body.innerHTML = '';
+    return;
+  }
+  wrap.classList.remove('studio-hidden');
+  runState.lastBatchResults = results;
+  body.innerHTML = results
+    .map((r, i) => {
+      const ok = r.exitCode === 0 && !(r.failed > 0);
+      const spec = r.specRelative || '';
+      return `<tr class="${ok ? '' : 'fail-row'}">
+        <td>${escHtml(formatOptimizedSpecLabel(spec))}</td>
+        <td>${ok ? '通过' : '失败'}${r.error ? ` (${escHtml(r.error)})` : ''}</td>
+        <td><button type="button" class="btn" style="font-size:10px;padding:2px 6px" onclick="loadBatchResultSpecByIndex(${i})">打开</button></td>
+      </tr>`;
+    })
+    .join('');
+}
+
+function loadBatchResultSpecByIndex(i) {
+  const r = runState.lastBatchResults?.[i];
+  if (!r?.specRelative) return;
+  send('repo:load-optimized', { specRelative: r.specRelative });
+  switchTab('opt', document.querySelectorAll('.tab')[1]);
+}
+
+function restoreEditorTab() {
+  try {
+    const saved = sessionStorage.getItem(SS_EDITOR_TAB);
+    if (saved === 'raw' || saved === 'opt' || saved === 'diff') {
+      const idx = saved === 'raw' ? 0 : saved === 'opt' ? 1 : 2;
+      switchTab(saved, document.querySelectorAll('.tab')[idx]);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function saveEditorTab(name) {
+  try {
+    sessionStorage.setItem(SS_EDITOR_TAB, name);
+  } catch {
+    /* ignore */
+  }
+}
+
 const STEP2_SUB = {
   ai: 'Claude 或 DeepSeek 重构选择器 / 断言 / 结构',
   repo: '生成用例或保存到项目',
@@ -878,6 +1315,10 @@ let currentPipelineStep = 1;
 let pendingRunKind = 'studio';
 const SS_WORKFLOW_MODE = 'pw_studio_workflow_mode';
 const SS_RUN_SUB_MODE = 'pw_studio_run_sub_mode';
+const SS_BROWSER_PROJECTS = 'pw_studio_browser_projects';
+const SS_EDITOR_TAB = 'pw_studio_editor_tab';
+const SS_RUN_HISTORY = 'pw_studio_run_history';
+const RUN_HISTORY_MAX = 10;
 let workflowMode = 'new';
 let runSubMode = 'single';
 let currentRunPipelineStep = 1;
@@ -886,7 +1327,7 @@ const RUN_STEP_DEFAULTS = {
   2: '运行所选用例并截取步骤图',
   3: '生成截图对比报告',
 };
-const runState = { lastRunComplete: false, lastBatchComplete: false };
+const runState = { lastRunComplete: false, lastBatchComplete: false, lastBatchResults: [] };
 
 const SAMPLE_SCRIPT = `import { test, expect } from '@playwright/test';
 
@@ -1116,6 +1557,7 @@ function applyAccountChanged(msg) {
     entry.storageState = accountState.storageState;
   }
   renderEnvChips();
+  updateStudioStatusBar();
 }
 
 function clearAccountStorage() {
@@ -1236,6 +1678,7 @@ function applyEnvChanged(msg) {
   if (!msg.hasStorage && msg.storageState) {
     showToast(`${msg.env}: 未找到登录态文件`, 'err');
   }
+  updateStudioStatusBar();
 }
 
 function restorePlaywrightEnvFromStorage() {
@@ -1291,8 +1734,9 @@ function formatOptimizedSpecLabel(relativePath) {
 function fillRepoOptimizedSelect(list) {
   const sel = document.getElementById('repoOptimizedPick');
   if (!sel) return;
+  const prev = sel.value;
   sel.innerHTML = '';
-  const items = (list || []).filter((p) => p && !isDraftOptimizedSpecPath(p));
+  const items = filterSpecList((list || []).filter((p) => p && !isDraftOptimizedSpecPath(p)));
   if (!items.length) {
     const o = document.createElement('option');
     o.value = '';
@@ -1307,8 +1751,10 @@ function fillRepoOptimizedSelect(list) {
     o.textContent = formatOptimizedSpecLabel(p);
     sel.appendChild(o);
   });
-  sel.selectedIndex = 0;
-  fillRepoBatchChecklist(items);
+  if (prev && [...sel.options].some((o) => o.value === prev)) sel.value = prev;
+  else if (items.length) sel.selectedIndex = 0;
+  fillRepoBatchChecklist(list || repoState.optimizedSpecs);
+  syncRunStep1Summary();
 }
 
 function refreshRepoOptimizedList() {
@@ -1316,7 +1762,16 @@ function refreshRepoOptimizedList() {
 }
 
 function setWorkflowMode(mode, el) {
-  workflowMode = mode === 'run' ? 'run' : 'new';
+  const next = mode === 'run' ? 'run' : 'new';
+  if (next !== workflowMode) {
+    const raw = document.getElementById('rawCode')?.value?.trim();
+    const opt = document.getElementById('optCode')?.value?.trim();
+    if ((raw || opt) && !window.confirm('切换工作模式将保留当前编辑器内容，是否继续？')) {
+      if (el) el.blur();
+      return;
+    }
+  }
+  workflowMode = next;
   document.querySelectorAll('[data-workflow]').forEach((chip) => {
     chip.classList.toggle('active', chip.dataset.workflow === workflowMode);
   });
@@ -1331,12 +1786,20 @@ function setWorkflowMode(mode, el) {
   if (workflowMode === 'run') {
     expandRunPipelineStep(1);
     refreshRepoOptimizedList();
-    switchTab('opt', document.querySelectorAll('.tab')[1]);
+    restoreEditorTab();
   } else {
     expandPipelineStep(currentPipelineStep || 1);
+    if (workflowMode === 'new') openAccordion('accordionRun');
   }
   syncWorkflowUi();
   if (el) el.blur();
+}
+
+function warnMultiBrowserInteractive() {
+  const mode = getPwRunMode();
+  if ((mode === 'debug' || mode === 'ui') && getSelectedBrowserProjects().length > 1) {
+    showToast('调试/UI 模式下将依次运行多个浏览器 project，耗时较长', 'err');
+  }
 }
 
 function setRunSubMode(mode, el) {
@@ -1407,8 +1870,9 @@ function expandRunPipelineStep(n) {
 function fillRepoBatchChecklist(list) {
   const box = document.getElementById('repoBatchSpecList');
   if (!box) return;
+  const checked = new Set(getSelectedBatchSpecs());
   box.innerHTML = '';
-  const items = (list || []).filter((p) => p && !isDraftOptimizedSpecPath(p));
+  const items = filterSpecList((list || []).filter((p) => p && !isDraftOptimizedSpecPath(p)));
   if (!items.length) {
     box.innerHTML = '<p class="sidebar-hint" style="margin:0">（暂无用例，请点刷新）</p>';
     return;
@@ -1421,7 +1885,7 @@ function fillRepoBatchChecklist(list) {
     cb.type = 'checkbox';
     cb.id = id;
     cb.value = rel;
-    cb.checked = true;
+    cb.checked = checked.size ? checked.has(rel) : true;
     const label = document.createElement('label');
     label.htmlFor = id;
     label.textContent = formatOptimizedSpecLabel(rel);
@@ -1454,6 +1918,12 @@ function loadSelectedOptimizedToEditor() {
 }
 
 function syncWorkflowUi() {
+  syncExecScopeHint();
+  syncCompareChecklists();
+  syncDirtyTabBadges();
+  syncRunStep1Summary();
+  updateStudioStatusBar();
+  updateGlobalTaskBar();
   syncRepoButtons();
   syncActionButtons();
 }
@@ -1495,6 +1965,7 @@ function syncRepoButtons() {
   const artifactsCommitted = isRepoArtifactsCommitted();
   const specPick = document.getElementById('repoOptimizedPick')?.value?.trim();
   const batchCount = getSelectedBatchSpecs().length;
+  const hasBrowsers = getSelectedBrowserProjects().length > 0;
 
   if (workflowMode === 'new') {
     const rs = document.getElementById('btnRepoSave');
@@ -1507,7 +1978,7 @@ function syncRepoButtons() {
     if (rp) rp.disabled = busyState.repoPipeline ? true : busyRepo || !hasRaw;
     if (rpc) rpc.disabled = !busyState.repoPipeline;
     const repoTestBusy = busyState.run && pendingRunKind === 'repo';
-    const repoTestDisabled = busyRepo || (!repoTestBusy && !hasOpt);
+    const repoTestDisabled = busyRepo || (!repoTestBusy && (!hasOpt || !hasBrowsers));
     if (rtx) {
       const defaultLabel = rtx.dataset.defaultLabel || '执行（含截图）';
       if (repoTestBusy) {
@@ -1534,8 +2005,8 @@ function syncRepoButtons() {
   const runBusy = busyState.run && pendingRunKind === 'repo';
   const batchBusy = busyState.repoBatch;
   let canExecute = false;
-  if (runSubMode === 'batch') canExecute = batchCount > 0;
-  else canExecute = Boolean(specPick);
+  if (runSubMode === 'batch') canExecute = batchCount > 0 && hasBrowsers;
+  else canExecute = Boolean(specPick) && hasBrowsers;
 
   if (btnRun) {
     const defaultLabel = btnRun.dataset.defaultLabel || '执行（含截图）';
@@ -1546,7 +2017,11 @@ function syncRepoButtons() {
     } else {
       btnRun.classList.remove('busy');
       btnRun.disabled = busyRepo || !canExecute;
-      btnRun.textContent = runSubMode === 'batch' ? `批量执行（${batchCount}）` : defaultLabel;
+      const bc = getSelectedBrowserProjects().length;
+      btnRun.textContent =
+        runSubMode === 'batch'
+          ? `批量执行（${batchCount} 用例 × ${bc} 浏览器）`
+          : defaultLabel;
     }
   }
   const canCompare =
@@ -1597,10 +2072,17 @@ function handleRepoTestClick() {
   expandPipelineStep(3);
   const optimizedCode = document.getElementById('optCode').value;
   if (!optimizedCode.trim()) { showToast('请先生成用例或填写优化脚本', 'err'); return; }
+  const projects = getSelectedBrowserProjects();
+  if (!projects.length) {
+    showToast('请至少选择一个浏览器', 'err');
+    return;
+  }
+  warnMultiBrowserInteractive();
   send('repo:test', {
     specRelative: getRepoExecutionSpec(),
     optimizedCode,
     headed: isHeadedRunMode(),
+    projects,
   });
 }
 
@@ -1617,6 +2099,11 @@ function handleRunExecuteClick() {
   pendingRunKind = 'repo';
   expandRunPipelineStep(2);
   const headed = isHeadedRunMode();
+  const projects = getSelectedBrowserProjects();
+  if (!projects.length) {
+    showToast('请至少选择一个浏览器', 'err');
+    return;
+  }
   if (runSubMode === 'batch') {
     const specs = getSelectedBatchSpecs();
     if (!specs.length) {
@@ -1626,11 +2113,14 @@ function handleRunExecuteClick() {
     runState.lastBatchComplete = false;
     runState.lastRunComplete = false;
     busyState.repoBatch = true;
+    document.getElementById('batchResultsWrap')?.classList.add('studio-hidden');
     syncWorkflowUi();
+    warnMultiBrowserInteractive();
     send('repo:batch-test', {
       specRelatives: specs,
       stopOnError: Boolean(document.getElementById('batchStopOnError')?.checked),
       headed,
+      projects,
     });
     return;
   }
@@ -1640,17 +2130,21 @@ function handleRunExecuteClick() {
     return;
   }
   runState.lastRunComplete = false;
-  send('repo:test', { specRelative: spec, headed });
+  warnMultiBrowserInteractive();
+  send('repo:test', { specRelative: spec, headed, projects });
 }
 
 /** 生成完成后在新窗口打开对比报告（非 about:blank 再改 location，避免像「重定向」） */
 function openCompareReportClick() {
   if (workflowMode !== 'new') return;
-  if (!isRepoArtifactsCommitted()) {
-    showToast('请先将录制与优化脚本保存到项目，且内容与编辑器一致', 'err');
+  const items = getCompareChecklistItems();
+  if (!items.every((it) => it.ok)) {
+    openReportHub('compare');
+    showToast('请先满足截图对比的前置条件', 'err');
     return;
   }
   expandPipelineStep(3);
+  openReportHub('compare');
   busyState.repoCompare = true;
   syncWorkflowUi();
   send('repo:compare-report', {});
@@ -1658,12 +2152,14 @@ function openCompareReportClick() {
 
 function openRunCompareReportClick() {
   if (workflowMode !== 'run') return;
-  const ok = runSubMode === 'batch' ? runState.lastBatchComplete : runState.lastRunComplete;
-  if (!ok) {
+  const items = getCompareChecklistItems();
+  if (!items.every((it) => it.ok)) {
+    openReportHub('compare');
     showToast('请先完成用例执行', 'err');
     return;
   }
   expandRunPipelineStep(3);
+  openReportHub('compare');
   busyState.repoCompare = true;
   syncWorkflowUi();
   send('repo:compare-report', {});
@@ -1702,12 +2198,14 @@ function connectWS() {
     busyState.repoPipeline = false;
     busyState.repoCompare = false;
     syncActionButtons();
+    updateGlobalTaskBar();
     log('info', '已连接到 Playwright Studio 服务');
   };
   ws.onmessage = (e) => handleMessage(JSON.parse(e.data));
   ws.onclose = () => {
     document.getElementById('wsDot').className = 'ws-dot';
-    document.getElementById('wsStatus').textContent = '未连接';
+    document.getElementById('wsStatus').textContent = '重连中…';
+    updateGlobalTaskBar();
     resetPipelineRunning();
     setBusy('optimize', false);
     setBusy('run', false);
@@ -1757,6 +2255,7 @@ function finishBusyFromError() {
   resetPipelineRunning();
   if (state.recording) setRecordButtonUi(false);
   syncWorkflowUi();
+  updateGlobalTaskBar();
 }
 
 /** 根据当前脚本内容同步「AI 优化」「执行测试」是否可点（完成后可再次执行） */
@@ -1767,6 +2266,15 @@ function syncActionButtons() {
   const btnRun = document.getElementById('btnRun');
   const btnRecord = document.getElementById('btnRecord');
   if (!busyState.optimize) btnOpt.disabled = !raw || !hasOptimizeApiKeyForProvider();
+  const btnRunLabel = document.getElementById('btnRunLabel');
+  const defaultRunLabel = btnRun.dataset.defaultLabel || '执行脚本（编辑器）';
+  if (workflowMode === 'run') {
+    if (btnRunLabel) btnRunLabel.textContent = '执行（含截图）';
+  } else if (btnRunLabel) {
+    const tab = getActiveEditorTab();
+    btnRunLabel.textContent =
+      tab === 'opt' && repoState.repoReady ? '执行（项目内）' : defaultRunLabel;
+  }
   if (!busyState.run) {
     const tab = getActiveEditorTab();
     btnRun.disabled = tab === 'diff' || !getActiveScriptCode();
@@ -1776,6 +2284,7 @@ function syncActionButtons() {
   updateRawEmptyOverlay();
   syncRepoButtons();
   syncEditorRunHint();
+  updateGlobalTaskBar();
 }
 
 const RECORD_BTN_ICON_START =
@@ -1786,6 +2295,7 @@ const RECORD_BTN_ICON_STOP =
 /** 同步录制按钮与 state.recording（关闭浏览器后由 record:done 调用） */
 function setRecordButtonUi(recording) {
   state.recording = Boolean(recording);
+  updateGlobalTaskBar();
   const btn = document.getElementById('btnRecord');
   if (!btn) return;
   if (state.recording) {
@@ -1814,8 +2324,10 @@ function handleMessage(msg) {
       syncActionButtons();
       syncRepoButtons();
       requestRepoSuggestPath(msg.code);
+      repoState.rawFingerprintAtPipeline = '';
       log('ok', `录制完成，共 ${msg.lines} 行`);
       expandPipelineStep(2);
+      syncWorkflowUi();
       if (msg.storageSaved && msg.storageState) {
         log('ok', `[env] 登录态已保存（停止录制时写入）: ${msg.storageState}`);
         showToast('录制完成，登录态已保存', 'ok');
@@ -1910,9 +2422,22 @@ function handleMessage(msg) {
         } else {
           setStep(3, 'done');
           setStepSub(3, STEP_DEFAULTS[3]);
+          runState.lastRunComplete = true;
         }
+        pushRunHistory({
+          kind: 'repo',
+          spec: msg.specRelative || getRepoExecutionSpec(),
+          projects: getSelectedBrowserProjects(),
+          ok: (msg.failed ?? 0) === 0 && (msg.passed ?? 0) > 0,
+          duration: msg.duration,
+        });
       } else {
         setEditorRunStatus('执行完成', 'done');
+        pushRunHistory({
+          kind: 'sandbox',
+          ok: (msg.failed ?? 0) === 0,
+          duration: msg.duration,
+        });
       }
       pendingRunKind = 'studio';
       state.hasRun = true;
@@ -1971,7 +2496,7 @@ function handleMessage(msg) {
     case 'report:done':
       setStep(4, 'done');
       renderReport(msg.data);
-      switchPanel('report', document.querySelectorAll('.ptab')[1]);
+      openReportHub('stats');
       log('ok', '报告已生成');
       showToast('报告已生成', 'ok');
       break;
@@ -2029,13 +2554,43 @@ function handleMessage(msg) {
       break;
     case 'repo:info': {
       repoState.repoRoot = msg.repoRoot || '';
+      repoState.repoReady = Boolean(msg.repoReady);
+      repoState.draftOptimizedExists = Boolean(msg.draftOptimizedExists);
+      repoState.draftRecordingExists = Boolean(msg.draftRecordingExists);
       if (msg.draftOptimizedRelative) {
         repoState.draftOptimizedRelative = msg.draftOptimizedRelative;
       }
-      const el = document.getElementById('repoRootLabel');
-      if (el) {
-        el.textContent = msg.repoReady ? '已连接' : '未连接';
-        if (el) { el.title = msg.repoReady ? (msg.repoRoot || '') : ''; }
+      updateStudioStatusBar();
+      if (Array.isArray(msg.browserProjects) && msg.browserProjects.length) {
+        const row = document.getElementById('browserProjectRow');
+        if (row) {
+          let saved = [];
+          try {
+            const raw = sessionStorage.getItem(SS_BROWSER_PROJECTS);
+            if (raw) saved = JSON.parse(raw);
+          } catch {
+            /* ignore */
+          }
+          const allowed = msg.browserProjects.map((p) => String(p.id || p));
+          let active = saved.filter((id) => allowed.includes(id));
+          if (!active.length && Array.isArray(msg.defaultBrowserProjects)) {
+            active = msg.defaultBrowserProjects.filter((id) => allowed.includes(id));
+          }
+          if (!active.length) active = [allowed[0]];
+          const activeSet = new Set(active);
+          row.innerHTML = msg.browserProjects
+            .map((p) => {
+              const id = String(p.id || p).replace(/"/g, '&quot;');
+              const label = String(p.label || id).replace(/</g, '&lt;');
+              const on = activeSet.has(p.id || p);
+              return `<label class="opt-chip${on ? ' on' : ''}"><input type="checkbox" name="pwBrowserProject" value="${id}"${on ? ' checked' : ''}> ${label}</label>`;
+            })
+            .join('');
+          syncBrowserProjectChips();
+          persistBrowserProjects();
+        }
+      } else if (Array.isArray(msg.defaultBrowserProjects)) {
+        restoreBrowserProjects(msg.defaultBrowserProjects);
       }
       if (Array.isArray(msg.optimizedSpecs)) {
         repoState.optimizedSpecs = msg.optimizedSpecs;
@@ -2097,6 +2652,16 @@ function handleMessage(msg) {
       setBusy('run', false);
       pendingRunKind = 'studio';
       runState.lastBatchComplete = !msg.cancelled && (msg.results || []).length > 0;
+      renderBatchResultsTable(msg.results || []);
+      if (!msg.cancelled && msg.results?.length) {
+        const anyOk = msg.results.some((r) => r.exitCode === 0 && !(r.failed > 0));
+        pushRunHistory({
+          kind: 'batch',
+          spec: `${msg.results.length} 个用例`,
+          ok: !msg.anyFail,
+          duration: '',
+        });
+      }
       if (msg.cancelled) {
         setRunStep(2, '');
         setRunStepSub(2, RUN_STEP_DEFAULTS[2]);
@@ -2120,7 +2685,7 @@ function handleMessage(msg) {
       if (msg.relativePath) repoState.suggestedRelative = msg.relativePath;
       showToast('保存成功', 'ok');
       log('ok', '[repo] 保存完成: ' + (msg.relativePath || ''));
-      syncRepoButtons();
+      syncWorkflowUi();
       break;
     case 'repo:commit-artifacts:done':
       repoState.lastSavedRelative = msg.relativePath || '';
@@ -2130,7 +2695,7 @@ function handleMessage(msg) {
       markRepoArtifactsCommitted();
       showToast('已保存录制与优化脚本到项目', 'ok');
       log('ok', '[repo] 已保存: ' + (msg.relativePath || '') + ' · ' + (msg.optimizedRelative || ''));
-      syncRepoButtons();
+      syncWorkflowUi();
       break;
     case 'repo:pipeline:start':
       busyState.repoPipeline = true;
@@ -2157,8 +2722,13 @@ function handleMessage(msg) {
         setOptMeta(msg.optimizedCode, false);
         state.hasOpt = true;
         buildDiff();
+        switchTab('diff', document.querySelectorAll('.tab')[2]);
       }
-      syncRepoButtons();
+      const rawFp = document.getElementById('rawCode')?.value?.trim();
+      if (rawFp) repoState.rawFingerprintAtPipeline = scriptFingerprint(rawFp);
+      repoState.draftOptimizedExists = true;
+      updateStudioStatusBar();
+      syncWorkflowUi();
       syncActionButtons();
       if (msg.exitCode !== 0) {
         setStep(2, '');
@@ -2188,11 +2758,16 @@ function handleMessage(msg) {
       syncWorkflowUi();
       if (msg.ok && msg.openPath) {
         const url = new URL(msg.openPath, location.origin).href;
+        repoState.lastCompareReportUrl = url;
+        const hint = document.getElementById('compareHubHint');
+        if (hint) {
+          hint.innerHTML = `报告已生成：<a href="${escHtml(url)}" target="_blank" rel="noopener" style="color:var(--blue)">在新窗口打开</a>`;
+        }
         if (openCompareReportInNewWindow(url)) {
           showToast('已在新窗口打开对比报告', 'ok');
         } else {
           log('warn', '浏览器拦截了新窗口，请手动打开: ' + url);
-          showToast('无法打开新窗口，请复制日志中的链接', 'err');
+          showToast('无法打开新窗口，请从报告中心链接打开', 'err');
         }
       } else {
         if (msg.cancelled) showToast('对比报告生成已取消', 'err');
@@ -2399,7 +2974,32 @@ function runScript() {
     openAccordion('accordionRun');
     localStorage.setItem('pwStudioHintsRunMode', '1');
   }
+
+  if (tab === 'opt' && repoState.repoReady && workflowMode === 'new') {
+    const projects = getSelectedBrowserProjects();
+    if (!projects.length) {
+      showToast('请至少选择一个浏览器', 'err');
+      return;
+    }
+    pendingRunKind = 'repo';
+    setBusy('run', true);
+    warnMultiBrowserInteractive();
+    send('repo:test', {
+      specRelative: getRepoExecutionSpec(),
+      optimizedCode: code,
+      headed: isHeadedRunMode(),
+      projects,
+    });
+    log('info', `项目内执行（${projects.join(', ')}）…`);
+    return;
+  }
+
+  if (tab === 'raw' && getSelectedBrowserProjects().length > 1) {
+    log('dim', '录制脚本使用沙箱执行，浏览器多选仅作用于项目内执行');
+  }
+
   setBusy('run', true);
+  pendingRunKind = 'studio';
   const runMode = getPwRunMode();
   send('run', {
     code,
@@ -2413,7 +3013,7 @@ function runScript() {
     ui: 'UI 模式（--ui）',
     headless: '无头',
   };
-  log('info', `开始执行测试（${modeLabels[runMode]}）...`);
+  log('info', `沙箱执行（${modeLabels[runMode]}）…`);
 }
 
 function getPwRunMode() {
@@ -2422,6 +3022,7 @@ function getPwRunMode() {
 
 function generateReport() {
   send('report');
+  openReportHub('stats');
   log('info', '生成测试报告...');
 }
 
@@ -2520,6 +3121,7 @@ function switchTab(name, el) {
   document.querySelectorAll('.editor-pane').forEach(p => p.classList.remove('active'));
   if (el) el.classList.add('active');
   document.getElementById(`pane-${name}`).classList.add('active');
+  saveEditorTab(name);
   syncEditorRunBarVisibility();
   syncEditorRunHint();
   syncActionButtons();
@@ -2607,8 +3209,11 @@ function buildDiff() {
 }
 
 function renderReport(data) {
-  const panel = document.getElementById('reportPanel');
-  panel.innerHTML = `
+  const empty = document.getElementById('reportStatsEmpty');
+  const content = document.getElementById('reportStatsContent');
+  if (empty) empty.style.display = 'none';
+  if (!content) return;
+  content.innerHTML = `
     <div class="stat-grid">
       <div class="stat-card"><div class="stat-val stat-ok">${data.passed}</div><div class="stat-lbl">通过</div></div>
       <div class="stat-card"><div class="stat-val stat-fail">${data.failed}</div><div class="stat-lbl">失败</div></div>
@@ -2824,8 +3429,13 @@ document.getElementById('targetUrl')?.addEventListener('input', () => {
   const el = document.getElementById('targetUrl');
   if (el) el.dataset.urlTouched = '1';
 });
-document.getElementById('repoOptimizedPick')?.addEventListener('change', syncWorkflowUi);
 document.getElementById('repoBatchSpecList')?.addEventListener('change', syncWorkflowUi);
+['rawCode', 'optCode'].forEach((id) => {
+  document.getElementById(id)?.addEventListener('input', () => {
+    syncWorkflowUi();
+    scheduleBuildDiff();
+  });
+});
 ['recordingFeatureName', 'recordingBehaviorName'].forEach((id) => {
   document.getElementById(id)?.addEventListener('change', () => {
     const raw = document.getElementById('rawCode')?.value?.trim();
@@ -2849,8 +3459,34 @@ document.getElementById('optCode').addEventListener('paste', () => queueMicrotas
   scheduleBuildDiff();
 }));
 restoreWorkflowMode();
+restoreBrowserProjects();
+bindBrowserProjectControls();
+restoreEditorTab();
+renderRunHistory();
+if (workflowMode === 'new') openAccordion('accordionRun');
 if (workflowMode === 'run') expandRunPipelineStep(1);
+syncWorkflowUi();
 syncActionButtons();
+document.getElementById('repoSpecSearch')?.addEventListener('input', () => {
+  fillRepoOptimizedSelect(repoState.optimizedSpecs);
+});
+document.getElementById('repoBatchSpecSearch')?.addEventListener('input', () => {
+  fillRepoBatchChecklist(repoState.optimizedSpecs);
+});
+document.getElementById('repoOptimizedPick')?.addEventListener('change', () => {
+  syncWorkflowUi();
+  syncRunStep1Summary();
+});
+document.addEventListener('keydown', (e) => {
+  if (!(e.metaKey || e.ctrlKey) || e.key !== 'Enter') return;
+  const tag = (e.target?.tagName || '').toLowerCase();
+  if (tag === 'textarea' || tag === 'input' || tag === 'select') return;
+  e.preventDefault();
+  if (workflowMode === 'run') handleRunExecuteClick();
+  else if (busyState.run) handleRunClick();
+  else if (document.getElementById('optCode')?.value?.trim() && workflowMode === 'new') handleRepoTestClick();
+  else handleRunClick();
+});
 updateRawEmptyOverlay();
 syncEditorRunBarVisibility();
 syncEditorRunHint();

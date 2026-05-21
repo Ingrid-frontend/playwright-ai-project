@@ -458,6 +458,31 @@ const DRAFT_RECORDING_BASENAME = 'studio-unsaved-draft.spec.ts';
 const DRAFT_OPTIMIZED_BASENAME = 'studio-unsaved-draft.optimized.spec.ts';
 const DRAFT_OPTIMIZED_RELATIVE = `tests/optimized/${DRAFT_OPTIMIZED_BASENAME}`;
 
+/** 与 playwright.config.ts 中 optimized 相关 project 一致 */
+const REPO_OPTIMIZED_PROJECTS = [
+  { id: 'optimized', label: 'Chrome' },
+  { id: 'optimized-webkit', label: 'Safari (WebKit)' },
+];
+const DEFAULT_REPO_TEST_PROJECTS = REPO_OPTIMIZED_PROJECTS.map((p) => p.id);
+
+function normalizeRepoTestProjects(projects) {
+  const allowed = new Set(REPO_OPTIMIZED_PROJECTS.map((p) => p.id));
+  const list = (Array.isArray(projects) ? projects : [])
+    .map((p) => String(p || '').trim())
+    .filter((p) => allowed.has(p));
+  return list.length ? [...new Set(list)] : [...DEFAULT_REPO_TEST_PROJECTS];
+}
+
+function appendRepoTestProjectArgs(args, projects) {
+  for (const p of normalizeRepoTestProjects(projects)) {
+    args.push('--project', p);
+  }
+}
+
+function formatRepoTestProjectsLog(projects) {
+  return normalizeRepoTestProjects(projects).join(', ');
+}
+
 function isDraftRecordingPath(relativePath) {
   const norm = (relativePath || '').trim().replace(/\\/g, '/');
   return /studio-unsaved-draft\.spec\.ts$/i.test(norm);
@@ -466,6 +491,21 @@ function isDraftRecordingPath(relativePath) {
 function isDraftOptimizedPath(relativePath) {
   const norm = (relativePath || '').trim().replace(/\\/g, '/');
   return norm === DRAFT_OPTIMIZED_RELATIVE || /studio-unsaved-draft\.optimized\.spec\.ts$/i.test(norm);
+}
+
+function hasDraftRecordingInRepo(repoRoot) {
+  const base = path.join(repoRoot, 'tests/raw-recordings/original');
+  if (!fs.existsSync(base)) return false;
+  try {
+    for (const ent of fs.readdirSync(base, { withFileTypes: true })) {
+      if (!ent.isDirectory()) continue;
+      const p = path.join(base, ent.name, DRAFT_RECORDING_BASENAME);
+      if (fs.existsSync(p)) return true;
+    }
+  } catch {
+    return false;
+  }
+  return false;
 }
 
 /** pipeline 后将产物归并到固定草稿 optimized 路径，供 Studio 执行流程使用 */
@@ -931,12 +971,14 @@ async function runRepoTest(ws, session, msg) {
   }
 
   session.repoTestCancelled = false;
+  const testProjects = normalizeRepoTestProjects(msg.projects);
   send(ws, 'run:start');
-  logLine(ws, `[repo] 项目内执行: ${specRel} --project=optimized`, 'info');
+  logLine(ws, `[repo] 项目内执行: ${specRel} --project=${formatRepoTestProjectsLog(testProjects)}`, 'info');
 
   const headed = Boolean(msg.headed);
   const startTime = Date.now();
-  const args = [cli, 'test', specRel, '--project=optimized'];
+  const args = [cli, 'test', specRel];
+  appendRepoTestProjectArgs(args, testProjects);
   if (headed) args.push('--headed');
   else args.push('--reporter=json');
 
@@ -1021,7 +1063,7 @@ function cancelRepoBatch(session) {
   }
 }
 
-async function executeRepoSpecForBatch(ws, session, specRel, headed) {
+async function executeRepoSpecForBatch(ws, session, specRel, headed, projects) {
   const repoRoot = resolveRepoRoot();
   let absSpec;
   try {
@@ -1038,7 +1080,8 @@ async function executeRepoSpecForBatch(ws, session, specRel, headed) {
   }
 
   session.repoTestCancelled = false;
-  const args = [cli, 'test', specRel, '--project=optimized'];
+  const args = [cli, 'test', specRel];
+  appendRepoTestProjectArgs(args, projects);
   if (headed) args.push('--headed');
   else args.push('--reporter=json');
 
@@ -1118,10 +1161,15 @@ async function runRepoBatchTest(ws, session, msg) {
 
   const stopOnError = Boolean(msg.stopOnError);
   const headed = Boolean(msg.headed);
+  const testProjects = normalizeRepoTestProjects(msg.projects);
   session.repoBatchCancelled = false;
   session.repoBatchRunning = true;
-  send(ws, 'repo:batch-test:start', { total: specs.length });
-  logLine(ws, `[batch] 开始批量执行 ${specs.length} 个用例`, 'info');
+  send(ws, 'repo:batch-test:start', { total: specs.length, projects: testProjects });
+  logLine(
+    ws,
+    `[batch] 开始批量执行 ${specs.length} 个用例（${formatRepoTestProjectsLog(testProjects)}）`,
+    'info',
+  );
 
   const results = [];
   let stoppedEarly = false;
@@ -1134,7 +1182,7 @@ async function runRepoBatchTest(ws, session, msg) {
       specRelative: specRel,
       phase: 'running',
     });
-    const r = await executeRepoSpecForBatch(ws, session, specRel, headed);
+    const r = await executeRepoSpecForBatch(ws, session, specRel, headed, testProjects);
     const item = { specRelative: specRel, ...r };
     results.push(item);
     send(ws, 'repo:batch-test:progress', {
@@ -2363,11 +2411,25 @@ wss.on('connection', (ws) => {
   const root = resolveRepoRoot();
   const repoReady = fs.existsSync(path.join(root, 'playwright.config.ts'));
   const optimizedSpecs = repoReady ? listOptimizedSpecs(root, { limit: 40 }) : [];
+  let draftOptimizedExists = false;
+  let draftRecordingExists = false;
+  if (repoReady) {
+    try {
+      draftOptimizedExists = fs.existsSync(path.join(root, DRAFT_OPTIMIZED_RELATIVE));
+      draftRecordingExists = hasDraftRecordingInRepo(root);
+    } catch {
+      /* ignore */
+    }
+  }
   send(ws, 'repo:info', {
     repoRoot: root,
     repoReady,
     optimizedSpecs,
     draftOptimizedRelative: DRAFT_OPTIMIZED_RELATIVE,
+    draftOptimizedExists,
+    draftRecordingExists,
+    browserProjects: REPO_OPTIMIZED_PROJECTS,
+    defaultBrowserProjects: DEFAULT_REPO_TEST_PROJECTS,
     optimizeKeys: {
       anthropic: Boolean(ANTHROPIC_API_KEY),
       deepseek: Boolean(DEEPSEEK_API_KEY),

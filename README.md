@@ -75,7 +75,7 @@ cp datasource/accounts.json.example datasource/accounts.json
 - **回放/调试**（CLI 或 `--ui`）→
 - **产出报告**（`playwright show-report`）
 
-**图形界面（可选）**：仓库根执行 `npm run studio`，在 Playwright Studio 中完成录制 → 生成用例（草稿 + pipeline）→ 执行调试 → 保存到项目 → 对比报告。操作说明见 [pw-files/README.md](pw-files/README.md#项目流水线主仓库)。
+**图形界面（可选）**：仓库根执行 `npm run studio`，在 Playwright Studio 中选择 **新建用例** 或 **运行用例** 模式，完成录制 → 生成用例 → 执行 → 报告。操作说明见 [pw-files/README.md](pw-files/README.md#工作模式侧栏顶部)。
 
 ## 📁 项目结构
 
@@ -137,7 +137,7 @@ PLAYWRIGHT_ENV=uat npx playwright test --project=optimized
 
 - `default` 档案沿用 `base-config.json` 中的 `storageState`（如 `storage/loginState/stage.json`）。
 - 其它档案默认写入 `storage/loginState/stage/<profile>.json`，也可在 `base-config.json` 用 `storageStates` 自定义路径。
-- Playwright Studio（`npm run studio`，详见 [pw-files/README.md](pw-files/README.md)）：界面**不提供**「用配置账号登录」；请在 codegen 浏览器中手动登录，停止录制后写入 `storageState`。项目流水线支持草稿生成用例、调试后再「保存到项目」。
+- Playwright Studio（`npm run studio`，详见 [pw-files/README.md](pw-files/README.md)）：**新建用例 / 运行用例** 双模式；界面**不提供**「用配置账号登录」，请在 codegen 浏览器中手动登录，停止录制后写入 `storageState`。支持草稿生成用例、多浏览器执行、批量运行与报告中心。
 
 ## ⚙️ 常用开关（环境变量速查）
 
