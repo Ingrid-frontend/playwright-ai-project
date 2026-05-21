@@ -8,7 +8,7 @@ test('test', async ({ page }) => {
   test.setTimeout(120000);
 
   // 初始化截图目录
-  const screenshotDir = 'screenshots/20260515/中控首页-浏览_2026-04-22_00-00-00';
+  const screenshotDir = 'screenshots/260515/recording-codegen_2026-04-23_16-52-02';
   if (!fs.existsSync(screenshotDir)) {
     fs.mkdirSync(screenshotDir, { recursive: true });
   }
@@ -54,120 +54,131 @@ test('test', async ({ page }) => {
   }
 
     await step('导航到页面', async () => {
-    console.log('🌐 导航到: https://stage.huilianyi.com/');
-    await page.goto('https://stage.huilianyi.com/', { waitUntil: 'networkidle' });
+    console.log('🌐 导航到: https://stage.huilianyi.com/main/home');
+    await page.goto('https://stage.huilianyi.com/main/home', { waitUntil: 'networkidle' });
     await page.waitForLoadState('networkidle');
     await takeStepScreenshot(page, path.join(runDir, `step-1-导航到页面.png`), { fullPage: true });
   });
 
-  await step('action', async () => {
-    await takeStepScreenshot(page, path.join(runDir, `step-2-action-before.png`), { fullPage: true });
+  await step('我的审批', async () => {
+    await takeStepScreenshot(page, path.join(runDir, `step-2-我的审批-before.png`), { fullPage: true });
     const baseContext = iframeContent || page;
-    const locator = baseContext.locator('.hover-pointer-icon').first();
+    const locator = baseContext.getByText('我的审批').filter({ visible: true }).first();
     await expect(locator).toBeVisible();
-    await smartClick(locator, 'action');
+    await smartClick(locator, '我的审批');
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-    await takeStepScreenshot(page, path.join(runDir, `step-2-action-after.png`), { fullPage: true });
+    await takeStepScreenshot(page, path.join(runDir, `step-2-我的审批-after.png`), { fullPage: true });
   });
 
   await step('action', async () => {
     await takeStepScreenshot(page, path.join(runDir, `step-3-action-before.png`), { fullPage: true });
     const baseContext = iframeContent || page;
-    const locator = baseContext.locator('.ant-popover-open > .hover-pointer-icon').filter({ visible: true }).first();
+    const locator = baseContext.getByRole('row', { name: '1 - 张艳华 出差 CNY 2,122.00' }).getByLabel('', { exact: true }).filter({ visible: true }).first();
     await expect(locator).toBeVisible();
-    await smartClick(locator, 'action');
+    try {
+      await locator.waitFor({ state: 'visible', timeout: 10000 });
+    } catch (e) {
+      console.log('⚠️ 元素不可见，尝试暂停调试');
+      await maybePause(page, '元素不可见');
+    }
+    try {
+      await locator.check();
+    } catch (e) {
+      console.log(`⚠️ 勾选失败: ${e.message}`);
+      await maybePause(page, '勾选失败');
+    }
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
     await takeStepScreenshot(page, path.join(runDir, `step-3-action-after.png`), { fullPage: true });
   });
 
-  await step('action', async () => {
-    await takeStepScreenshot(page, path.join(runDir, `step-4-action-before.png`), { fullPage: true });
+  await step('通-过', async () => {
+    await takeStepScreenshot(page, path.join(runDir, `step-4-通-过-before.png`), { fullPage: true });
     const baseContext = iframeContent || page;
-    const locator = baseContext.locator('.single-index.hover-click > .index-name > div:nth-child(2) > .hover-pointer-icon').filter({ visible: true }).first();
+    const locator = baseContext.getByRole('button', { name: '通 过' }).filter({ visible: true }).first();
+    await expect(locator).toBeVisible();
+    await smartClick(locator, '通-过');
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await takeStepScreenshot(page, path.join(runDir, `step-4-通-过-after.png`), { fullPage: true });
+  });
+
+  await step('Close', async () => {
+    await takeStepScreenshot(page, path.join(runDir, `step-5-Close-before.png`), { fullPage: true });
+    const baseContext = iframeContent || page;
+    const locator = baseContext.getByRole('button', { name: 'Close' }).filter({ visible: true }).first();
+    await expect(locator).toBeVisible();
+    await smartClick(locator, 'Close');
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await takeStepScreenshot(page, path.join(runDir, `step-5-Close-after.png`), { fullPage: true });
+  });
+
+  await step('1', async () => {
+    await takeStepScreenshot(page, path.join(runDir, `step-6-1-before.png`), { fullPage: true });
+    const baseContext = iframeContent || page;
+    const locator = baseContext.getByRole('cell', { name: '1', exact: true }).filter({ visible: true }).first();
+    await expect(locator).toBeVisible();
+    await smartClick(locator, '1');
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await takeStepScreenshot(page, path.join(runDir, `step-6-1-after.png`), { fullPage: true });
+  });
+
+  await step('审批历史', async () => {
+    await takeStepScreenshot(page, path.join(runDir, `step-7-审批历史-before.png`), { fullPage: true });
+    const baseContext = iframeContent || page;
+    const locator = baseContext.getByRole('tab', { name: '审批历史' }).filter({ visible: true }).first();
+    await expect(locator).toBeVisible();
+    await smartClick(locator, '审批历史');
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await takeStepScreenshot(page, path.join(runDir, `step-7-审批历史-after.png`), { fullPage: true });
+  });
+
+  await step('关联脉络', async () => {
+    await takeStepScreenshot(page, path.join(runDir, `step-8-关联脉络-before.png`), { fullPage: true });
+    const baseContext = iframeContent || page;
+    const locator = baseContext.getByRole('tab', { name: '关联脉络' }).filter({ visible: true }).first();
+    await expect(locator).toBeVisible();
+    await smartClick(locator, '关联脉络');
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await takeStepScreenshot(page, path.join(runDir, `step-8-关联脉络-after.png`), { fullPage: true });
+  });
+
+  await step('收起', async () => {
+    await takeStepScreenshot(page, path.join(runDir, `step-9-收起-before.png`), { fullPage: true });
+    const baseContext = iframeContent || page;
+    const locator = baseContext.getByText('收起').filter({ visible: true }).first();
+    await expect(locator).toBeVisible();
+    await smartClick(locator, '收起');
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await takeStepScreenshot(page, path.join(runDir, `step-9-收起-after.png`), { fullPage: true });
+  });
+
+  await step('action', async () => {
+    await takeStepScreenshot(page, path.join(runDir, `step-10-action-before.png`), { fullPage: true });
+    const baseContext = iframeContent || page;
+    const locator = baseContext.locator('img').nth(1).filter({ visible: true }).first();
     await expect(locator).toBeVisible();
     await smartClick(locator, 'action');
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-    await takeStepScreenshot(page, path.join(runDir, `step-4-action-after.png`), { fullPage: true });
-  });
-
-  await step('请选择日期', async () => {
-    await takeStepScreenshot(page, path.join(runDir, `step-5-请选择日期-before.png`), { fullPage: true });
-    const baseContext = iframeContent || page;
-    const locator = baseContext.locator('#home-main-charts-guide-id').getByRole('textbox', { name: '请选择日期' }).filter({ visible: true }).first();
-    await expect(locator).toBeVisible();
-    await smartClick(locator, '请选择日期');
-    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-    await takeStepScreenshot(page, path.join(runDir, `step-5-请选择日期-after.png`), { fullPage: true });
-  });
-
-  await step('二月', async () => {
-    await takeStepScreenshot(page, path.join(runDir, `step-6-二月-before.png`), { fullPage: true });
-    const baseContext = iframeContent || page;
-    const locator = baseContext.getByText('二月', { exact: true }).filter({ visible: true }).first();
-    await expect(locator).toBeVisible();
-    await smartClick(locator, '二月');
-    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-    await takeStepScreenshot(page, path.join(runDir, `step-6-二月-after.png`), { fullPage: true });
-  });
-
-  await step('个人首页', async () => {
-    await takeStepScreenshot(page, path.join(runDir, `step-7-个人首页-before.png`), { fullPage: true });
-    const baseContext = iframeContent || page;
-    const locator = baseContext.getByText('个人首页').filter({ visible: true }).first();
-    await expect(locator).toBeVisible();
-    await smartClick(locator, '个人首页');
-    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-    await takeStepScreenshot(page, path.join(runDir, `step-7-个人首页-after.png`), { fullPage: true });
-  });
-
-  await step('请选择代理人', async () => {
-    await takeStepScreenshot(page, path.join(runDir, `step-8-请选择代理人-before.png`), { fullPage: true });
-    const baseContext = iframeContent || page;
-    const locator = baseContext.getByText('请选择代理人').filter({ visible: true }).first();
-    await expect(locator).toBeVisible();
-    await smartClick(locator, '请选择代理人');
-    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-    await takeStepScreenshot(page, path.join(runDir, `step-8-请选择代理人-after.png`), { fullPage: true });
-  });
-
-  await step('action', async () => {
-    await takeStepScreenshot(page, path.join(runDir, `step-9-action-before.png`), { fullPage: true });
-    const baseContext = iframeContent || page;
-    const locator = baseContext.locator('.ant-select-arrow').first().filter({ visible: true }).first();
-    await expect(locator).toBeVisible();
-    await smartClick(locator, 'action');
-    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-    await takeStepScreenshot(page, path.join(runDir, `step-9-action-after.png`), { fullPage: true });
-  });
-
-  await step('工作台个人首页设置首页面板个人首页管理员首页', async () => {
-    await takeStepScreenshot(page, path.join(runDir, `step-10-工作台个人首页设置首页面板个人首页管理员首页-before.png`), { fullPage: true });
-    const baseContext = iframeContent || page;
-    const locator = baseContext.getByText('工作台个人首页设置首页面板个人首页管理员首页').filter({ visible: true }).first();
-    await expect(locator).toBeVisible();
-    await smartClick(locator, '工作台个人首页设置首页面板个人首页管理员首页');
-    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-    await takeStepScreenshot(page, path.join(runDir, `step-10-工作台个人首页设置首页面板个人首页管理员首页-after.png`), { fullPage: true });
+    await takeStepScreenshot(page, path.join(runDir, `step-10-action-after.png`), { fullPage: true });
   });
 
   await step('action', async () => {
     await takeStepScreenshot(page, path.join(runDir, `step-11-action-before.png`), { fullPage: true });
     const baseContext = iframeContent || page;
-    const locator = baseContext.locator('.down-triangle').filter({ visible: true }).first();
+    const locator = baseContext.locator('.warp-svg-icon.ant-tooltip-open > .helios-icon').filter({ visible: true }).first();
     await expect(locator).toBeVisible();
     await smartClick(locator, 'action');
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
     await takeStepScreenshot(page, path.join(runDir, `step-11-action-after.png`), { fullPage: true });
   });
 
-  await step('action', async () => {
-    await takeStepScreenshot(page, path.join(runDir, `step-12-action-before.png`), { fullPage: true });
+  await step('返-回', async () => {
+    await takeStepScreenshot(page, path.join(runDir, `step-12-返-回-before.png`), { fullPage: true });
     const baseContext = iframeContent || page;
-    const locator = baseContext.locator('.down-triangle').filter({ visible: true }).first();
+    const locator = baseContext.getByRole('button', { name: '返 回' }).filter({ visible: true }).first();
     await expect(locator).toBeVisible();
-    await smartClick(locator, 'action');
+    await smartClick(locator, '返-回');
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-    await takeStepScreenshot(page, path.join(runDir, `step-12-action-after.png`), { fullPage: true });
+    await takeStepScreenshot(page, path.join(runDir, `step-12-返-回-after.png`), { fullPage: true });
   });
 
 

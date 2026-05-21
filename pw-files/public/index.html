@@ -163,6 +163,12 @@
   }
   .batch-results-table tr:last-child td { border-bottom: none; }
   .batch-results-table .fail-row { color: var(--red); }
+  #dateCategorySelect { width: 100%; margin-bottom: 8px; color: var(--text); font-size: var(--fs-xs); }
+  .sidebar-link-btn {
+    font-size: var(--fs-xs); color: var(--teal); background: none; border: none;
+    padding: 0; cursor: pointer; text-decoration: underline; margin-top: 6px;
+  }
+  .sidebar-link-btn:hover { color: var(--text); }
   .report-hub-tabs { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
   .report-hub-tab {
     font-size: var(--fs-xs); padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border);
@@ -533,6 +539,27 @@
         <button type="button" class="btn btn-full studio-hidden" id="btnAccountLogin" hidden aria-hidden="true" disabled>用配置账号登录</button>
       </div>
 
+      <div class="sidebar-accordion sidebar-accordion-compact" id="accordionDateCategories">
+        <button type="button" class="accordion-trigger" aria-expanded="false">
+          迭代 <span class="acc-chevron">›</span>
+        </button>
+        <div class="accordion-body">
+          <p class="sidebar-hint" id="dateCategoryHint">对应 <code>config/date-categories.json</code>，决定录制/用例归入哪个迭代目录；仅支持新增，不可删除已有迭代。</p>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin:8px 0 4px;gap:8px">
+            <span class="sidebar-hint" id="dateCategoryListTitle" style="margin:0">现有迭代</span>
+            <button type="button" class="btn" id="btnRefreshDateCategories" style="font-size:var(--fs-xs);padding:2px 8px" onclick="refreshDateCategories()">刷新</button>
+          </div>
+          <select class="url-input" id="dateCategorySelect" disabled aria-label="现有迭代">
+            <option value="">连接后自动加载…</option>
+          </select>
+          <div style="display:flex;gap:6px;margin-bottom:8px">
+            <input type="text" class="url-input" id="dateCategoryInput" placeholder="YYMMDD，如 260717" maxlength="6" inputmode="numeric" pattern="[0-9]{6}" spellcheck="false" style="flex:1">
+            <button type="button" class="btn" id="btnAddDateCategory" style="font-size:var(--fs-xs);padding:4px 10px;flex-shrink:0" onclick="addDateCategory()">新增</button>
+          </div>
+          <button type="button" class="btn btn-full" id="btnSaveDateCategories" onclick="saveDateCategories()" disabled>保存到项目</button>
+        </div>
+      </div>
+
       <div class="sidebar-section" id="workflowModeSection">
         <div class="sidebar-label">工作模式</div>
         <div class="provider-row step-branch-row" role="group" aria-label="工作模式">
@@ -617,6 +644,7 @@
               <p class="sidebar-hint" style="margin-bottom:6px">留空则按录制内容自动命名。</p>
               <input type="text" class="url-input" id="recordingFeatureName" style="margin-bottom:6px;width:100%" placeholder="功能名，如：我的审批" spellcheck="false">
               <input type="text" class="url-input" id="recordingBehaviorName" style="width:100%" placeholder="行为，如：click（普通点击可留空）" spellcheck="false">
+              <button type="button" class="sidebar-link-btn" onclick="openDateCategoriesEditor()">管理迭代 ›</button>
             </div>
           </div>
         </div>
@@ -1332,6 +1360,7 @@ const RUN_STEP_DEFAULTS = {
   3: '生成截图对比报告',
 };
 const runState = { lastRunComplete: false, lastBatchComplete: false, lastBatchResults: [] };
+const dateCategoryState = { loaded: false, loading: false, list: [], description: '', dirty: false };
 
 const SAMPLE_SCRIPT = `import { test, expect } from '@playwright/test';
 
@@ -2228,6 +2257,8 @@ function connectWS() {
   ws.onopen = () => {
     document.getElementById('wsDot').className = 'ws-dot connected';
     document.getElementById('wsStatus').textContent = '已连接';
+    dateCategoryState.loaded = false;
+    dateCategoryState.loading = false;
     resetPipelineRunning();
     setBusy('optimize', false);
     setBusy('run', false);
@@ -2591,6 +2622,7 @@ function handleMessage(msg) {
     case 'repo:info': {
       repoState.repoRoot = msg.repoRoot || '';
       repoState.repoReady = Boolean(msg.repoReady);
+      if (!repoState.repoReady) dateCategoryState.loaded = false;
       repoState.draftOptimizedExists = Boolean(msg.draftOptimizedExists);
       repoState.draftRecordingExists = Boolean(msg.draftRecordingExists);
       if (msg.draftOptimizedRelative) {
@@ -2639,12 +2671,47 @@ function handleMessage(msg) {
         optimizeKeyState.serverDeepseek = Boolean(msg.optimizeKeys.deepseek);
         syncActionButtons();
       }
+      if (repoState.repoReady) {
+        if (Array.isArray(msg.dateCategories) && msg.dateCategories.length > 0) {
+          applyDateCategoriesFromServer(msg);
+        } else {
+          requestDateCategories();
+        }
+        const hint = document.getElementById('dateCategoryHint');
+        if (hint && dateCategoryState.description) {
+          hint.textContent = dateCategoryState.description;
+        }
+        renderDateCategoryList();
+      }
       if (!msg.repoReady) {
         focusStep2Repo();
         showToast('工作区未就绪，请检查 Studio 安装位置', 'err');
       }
       break;
     }
+    case 'config:date-categories:done':
+      applyDateCategoriesFromServer(msg);
+      renderDateCategoryList();
+      log('dim', `[config] 已加载 ${dateCategoryState.list.length} 个迭代`);
+      break;
+    case 'config:date-categories:saved':
+      dateCategoryState.list = Array.isArray(msg.dateCategories)
+        ? sortDateCategoryList(
+            msg.dateCategories
+              .map((c) => {
+                const s = String(c || '').trim();
+                if (/^\d{8}$/.test(s)) return s.slice(2);
+                const v = validateDateCategoryInput(s);
+                return v.ok ? v.code : null;
+              })
+              .filter(Boolean),
+          )
+        : [];
+      dateCategoryState.dirty = false;
+      renderDateCategoryList();
+      showToast('迭代配置已保存', 'ok');
+      log('ok', `[config] 已保存 ${msg.configPath || 'date-categories.json'}`);
+      break;
     case 'repo:list-optimized:done':
       repoState.optimizedSpecs = msg.optimizedSpecs || [];
       fillRepoOptimizedSelect(msg.optimizedSpecs);
@@ -2841,6 +2908,10 @@ function handleMessage(msg) {
       break;
     }
     case 'error':
+      if (dateCategoryState.loading) {
+        dateCategoryState.loading = false;
+        renderDateCategoryList();
+      }
       log('err', msg.message);
       showToast(msg.message, 'err');
       finishBusyFromError();
@@ -3380,6 +3451,175 @@ function openAccordion(id) {
   if (trigger) trigger.setAttribute('aria-expanded', 'true');
 }
 
+function parseDateCategoryToTime(code) {
+  const s = String(code || '').trim();
+  if (/^\d{6}$/.test(s)) {
+    const y = 2000 + parseInt(s.slice(0, 2), 10);
+    const m = parseInt(s.slice(2, 4), 10);
+    const d = parseInt(s.slice(4, 6), 10);
+    if (m < 1 || m > 12) return 0;
+    const dt = new Date(y, m - 1, d);
+    if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) return 0;
+    return dt.getTime();
+  }
+  if (/^\d{8}$/.test(s)) {
+    const y = parseInt(s.slice(0, 4), 10);
+    const m = parseInt(s.slice(4, 6), 10) - 1;
+    const d = parseInt(s.slice(6, 8), 10);
+    return new Date(y, m, d).getTime();
+  }
+  return 0;
+}
+
+function validateDateCategoryInput(raw) {
+  const s = String(raw || '').trim();
+  if (!/^\d{6}$/.test(s)) {
+    return { ok: false, message: '须为 6 位数字 YYMMDD，如 260717' };
+  }
+  if (!parseDateCategoryToTime(s)) {
+    return { ok: false, message: '日期无效，请检查年月日（如 260231 不合法）' };
+  }
+  return { ok: true, code: s };
+}
+
+function sortDateCategoryList(list) {
+  return [...list].sort((a, b) => parseDateCategoryToTime(a) - parseDateCategoryToTime(b));
+}
+
+function applyDateCategoriesFromServer(msg) {
+  if (!Array.isArray(msg.dateCategories)) return false;
+  dateCategoryState.loaded = true;
+  dateCategoryState.loading = false;
+  dateCategoryState.list = sortDateCategoryList(
+    msg.dateCategories
+      .map((c) => {
+        const s = String(c || '').trim();
+        if (/^\d{8}$/.test(s)) return s.slice(2);
+        const v = validateDateCategoryInput(s);
+        return v.ok ? v.code : null;
+      })
+      .filter(Boolean),
+  );
+  if (msg.description || msg.dateCategoriesDescription) {
+    dateCategoryState.description = msg.description || msg.dateCategoriesDescription || '';
+  }
+  dateCategoryState.dirty = false;
+  return true;
+}
+
+function requestDateCategories() {
+  if (!repoState.repoReady) {
+    showToast('工作区未就绪，请从仓库根目录启动 Studio', 'err');
+    return;
+  }
+  dateCategoryState.loading = true;
+  renderDateCategoryList();
+  send('config:get-date-categories');
+}
+
+function refreshDateCategories() {
+  dateCategoryState.loaded = false;
+  requestDateCategories();
+}
+
+function renderDateCategoryOptions() {
+  const sel = document.getElementById('dateCategorySelect');
+  if (!sel) return;
+  if (dateCategoryState.loading) {
+    sel.innerHTML = '<option value="">加载中…</option>';
+    sel.disabled = true;
+    return;
+  }
+  if (!dateCategoryState.list.length) {
+    sel.innerHTML = dateCategoryState.loaded
+      ? '<option value="">（暂无迭代，请新增）</option>'
+      : '<option value="">点击「刷新」加载 config/date-categories.json</option>';
+    sel.disabled = true;
+    return;
+  }
+  sel.innerHTML = dateCategoryState.list
+    .map((d) => `<option value="${escHtml(d)}">${escHtml(d)}</option>`)
+    .join('');
+  sel.disabled = false;
+  sel.selectedIndex = dateCategoryState.list.length - 1;
+}
+
+function renderDateCategoryList() {
+  const btn = document.getElementById('btnSaveDateCategories');
+  const title = document.getElementById('dateCategoryListTitle');
+  const refreshBtn = document.getElementById('btnRefreshDateCategories');
+  if (refreshBtn) refreshBtn.disabled = dateCategoryState.loading || !repoState.repoReady;
+  if (dateCategoryState.loading) {
+    if (title) title.textContent = '现有迭代';
+    renderDateCategoryOptions();
+    if (btn) btn.disabled = true;
+    return;
+  }
+  if (!dateCategoryState.list.length) {
+    if (title) title.textContent = '现有迭代';
+  } else if (title) {
+    title.textContent = `现有迭代（${dateCategoryState.list.length}）`;
+  }
+  renderDateCategoryOptions();
+  if (btn) btn.disabled = !repoState.repoReady || !dateCategoryState.dirty;
+  const input = document.getElementById('dateCategoryInput');
+  const addBtn = document.getElementById('btnAddDateCategory');
+  if (input) input.disabled = !repoState.repoReady || dateCategoryState.loading;
+  if (addBtn) addBtn.disabled = !repoState.repoReady || dateCategoryState.loading;
+}
+
+function markDateCategoriesDirty() {
+  dateCategoryState.dirty = true;
+  renderDateCategoryList();
+}
+
+function loadDateCategoriesIfNeeded(force) {
+  if (!force && dateCategoryState.loaded && dateCategoryState.list.length) {
+    renderDateCategoryList();
+    return;
+  }
+  requestDateCategories();
+}
+
+function openDateCategoriesEditor() {
+  openAccordion('accordionDateCategories');
+  renderDateCategoryList();
+  loadDateCategoriesIfNeeded(true);
+}
+
+function addDateCategory() {
+  const input = document.getElementById('dateCategoryInput');
+  const raw = (input?.value || '').trim();
+  const validated = validateDateCategoryInput(raw);
+  if (!validated.ok) {
+    showToast(validated.message, 'err');
+    return;
+  }
+  const short = validated.code;
+  const exists = dateCategoryState.list.some(
+    (c) => parseDateCategoryToTime(c) === parseDateCategoryToTime(short),
+  );
+  if (exists) {
+    showToast('该迭代日期已存在', 'err');
+    return;
+  }
+  dateCategoryState.list = sortDateCategoryList([...dateCategoryState.list, short]);
+  if (input) input.value = '';
+  markDateCategoriesDirty();
+}
+
+function saveDateCategories() {
+  if (!repoState.repoReady) {
+    showToast('工作区未就绪', 'err');
+    return;
+  }
+  if (!dateCategoryState.list.length) {
+    showToast('请至少保留一个迭代', 'err');
+    return;
+  }
+  send('config:save-date-categories', { dateCategories: dateCategoryState.list });
+}
+
 function bindAccordions() {
   document.querySelectorAll('.sidebar-accordion').forEach((acc) => {
     const trigger = acc.querySelector('.accordion-trigger');
@@ -3387,7 +3627,17 @@ function bindAccordions() {
     trigger.addEventListener('click', () => {
       const open = acc.classList.toggle('open');
       trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (open && acc.id === 'accordionDateCategories') {
+        renderDateCategoryList();
+        loadDateCategoriesIfNeeded(true);
+      }
     });
+  });
+  document.getElementById('dateCategoryInput')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addDateCategory();
+    }
   });
 }
 

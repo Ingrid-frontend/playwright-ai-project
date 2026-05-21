@@ -8,7 +8,7 @@ test('test', async ({ page }) => {
   test.setTimeout(120000);
 
   // 初始化截图目录
-  const screenshotDir = 'screenshots/20260515/recording-codegen_2026-04-23_17-04-58';
+  const screenshotDir = 'screenshots/260515/recording-codegen_2026-04-23_17-04-58';
   if (!fs.existsSync(screenshotDir)) {
     fs.mkdirSync(screenshotDir, { recursive: true });
   }

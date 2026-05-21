@@ -1,5 +1,10 @@
 import fs from 'fs';
 import path from 'path';
+import {
+  parseDateCategoryToDate,
+  toShortDateCategoryCode,
+  normalizeDateCategoryList,
+} from '../../src/utils/date-category.cjs';
 
 interface DateCategoryConfig {
   dateCategories: string[];
@@ -18,6 +23,7 @@ class SimpleFileOrganizer {
   
   constructor() {
     this.config = this.loadConfig();
+    this.config.dateCategories = normalizeDateCategoryList(this.config.dateCategories);
     this.dateCategories = this.parseDateCategories();
   }
   
@@ -35,12 +41,7 @@ class SimpleFileOrganizer {
   }
   
   private parseDateCategories(): Date[] {
-    return this.config.dateCategories.map(dateStr => {
-      const year = parseInt(dateStr.substring(0, 4));
-      const month = parseInt(dateStr.substring(4, 6)) - 1;
-      const day = parseInt(dateStr.substring(6, 8));
-      return new Date(year, month, day);
-    });
+    return this.config.dateCategories.map((dateStr) => parseDateCategoryToDate(dateStr));
   }
   
   private extractDateFromFileName(fileName: string): string | null {
@@ -76,11 +77,13 @@ class SimpleFileOrganizer {
   private findDateCategory(fileDate: Date): string {
     for (let i = 0; i < this.dateCategories.length; i++) {
       if (fileDate <= this.dateCategories[i]) {
-        return this.config.dateCategories[i];
+        return toShortDateCategoryCode(this.config.dateCategories[i]);
       }
     }
-    
-    return this.config.dateCategories[this.config.dateCategories.length - 1];
+
+    return toShortDateCategoryCode(
+      this.config.dateCategories[this.config.dateCategories.length - 1],
+    );
   }
   
   private organizeDirectory(dirPath: string): void {

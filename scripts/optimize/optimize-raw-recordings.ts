@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { getDateCategoryForCalendarDay } from '../../src/utils/date-category.cjs';
 
 /**
  * optimize-raw-recordings.ts
@@ -871,37 +872,7 @@ ${skipGuard}${visibleLine}    try {
   }
 
   getDateCategoryForDate(dateStr: string): string {
-    const configPath = path.join(process.cwd(), 'config', 'date-categories.json');
-    
-    if (!fs.existsSync(configPath)) {
-      console.warn(`⚠️  配置文件不存在: ${configPath}`);
-      return 'default';
-    }
-    
-    try {
-      const configContent = fs.readFileSync(configPath, 'utf-8');
-      const config = JSON.parse(configContent) as { dateCategories: string[] };
-      
-      // 解析日期字符串，确保使用本地时区
-      const [year, month, day] = dateStr.split('-').map(Number);
-      const fileDate = new Date(year, month - 1, day);
-      
-      for (const category of config.dateCategories) {
-        const catYear = parseInt(category.substring(0, 4));
-        const catMonth = parseInt(category.substring(4, 6)) - 1;
-        const catDay = parseInt(category.substring(6, 8));
-        const categoryDate = new Date(catYear, catMonth, catDay);
-        
-        if (fileDate <= categoryDate) {
-          return category;
-        }
-      }
-      
-      return config.dateCategories[config.dateCategories.length - 1];
-    } catch (error) {
-      console.warn(`⚠️  读取配置文件失败: ${error}`);
-      return 'default';
-    }
+    return getDateCategoryForCalendarDay(dateStr);
   }
 
   public extractDateFromFileName(fileName: string): string | null {

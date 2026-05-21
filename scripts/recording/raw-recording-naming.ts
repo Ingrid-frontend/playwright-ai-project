@@ -128,50 +128,9 @@ export function buildRecordingBaseSlug(code: string, options: RecordingSlugOptio
   return (base || 'recording-codegen').substring(0, 32);
 }
 
-/** 支持 YYYY-MM-DD 或 YYYYMMDD（与 raw-recordings 子目录分类一致） */
-export function getDateCategoryForCalendarDay(dateKey: string): string {
-  const configPath = path.join(process.cwd(), 'config', 'date-categories.json');
+import { getDateCategoryForCalendarDay } from './date-category.js';
 
-  let fileDate: Date;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
-    const [y, m, d] = dateKey.split('-').map(Number);
-    fileDate = new Date(y, m - 1, d);
-  } else if (/^\d{8}$/.test(dateKey)) {
-    const y = parseInt(dateKey.substring(0, 4), 10);
-    const m = parseInt(dateKey.substring(4, 6), 10) - 1;
-    const d = parseInt(dateKey.substring(6, 8), 10);
-    fileDate = new Date(y, m, d);
-  } else {
-    console.warn(`⚠️  无法解析日期分类键: ${dateKey}`);
-    return 'default';
-  }
-
-  if (!fs.existsSync(configPath)) {
-    console.warn(`⚠️  配置文件不存在: ${configPath}`);
-    return 'default';
-  }
-
-  try {
-    const configContent = fs.readFileSync(configPath, 'utf-8');
-    const config = JSON.parse(configContent) as { dateCategories: string[] };
-
-    for (const category of config.dateCategories) {
-      const catYear = parseInt(category.substring(0, 4), 10);
-      const catMonth = parseInt(category.substring(4, 6), 10) - 1;
-      const catDay = parseInt(category.substring(6, 8), 10);
-      const categoryDate = new Date(catYear, catMonth, catDay);
-
-      if (fileDate <= categoryDate) {
-        return category;
-      }
-    }
-
-    return config.dateCategories[config.dateCategories.length - 1];
-  } catch (error) {
-    console.warn(`⚠️  读取 date-categories 失败: ${error}`);
-    return 'default';
-  }
-}
+export { getDateCategoryForCalendarDay };
 
 /**
  * 从 Codegen / 包装后的 spec 中提取 test 回调体（与 generate-raw-recording 落盘 original 的「片段」形态对齐）。

@@ -1769,7 +1769,7 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
   <div class="controls-row">
     <div class="controls-right">
       <div class="controls-right-tools">
-        <input class="control-input" id="scriptSearch" placeholder="搜索脚本：展示名、完整路径（如 20260515/我的审批_… 或关键词）" oninput="filterScripts(this.value)" />
+        <input class="control-input" id="scriptSearch" placeholder="搜索脚本：展示名、完整路径（如 260515/我的审批_… 或关键词）" oninput="filterScripts(this.value)" />
         <button class="control-button" onclick="collapseAll(true)">折叠全部</button>
         <button class="control-button" onclick="collapseAll(false)">展开全部</button>
       </div>

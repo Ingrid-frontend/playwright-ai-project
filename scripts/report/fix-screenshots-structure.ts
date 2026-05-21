@@ -16,7 +16,7 @@ class ScreenshotsFixer {
   }
   
   private createMissingCategoryFolders(): void {
-    const categories = ['20260313', '20260410', '20260515'];
+    const categories = ['20260313', '20260410', '260515'];
     
     for (const category of categories) {
       const categoryDir = path.join(this.screenshotsDir, category);
@@ -28,7 +28,7 @@ class ScreenshotsFixer {
   }
   
   private moveFilesFromWrongLocation(): void {
-    const wrongLocation = path.join(this.screenshotsDir, '20260515', '20260410');
+    const wrongLocation = path.join(this.screenshotsDir, '260515', '20260410');
     
     if (fs.existsSync(wrongLocation)) {
       console.log(`📂 发现错误位置的文件: ${wrongLocation}`);
@@ -75,7 +75,7 @@ class ScreenshotsFixer {
     const recordingPattern = /^Recording/;
     
     for (const item of items) {
-      if (item === '20260313' || item === '20260410' || item === '20260515') {
+      if (item === '20260313' || item === '20260410' || item === '260515') {
         continue;
       }
       
@@ -132,8 +132,8 @@ class ScreenshotsFixer {
   
   private cleanupEmptyFolders(): void {
     const emptyFolders = [
-      path.join(this.screenshotsDir, '20260515', '20260410'),
-      path.join(this.screenshotsDir, '20260515')
+      path.join(this.screenshotsDir, '260515', '20260410'),
+      path.join(this.screenshotsDir, '260515')
     ];
     
     for (const folder of emptyFolders) {
@@ -157,7 +157,7 @@ class ScreenshotsFixer {
     console.log('🔍 模拟运行 - 不实际修改文件');
     console.log('='.repeat(50));
     
-    const categories = ['20260313', '20260410', '20260515'];
+    const categories = ['20260313', '20260410', '260515'];
     
     console.log('\n📁 需要创建的分类目录:');
     for (const category of categories) {
@@ -167,7 +167,7 @@ class ScreenshotsFixer {
       }
     }
     
-    const wrongLocation = path.join(this.screenshotsDir, '20260515', '20260410');
+    const wrongLocation = path.join(this.screenshotsDir, '260515', '20260410');
     
     if (fs.existsSync(wrongLocation)) {
       console.log(`\n📂 发现错误位置的文件: ${wrongLocation}`);

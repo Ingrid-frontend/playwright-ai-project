@@ -22,6 +22,10 @@ const repoEnv = require('./repo-env');
 const { postprocessRecordedScript } = require(path.join(__dirname, '../src/utils/strip-login-from-recording.cjs'));
 const { annotateStorageStateMeta } = require(path.join(__dirname, '../src/utils/storage-state-meta.cjs'));
 const { extractFromCode } = require(path.join(__dirname, '../src/utils/extract-login-account.cjs'));
+const {
+  normalizeDateCategoryList,
+  isDateCategoryDirSegment,
+} = require(path.join(__dirname, '../src/utils/date-category.cjs'));
 
 const PORT = process.env.PORT || 3001;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
@@ -454,6 +458,76 @@ function resolveOptimizedSpecsAfterPipeline(repoRoot, sinceMs, targetRelative) {
   return specs.slice(0, 40);
 }
 
+const DATE_CATEGORIES_REL = 'config/date-categories.json';
+
+function resolveDateCategoriesPath(repoRoot) {
+  const abs = path.resolve(repoRoot, DATE_CATEGORIES_REL);
+  const base = path.resolve(repoRoot, 'config');
+  if (!abs.startsWith(base + path.sep) && abs !== base) {
+    throw new Error('路径超出 config 目录');
+  }
+  return abs;
+}
+
+function loadDateCategoriesFile(repoRoot) {
+  const abs = resolveDateCategoriesPath(repoRoot);
+  if (!fs.existsSync(abs)) {
+    return {
+      dateCategories: [],
+      description:
+        '日期分类配置，文件会根据创建日期归类到对应的文件夹。规则：早于第一个日期的文件归到第一个文件夹，在两个日期之间的文件归到后一个日期的文件夹。',
+      example: { fileDate: '2026-03-16', category: '260313', reason: '早于 2026-03-13' },
+      note: '目录名为 YYMMDD（6 位），如 260313；分类按完整日历日比较',
+    };
+  }
+  const raw = fs.readFileSync(abs, 'utf8');
+  const parsed = JSON.parse(raw);
+  if (!Array.isArray(parsed.dateCategories)) {
+    throw new Error('date-categories.json 缺少 dateCategories 数组');
+  }
+  return parsed;
+}
+
+async function configGetDateCategories(ws) {
+  const repoRoot = resolveRepoRoot();
+  if (!fs.existsSync(path.join(repoRoot, 'playwright.config.ts'))) {
+    send(ws, 'error', { message: '未找到项目根，无法读取日期分类' });
+    return;
+  }
+  try {
+    const config = loadDateCategoriesFile(repoRoot);
+    const dateCategories = normalizeDateCategoryList(config.dateCategories);
+    send(ws, 'config:date-categories:done', {
+      dateCategories,
+      description: config.description || '',
+      configPath: DATE_CATEGORIES_REL,
+      repoRoot,
+    });
+  } catch (e) {
+    send(ws, 'error', { message: `读取失败: ${errText(e)}` });
+  }
+}
+
+async function configSaveDateCategories(ws, msg) {
+  const repoRoot = resolveRepoRoot();
+  if (!fs.existsSync(path.join(repoRoot, 'playwright.config.ts'))) {
+    send(ws, 'error', { message: '未找到项目根，无法保存日期分类' });
+    return;
+  }
+  try {
+    const dateCategories = normalizeDateCategoryList(msg.dateCategories);
+    const existing = loadDateCategoriesFile(repoRoot);
+    const next = { ...existing, dateCategories };
+    const abs = resolveDateCategoriesPath(repoRoot);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
+    send(ws, 'config:date-categories:saved', { dateCategories, configPath: DATE_CATEGORIES_REL });
+    logLine(ws, `[config] 已保存 ${DATE_CATEGORIES_REL}`, 'ok');
+  } catch (e) {
+    send(ws, 'error', { message: errText(e) });
+  }
+}
+
 const DRAFT_RECORDING_BASENAME = 'studio-unsaved-draft.spec.ts';
 const DRAFT_OPTIMIZED_BASENAME = 'studio-unsaved-draft.optimized.spec.ts';
 const DRAFT_OPTIMIZED_RELATIVE = `tests/optimized/${DRAFT_OPTIMIZED_BASENAME}`;
@@ -557,7 +631,7 @@ function isPlaceholderRecordingPath(relativePath) {
   if (!norm) return true;
   if (isDraftRecordingPath(norm)) return true;
   if (/studio-recording\.spec\.ts$/i.test(norm)) return true;
-  if (/tests\/raw-recordings\/original\/\d{8}\/studio-recording\.spec\.ts$/i.test(norm)) {
+  if (/tests\/raw-recordings\/original\/\d{6,8}\/studio-recording\.spec\.ts$/i.test(norm)) {
     return true;
   }
   return false;
@@ -792,7 +866,7 @@ async function repoCommitArtifacts(ws, session, msg) {
     const stem = path.basename(norm, '.spec.ts');
     const dateCategory = parts[parts.length - 2];
     optimizedRelative =
-      parts.includes('original') && /^\d{8}$/.test(dateCategory)
+      parts.includes('original') && isDateCategoryDirSegment(dateCategory)
         ? `tests/optimized/${dateCategory}/${stem}.optimized.spec.ts`
         : `tests/optimized/${stem}.optimized.spec.ts`;
   }
@@ -2465,12 +2539,21 @@ wss.on('connection', (ws) => {
   const optimizedSpecs = repoReady ? listOptimizedSpecs(root, { limit: 40 }) : [];
   let draftOptimizedExists = false;
   let draftRecordingExists = false;
+  let dateCategories = [];
+  let dateCategoriesDescription = '';
   if (repoReady) {
     try {
       draftOptimizedExists = fs.existsSync(path.join(root, DRAFT_OPTIMIZED_RELATIVE));
       draftRecordingExists = hasDraftRecordingInRepo(root);
     } catch {
       /* ignore */
+    }
+    try {
+      const cfg = loadDateCategoriesFile(root);
+      dateCategories = normalizeDateCategoryList(cfg.dateCategories || []);
+      dateCategoriesDescription = cfg.description || '';
+    } catch (e) {
+      console.warn(`[${now()}] 读取 date-categories 失败:`, errText(e));
     }
   }
   send(ws, 'repo:info', {
@@ -2480,6 +2563,8 @@ wss.on('connection', (ws) => {
     draftOptimizedRelative: DRAFT_OPTIMIZED_RELATIVE,
     draftOptimizedExists,
     draftRecordingExists,
+    dateCategories,
+    dateCategoriesDescription,
     browserProjects: REPO_OPTIMIZED_PROJECTS,
     defaultBrowserProjects: DEFAULT_REPO_TEST_PROJECTS,
     optimizeKeys: {
@@ -2597,6 +2682,14 @@ wss.on('connection', (ws) => {
 
       case 'repo:delete-spec':
         await repoDeleteOptimizedSpecs(ws, msg);
+        break;
+
+      case 'config:get-date-categories':
+        await configGetDateCategories(ws);
+        break;
+
+      case 'config:save-date-categories':
+        await configSaveDateCategories(ws, msg);
         break;
 
       case 'cancel:repo-pipeline':
