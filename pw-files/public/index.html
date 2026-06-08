@@ -131,6 +131,15 @@
   .batch-spec-item label { flex: 1; cursor: pointer; color: var(--text-secondary); }
   .batch-spec-toolbar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
   .batch-progress { font-size: var(--fs-xs); color: var(--teal); margin-bottom: 8px; min-height: 1.2em; }
+  .test-job-list { display: flex; flex-direction: column; gap: 8px; max-height: 220px; overflow-y: auto; }
+  .test-job-card {
+    border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px;
+    background: var(--bg3); font-size: var(--fs-xs);
+  }
+  .test-job-card.running { border-color: rgba(46,232,154,.45); }
+  .test-job-card .job-title { font-weight: 600; color: var(--text); margin-bottom: 4px; }
+  .test-job-card .job-meta { color: var(--muted); line-height: 1.5; margin-bottom: 6px; }
+  .test-job-card .job-actions { display: flex; flex-wrap: wrap; gap: 4px; }
   .studio-status-bar {
     display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
     font-size: var(--fs-xs); color: var(--text-tertiary); margin-top: 6px;
@@ -163,6 +172,50 @@
   }
   .batch-results-table tr:last-child td { border-bottom: none; }
   .batch-results-table .fail-row { color: var(--red); }
+
+  .failure-diagnostics {
+    flex-shrink: 0;
+    margin: 0 10px 8px;
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    border: 1px solid rgba(255, 77, 106, 0.35);
+    background: rgba(255, 77, 106, 0.06);
+    max-height: 220px;
+    overflow-y: auto;
+  }
+  .failure-diagnostics.studio-hidden { display: none; }
+  .failure-diagnostics-title {
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--red);
+    margin-bottom: 6px;
+  }
+  .failure-diagnostics-summary {
+    font-size: var(--fs-xs);
+    color: var(--text-secondary);
+    margin: 0 0 8px;
+    line-height: 1.45;
+  }
+  .failure-diagnostics-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+  .failure-diagnostics-actions .btn {
+    font-size: var(--fs-xs);
+    padding: 4px 8px;
+  }
+  .failure-item {
+    font-size: var(--fs-xs);
+    border-top: 1px solid var(--border);
+    padding: 6px 0;
+    line-height: 1.4;
+  }
+  .failure-item:first-child { border-top: none; padding-top: 0; }
+  .failure-item-title { color: var(--text); font-weight: 500; }
+  .failure-item-meta { color: var(--muted); margin-top: 2px; }
+  .batch-fail-actions { margin-bottom: 8px; }
   #dateCategorySelect { width: 100%; margin-bottom: 8px; color: var(--text); font-size: var(--fs-xs); }
   .sidebar-link-btn {
     font-size: var(--fs-xs); color: var(--teal); background: none; border: none;
@@ -467,6 +520,66 @@
   .toast.ok { border-color: rgba(0,217,126,.4); color: var(--green); }
   .toast.err { border-color: rgba(255,77,106,.4); color: var(--red); }
 
+  .studio-modal {
+    position: fixed; inset: 0; z-index: 1000;
+    display: flex; align-items: center; justify-content: center;
+    padding: 16px;
+  }
+  .studio-modal[hidden] { display: none; }
+  .studio-modal-backdrop {
+    position: absolute; inset: 0;
+    background: rgba(8, 10, 14, 0.72);
+    backdrop-filter: blur(2px);
+  }
+  .studio-modal-panel {
+    position: relative; z-index: 1;
+    width: min(420px, 100%);
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  }
+  .studio-modal-title {
+    margin: 0 0 10px;
+    font-size: var(--fs-lg);
+    color: var(--text);
+  }
+  .studio-modal-body {
+    margin: 0 0 14px;
+    font-size: var(--fs-sm);
+    color: var(--text-secondary);
+    line-height: 1.55;
+  }
+  .studio-modal-meta {
+    margin: 0 0 12px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: var(--bg4);
+    border: 1px solid var(--border);
+    font-size: var(--fs-xs);
+    font-family: var(--font-mono);
+    color: var(--text);
+    word-break: break-all;
+  }
+  .studio-modal-warn {
+    margin: 0 0 14px;
+    padding-left: 1.1em;
+    font-size: var(--fs-xs);
+    color: var(--amber);
+    line-height: 1.5;
+  }
+  .studio-modal-actions {
+    display: flex; gap: 8px; justify-content: flex-end;
+  }
+  .studio-modal-actions .btn-danger {
+    border-color: rgba(255, 77, 106, 0.45);
+    color: var(--red);
+  }
+  .studio-modal-actions .btn-danger:hover {
+    background: rgba(255, 77, 106, 0.12);
+  }
+
   .empty-hint {
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     height: 100%; color: var(--text-secondary); font-size: var(--fs-base); gap: 8px; text-align: center;
@@ -620,6 +733,21 @@
         </div>
       </div>
 
+      <div class="sidebar-accordion studio-hidden" id="accordionTestJobs">
+        <button type="button" class="accordion-trigger" aria-expanded="false">
+          定时任务 <span class="acc-chevron">›</span>
+        </button>
+        <div class="accordion-body">
+          <p class="sidebar-hint">读取 <code style="font-size:var(--fs-xs)">config/test-jobs.json</code>，支持后台运行与失败即停。</p>
+          <div style="display:flex;gap:6px;margin-bottom:8px">
+            <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px;flex:1" onclick="refreshTestJobsList()">刷新</button>
+            <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px;flex:1" onclick="openAccordion('accordionTestJobs')">展开</button>
+          </div>
+          <div id="testJobsList" class="test-job-list"></div>
+          <pre id="testJobLogTail" class="studio-hidden" style="margin-top:8px;max-height:120px;overflow:auto;font-size:10px;background:var(--bg2);padding:8px;border-radius:6px;border:1px solid var(--border)"></pre>
+        </div>
+      </div>
+
       <div class="pipeline" id="pipelineNew">
         <div class="sidebar-label">新建流程</div>
         <div class="step-item active" id="step1" data-step="1" role="button" tabindex="0">
@@ -728,7 +856,7 @@
           <p class="sidebar-hint" style="margin-bottom:8px">运行模式见上方「执行设置」。</p>
           <button type="button" class="btn btn-run btn-full" id="btnRepoTest" onclick="event.stopPropagation(); handleRepoTestClick()" data-default-label="执行（含截图）">执行（含截图）</button>
           <ul class="compare-checklist" id="compareChecklistNew"></ul>
-          <button type="button" class="btn btn-full" id="btnRepoCompare" onclick="openCompareReportClick()" style="border-color:rgba(77,159,255,.35);color:var(--blue)">打开报告中心 · 截图对比</button>
+          <button type="button" class="btn btn-full" id="btnRepoCompare" onclick="openScreenshotCompareHub()" style="border-color:rgba(77,159,255,.35);color:var(--blue)">截图对比报告</button>
           <button type="button" class="btn btn-full" id="btnRepoCompareCancel" style="font-size:var(--fs-sm);padding:6px 10px;margin-top:6px" disabled onclick="send('cancel:repo-compare')">取消对比报告生成</button>
         </div>
 
@@ -772,6 +900,9 @@
         <div class="step-action-panel" id="runStep2Panel">
           <p class="sidebar-hint" style="margin-bottom:8px">运行模式见「执行设置」。</p>
           <p class="batch-progress" id="batchProgressText"></p>
+          <div class="batch-fail-actions studio-hidden" id="batchFailCopyBar">
+            <button type="button" class="btn btn-full" style="font-size:var(--fs-sm);padding:6px 10px;margin-bottom:6px" onclick="copyAllBatchFailures()">复制全部失败信息</button>
+          </div>
           <div class="batch-results-wrap studio-hidden" id="batchResultsWrap">
             <table class="batch-results-table" id="batchResultsTable">
               <thead><tr><th>用例</th><th>结果</th><th>操作</th></tr></thead>
@@ -789,7 +920,7 @@
         </div>
         <div class="step-action-panel" id="runStep3Panel">
           <ul class="compare-checklist" id="compareChecklistRun"></ul>
-          <button type="button" class="btn btn-full" id="btnRunCompare" onclick="openRunCompareReportClick()" style="border-color:rgba(77,159,255,.35);color:var(--blue)">打开报告中心 · 截图对比</button>
+          <button type="button" class="btn btn-full" id="btnRunCompare" onclick="openScreenshotCompareHub()" style="border-color:rgba(77,159,255,.35);color:var(--blue)">截图对比报告</button>
           <button type="button" class="btn btn-full" id="btnRunCompareCancel" style="font-size:var(--fs-sm);padding:6px 10px;margin-top:6px" disabled onclick="send('cancel:repo-compare')">取消对比报告生成</button>
         </div>
       </div>
@@ -883,6 +1014,18 @@
         </div>
       </div>
 
+      <div id="failureDiagnosticsPanel" class="failure-diagnostics studio-hidden" role="region" aria-label="失败排查">
+        <div class="failure-diagnostics-title" id="failureDiagnosticsTitle">执行失败</div>
+        <p class="failure-diagnostics-summary" id="failureDiagnosticsSummary"></p>
+        <div class="failure-diagnostics-actions">
+          <button type="button" class="btn" onclick="copyFailureSummary()">复制摘要</button>
+          <button type="button" class="btn" onclick="copyFailureFull()">复制完整排查包</button>
+          <button type="button" class="btn" onclick="copyFailureForAi()">复制给 AI 改用例</button>
+          <button type="button" class="btn" onclick="openFailureSpec()">打开用例</button>
+        </div>
+        <div id="failureDiagnosticsList"></div>
+      </div>
+
       <!-- Log stream -->
       <div class="log-stream" id="logStream">
         <div class="log-line">
@@ -906,9 +1049,20 @@
           <div id="reportStatsContent"></div>
         </div>
         <div class="report-hub-pane" id="reportHubCompare">
-          <ul class="compare-checklist" id="compareChecklistHub"></ul>
-          <p class="sidebar-hint" id="compareHubHint">完成执行并满足条件后可生成截图对比 HTML。</p>
-          <button type="button" class="btn btn-full" id="btnHubCompare" onclick="openCompareFromHub()" style="border-color:rgba(77,159,255,.35);color:var(--blue)">生成并打开截图对比</button>
+          <p class="sidebar-hint" id="compareHubHint">无需执行用例：只要有 screenshots/ 截图即可生成报告；若已有 HTML 可直接打开。</p>
+          <button type="button" class="btn btn-full" id="btnHubOpenCompare" onclick="openExistingCompareReport()" style="border-color:rgba(77,159,255,.35);color:var(--blue)">打开已有对比报告</button>
+          <button type="button" class="btn btn-full" id="btnHubCompare" onclick="regenerateCompareReport()" style="margin-top:8px">从 screenshots 重新生成并打开</button>
+          <button type="button" class="btn btn-full" id="btnHubCompareCancel" style="font-size:var(--fs-sm);padding:6px 10px;margin-top:6px" disabled onclick="send('cancel:repo-compare')">取消生成</button>
+          <div id="compareUiIssuesSummary" class="sidebar-hint" style="margin-top:10px;display:none"></div>
+          <div class="field" style="margin-top:12px">
+            <label class="field-label" for="promoteScriptKey">Promote Golden</label>
+            <input class="control-input" id="promoteScriptKey" placeholder="脚本键 如 260612/我的审批_…" />
+            <input class="control-input" id="promoteRunTs" placeholder="run 时间戳目录名" style="margin-top:6px" />
+            <button type="button" class="btn btn-full" style="margin-top:8px" onclick="promoteGoldenBaseline()">将本次 run 设为 Golden</button>
+          </div>
+          <div id="uiIssuesPanel" class="ui-issues-panel" style="margin-top:12px;max-height:240px;overflow:auto;font-size:12px"></div>
+          <button type="button" class="btn btn-full" style="margin-top:8px;font-size:var(--fs-sm)" onclick="loadUiIssuesPanel()">刷新问题列表</button>
+          <ul class="compare-checklist studio-hidden" id="compareChecklistHub" aria-hidden="true"></ul>
         </div>
         <div class="report-hub-pane" id="reportHubHistory">
           <div id="runHistoryList" class="sidebar-hint">暂无执行记录</div>
@@ -920,6 +1074,25 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<div class="studio-modal" id="promoteGoldenModal" hidden role="dialog" aria-modal="true" aria-labelledby="promoteGoldenModalTitle">
+  <div class="studio-modal-backdrop" onclick="closePromoteGoldenModal()"></div>
+  <div class="studio-modal-panel">
+    <h3 class="studio-modal-title" id="promoteGoldenModalTitle">确认设为 Golden 基线？</h3>
+    <p class="studio-modal-body">
+      将把本次运行的步骤截图复制到 <code>screenshots-baseline/</code>，作为后续 UI 对比的<strong>预期画面</strong>。若界面仍有 bug 或随机内容（时间、头像等），请勿确认。
+    </p>
+    <div class="studio-modal-meta" id="promoteGoldenModalMeta"></div>
+    <ul class="studio-modal-warn">
+      <li>会覆盖该脚本下已有的 Golden 截图（同浏览器）</li>
+      <li>之后对比将优先使用 Golden（compareKind: golden）</li>
+    </ul>
+    <div class="studio-modal-actions">
+      <button type="button" class="btn" onclick="closePromoteGoldenModal()">取消</button>
+      <button type="button" class="btn btn-danger" id="btnPromoteGoldenConfirm" onclick="confirmPromoteGoldenBaseline()">确认设为 Golden</button>
+    </div>
+  </div>
+</div>
 
 <script>
 // ── State ──────────────────────────────────────────────────────────────
@@ -945,7 +1118,10 @@ const repoState = {
   optimizedSpecs: [],
   rawFingerprintAtPipeline: '',
   lastCompareReportUrl: '',
+  compareHasReport: false,
+  compareHasScreenshots: false,
 };
+const testJobsState = { jobs: [], pollTimer: null };
 const optimizeKeyState = { serverAnthropic: false, serverDeepseek: false };
 const envState = { current: 'stage', environments: [], repoReady: false };
 const accountState = {
@@ -1153,14 +1329,519 @@ function syncCompareChecklists() {
   const html = items
     .map((it) => `<li class="${it.ok ? 'ok' : 'fail'}">${it.ok ? '✓' : '○'} ${escHtml(it.label)}</li>`)
     .join('');
-  ['compareChecklistNew', 'compareChecklistRun', 'compareChecklistHub'].forEach((id) => {
+  ['compareChecklistNew', 'compareChecklistRun'].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.innerHTML = html;
   });
-  const hubBtn = document.getElementById('btnHubCompare');
-  if (hubBtn) {
-    hubBtn.disabled = busyState.repoCompare || !items.every((it) => it.ok);
+  syncCompareHubButtons();
+}
+
+function applyCompareReportStatus(msg) {
+  if (!msg) return;
+  repoState.compareHasReport = Boolean(msg.hasReport);
+  repoState.compareHasScreenshots = Boolean(msg.hasScreenshots);
+  if (msg.openPath) {
+    try {
+      repoState.lastCompareReportUrl = new URL(msg.openPath, location.origin).href;
+    } catch {
+      repoState.lastCompareReportUrl = msg.openPath;
+    }
   }
+  const hint = document.getElementById('compareHubHint');
+  if (hint) {
+    const parts = [];
+    if (msg.hasReport) parts.push('已有对比报告');
+    if (msg.hasScreenshots) parts.push('screenshots/ 有截图可重新生成');
+    if (msg.uiIssues) parts.push(`UI blocker ${msg.uiIssues.blocker}`);
+    if (!parts.length) parts.push('screenshots/ 暂无 PNG');
+    hint.textContent = `无需执行用例：${parts.join('；')}。`;
+  }
+  syncCompareHubButtons();
+}
+
+function syncCompareHubButtons() {
+  const openBtn = document.getElementById('btnHubOpenCompare');
+  const regenBtn = document.getElementById('btnHubCompare');
+  const cancelBtn = document.getElementById('btnHubCompareCancel');
+  const busy = busyState.repoCompare;
+  if (openBtn) {
+    openBtn.disabled = busy;
+    openBtn.title = repoState.compareHasReport
+      ? '打开 results/screenshot-comparison.html'
+      : '暂无报告，请先用下方按钮从 screenshots 生成';
+  }
+  if (regenBtn) {
+    regenBtn.disabled = busy;
+    regenBtn.title = repoState.compareHasScreenshots
+      ? '根据 screenshots/ 重新生成对比报告'
+      : 'screenshots/ 下未检测到 PNG，请确认截图目录';
+  }
+  if (cancelBtn) cancelBtn.disabled = !busy;
+}
+
+function refreshCompareReportStatus() {
+  send('repo:compare-report:status', {});
+  loadUiIssuesPanel();
+}
+
+let promoteGoldenPending = null;
+
+function promoteGoldenBaseline() {
+  const scriptKey = document.getElementById('promoteScriptKey')?.value?.trim();
+  const runTimestamp = document.getElementById('promoteRunTs')?.value?.trim();
+  if (!scriptKey || !runTimestamp) {
+    showToast('请填写脚本键与 run 时间戳', 'err');
+    return;
+  }
+  promoteGoldenPending = { scriptKey, runTimestamp };
+  const meta = document.getElementById('promoteGoldenModalMeta');
+  if (meta) {
+    meta.innerHTML = `脚本：<strong>${escapeHtml(scriptKey)}</strong><br>run：<strong>${escapeHtml(runTimestamp)}</strong>`;
+  }
+  const modal = document.getElementById('promoteGoldenModal');
+  if (modal) modal.hidden = false;
+}
+
+function closePromoteGoldenModal() {
+  const modal = document.getElementById('promoteGoldenModal');
+  if (modal) modal.hidden = true;
+  promoteGoldenPending = null;
+}
+
+function confirmPromoteGoldenBaseline() {
+  if (!promoteGoldenPending) return;
+  const { scriptKey, runTimestamp } = promoteGoldenPending;
+  closePromoteGoldenModal();
+  send('repo:promote-baseline', { scriptKey, runTimestamp });
+  showToast('正在更新 Golden 基线…', 'ok');
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+let lastFailureBundle = null;
+let lastBatchRunMeta = null;
+
+function isRunFailed(summary) {
+  if (!summary) return false;
+  return summary.exitCode !== 0 || (summary.failed != null && summary.failed > 0);
+}
+
+function buildFailureBundle(opts) {
+  const s = opts.summary || {};
+  return {
+    generatedAt: new Date().toISOString(),
+    kind: opts.kind || 'single',
+    specRelative: opts.specRelative || '',
+    projects: opts.projects || [],
+    playwrightEnv: opts.playwrightEnv || envState.current || 'stage',
+    runMode: opts.runMode || '',
+    summary: {
+      passed: s.passed ?? 0,
+      failed: s.failed ?? 0,
+      total: s.total ?? 0,
+      duration: s.duration ?? '',
+      exitCode: s.exitCode ?? 0,
+    },
+    failures: Array.isArray(opts.failures) ? opts.failures : [],
+    artifacts: {
+      screenshotHint: opts.screenshotHint || 'screenshots/',
+      playwrightReportDir: opts.playwrightReportDir || 'playwright-report',
+      testResultsDir: opts.testResultsDir || 'test-results',
+    },
+    batchLabel: opts.batchLabel || '',
+  };
+}
+
+function trimMessage(msg, maxLines = 10) {
+  if (!msg) return '';
+  return msg
+    .split('\n')
+    .slice(0, maxLines)
+    .join('\n')
+    .trim();
+}
+
+function formatFailureSummaryText(bundle) {
+  if (!bundle) return '';
+  const s = bundle.summary;
+  const lines = [
+    `【Playwright 执行失败摘要】`,
+    `用例: ${bundle.specRelative || '（批量）'}`,
+    `环境: ${bundle.playwrightEnv} | project: ${(bundle.projects || []).join(', ') || '—'}`,
+    `结果: ${s.passed}/${s.total} 通过, ${s.failed} 失败, 耗时 ${s.duration}s, exit ${s.exitCode}`,
+  ];
+  if (bundle.batchLabel) lines.push(`批次: ${bundle.batchLabel}`);
+  const f0 = bundle.failures[0];
+  if (f0) {
+    lines.push(`---`);
+    lines.push(`失败: ${f0.title || '—'}`);
+    if (f0.location) lines.push(`位置: ${f0.location}`);
+    if (f0.lastStep) lines.push(`卡住步骤: ${f0.lastStep}`);
+    if (f0.message) lines.push(trimMessage(f0.message, 6));
+    if (f0.hint) lines.push(`提示: ${f0.hint}`);
+  }
+  if (bundle.failures.length > 1) lines.push(`（另有 ${bundle.failures.length - 1} 条失败，请用「复制完整排查包」）`);
+  return lines.join('\n');
+}
+
+function formatFailureItemMarkdown(item, index) {
+  const lines = [`### 失败 ${index + 1}: ${item.title || '—'}`];
+  if (item.location) lines.push(`- 位置: \`${item.location}\``);
+  if (item.status) lines.push(`- 状态: ${item.status}`);
+  if (item.lastStep) lines.push(`- 卡住步骤: ${item.lastStep}`);
+  if (item.durationMs != null) lines.push(`- 耗时: ${(item.durationMs / 1000).toFixed(1)}s`);
+  if (item.message) lines.push('```', trimMessage(item.message, 14), '```');
+  if (item.snippet) lines.push('```', trimMessage(item.snippet, 10), '```');
+  if (item.hint) lines.push(`- 提示: ${item.hint}`);
+  return lines.join('\n');
+}
+
+function formatFailureFullMarkdown(bundle) {
+  if (!bundle) return '';
+  const s = bundle.summary;
+  const lines = [
+    `## Playwright 执行失败排查包`,
+    ``,
+    `- 时间: ${bundle.generatedAt}`,
+    `- 用例: \`${bundle.specRelative || '（见下方分节）'}\``,
+    `- 环境: ${bundle.playwrightEnv}`,
+    `- Project: ${(bundle.projects || []).join(', ') || '—'}`,
+    `- 模式: ${bundle.runMode || '—'}`,
+    `- 结果: ${s.passed}/${s.total} 通过, **${s.failed} 失败**, 耗时 ${s.duration}s, exit ${s.exitCode}`,
+  ];
+  if (bundle.batchLabel) lines.push(`- 批次说明: ${bundle.batchLabel}`);
+  lines.push(
+    `- 截图目录: ${bundle.artifacts?.screenshotHint || 'screenshots/'}`,
+    `- 报告: ${bundle.artifacts?.playwrightReportDir || 'playwright-report'}`,
+    ``,
+  );
+  if (bundle.sections?.length) {
+    for (const sec of bundle.sections) {
+      lines.push(`## 用例: ${sec.specRelative}`, ``);
+      if (sec.summary) {
+        lines.push(`- 结果: ${sec.summary.passed}/${sec.summary.total} 通过, ${sec.summary.failed} 失败`);
+      }
+      sec.failures.forEach((item, i) => {
+        lines.push(formatFailureItemMarkdown(item, i), '');
+      });
+    }
+  } else {
+    bundle.failures.forEach((item, i) => {
+      lines.push(formatFailureItemMarkdown(item, i), '');
+    });
+  }
+  lines.push(`## 建议下一步`, `- 根据「卡住步骤」与 hint 调整选择器/等待`, `- 若为数据波动，固定测试数据或 promote 截图基线`, `- 将本文粘贴给 AI 时附带优化脚本相关片段`);
+  return lines.join('\n');
+}
+
+function formatFailureForAi(bundle) {
+  const head = formatFailureSummaryText(bundle);
+  const opt = document.getElementById('optCode')?.value?.trim() || '';
+  const optExcerpt = opt ? opt.split('\n').slice(0, 100).join('\n') : '（编辑器无优化脚本）';
+  return [
+    head,
+    '',
+    '---',
+    '请根据以下失败信息帮我修改 Playwright 优化用例（保持项目既有 step/smartClick 风格）：',
+    '',
+    formatFailureFullMarkdown(bundle),
+    '',
+    '---',
+    '当前优化脚本（节选）:',
+    '```typescript',
+    optExcerpt,
+    '```',
+  ].join('\n');
+}
+
+function buildBatchFailureBundle(results, meta) {
+  const failedItems = (results || []).filter(
+    (r) => r.exitCode !== 0 || (r.failed != null && r.failed > 0) || (r.failures && r.failures.length),
+  );
+  const sections = failedItems.map((r) => ({
+    specRelative: r.specRelative,
+    summary: { passed: r.passed, failed: r.failed, total: r.total, exitCode: r.exitCode },
+    failures: r.failures?.length
+      ? r.failures
+      : r.error
+        ? [{ title: r.specRelative, message: r.error, hint: '' }]
+        : [],
+  }));
+  const totalFailed = failedItems.length;
+  const allFailures = sections.flatMap((s) => s.failures);
+  return buildFailureBundle({
+    kind: 'batch',
+    specRelative: failedItems.length === 1 ? failedItems[0].specRelative : '',
+    projects: meta.projects,
+    playwrightEnv: meta.playwrightEnv,
+    runMode: meta.headed ? 'headed' : 'headless',
+    summary: {
+      passed: results.filter((r) => r.exitCode === 0 && !(r.failed > 0)).length,
+      failed: totalFailed,
+      total: results.length,
+      duration: '—',
+      exitCode: totalFailed > 0 ? 1 : 0,
+    },
+    failures: allFailures,
+    batchLabel: `${totalFailed}/${results.length} 个用例失败`,
+    screenshotHint: meta.screenshotHint,
+    playwrightReportDir: meta.playwrightReportDir,
+    testResultsDir: meta.testResultsDir,
+    sections,
+  });
+}
+
+function buildFailureBundleFromRunDone(msg) {
+  return buildFailureBundle({
+    kind: 'single',
+    specRelative: msg.specRelative || getRepoExecutionSpec(),
+    projects: msg.projects || getSelectedBrowserProjects(),
+    playwrightEnv: msg.playwrightEnv || envState.current,
+    runMode: msg.runMode || '',
+    summary: {
+      passed: msg.passed,
+      failed: msg.failed,
+      total: msg.total,
+      duration: msg.duration,
+      exitCode: msg.exitCode,
+    },
+    failures: msg.failures || [],
+    screenshotHint: msg.screenshotHint,
+    playwrightReportDir: msg.playwrightReportDir,
+    testResultsDir: msg.testResultsDir,
+  });
+}
+
+async function copyTextToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast('已复制到剪贴板', 'ok');
+    return true;
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      showToast('已复制到剪贴板', 'ok');
+      return true;
+    } catch {
+      showToast('复制失败，请手动选择复制', 'err');
+      return false;
+    } finally {
+      document.body.removeChild(ta);
+    }
+  }
+}
+
+function hideFailureDiagnosticsPanel() {
+  const panel = document.getElementById('failureDiagnosticsPanel');
+  if (panel) panel.classList.add('studio-hidden');
+  lastFailureBundle = null;
+}
+
+function renderFailureDiagnosticsPanel(bundle) {
+  const panel = document.getElementById('failureDiagnosticsPanel');
+  const title = document.getElementById('failureDiagnosticsTitle');
+  const summary = document.getElementById('failureDiagnosticsSummary');
+  const list = document.getElementById('failureDiagnosticsList');
+  if (!panel || !summary || !list) return;
+
+  if (!bundle || (!bundle.failures?.length && !bundle.sections?.length)) {
+    hideFailureDiagnosticsPanel();
+    return;
+  }
+
+  lastFailureBundle = bundle;
+  panel.classList.remove('studio-hidden');
+  switchPanel('log', document.querySelectorAll('.ptab')[0]);
+
+  const s = bundle.summary;
+  const failCount = bundle.sections?.length
+    ? bundle.sections.reduce((n, sec) => n + sec.failures.length, 0)
+    : bundle.failures.length;
+  if (title) {
+    title.textContent = bundle.kind === 'batch' ? `批量执行失败（${bundle.batchLabel}）` : '执行失败';
+  }
+  summary.textContent = bundle.kind === 'batch'
+    ? `共 ${failCount} 条失败明细；${s.failed} 个用例未通过。可点击下方按钮复制，或在批量表中逐条复制。`
+    : `${s.passed}/${s.total} 通过，${s.failed} 失败，耗时 ${s.duration}s。共 ${failCount} 条失败记录。`;
+
+  const items = bundle.sections?.length
+    ? bundle.sections.flatMap((sec) =>
+        sec.failures.map((f) => ({ ...f, _spec: sec.specRelative })),
+      )
+    : bundle.failures;
+
+  list.innerHTML = items
+    .slice(0, 5)
+    .map((item) => {
+      const specLine = item._spec ? `<div class="failure-item-meta">用例: ${escapeHtml(item._spec)}</div>` : '';
+      return `<div class="failure-item">
+        <div class="failure-item-title">${escapeHtml(item.title || '失败')}</div>
+        ${specLine}
+        <div class="failure-item-meta">${item.location ? escapeHtml(item.location) : ''}${item.lastStep ? ` · 步骤: ${escapeHtml(item.lastStep)}` : ''}</div>
+        ${item.hint ? `<div class="failure-item-meta" style="color:var(--amber)">${escapeHtml(item.hint)}</div>` : ''}
+      </div>`;
+    })
+    .join('');
+  if (items.length > 5) {
+    list.innerHTML += `<p class="failure-item-meta">另有 ${items.length - 5} 条，请使用「复制完整排查包」</p>`;
+  }
+}
+
+function copyFailureSummary() {
+  if (!lastFailureBundle) {
+    showToast('无失败信息可复制', 'err');
+    return;
+  }
+  copyTextToClipboard(formatFailureSummaryText(lastFailureBundle));
+}
+
+function copyFailureFull() {
+  if (!lastFailureBundle) {
+    showToast('无失败信息可复制', 'err');
+    return;
+  }
+  copyTextToClipboard(formatFailureFullMarkdown(lastFailureBundle));
+}
+
+function copyFailureForAi() {
+  if (!lastFailureBundle) {
+    showToast('无失败信息可复制', 'err');
+    return;
+  }
+  copyTextToClipboard(formatFailureForAi(lastFailureBundle));
+}
+
+function openFailureSpec() {
+  const spec = lastFailureBundle?.specRelative;
+  if (!spec) {
+    showToast('批量失败请从表格「打开」对应用例', 'err');
+    return;
+  }
+  send('repo:load-optimized', { specRelative: spec });
+  switchTab('opt', document.querySelectorAll('.tab')[1]);
+}
+
+function copyBatchFailureByIndex(i) {
+  const r = runState.lastBatchResults?.[i];
+  if (!r) return;
+  const bundle = buildFailureBundle({
+    kind: 'single',
+    specRelative: r.specRelative,
+    projects: lastBatchRunMeta?.projects || getSelectedBrowserProjects(),
+    playwrightEnv: lastBatchRunMeta?.playwrightEnv || envState.current,
+    runMode: lastBatchRunMeta?.headed ? 'headed' : 'headless',
+    summary: {
+      passed: r.passed,
+      failed: r.failed,
+      total: r.total,
+      exitCode: r.exitCode,
+    },
+    failures: r.failures?.length ? r.failures : r.error ? [{ title: r.specRelative, message: r.error }] : [],
+    screenshotHint: lastBatchRunMeta?.screenshotHint,
+  });
+  copyTextToClipboard(formatFailureFullMarkdown(bundle));
+}
+
+function copyAllBatchFailures() {
+  if (!runState.lastBatchResults?.length || !lastBatchRunMeta) {
+    showToast('无批量失败信息', 'err');
+    return;
+  }
+  const bundle = buildBatchFailureBundle(runState.lastBatchResults, lastBatchRunMeta);
+  copyTextToClipboard(formatFailureFullMarkdown(bundle));
+}
+
+function handleRunFailureFromMsg(msg) {
+  if (!msg.repoTest) return;
+  const failed = isRunFailed({
+    exitCode: msg.exitCode,
+    failed: msg.failed,
+  });
+  if (!failed) {
+    hideFailureDiagnosticsPanel();
+    return;
+  }
+  const bundle = buildFailureBundleFromRunDone(msg);
+  renderFailureDiagnosticsPanel(bundle);
+}
+
+function loadUiIssuesPanel() {
+  send('repo:ui-issues', {});
+}
+
+function renderUiIssuesPanel(data) {
+  const summaryEl = document.getElementById('compareUiIssuesSummary');
+  const panel = document.getElementById('uiIssuesPanel');
+  if (!panel) return;
+  if (!data || !data.summary) {
+    if (summaryEl) summaryEl.style.display = 'none';
+    panel.innerHTML = '<p class="sidebar-hint" style="margin:0">暂无 ui-issues.json，请先生成对比报告</p>';
+    return;
+  }
+  const pla = data.plainLanguageAnalysis;
+  if (summaryEl) {
+    summaryEl.style.display = 'block';
+    if (pla?.overview) {
+      summaryEl.textContent = `合并后 ${pla.overview.mergedRowCount} 项（原始 ${pla.overview.rawIssueCount} 条）· blocker ${pla.overview.blocker} · warning ${pla.overview.warning}`;
+    } else {
+      summaryEl.textContent = `UI 问题：blocker ${data.summary.blocker} · warning ${data.summary.warning} · 共 ${data.summary.total} 项`;
+    }
+  }
+  if (pla?.scripts?.length) {
+    const rows = [];
+    for (const script of pla.scripts) {
+      for (const row of script.mergedSteps.slice(0, 12)) {
+        rows.push(
+          `<tr><td>${row.severity}</td><td title="${escapeHtml(script.scriptKey)}">${escapeHtml(script.scriptKey.slice(-16))}</td><td>${row.stepNumber}</td><td>${row.maxDifferencePct}%</td><td>${row.rawCount}</td></tr>`,
+        );
+      }
+    }
+    panel.innerHTML = rows.length
+      ? `<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr><th>级</th><th>脚本</th><th>步</th><th>最大%</th><th>原条</th></tr></thead><tbody>${rows.join('')}</tbody></table><p class="sidebar-hint" style="margin:6px 0 0">完整分析见报告「分析摘要」Tab</p>`
+      : '<p class="sidebar-hint" style="margin:0">当前无 blocker/warning</p>';
+    return;
+  }
+  const issues = (data.issues || []).filter((i) => i.severity === 'blocker' || i.severity === 'warning').slice(0, 20);
+  if (!issues.length) {
+    panel.innerHTML = '<p class="sidebar-hint" style="margin:0">当前无 blocker/warning</p>';
+    return;
+  }
+  panel.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr><th>级</th><th>脚本</th><th>步</th><th>%</th></tr></thead><tbody>${issues
+    .map(
+      (i) =>
+        `<tr><td>${i.severity}</td><td title="${escapeHtml(i.scriptKey)}">${escapeHtml(String(i.scriptKey).slice(-16))}</td><td>${i.stepNumber}</td><td>${(i.difference * 100).toFixed(2)}</td></tr>`,
+    )
+    .join('')}</tbody></table>`;
+}
+
+function openScreenshotCompareHub() {
+  openReportHub('compare');
+  refreshCompareReportStatus();
+}
+
+function openExistingCompareReport() {
+  openReportHub('compare');
+  busyState.repoCompare = true;
+  syncCompareHubButtons();
+  send('repo:open-compare-report', { regenerate: false });
+}
+
+function regenerateCompareReport() {
+  openReportHub('compare');
+  busyState.repoCompare = true;
+  syncWorkflowUi();
+  syncCompareHubButtons();
+  send('repo:open-compare-report', { regenerate: true });
 }
 
 function syncDirtyTabBadges() {
@@ -1232,17 +1913,13 @@ function switchReportHub(name, el) {
     name === 'compare' ? 'reportHubCompare' : name === 'history' ? 'reportHubHistory' : 'reportHubStats',
   );
   if (pane) pane.classList.add('active');
+  if (name === 'compare') refreshCompareReportStatus();
 }
 
 function openReportHub(tab) {
   switchPanel('report', document.querySelectorAll('.ptab')[1]);
   const tabEl = document.querySelector(`.report-hub-tab[data-report-hub="${tab || 'stats'}"]`);
   switchReportHub(tab || 'stats', tabEl);
-}
-
-function openCompareFromHub() {
-  if (workflowMode === 'new') openCompareReportClick();
-  else openRunCompareReportClick();
 }
 
 function pushRunHistory(entry) {
@@ -1294,18 +1971,22 @@ function renderBatchResultsTable(results) {
   if (!results?.length) {
     wrap.classList.add('studio-hidden');
     body.innerHTML = '';
+    document.getElementById('batchFailCopyBar')?.classList.add('studio-hidden');
     return;
   }
   wrap.classList.remove('studio-hidden');
   runState.lastBatchResults = results;
   body.innerHTML = results
     .map((r, i) => {
-      const ok = r.exitCode === 0 && !(r.failed > 0);
+      const ok = r.exitCode === 0 && !(r.failed > 0) && !r.error;
       const spec = r.specRelative || '';
+      const copyBtn = ok
+        ? ''
+        : `<button type="button" class="btn" style="font-size:10px;padding:2px 6px;margin-left:4px" onclick="event.stopPropagation();copyBatchFailureByIndex(${i})">复制失败</button>`;
       return `<tr class="${ok ? '' : 'fail-row'}">
-        <td>${escHtml(formatOptimizedSpecLabel(spec))}</td>
+        <td title="${escHtml(spec)}">${escHtml(formatOptimizedSpecLabel(spec))}</td>
         <td>${ok ? '通过' : '失败'}${r.error ? ` (${escHtml(r.error)})` : ''}</td>
-        <td><button type="button" class="btn" style="font-size:10px;padding:2px 6px" onclick="loadBatchResultSpecByIndex(${i})">打开</button></td>
+        <td style="white-space:nowrap"><button type="button" class="btn" style="font-size:10px;padding:2px 6px" onclick="loadBatchResultSpecByIndex(${i})">打开</button>${copyBtn}</td>
       </tr>`;
     })
     .join('');
@@ -1794,6 +2475,86 @@ function refreshRepoOptimizedList() {
   send('repo:list-optimized');
 }
 
+function syncTestJobsPanelVisibility() {
+  document.getElementById('accordionTestJobs')?.classList.toggle('studio-hidden', !repoState.repoReady);
+}
+
+function formatJobSchedule(job) {
+  if (!job.schedule) return '仅手动';
+  return `${job.schedule} (${job.timezone || 'Asia/Shanghai'})`;
+}
+
+function formatJobLatestRun(job) {
+  const lr = job.latestRun;
+  if (!lr?.status) return '尚无运行记录';
+  const st = lr.status.status || 'unknown';
+  const sum = lr.summary;
+  if (sum) return `${st} · ${sum.successCount}/${sum.executedCount} 成功`;
+  return st;
+}
+
+function renderTestJobsList(jobs) {
+  testJobsState.jobs = jobs || [];
+  const root = document.getElementById('testJobsList');
+  if (!root) return;
+  if (!jobs?.length) {
+    root.innerHTML = '<p class="sidebar-hint" style="margin:0">未配置 Job，请编辑 config/test-jobs.json</p>';
+    return;
+  }
+  root.innerHTML = jobs
+    .map((job) => {
+      const running = job.running;
+      const disabled = !job.enabled ? ' · 已禁用' : '';
+      const esc = (s) => String(s || '').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+      const id = esc(job.id);
+      return `
+      <div class="test-job-card${running ? ' running' : ''}" data-job-id="${id}">
+        <div class="job-title">${id}${running ? ' 🟢' : ''}${disabled}</div>
+        <div class="job-meta">${esc(job.description || '—')}<br>调度: ${esc(formatJobSchedule(job))}<br>最近: ${esc(formatJobLatestRun(job))}</div>
+        <div class="job-actions">
+          <button type="button" class="btn" style="font-size:var(--fs-xs);padding:3px 6px" onclick="runTestJob('${id}', false)" ${running ? 'disabled' : ''}>前台</button>
+          <button type="button" class="btn" style="font-size:var(--fs-xs);padding:3px 6px" onclick="runTestJob('${id}', true)" ${running ? 'disabled' : ''}>后台</button>
+          <button type="button" class="btn" style="font-size:var(--fs-xs);padding:3px 6px" onclick="stopTestJob('${id}')" ${running ? '' : 'disabled'}>停止</button>
+          <button type="button" class="btn" style="font-size:var(--fs-xs);padding:3px 6px" onclick="fetchTestJobStatus('${id}')">日志</button>
+        </div>
+      </div>`;
+    })
+    .join('');
+  const anyRunning = jobs.some((j) => j.running);
+  if (anyRunning && !testJobsState.pollTimer) startTestJobsPolling();
+  if (!anyRunning) stopTestJobsPolling();
+}
+
+function refreshTestJobsList() {
+  send('jobs:list');
+}
+
+function runTestJob(jobId, background) {
+  send('jobs:run', { jobId, background: Boolean(background) });
+  if (background) startTestJobsPolling();
+}
+
+function stopTestJob(jobId) {
+  send('jobs:stop', { jobId });
+}
+
+function fetchTestJobStatus(jobId) {
+  send('jobs:status', { jobId, lines: 60 });
+}
+
+function startTestJobsPolling() {
+  if (testJobsState.pollTimer) return;
+  testJobsState.pollTimer = setInterval(() => {
+    if (repoState.repoReady) send('jobs:list');
+  }, 4000);
+}
+
+function stopTestJobsPolling() {
+  if (!testJobsState.pollTimer) return;
+  clearInterval(testJobsState.pollTimer);
+  testJobsState.pollTimer = null;
+}
+
 function setWorkflowMode(mode, el) {
   const next = mode === 'run' ? 'run' : 'new';
   if (next !== workflowMode) {
@@ -2051,8 +2812,7 @@ function syncRepoButtons() {
       }
     }
     if (rc) {
-      rc.disabled =
-        busyState.repoCompare || busyState.repoPipeline || busyState.run || !artifactsCommitted;
+      rc.disabled = busyState.repoCompare;
     }
     if (rcc) rcc.disabled = !busyState.repoCompare;
     return;
@@ -2083,12 +2843,8 @@ function syncRepoButtons() {
           : defaultLabel;
     }
   }
-  const canCompare =
-    (runSubMode === 'batch' ? runState.lastBatchComplete : runState.lastRunComplete) &&
-    !busyState.run &&
-    !busyState.repoBatch;
   if (btnRunCompare) {
-    btnRunCompare.disabled = busyRepo || !canCompare;
+    btnRunCompare.disabled = busyState.repoCompare;
   }
   if (btnRunCompareCancel) btnRunCompareCancel.disabled = !busyState.repoCompare;
   const btnDelSingle = document.getElementById('btnDeleteSpecSingle');
@@ -2200,36 +2956,6 @@ function handleRunExecuteClick() {
 }
 
 /** 生成完成后在新窗口打开对比报告（非 about:blank 再改 location，避免像「重定向」） */
-function openCompareReportClick() {
-  if (workflowMode !== 'new') return;
-  const items = getCompareChecklistItems();
-  if (!items.every((it) => it.ok)) {
-    openReportHub('compare');
-    showToast('请先满足截图对比的前置条件', 'err');
-    return;
-  }
-  expandPipelineStep(3);
-  openReportHub('compare');
-  busyState.repoCompare = true;
-  syncWorkflowUi();
-  send('repo:compare-report', {});
-}
-
-function openRunCompareReportClick() {
-  if (workflowMode !== 'run') return;
-  const items = getCompareChecklistItems();
-  if (!items.every((it) => it.ok)) {
-    openReportHub('compare');
-    showToast('请先完成用例执行', 'err');
-    return;
-  }
-  expandRunPipelineStep(3);
-  openReportHub('compare');
-  busyState.repoCompare = true;
-  syncWorkflowUi();
-  send('repo:compare-report', {});
-}
-
 function openCompareReportInNewWindow(url) {
   const features = 'width=1280,height=800,left=80,top=48,resizable=yes,scrollbars=yes';
   let w = null;
@@ -2265,8 +2991,10 @@ function connectWS() {
     busyState.repoPipeline = false;
     busyState.repoCompare = false;
     syncActionButtons();
+    syncCompareHubButtons();
     updateGlobalTaskBar();
     log('info', '已连接到 Playwright Studio 服务');
+    setTimeout(refreshCompareReportStatus, 300);
   };
   ws.onmessage = (e) => handleMessage(JSON.parse(e.data));
   ws.onclose = () => {
@@ -2464,6 +3192,7 @@ function handleMessage(msg) {
       break;
     case 'run:start':
       setBusy('run', true);
+      if (pendingRunKind === 'repo') hideFailureDiagnosticsPanel();
       if (pendingRunKind === 'repo') {
         if (workflowMode === 'run') {
           setRunStep(2, 'running');
@@ -2539,6 +3268,7 @@ function handleMessage(msg) {
         if (msg.repoTest && msg.screenshotHint) {
           log('dim', `[repo] 截图目录: ${msg.screenshotHint}`);
         }
+        if (msg.repoTest) handleRunFailureFromMsg(msg);
       }
       break;
     case 'run:cancelled':
@@ -2559,6 +3289,7 @@ function handleMessage(msg) {
       syncWorkflowUi();
       log('warn', '测试执行已取消');
       showToast('测试执行已取消', 'err');
+      hideFailureDiagnosticsPanel();
       break;
     case 'report:done':
       setStep(4, 'done');
@@ -2622,6 +3353,7 @@ function handleMessage(msg) {
     case 'repo:info': {
       repoState.repoRoot = msg.repoRoot || '';
       repoState.repoReady = Boolean(msg.repoReady);
+      if (msg.compareReport) applyCompareReportStatus(msg.compareReport);
       if (!repoState.repoReady) dateCategoryState.loaded = false;
       repoState.draftOptimizedExists = Boolean(msg.draftOptimizedExists);
       repoState.draftRecordingExists = Boolean(msg.draftRecordingExists);
@@ -2672,6 +3404,7 @@ function handleMessage(msg) {
         syncActionButtons();
       }
       if (repoState.repoReady) {
+        if (!msg.compareReport) refreshCompareReportStatus();
         if (Array.isArray(msg.dateCategories) && msg.dateCategories.length > 0) {
           applyDateCategoriesFromServer(msg);
         } else {
@@ -2682,8 +3415,11 @@ function handleMessage(msg) {
           hint.textContent = dateCategoryState.description;
         }
         renderDateCategoryList();
+        syncTestJobsPanelVisibility();
+        refreshTestJobsList();
       }
       if (!msg.repoReady) {
+        syncTestJobsPanelVisibility();
         focusStep2Repo();
         showToast('工作区未就绪，请检查 Studio 安装位置', 'err');
       }
@@ -2762,6 +3498,8 @@ function handleMessage(msg) {
     case 'repo:batch-test:start':
       busyState.repoBatch = true;
       runState.lastBatchComplete = false;
+      hideFailureDiagnosticsPanel();
+      document.getElementById('batchFailCopyBar')?.classList.add('studio-hidden');
       setRunStep(2, 'running');
       setRunStepSub(2, `批量执行 0/${msg.total || 0}…`);
       document.getElementById('batchProgressText').textContent = `共 ${msg.total || 0} 个用例`;
@@ -2786,9 +3524,25 @@ function handleMessage(msg) {
       setBusy('run', false);
       pendingRunKind = 'studio';
       runState.lastBatchComplete = !msg.cancelled && (msg.results || []).length > 0;
+      lastBatchRunMeta = {
+        projects: msg.projects || getSelectedBrowserProjects(),
+        playwrightEnv: msg.playwrightEnv || envState.current,
+        headed: Boolean(msg.headed),
+        screenshotHint: msg.screenshotHint,
+        playwrightReportDir: msg.playwrightReportDir,
+        testResultsDir: msg.testResultsDir,
+      };
       renderBatchResultsTable(msg.results || []);
+      const batchFailBar = document.getElementById('batchFailCopyBar');
+      if (batchFailBar) {
+        batchFailBar.classList.toggle('studio-hidden', !msg.anyFail);
+      }
+      if (msg.anyFail && msg.results?.length) {
+        renderFailureDiagnosticsPanel(buildBatchFailureBundle(msg.results, lastBatchRunMeta));
+      } else if (!msg.anyFail) {
+        hideFailureDiagnosticsPanel();
+      }
       if (!msg.cancelled && msg.results?.length) {
-        const anyOk = msg.results.some((r) => r.exitCode === 0 && !(r.failed > 0));
         pushRunHistory({
           kind: 'batch',
           spec: `${msg.results.length} 个用例`,
@@ -2800,9 +3554,10 @@ function handleMessage(msg) {
         setRunStep(2, '');
         setRunStepSub(2, RUN_STEP_DEFAULTS[2]);
         showToast('批量执行已取消', 'err');
+        hideFailureDiagnosticsPanel();
       } else if (msg.anyFail) {
         setRunStep(2, '');
-        setRunStepSub(2, '部分用例失败');
+        setRunStepSub(2, '部分用例失败 · 可复制排查信息');
         showToast('批量执行完成，部分失败', 'err');
       } else {
         setRunStep(2, 'done');
@@ -2882,29 +3637,87 @@ function handleMessage(msg) {
       syncActionButtons();
       log('warn', '[repo] 生成已取消');
       break;
+    case 'repo:compare-report:status':
+      applyCompareReportStatus(msg);
+      break;
+    case 'repo:ui-issues':
+      if (msg.ok) renderUiIssuesPanel(msg);
+      break;
+    case 'jobs:list:done':
+      renderTestJobsList(msg.jobs || []);
+      break;
+    case 'jobs:status:done': {
+      if (msg.job) {
+        const idx = testJobsState.jobs.findIndex((j) => j.id === msg.job.id);
+        if (idx >= 0) {
+          testJobsState.jobs[idx] = msg.job;
+          renderTestJobsList(testJobsState.jobs);
+        }
+      }
+      const logEl = document.getElementById('testJobLogTail');
+      if (logEl && msg.logs?.text) {
+        logEl.classList.remove('studio-hidden');
+        logEl.textContent = msg.logs.text;
+        openAccordion('accordionTestJobs');
+      }
+      break;
+    }
+    case 'jobs:run:start':
+      showToast(`任务「${msg.jobId || ''}」开始执行…`, 'info');
+      log('info', `[jobs] 开始: ${msg.jobId || ''}`);
+      startTestJobsPolling();
+      break;
+    case 'jobs:run:done': {
+      const ok = msg.background ? true : msg.exitCode === 0;
+      if (msg.background) {
+        showToast(`任务「${msg.jobId || ''}」已在后台启动`, 'ok');
+        log('ok', `[jobs] 后台启动: ${msg.jobId || ''}`);
+      } else {
+        showToast(
+          ok ? `任务「${msg.jobId || ''}」执行完成` : `任务「${msg.jobId || ''}」执行失败`,
+          ok ? 'ok' : 'err',
+        );
+        log(ok ? 'ok' : 'err', `[jobs] 结束: ${msg.jobId || ''} exit=${msg.exitCode}`);
+      }
+      refreshTestJobsList();
+      break;
+    }
+    case 'jobs:stop:done':
+      showToast(msg.ok ? `已停止任务「${msg.jobId || ''}」` : msg.message || '停止失败', msg.ok ? 'ok' : 'err');
+      refreshTestJobsList();
+      break;
+    case 'repo:promote-baseline:done':
+      if (msg.ok) toast('Golden 基线已更新', 'ok');
+      else toast('Promote 失败', 'err');
+      loadUiIssuesPanel();
+      break;
     case 'repo:compare-report:start':
       busyState.repoCompare = true;
       syncWorkflowUi();
-      log('info', '[repo] 正在生成截图对比报告…');
+      syncCompareHubButtons();
+      log('info', '[repo] 正在处理截图对比报告…');
       break;
     case 'repo:compare-report:done': {
       busyState.repoCompare = false;
       syncWorkflowUi();
+      syncCompareHubButtons();
+      refreshCompareReportStatus();
       if (msg.ok && msg.openPath) {
         const url = new URL(msg.openPath, location.origin).href;
         repoState.lastCompareReportUrl = url;
         const hint = document.getElementById('compareHubHint');
         if (hint) {
-          hint.innerHTML = `报告已生成：<a href="${escHtml(url)}" target="_blank" rel="noopener" style="color:var(--blue)">在新窗口打开</a>`;
+          const label = msg.openedExisting ? '已打开已有报告' : '报告已生成';
+          hint.innerHTML = `${label}：<a href="${escHtml(url)}" target="_blank" rel="noopener" style="color:var(--blue)">在新窗口打开</a>`;
         }
         if (openCompareReportInNewWindow(url)) {
-          showToast('已在新窗口打开对比报告', 'ok');
+          showToast(msg.openedExisting ? '已打开对比报告' : '已生成并打开对比报告', 'ok');
         } else {
           log('warn', '浏览器拦截了新窗口，请手动打开: ' + url);
           showToast('无法打开新窗口，请从报告中心链接打开', 'err');
         }
       } else {
-        if (msg.cancelled) showToast('对比报告生成已取消', 'err');
+        if (msg.cancelled) showToast('对比报告处理已取消', 'err');
       }
       break;
     }

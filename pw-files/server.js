@@ -1088,6 +1088,7 @@ async function runRepoTest(ws, session, msg) {
   let passed = 0;
   let failed = 0;
   let total = 0;
+  let failures = [];
   if (!headed) {
     try {
       const result = JSON.parse(stdout);
@@ -1099,14 +1100,29 @@ async function runRepoTest(ws, session, msg) {
       passed = expected + flaky;
       failed = unexpected;
       total = expected + unexpected + skipped + flaky;
-      if (exitCode !== 0 || failed > 0) logPlaywrightFailureReport(ws, result, session, exitCode);
+      if (exitCode !== 0 || failed > 0) {
+        failures = logPlaywrightFailureReport(ws, result, session, exitCode);
+      } else {
+        session.lastRunFailures = [];
+      }
     } catch {
       passed = exitCode === 0 ? 1 : 0;
       failed = exitCode === 0 ? 0 : 1;
       total = 1;
+      if (exitCode !== 0) {
+        failures = parsePlaywrightFailures({ suites: [] }, session, exitCode);
+        session.lastRunFailures = failures;
+      }
     }
   } else {
     logLine(ws, '[repo] 有界面模式已结束，请在浏览器窗口查看结果', 'info');
+    passed = exitCode === 0 ? 1 : 0;
+    failed = exitCode === 0 ? 0 : 1;
+    total = 1;
+    if (exitCode !== 0) {
+      failures = headedFailurePlaceholder(specRel);
+      session.lastRunFailures = failures;
+    }
   }
 
   session.runResult = { passed, failed, total, duration, exitCode, runMode: headed ? 'headed' : 'headless' };
@@ -1118,9 +1134,14 @@ async function runRepoTest(ws, session, msg) {
     exitCode,
     runMode: headed ? 'headed' : 'headless',
     uiMode: false,
-    failures: session.lastRunFailures || [],
+    failures,
     repoTest: true,
+    specRelative: specRel,
+    projects: testProjects,
+    playwrightEnv: getSessionPlaywrightEnv(session),
     screenshotHint: path.join(repoRoot, 'screenshots'),
+    playwrightReportDir: 'playwright-report',
+    testResultsDir: 'test-results',
   });
   logLine(ws, `[repo] 截图目录: ${path.join(repoRoot, 'screenshots')}`, 'dim');
 }
@@ -1143,14 +1164,38 @@ async function executeRepoSpecForBatch(ws, session, specRel, headed, projects) {
   try {
     absSpec = assertAllowedOptimizedSpec(repoRoot, specRel);
   } catch (e) {
-    return { exitCode: 1, passed: 0, failed: 1, total: 1, error: errText(e) };
+    const err = errText(e);
+    return {
+      exitCode: 1,
+      passed: 0,
+      failed: 1,
+      total: 1,
+      error: err,
+      failures: [{ title: specRel, location: specRel, status: 'error', message: err, hint: '请检查用例路径是否在 tests/optimized 下。' }],
+    };
   }
   if (!fs.existsSync(absSpec)) {
-    return { exitCode: 1, passed: 0, failed: 1, total: 1, error: `文件不存在: ${specRel}` };
+    const err = `文件不存在: ${specRel}`;
+    return {
+      exitCode: 1,
+      passed: 0,
+      failed: 1,
+      total: 1,
+      error: err,
+      failures: [{ title: specRel, location: specRel, status: 'error', message: err, hint: '' }],
+    };
   }
   const cli = getRepoPlaywrightCli(repoRoot);
   if (!cli) {
-    return { exitCode: 1, passed: 0, failed: 1, total: 1, error: '未安装 @playwright/test' };
+    const err = '未安装 @playwright/test';
+    return {
+      exitCode: 1,
+      passed: 0,
+      failed: 1,
+      total: 1,
+      error: err,
+      failures: [{ title: specRel, location: specRel, status: 'error', message: err, hint: '请在项目根执行 npm install' }],
+    };
   }
 
   session.repoTestCancelled = false;
@@ -1188,6 +1233,7 @@ async function executeRepoSpecForBatch(ws, session, specRel, headed, projects) {
   let passed = 0;
   let failed = 0;
   let total = 0;
+  let failures = [];
   if (!headed) {
     try {
       const result = JSON.parse(stdout);
@@ -1199,19 +1245,23 @@ async function executeRepoSpecForBatch(ws, session, specRel, headed, projects) {
       passed = expected + flaky;
       failed = unexpected;
       total = expected + unexpected + skipped + flaky;
-      if (exitCode !== 0 || failed > 0) logPlaywrightFailureReport(ws, result, session, exitCode);
+      if (exitCode !== 0 || failed > 0) {
+        failures = logPlaywrightFailureReport(ws, result, session, exitCode);
+      }
     } catch {
       passed = exitCode === 0 ? 1 : 0;
       failed = exitCode === 0 ? 0 : 1;
       total = 1;
+      if (exitCode !== 0) failures = parsePlaywrightFailures({ suites: [] }, session, exitCode);
     }
   } else {
     passed = exitCode === 0 ? 1 : 0;
     failed = exitCode === 0 ? 0 : 1;
     total = 1;
+    if (exitCode !== 0 || failed > 0) failures = headedFailurePlaceholder(specRel);
   }
 
-  return { exitCode, passed, failed, total };
+  return { exitCode, passed, failed, total, failures };
 }
 
 async function runRepoBatchTest(ws, session, msg) {
@@ -1270,6 +1320,7 @@ async function runRepoBatchTest(ws, session, msg) {
       total: r.total,
       cancelled: Boolean(r.cancelled),
       error: r.error || null,
+      failures: r.failures || [],
     });
     if (r.cancelled) break;
     const failedRun = r.exitCode !== 0 || (r.failed != null && r.failed > 0);
@@ -1292,13 +1343,227 @@ async function runRepoBatchTest(ws, session, msg) {
     cancelled: session.repoBatchCancelled,
     stoppedEarly,
     anyFail,
+    projects: testProjects,
+    playwrightEnv: getSessionPlaywrightEnv(session),
+    headed,
     screenshotHint: path.join(repoRoot, 'screenshots'),
+    playwrightReportDir: 'playwright-report',
+    testResultsDir: 'test-results',
   });
   logLine(
     ws,
     `[batch] 结束：${results.length}/${specs.length} 项${session.repoBatchCancelled ? '（已取消）' : ''}`,
     anyFail ? 'warn' : 'ok',
   );
+}
+
+// ── Test Jobs（config/test-jobs.json + results/jobs/）────────────────────────
+
+const TEST_JOBS_CONFIG_REL = 'config/test-jobs.json';
+
+function isJobProcessAlive(pid) {
+  if (!pid || typeof pid !== 'number') return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function loadTestJobsConfigFile(repoRoot) {
+  const p = path.join(repoRoot, TEST_JOBS_CONFIG_REL);
+  if (!fs.existsSync(p)) return { jobs: [] };
+  try {
+    return JSON.parse(fs.readFileSync(p, 'utf-8'));
+  } catch (e) {
+    console.warn('[studio] 无法解析 test-jobs.json', e);
+    return { jobs: [] };
+  }
+}
+
+function readJobLockFile(repoRoot, jobId) {
+  const p = path.join(repoRoot, 'results/jobs', jobId, 'lock.json');
+  if (!fs.existsSync(p)) return null;
+  try {
+    const lock = JSON.parse(fs.readFileSync(p, 'utf-8'));
+    if (lock?.pid && !isJobProcessAlive(lock.pid)) {
+      try {
+        fs.unlinkSync(p);
+      } catch {
+        /* ignore */
+      }
+      return null;
+    }
+    return lock;
+  } catch {
+    return null;
+  }
+}
+
+function readLatestJobRunFile(repoRoot, jobId) {
+  const runsRoot = path.join(repoRoot, 'results/jobs', jobId, 'runs');
+  if (!fs.existsSync(runsRoot)) return null;
+  const runs = fs
+    .readdirSync(runsRoot)
+    .filter((f) => fs.statSync(path.join(runsRoot, f)).isDirectory())
+    .sort((a, b) => b.localeCompare(a));
+  if (!runs.length) return null;
+  const runId = runs[0];
+  const dir = path.join(runsRoot, runId);
+  let status = null;
+  let summary = null;
+  const statusPath = path.join(dir, 'status.json');
+  const summaryPath = path.join(dir, 'summary.json');
+  if (fs.existsSync(statusPath)) {
+    try {
+      status = JSON.parse(fs.readFileSync(statusPath, 'utf-8'));
+    } catch {
+      /* ignore */
+    }
+  }
+  if (fs.existsSync(summaryPath)) {
+    try {
+      summary = JSON.parse(fs.readFileSync(summaryPath, 'utf-8'));
+    } catch {
+      /* ignore */
+    }
+  }
+  return { runId, status, summary, logPath: path.join(dir, 'stdout.log') };
+}
+
+function buildTestJobEntry(repoRoot, jobDef) {
+  const id = String(jobDef.id || '');
+  const lock = readJobLockFile(repoRoot, id);
+  const latestRun = readLatestJobRunFile(repoRoot, id);
+  return {
+    id,
+    enabled: jobDef.enabled !== false,
+    description: jobDef.description || '',
+    schedule: jobDef.schedule || null,
+    timezone: jobDef.timezone || 'Asia/Shanghai',
+    specs: jobDef.specs ?? 'all',
+    running: Boolean(lock),
+    lock,
+    latestRun,
+  };
+}
+
+function buildTestJobsListPayload(repoRoot) {
+  const config = loadTestJobsConfigFile(repoRoot);
+  const jobs = (config.jobs || []).map((j) => buildTestJobEntry(repoRoot, j));
+  return { jobs, configPath: path.join(repoRoot, TEST_JOBS_CONFIG_REL) };
+}
+
+function tailJobLog(repoRoot, jobId, lines = 40) {
+  const latest = readLatestJobRunFile(repoRoot, jobId);
+  if (!latest?.logPath || !fs.existsSync(latest.logPath)) return { runId: latest?.runId || null, text: '' };
+  const content = fs.readFileSync(latest.logPath, 'utf-8');
+  const tail = content.split('\n').slice(-lines).join('\n');
+  return { runId: latest.runId, text: tail };
+}
+
+async function handleJobsList(ws) {
+  const repoRoot = resolveRepoRoot();
+  if (!fs.existsSync(path.join(repoRoot, 'playwright.config.ts'))) {
+    send(ws, 'error', { message: '未找到项目根，无法列出测试任务' });
+    send(ws, 'jobs:list:done', { jobs: [] });
+    return;
+  }
+  send(ws, 'jobs:list:done', buildTestJobsListPayload(repoRoot));
+}
+
+async function handleJobsStatus(ws, msg) {
+  const repoRoot = resolveRepoRoot();
+  const jobId = String(msg.jobId || '').trim();
+  if (!jobId) {
+    send(ws, 'jobs:status:done', buildTestJobsListPayload(repoRoot));
+    return;
+  }
+  const config = loadTestJobsConfigFile(repoRoot);
+  const def = (config.jobs || []).find((j) => j.id === jobId);
+  if (!def) {
+    send(ws, 'error', { message: `未找到 Job: ${jobId}` });
+    send(ws, 'jobs:status:done', { job: null });
+    return;
+  }
+  const job = buildTestJobEntry(repoRoot, def);
+  const logs = tailJobLog(repoRoot, jobId, Number(msg.lines) || 40);
+  send(ws, 'jobs:status:done', { job, logs });
+}
+
+async function handleJobsRun(ws, msg) {
+  const repoRoot = resolveRepoRoot();
+  const jobId = String(msg.jobId || '').trim();
+  if (!jobId) {
+    send(ws, 'error', { message: 'jobs:run 需要 jobId' });
+    return;
+  }
+  const config = loadTestJobsConfigFile(repoRoot);
+  if (!(config.jobs || []).some((j) => j.id === jobId)) {
+    send(ws, 'error', { message: `未找到 Job: ${jobId}` });
+    return;
+  }
+
+  const background = Boolean(msg.background);
+  const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const args = ['run', 'test-job', '--', 'run', `--id=${jobId}`, '--trigger=manual'];
+  if (background) args.push('--background');
+
+  if (background) {
+    const proc = spawn(npmCmd, args, {
+      cwd: repoRoot,
+      env: process.env,
+      detached: true,
+      stdio: 'ignore',
+      shell: false,
+    });
+    proc.unref();
+    send(ws, 'jobs:run:done', { jobId, background: true, pid: proc.pid });
+    logLine(ws, `[jobs] 已在后台启动 Job「${jobId}」`, 'ok');
+    return;
+  }
+
+  send(ws, 'jobs:run:start', { jobId });
+  logLine(ws, `[jobs] 开始执行 Job「${jobId}」`, 'info');
+  const proc = spawn(npmCmd, args, { cwd: repoRoot, env: process.env, shell: false });
+  proc.stdout.on('data', (d) => {
+    const t = stripAnsi(d.toString());
+    if (t.trim()) logLine(ws, t.trimEnd(), 'dim');
+  });
+  proc.stderr.on('data', (d) => {
+    const t = stripAnsi(d.toString());
+    if (t.trim()) logLine(ws, t.trimEnd(), 'warn');
+  });
+  const exitCode = await new Promise((resolve) => {
+    proc.on('close', resolve);
+  });
+  const latestRun = readLatestJobRunFile(repoRoot, jobId);
+  send(ws, 'jobs:run:done', { jobId, background: false, exitCode, latestRun });
+  logLine(ws, `[jobs] Job「${jobId}」结束，退出码 ${exitCode}`, exitCode === 0 ? 'ok' : 'warn');
+}
+
+async function handleJobsStop(ws, msg) {
+  const repoRoot = resolveRepoRoot();
+  const jobId = String(msg.jobId || '').trim();
+  if (!jobId) {
+    send(ws, 'error', { message: 'jobs:stop 需要 jobId' });
+    return;
+  }
+  const lock = readJobLockFile(repoRoot, jobId);
+  if (!lock?.pid) {
+    send(ws, 'jobs:stop:done', { jobId, ok: false, message: '无运行中进程' });
+    logLine(ws, `[jobs] Job「${jobId}」未在运行`, 'info');
+    return;
+  }
+  try {
+    process.kill(lock.pid, 'SIGTERM');
+    send(ws, 'jobs:stop:done', { jobId, ok: true, pid: lock.pid });
+    logLine(ws, `[jobs] 已向 Job「${jobId}」发送 SIGTERM (pid=${lock.pid})`, 'warn');
+  } catch (e) {
+    send(ws, 'jobs:stop:done', { jobId, ok: false, message: errText(e) });
+    send(ws, 'error', { message: `停止 Job 失败: ${errText(e)}` });
+  }
 }
 
 async function repoLoadOptimized(ws, msg) {
@@ -1398,6 +1663,159 @@ function cancelRepoCompare(session) {
   }
 }
 
+const COMPARE_REPORT_REL = path.join('results', 'screenshot-comparison.html');
+
+function repoHasScreenshotPng(dir) {
+  if (!fs.existsSync(dir)) return false;
+  let found = false;
+  const walk = (current) => {
+    if (found) return;
+    let entries;
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const ent of entries) {
+      if (found) break;
+      if (ent.name.startsWith('.')) continue;
+      const full = path.join(current, ent.name);
+      if (ent.isFile() && /\.png$/i.test(ent.name)) {
+        found = true;
+        break;
+      }
+      if (ent.isDirectory()) walk(full);
+    }
+  };
+  walk(dir);
+  return found;
+}
+
+function compareReportOpenPath() {
+  return `/repo-report/${COMPARE_REPORT_REL.split(path.sep).join('/')}`;
+}
+
+function sendCompareReportReady(ws, extra = {}) {
+  send(ws, 'repo:compare-report:done', { ok: true, openPath: compareReportOpenPath(), ...extra });
+  logLine(ws, `[repo] 对比报告就绪: ${compareReportOpenPath()}`, 'ok');
+}
+
+function readUiIssuesSummary(repoRoot) {
+  const p = path.join(repoRoot, 'results/ui-issues.json');
+  if (!fs.existsSync(p)) return null;
+  try {
+    const data = JSON.parse(fs.readFileSync(p, 'utf-8'));
+    return data.summary || null;
+  } catch {
+    return null;
+  }
+}
+
+function getCompareReportStatus(repoRoot) {
+  const absReport = path.join(repoRoot, COMPARE_REPORT_REL);
+  const hasReport = fs.existsSync(absReport);
+  const hasScreenshots = repoHasScreenshotPng(path.join(repoRoot, 'screenshots'));
+  return {
+    hasReport,
+    hasScreenshots,
+    openPath: hasReport ? compareReportOpenPath() : null,
+    reportRel: COMPARE_REPORT_REL,
+    uiIssues: readUiIssuesSummary(repoRoot),
+  };
+}
+
+async function runRepoPromoteBaseline(ws, session, msg) {
+  const repoRoot = resolveRepoRoot();
+  const scriptKey = String(msg.scriptKey || msg.script || '').trim();
+  const runTs = String(msg.runTimestamp || msg.run || '').trim();
+  const browser = String(msg.browser || 'chrome').trim().toLowerCase();
+
+  if (!scriptKey || !runTs) {
+    send(ws, 'error', { message: 'promote 需要 scriptKey 与 runTimestamp' });
+    send(ws, 'repo:promote-baseline:done', { ok: false });
+    return;
+  }
+
+  const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const args = [
+    'run',
+    'promote-baseline',
+    '--',
+    `--script=${scriptKey}`,
+    `--run=${runTs}`,
+    `--browser=${browser}`,
+  ];
+  logLine(ws, `[repo] promote-baseline ${scriptKey} @ ${runTs}`, 'info');
+  const proc = spawn(npmCmd, args, {
+    cwd: repoRoot,
+    env: buildRepoSpawnEnv(session),
+    shell: false,
+  });
+  proc.stdout.on('data', (d) => {
+    const t = stripAnsi(d.toString());
+    if (t.trim()) logLine(ws, t.trimEnd(), 'dim');
+  });
+  proc.stderr.on('data', (d) => {
+    const t = stripAnsi(d.toString());
+    if (t.trim()) logLine(ws, t.trimEnd(), 'warn');
+  });
+  const exitCode = await new Promise((resolve) => {
+    proc.on('close', resolve);
+  });
+  if (exitCode !== 0) {
+    send(ws, 'error', { message: `promote-baseline 退出码 ${exitCode}` });
+    send(ws, 'repo:promote-baseline:done', { ok: false });
+    return;
+  }
+  send(ws, 'repo:promote-baseline:done', { ok: true, scriptKey, runTimestamp: runTs });
+  logLine(ws, '[repo] Golden 基线已更新', 'ok');
+}
+
+async function sendRepoUiIssues(ws) {
+  const repoRoot = resolveRepoRoot();
+  const p = path.join(repoRoot, 'results/ui-issues.json');
+  if (!fs.existsSync(p)) {
+    send(ws, 'repo:ui-issues', { ok: true, issues: [], summary: null });
+    return;
+  }
+  try {
+    const data = JSON.parse(fs.readFileSync(p, 'utf-8'));
+    send(ws, 'repo:ui-issues', { ok: true, ...data });
+  } catch (e) {
+    send(ws, 'error', { message: `读取 ui-issues.json 失败: ${e.message}` });
+    send(ws, 'repo:ui-issues', { ok: false });
+  }
+}
+
+function sendCompareReportStatus(ws, repoRoot) {
+  send(ws, 'repo:compare-report:status', getCompareReportStatus(repoRoot));
+}
+
+async function openRepoCompareReport(ws, session, { regenerate = false } = {}) {
+  const repoRoot = resolveRepoRoot();
+  if (!fs.existsSync(path.join(repoRoot, 'playwright.config.ts'))) {
+    send(ws, 'error', { message: '未找到项目根，无法打开对比报告' });
+    send(ws, 'repo:compare-report:done', { ok: false });
+    return;
+  }
+
+  const absReport = path.join(repoRoot, COMPARE_REPORT_REL);
+  if (!regenerate && fs.existsSync(absReport)) {
+    sendCompareReportReady(ws, { openedExisting: true });
+    return;
+  }
+
+  if (!repoHasScreenshotPng(path.join(repoRoot, 'screenshots'))) {
+    send(ws, 'error', {
+      message: 'screenshots/ 下无 PNG，无法生成对比报告（无需执行用例，但需已有截图文件）',
+    });
+    send(ws, 'repo:compare-report:done', { ok: false });
+    return;
+  }
+
+  await runRepoCompareReport(ws, session);
+}
+
 async function runRepoCompareReport(ws, session) {
   const repoRoot = resolveRepoRoot();
   if (!fs.existsSync(path.join(repoRoot, 'playwright.config.ts'))) {
@@ -1442,19 +1860,16 @@ async function runRepoCompareReport(ws, session) {
     return;
   }
 
-  const relFile = path.join('results', 'screenshot-comparison.html');
-  const absReport = path.join(repoRoot, relFile);
+  const absReport = path.join(repoRoot, COMPARE_REPORT_REL);
   if (!fs.existsSync(absReport)) {
     send(ws, 'error', {
-      message: '未生成 results/screenshot-comparison.html（可能缺少双浏览器截图或 screenshots 目录为空）',
+      message: '未生成 results/screenshot-comparison.html（screenshots/ 可能为空或无可对比步骤）',
     });
     send(ws, 'repo:compare-report:done', { ok: false });
     return;
   }
 
-  const openPath = `/repo-report/${relFile.split(path.sep).join('/')}`;
-  send(ws, 'repo:compare-report:done', { ok: true, openPath });
-  logLine(ws, `[repo] 对比报告就绪: ${openPath}`, 'ok');
+  sendCompareReportReady(ws, { openedExisting: false });
 }
 
 // ── Setup ───────────────────────────────────────────────────────────────
@@ -1579,30 +1994,12 @@ function findLastFailedStep(steps) {
   return hit;
 }
 
-/** 从 Playwright JSON 报告提取失败信息并写入控制台日志 */
-function logPlaywrightFailureReport(ws, result, session, exitCode) {
+/** 从 Playwright JSON 报告提取结构化失败列表（不写日志） */
+function parsePlaywrightFailures(result, session, exitCode) {
   const failures = [];
-  let blockIndex = 0;
 
   const pushFailure = (item) => {
     failures.push(item);
-    blockIndex += 1;
-    logLine(ws, `──── 失败 ${blockIndex} ────`, 'err');
-    if (item.title) logLine(ws, `用例: ${item.title}`, 'err');
-    if (item.location) logLine(ws, `位置: ${item.location}`, 'err');
-    if (item.status) logLine(ws, `状态: ${item.status}`, 'err');
-    if (item.durationMs != null) logLine(ws, `耗时: ${(item.durationMs / 1000).toFixed(1)}s`, 'dim');
-    if (item.lastStep) logLine(ws, `卡住步骤: ${item.lastStep}`, 'warn');
-    if (item.message) {
-      const lines = item.message.split('\n').slice(0, 12);
-      lines.forEach((line) => {
-        if (line.trim()) logLine(ws, line.trim(), 'err');
-      });
-    }
-    if (item.snippet) {
-      item.snippet.split('\n').slice(0, 8).forEach((line) => logLine(ws, `  ${line}`, 'dim'));
-    }
-    if (item.hint) logLine(ws, `提示: ${item.hint}`, 'warn');
   };
 
   function walkSuites(suites, suitePath) {
@@ -1691,6 +2088,46 @@ function logPlaywrightFailureReport(ws, result, session, exitCode) {
   }
 
   if (failures.length === 0 && exitCode !== 0) {
+    pushFailure({
+      title: '执行失败（未解析到详细项）',
+      location: '',
+      status: 'error',
+      message: `进程退出码 ${exitCode}`,
+      hint: '请展开控制台 Playwright 原始输出，或改用无头模式以生成 JSON 失败详情。',
+    });
+  }
+
+  return failures;
+}
+
+/** 从 Playwright JSON 报告提取失败信息并写入控制台日志 */
+function logPlaywrightFailureReport(ws, result, session, exitCode) {
+  const failures = parsePlaywrightFailures(result, session, exitCode);
+  let blockIndex = 0;
+
+  const logFailure = (item) => {
+    blockIndex += 1;
+    logLine(ws, `──── 失败 ${blockIndex} ────`, 'err');
+    if (item.title) logLine(ws, `用例: ${item.title}`, 'err');
+    if (item.location) logLine(ws, `位置: ${item.location}`, 'err');
+    if (item.status) logLine(ws, `状态: ${item.status}`, 'err');
+    if (item.durationMs != null) logLine(ws, `耗时: ${(item.durationMs / 1000).toFixed(1)}s`, 'dim');
+    if (item.lastStep) logLine(ws, `卡住步骤: ${item.lastStep}`, 'warn');
+    if (item.message) {
+      const lines = item.message.split('\n').slice(0, 12);
+      lines.forEach((line) => {
+        if (line.trim()) logLine(ws, line.trim(), 'err');
+      });
+    }
+    if (item.snippet) {
+      item.snippet.split('\n').slice(0, 8).forEach((line) => logLine(ws, `  ${line}`, 'dim'));
+    }
+    if (item.hint) logLine(ws, `提示: ${item.hint}`, 'warn');
+  };
+
+  for (const item of failures) logFailure(item);
+
+  if (failures.length === 0 && exitCode !== 0) {
     logLine(ws, '未解析到详细失败项，请展开上方 Playwright 原始输出', 'warn');
     if (session?.tmpDir) {
       logLine(ws, `工作目录: ${session.tmpDir}`, 'dim');
@@ -1702,6 +2139,18 @@ function logPlaywrightFailureReport(ws, result, session, exitCode) {
 
   if (session) session.lastRunFailures = failures;
   return failures;
+}
+
+function headedFailurePlaceholder(specRel) {
+  return [
+    {
+      title: specRel || '用例执行',
+      location: specRel || '',
+      status: 'headed',
+      message: '有界面模式未生成 JSON 结构化失败报告。',
+      hint: '请在浏览器窗口查看失败步骤；如需复制结构化信息，请使用无头模式重新执行。',
+    },
+  ];
 }
 
 // ── Record ───────────────────────────────────────────────────────────────
@@ -2571,6 +3020,12 @@ wss.on('connection', (ws) => {
       anthropic: Boolean(ANTHROPIC_API_KEY),
       deepseek: Boolean(DEEPSEEK_API_KEY),
     },
+    compareReport: repoReady ? getCompareReportStatus(root) : {
+      hasReport: false,
+      hasScreenshots: false,
+      openPath: null,
+      reportRel: COMPARE_REPORT_REL,
+    },
   });
   sendEnvInfo(ws, session, root, repoReady);
 
@@ -2708,8 +3163,40 @@ wss.on('connection', (ws) => {
         await runRepoCompareReport(ws, session);
         break;
 
+      case 'repo:open-compare-report':
+        await openRepoCompareReport(ws, session, { regenerate: Boolean(msg.regenerate) });
+        break;
+
+      case 'repo:compare-report:status':
+        sendCompareReportStatus(ws, resolveRepoRoot());
+        break;
+
+      case 'repo:promote-baseline':
+        await runRepoPromoteBaseline(ws, session, msg);
+        break;
+
+      case 'repo:ui-issues':
+        await sendRepoUiIssues(ws);
+        break;
+
       case 'cancel:repo-compare':
         cancelRepoCompare(session);
+        break;
+
+      case 'jobs:list':
+        await handleJobsList(ws);
+        break;
+
+      case 'jobs:status':
+        await handleJobsStatus(ws, msg);
+        break;
+
+      case 'jobs:run':
+        await handleJobsRun(ws, msg);
+        break;
+
+      case 'jobs:stop':
+        await handleJobsStop(ws, msg);
         break;
     }
   });

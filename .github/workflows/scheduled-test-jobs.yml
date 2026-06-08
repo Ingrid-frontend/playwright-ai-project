@@ -1,0 +1,100 @@
+name: Scheduled Test Jobs
+
+on:
+  schedule:
+    # UTC 18:00 ≈ 北京时间次日 02:00，与 config/test-jobs.json nightly-regression 对齐
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: test-jobs.json 中的 job id
+        required: false
+        default: nightly-regression
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  test-job:
+    timeout-minutes: 90
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Cache Playwright Browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps
+
+      - name: Run test job
+        run: npm run test-job -- run --id=${{ inputs.job_id || 'nightly-regression' }} --trigger=schedule
+        env:
+          PLAYWRIGHT_ENV: stage
+          TEST_USERNAME: ${{ secrets.TEST_USERNAME }}
+          TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          FEISHU_WEBHOOK_SECRET: ${{ secrets.FEISHU_WEBHOOK_SECRET }}
+
+      - name: Upload job results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-job-results-${{ inputs.job_id || 'nightly-regression' }}
+          path: results/jobs/
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Upload playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-scheduled
+          path: playwright-report/
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-scheduled
+          path: screenshots/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload screenshot comparison report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshot-comparison-scheduled
+          path: |
+            results/screenshot-comparison.html
+            results/ui-issues.json
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Upload diffs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diffs-scheduled
+          path: results/diffs/
+          retention-days: 30
+          if-no-files-found: ignore
