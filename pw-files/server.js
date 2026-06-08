@@ -34,6 +34,7 @@ const {
   listKnownEnvs,
   isKnownEnv,
   assertSpecEnvMatch,
+  getLegacyEnvDefault,
 } = require(path.join(__dirname, '../src/utils/test-env-path.cjs'));
 
 const PORT = process.env.PORT || 3001;
@@ -452,22 +453,66 @@ function listOptimizedSpecs(repoRoot, opts = {}) {
   return found.slice(0, limit).map((x) => x.rel);
 }
 
+/** 根据 raw original 路径推断 optimized 产物位置（pipeline 刚结束时优先用） */
+function findOptimizedCandidatesForRawTarget(repoRoot, targetRelative, sessionEnv) {
+  const norm = String(targetRelative || '').replace(/\\/g, '/');
+  if (!norm.endsWith('.spec.ts')) return [];
+  const parsed = parseRawOriginalRel(norm, repoRoot);
+  const stem = path.basename(norm, '.spec.ts');
+  const env = parsed?.env || sessionEnv || getLegacyEnvDefault(repoRoot);
+  const dateCategory = parsed?.dateCategory || '';
+  const relCandidates = [];
+  if (parsed) {
+    relCandidates.push(buildOptimizedRel({ playwrightEnv: env, dateCategory, stem, repoRoot }));
+    if (dateCategory) {
+      relCandidates.push(buildOptimizedRel({ playwrightEnv: env, dateCategory: '', stem, repoRoot }));
+    }
+  }
+  if (dateCategory) {
+    relCandidates.push(`tests/optimized/${dateCategory}/${stem}.optimized.spec.ts`);
+    relCandidates.push(`tests/optimized/${env}/${dateCategory}/${stem}.optimized.spec.ts`);
+    relCandidates.push(`tests/optimized/${env}/${stem}.optimized.spec.ts`);
+  }
+  relCandidates.push(`tests/optimized/${stem}.optimized.spec.ts`);
+
+  const out = [];
+  const seen = new Set();
+  for (const rel of relCandidates) {
+    if (!rel || seen.has(rel)) continue;
+    seen.add(rel);
+    try {
+      const abs = assertAllowedOptimizedSpec(repoRoot, rel);
+      if (fs.existsSync(abs)) out.push(rel);
+    } catch {
+      /* skip invalid */
+    }
+  }
+  return out;
+}
+
 /** pipeline 结束后：优先本次新生成/更新的，否则回退为仓库内最近用例，并按保存文件名优先匹配 */
 function resolveOptimizedSpecsAfterPipeline(repoRoot, sinceMs, targetRelative, env) {
-  const envFilter = env != null ? String(env).trim() : null;
-  let specs = listOptimizedSpecs(repoRoot, { sinceMs, limit: 12, env: envFilter });
+  const parsedTarget = parseRawOriginalRel(String(targetRelative || '').replace(/\\/g, '/'), repoRoot);
+  const envFilter = (parsedTarget?.env || env || getLegacyEnvDefault(repoRoot)).trim();
+  const fromTarget = findOptimizedCandidatesForRawTarget(repoRoot, targetRelative, envFilter);
+  let specs = [...fromTarget];
+  let recent = listOptimizedSpecs(repoRoot, { sinceMs, limit: 12, env: envFilter });
   const stem = targetRelative && targetRelative.endsWith('.spec.ts')
     ? path.basename(targetRelative, '.spec.ts')
     : '';
   if (stem) {
     const byName = listOptimizedSpecs(repoRoot, { limit: 50, nameIncludes: stem, env: envFilter });
     if (byName.length) {
-      specs = [...new Set([...byName, ...specs])];
+      recent = [...new Set([...byName, ...recent])];
     }
   }
-  if (specs.length === 0) {
-    specs = listOptimizedSpecs(repoRoot, { limit: 40, env: envFilter });
+  if (recent.length === 0) {
+    recent = listOptimizedSpecs(repoRoot, { limit: 40, env: envFilter });
   }
+  if (recent.length === 0 && envFilter) {
+    recent = listOptimizedSpecs(repoRoot, { limit: 40, nameIncludes: stem || undefined });
+  }
+  specs = [...new Set([...specs, ...recent])];
   return specs.slice(0, 40);
 }
 
@@ -598,24 +643,14 @@ function hasDraftRecordingInRepo(repoRoot) {
 /** pipeline 后将产物归并到固定草稿 optimized 路径，供 Studio 执行流程使用 */
 function ensureDraftOptimizedAtCanonical(repoRoot, sinceMs, targetRelative, env) {
   const canonicalAbs = assertAllowedOptimizedSpec(repoRoot, DRAFT_OPTIMIZED_RELATIVE);
-  if (fs.existsSync(canonicalAbs)) {
-    try {
-      const st = fs.statSync(canonicalAbs);
-      if (sinceMs == null || st.mtimeMs >= sinceMs - 3000) {
-        return DRAFT_OPTIMIZED_RELATIVE;
-      }
-    } catch {
-      /* fall through */
-    }
-  }
-  const byName = listOptimizedSpecs(repoRoot, {
-    limit: 20,
-    nameIncludes: 'studio-unsaved-draft',
-    env: env != null ? String(env).trim() : null,
-  });
-  const draftCandidate = byName.find((s) => s.endsWith(DRAFT_OPTIMIZED_BASENAME)) || byName[0];
+  const fromTarget = findOptimizedCandidatesForRawTarget(repoRoot, targetRelative, env);
   const recent = resolveOptimizedSpecsAfterPipeline(repoRoot, sinceMs, targetRelative, env);
-  const srcRel = draftCandidate || recent[0];
+  const pipelineFresh =
+    fromTarget[0] ||
+    recent.find((s) => s !== DRAFT_OPTIMIZED_RELATIVE) ||
+    recent[0] ||
+    null;
+  const srcRel = pipelineFresh;
   if (!srcRel) {
     return fs.existsSync(canonicalAbs) ? DRAFT_OPTIMIZED_RELATIVE : null;
   }
@@ -630,6 +665,26 @@ function ensureDraftOptimizedAtCanonical(repoRoot, sinceMs, targetRelative, env)
   } catch {
     return fs.existsSync(canonicalAbs) ? DRAFT_OPTIMIZED_RELATIVE : null;
   }
+}
+
+function readOptimizedCodeAfterPipeline(repoRoot, draftRel, optimizedSpecs) {
+  const candidates = [
+    draftRel,
+    ...(Array.isArray(optimizedSpecs) ? optimizedSpecs : []),
+  ].filter(Boolean);
+  const seen = new Set();
+  for (const rel of candidates) {
+    const norm = String(rel).replace(/\\/g, '/');
+    if (seen.has(norm)) continue;
+    seen.add(norm);
+    try {
+      const code = fs.readFileSync(assertAllowedOptimizedSpec(repoRoot, norm), 'utf8');
+      if (String(code || '').trim()) return code;
+    } catch {
+      /* try next */
+    }
+  }
+  return '';
 }
 
 function syncDraftOptimizedFromEditor(repoRoot, optimizedCode) {
@@ -681,6 +736,35 @@ function removeDraftRecordingIfAny(repoRoot, session) {
     /* ignore */
   }
   session.draftRelativePath = null;
+}
+
+/** 正式保存后清理所有 studio-unsaved-draft 优化草稿（含 env 子目录） */
+function removeDraftOptimizedArtifacts(repoRoot) {
+  const base = path.join(repoRoot, 'tests', 'optimized');
+  if (!fs.existsSync(base)) return;
+  const removed = [];
+  const walk = (dir) => {
+    let ents;
+    try {
+      ents = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const ent of ents) {
+      const full = path.join(dir, ent.name);
+      if (ent.isDirectory()) walk(full);
+      else if (ent.isFile() && isDraftOptimizedPath(path.relative(repoRoot, full).split(path.sep).join('/'))) {
+        try {
+          fs.unlinkSync(full);
+          removed.push(path.relative(repoRoot, full).split(path.sep).join('/'));
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  };
+  walk(base);
+  return removed;
 }
 
 function resolveRecordingPathViaRepo(repoRoot, { code, name, description, target = 'original', playwrightEnv }) {
@@ -922,12 +1006,18 @@ async function repoCommitArtifacts(ws, session, msg) {
   session.rawCode = rawCode;
   session.optCode = optContent;
   removeDraftRecordingIfAny(repoRoot, session);
+  const removedDraftOptimized = removeDraftOptimizedArtifacts(repoRoot);
+  session.draftOptimizedRelative = DRAFT_OPTIMIZED_RELATIVE;
 
   logLine(ws, `[repo] 已保存录制: ${relativePath}`, 'ok');
   logLine(ws, `[repo] 已保存优化: ${optimizedRelative}`, 'ok');
+  if (removedDraftOptimized.length) {
+    logLine(ws, `[repo] 已清理草稿: ${removedDraftOptimized.join(', ')}`, 'dim');
+  }
   send(ws, 'repo:commit-artifacts:done', {
     relativePath,
     optimizedRelative,
+    removedDraftOptimized,
     repoRoot,
   });
 }
@@ -977,75 +1067,123 @@ async function runRepoPipeline(ws, session, msg) {
   send(ws, 'repo:pipeline:start', { targetRelative: targetArg });
   logLine(ws, `[repo] 运行 pipeline-raw-to-optimized → ${targetArg}`, 'info');
 
-  const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  const proc = spawn(npmCmd, ['run', 'pipeline-raw-to-optimized', '--', targetArg], {
-    cwd: repoRoot,
-    env: buildRepoSpawnEnv(session),
-    shell: false,
-  });
-  session.repoPipelineProc = proc;
-
-  proc.stdout.on('data', (d) => {
-    const lines = stripAnsi(d.toString()).split('\n');
-    for (const line of lines) {
-      if (line.trim()) logLine(ws, `[pipeline] ${line}`, 'dim');
-    }
-  });
-  proc.stderr.on('data', (d) => {
-    const lines = stripAnsi(d.toString()).split('\n');
-    for (const line of lines) {
-      if (line.trim()) logLine(ws, `[pipeline] ${line}`, 'warn');
-    }
-  });
-
-  const exitCode = await new Promise((resolve) => {
-    proc.on('close', (code) => {
-      session.repoPipelineProc = null;
-      resolve(code == null ? 1 : code);
-    });
-  });
-
-  if (session.repoPipelineCancelled) {
-    send(ws, 'repo:pipeline:cancelled', {});
-    logLine(ws, '[repo] pipeline 已取消', 'warn');
-    return;
-  }
-
-  const optimizedSpecs = resolveOptimizedSpecsAfterPipeline(
-    repoRoot,
-    since,
-    targetArg,
-    getSessionPlaywrightEnv(session),
-  );
-  session.optimizedSpecs = optimizedSpecs;
-  const draftOptimizedRelative =
-    ensureDraftOptimizedAtCanonical(repoRoot, since, targetArg, getSessionPlaywrightEnv(session)) ||
-    DRAFT_OPTIMIZED_RELATIVE;
-  session.draftOptimizedRelative = draftOptimizedRelative;
-  session.lastPrimaryOptimizedRelative = draftOptimizedRelative;
-  let optimizedCode = '';
+  let exitCode = 1;
   try {
-    optimizedCode = fs.readFileSync(
-      assertAllowedOptimizedSpec(repoRoot, draftOptimizedRelative),
-      'utf8',
+    const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    const proc = spawn(npmCmd, ['run', 'pipeline-raw-to-optimized', '--', targetArg], {
+      cwd: repoRoot,
+      env: buildRepoSpawnEnv(session),
+      shell: false,
+    });
+    session.repoPipelineProc = proc;
+
+    proc.stdout.on('data', (d) => {
+      const lines = stripAnsi(d.toString()).split('\n');
+      for (const line of lines) {
+        if (line.trim()) logLine(ws, `[pipeline] ${line}`, 'dim');
+      }
+    });
+    proc.stderr.on('data', (d) => {
+      const lines = stripAnsi(d.toString()).split('\n');
+      for (const line of lines) {
+        if (line.trim()) logLine(ws, `[pipeline] ${line}`, 'warn');
+      }
+    });
+
+    exitCode = await new Promise((resolve, reject) => {
+      proc.on('error', (err) => {
+        session.repoPipelineProc = null;
+        reject(err);
+      });
+      proc.on('close', (code) => {
+        session.repoPipelineProc = null;
+        resolve(code == null ? 1 : code);
+      });
+    });
+
+    if (session.repoPipelineCancelled) {
+      send(ws, 'repo:pipeline:cancelled', {});
+      logLine(ws, '[repo] pipeline 已取消', 'warn');
+      return;
+    }
+
+    const pipelineEnv =
+      parseRawOriginalRel(targetArg, repoRoot)?.env || getSessionPlaywrightEnv(session);
+    const optimizedSpecs = resolveOptimizedSpecsAfterPipeline(
+      repoRoot,
+      since,
+      targetArg,
+      pipelineEnv,
     );
-    session.optCode = optimizedCode;
-  } catch {
-    /* ignore */
+    session.optimizedSpecs = optimizedSpecs;
+    const draftOptimizedRelative =
+      ensureDraftOptimizedAtCanonical(repoRoot, since, targetArg, pipelineEnv) ||
+      optimizedSpecs[0] ||
+      DRAFT_OPTIMIZED_RELATIVE;
+    session.draftOptimizedRelative = draftOptimizedRelative;
+    session.lastPrimaryOptimizedRelative = draftOptimizedRelative;
+    const optimizedCode = readOptimizedCodeAfterPipeline(
+      repoRoot,
+      draftOptimizedRelative,
+      optimizedSpecs,
+    );
+    if (optimizedCode) session.optCode = optimizedCode;
+
+    let suggestedFormalRelative = session.suggestedFormalRelative || null;
+    let suggestedFormalOptimized = null;
+    if (suggestedFormalRelative) {
+      try {
+        const parsed = parseRawOriginalRel(suggestedFormalRelative, repoRoot);
+        const stem = path.basename(suggestedFormalRelative.replace(/\\/g, '/'), '.spec.ts');
+        if (parsed) {
+          suggestedFormalOptimized = buildOptimizedRel({
+            playwrightEnv: parsed.env,
+            dateCategory: parsed.dateCategory,
+            stem,
+            repoRoot,
+          });
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    send(ws, 'repo:pipeline:done', {
+      exitCode,
+      optimizedSpecs,
+      primaryOptimizedRelative: draftOptimizedRelative,
+      draftOptimizedRelative,
+      optimizedCode,
+      draftRelativePath: session.draftRelativePath || null,
+      suggestedFormalRelative,
+      suggestedFormalOptimized,
+      repoRoot,
+      hint: optimizedCode
+        ? suggestedFormalOptimized
+          ? `草稿已就绪；确认无误后点「保存到项目」→ ${suggestedFormalOptimized}`
+          : '已加载优化脚本，调试完成后点「保存到项目」落盘正式用例'
+        : optimizedSpecs.length
+          ? '已找到用例文件但未读取到内容，请从下拉框重新选择'
+          : '未找到 *.optimized.spec.ts，请确认 pipeline 已生成 tests/optimized 产物',
+    });
+    logLine(
+      ws,
+      `[repo] pipeline 结束 (exit ${exitCode})，候选: ${optimizedSpecs.length ? optimizedSpecs.join(', ') : '无'}${optimizedCode ? '，已载入优化脚本' : '，未载入优化脚本'}`,
+      exitCode === 0 && optimizedCode ? 'ok' : 'warn',
+    );
+  } catch (e) {
+    logLine(ws, `[repo] pipeline 异常: ${errText(e)}`, 'err');
+    send(ws, 'repo:pipeline:done', {
+      exitCode: 1,
+      optimizedSpecs: session.optimizedSpecs || [],
+      primaryOptimizedRelative: session.draftOptimizedRelative || DRAFT_OPTIMIZED_RELATIVE,
+      draftOptimizedRelative: session.draftOptimizedRelative || DRAFT_OPTIMIZED_RELATIVE,
+      optimizedCode: '',
+      draftRelativePath: session.draftRelativePath || null,
+      repoRoot,
+      hint: errText(e),
+    });
   }
-  send(ws, 'repo:pipeline:done', {
-    exitCode,
-    optimizedSpecs,
-    primaryOptimizedRelative: draftOptimizedRelative,
-    draftOptimizedRelative,
-    optimizedCode,
-    draftRelativePath: session.draftRelativePath || null,
-    repoRoot,
-    hint: optimizedSpecs.length
-      ? '已加载 tests/optimized 下用例（按最近修改排序）'
-      : '未找到 *.optimized.spec.ts，请确认 pipeline 已生成 tests/optimized 产物',
-  });
-  logLine(ws, `[repo] pipeline 结束 (exit ${exitCode})，候选: ${optimizedSpecs.length ? optimizedSpecs.join(', ') : '无'}`, exitCode === 0 ? 'ok' : 'warn');
 }
 
 async function runRepoTest(ws, session, msg) {
@@ -1494,17 +1632,150 @@ function readLatestJobRunFile(repoRoot, jobId) {
   return { runId, status, summary, logPath: path.join(dir, 'stdout.log') };
 }
 
-function buildTestJobEntry(repoRoot, jobDef) {
-  const id = String(jobDef.id || '');
-  const lock = readJobLockFile(repoRoot, id);
-  const latestRun = readLatestJobRunFile(repoRoot, id);
+const KNOWN_JOB_ENV_IDS = ['dev', 'uat', 'stage', 'stage9084'];
+
+function mergeTestJobDef(config, jobDef) {
+  const d = config?.defaults || {};
+  const dSteps = d.steps || {};
+  const jSteps = jobDef.steps || {};
   return {
-    id,
+    id: String(jobDef.id || ''),
     enabled: jobDef.enabled !== false,
     description: jobDef.description || '',
-    schedule: jobDef.schedule || null,
-    timezone: jobDef.timezone || 'Asia/Shanghai',
-    specs: jobDef.specs ?? 'all',
+    schedule: jobDef.schedule ?? null,
+    timezone: jobDef.timezone || d.timezone || 'Asia/Shanghai',
+    playwrightEnv: jobDef.playwrightEnv ?? d.playwrightEnv ?? 'stage',
+    projects: jobDef.projects?.length ? [...jobDef.projects] : [...(d.projects || ['optimized', 'optimized-webkit'])],
+    optimizedDir: jobDef.optimizedDir ?? d.optimizedDir ?? 'tests/optimized',
+    specs: jobDef.specs ?? d.specs ?? 'all',
+    stopOnTestFailure: jobDef.stopOnTestFailure ?? d.stopOnTestFailure ?? true,
+    stopOnCompareGate: jobDef.stopOnCompareGate ?? d.stopOnCompareGate ?? true,
+    runCompareAfterAbort: jobDef.runCompareAfterAbort ?? d.runCompareAfterAbort ?? false,
+    feishuMode: jobDef.feishuMode ?? d.feishuMode ?? 'interactive',
+    notifyOn: jobDef.notifyOn?.length ? [...jobDef.notifyOn] : [...(d.notifyOn || ['failure', 'success'])],
+    steps: { ...dSteps, ...jSteps },
+  };
+}
+
+function globToRegExpJob(pattern) {
+  const normalized = String(pattern || '').replace(/\\/g, '/');
+  let re = '^';
+  for (let i = 0; i < normalized.length; i++) {
+    const ch = normalized[i];
+    if (ch === '*') {
+      if (normalized[i + 1] === '*') {
+        re += '.*';
+        i++;
+      } else {
+        re += '[^/]*';
+      }
+    } else if (/[+?^${}()|[\]\\]/.test(ch)) {
+      re += `\\${ch}`;
+    } else {
+      re += ch;
+    }
+  }
+  re += '$';
+  return new RegExp(re);
+}
+
+function matchesAnyJobPattern(relPath, patterns) {
+  const normalized = String(relPath || '').replace(/\\/g, '/');
+  return patterns.some((p) => {
+    const pat = String(p || '').replace(/\\/g, '/');
+    if (pat.includes('*')) return globToRegExpJob(pat).test(normalized);
+    return normalized === pat || normalized.endsWith(`/${pat}`);
+  });
+}
+
+function normalizeJobSpecPatterns(specs, playwrightEnv) {
+  const env = String(playwrightEnv || 'stage').trim();
+  const envPrefix = `tests/optimized/${env}/`;
+  return specs.map((raw) => {
+    let pat = String(raw || '').replace(/\\/g, '/').trim();
+    if (!pat) return pat;
+    if (!pat.startsWith('tests/')) {
+      pat = pat.startsWith('optimized/') ? `tests/${pat}` : `${envPrefix}${pat}`;
+    }
+    const legacy = pat.match(/^tests\/optimized\/(\d{6})\/(.+)$/);
+    if (legacy && !KNOWN_JOB_ENV_IDS.includes(legacy[1])) {
+      return `tests/optimized/${env}/${legacy[1]}/${legacy[2]}`;
+    }
+    const withEnv = pat.match(/^tests\/optimized\/([^/]+)\/(.+)$/);
+    if (withEnv && KNOWN_JOB_ENV_IDS.includes(withEnv[1])) return pat;
+    if (legacy) return `tests/optimized/${env}/${legacy[1]}/${legacy[2]}`;
+    return pat;
+  });
+}
+
+function isDraftOptimizedRel(rel) {
+  return path.basename(String(rel || '')) === 'studio-unsaved-draft.optimized.spec.ts';
+}
+
+function listAllOptimizedSpecsForJob(repoRoot, env, optimizedDir) {
+  const envAbs = path.join(repoRoot, optimizedDir, env);
+  const scanBase =
+    env && fs.existsSync(envAbs) && fs.statSync(envAbs).isDirectory()
+      ? envAbs
+      : path.join(repoRoot, optimizedDir);
+  const found = [];
+  const walk = (dir) => {
+    let ents;
+    try {
+      ents = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const ent of ents) {
+      const full = path.join(dir, ent.name);
+      if (ent.isDirectory()) walk(full);
+      else if (ent.isFile() && ent.name.endsWith('.optimized.spec.ts')) {
+        const rel = path.relative(repoRoot, full).split(path.sep).join('/');
+        if (isDraftOptimizedRel(rel)) continue;
+        if (env && !specMatchesEnv(rel, env, repoRoot)) continue;
+        found.push(rel);
+      }
+    }
+  };
+  if (fs.existsSync(scanBase)) walk(scanBase);
+  return found.sort((a, b) => a.localeCompare(b));
+}
+
+function countSpecsForMergedJob(repoRoot, merged) {
+  const all = listAllOptimizedSpecsForJob(repoRoot, merged.playwrightEnv, merged.optimizedDir);
+  if (merged.specs === 'all') return all.length;
+  const rawSpecs = Array.isArray(merged.specs) ? merged.specs : [merged.specs];
+  const patterns = normalizeJobSpecPatterns(rawSpecs, merged.playwrightEnv);
+  return all.filter((rel) => matchesAnyJobPattern(rel, patterns)).length;
+}
+
+function formatJobSpecsDisplay(merged, specCount) {
+  if (merged.specs === 'all') return `全部 (${merged.playwrightEnv}, ${specCount} 个)`;
+  const arr = Array.isArray(merged.specs) ? merged.specs : [merged.specs];
+  return `${arr.join(', ')} (${specCount} 个)`;
+}
+
+function buildTestJobEntry(repoRoot, jobDef, config) {
+  const cfg = config || loadTestJobsConfigFile(repoRoot);
+  const merged = mergeTestJobDef(cfg, jobDef);
+  const id = merged.id;
+  const lock = readJobLockFile(repoRoot, id);
+  const latestRun = readLatestJobRunFile(repoRoot, id);
+  const specCount = countSpecsForMergedJob(repoRoot, merged);
+  return {
+    id,
+    enabled: merged.enabled,
+    description: merged.description,
+    schedule: merged.schedule,
+    timezone: merged.timezone,
+    playwrightEnv: merged.playwrightEnv,
+    projects: merged.projects,
+    optimizedDir: merged.optimizedDir,
+    specs: merged.specs,
+    specsLabel: formatJobSpecsDisplay(merged, specCount),
+    specCount,
+    stopOnTestFailure: merged.stopOnTestFailure,
+    stopOnCompareGate: merged.stopOnCompareGate,
     running: Boolean(lock),
     lock,
     latestRun,
@@ -1513,7 +1784,7 @@ function buildTestJobEntry(repoRoot, jobDef) {
 
 function buildTestJobsListPayload(repoRoot) {
   const config = loadTestJobsConfigFile(repoRoot);
-  const jobs = (config.jobs || []).map((j) => buildTestJobEntry(repoRoot, j));
+  const jobs = (config.jobs || []).map((j) => buildTestJobEntry(repoRoot, j, config));
   return { jobs, configPath: path.join(repoRoot, TEST_JOBS_CONFIG_REL) };
 }
 
@@ -1549,7 +1820,7 @@ async function handleJobsStatus(ws, msg) {
     send(ws, 'jobs:status:done', { job: null });
     return;
   }
-  const job = buildTestJobEntry(repoRoot, def);
+  const job = buildTestJobEntry(repoRoot, def, config);
   const logs = tailJobLog(repoRoot, jobId, Number(msg.lines) || 40);
   send(ws, 'jobs:status:done', { job, logs });
 }
@@ -1562,33 +1833,36 @@ async function handleJobsRun(ws, msg) {
     return;
   }
   const config = loadTestJobsConfigFile(repoRoot);
-  if (!(config.jobs || []).some((j) => j.id === jobId)) {
+  const def = (config.jobs || []).find((j) => j.id === jobId);
+  if (!def) {
     send(ws, 'error', { message: `未找到 Job: ${jobId}` });
     return;
   }
+  const merged = mergeTestJobDef(config, def);
 
   const background = Boolean(msg.background);
   const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
   const args = ['run', 'test-job', '--', 'run', `--id=${jobId}`, '--trigger=manual'];
   if (background) args.push('--background');
+  const spawnEnv = { ...process.env, PLAYWRIGHT_ENV: merged.playwrightEnv };
 
   if (background) {
     const proc = spawn(npmCmd, args, {
       cwd: repoRoot,
-      env: process.env,
+      env: spawnEnv,
       detached: true,
       stdio: 'ignore',
       shell: false,
     });
     proc.unref();
     send(ws, 'jobs:run:done', { jobId, background: true, pid: proc.pid });
-    logLine(ws, `[jobs] 已在后台启动 Job「${jobId}」`, 'ok');
+    logLine(ws, `[jobs] 已在后台启动 Job「${jobId}」(env=${merged.playwrightEnv})`, 'ok');
     return;
   }
 
   send(ws, 'jobs:run:start', { jobId });
-  logLine(ws, `[jobs] 开始执行 Job「${jobId}」`, 'info');
-  const proc = spawn(npmCmd, args, { cwd: repoRoot, env: process.env, shell: false });
+  logLine(ws, `[jobs] 开始执行 Job「${jobId}」(env=${merged.playwrightEnv})`, 'info');
+  const proc = spawn(npmCmd, args, { cwd: repoRoot, env: spawnEnv, shell: false });
   proc.stdout.on('data', (d) => {
     const t = stripAnsi(d.toString());
     if (t.trim()) logLine(ws, t.trimEnd(), 'dim');

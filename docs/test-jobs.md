@@ -34,7 +34,8 @@ npm run test-job:daemon
 | `jobs[].enabled` | 是否启用 |
 | `jobs[].schedule` | Cron 表达式，`null` 表示仅手动 |
 | `jobs[].timezone` | 时区，默认 `Asia/Shanghai` |
-| `jobs[].specs` | `"all"` 或 glob 路径数组 |
+| `jobs[].playwrightEnv` | 目标环境，对应 `tests/optimized/<env>/`；执行时写入 `PLAYWRIGHT_ENV` |
+| `jobs[].specs` | `"all"` 或 glob 路径数组；`all` 仅扫描当前 env 目录；缺 env 段的 legacy glob 会自动补全 |
 | `jobs[].stopOnTestFailure` | 用例失败即停 |
 | `jobs[].stopOnCompareGate` | UI gate blocker 时任务失败 |
 | `jobs[].runCompareAfterAbort` | 中断后是否仍跑对比 |
@@ -121,7 +122,7 @@ WebSocket 消息：`jobs:list`、`jobs:run`、`jobs:stop`、`jobs:status`
 
 与现有流程一致（路径约定见 [test-env-paths.md](./test-env-paths.md)）：
 
-- `PLAYWRIGHT_ENV` — 可被 Job 内 `playwrightEnv` 覆盖；`specs: all` 时仅执行该环境下的用例
+- `PLAYWRIGHT_ENV` — 由 Job 内 `playwrightEnv` 覆盖；`specs: all` 时仅扫描并执行 `tests/optimized/<env>/` 下用例（排除 `studio-unsaved-draft`）
 - `TEST_USERNAME` / `TEST_PASSWORD` — 登录
 - `FEISHU_WEBHOOK_URL` / `FEISHU_WEBHOOK_SECRET` — 飞书通知
 

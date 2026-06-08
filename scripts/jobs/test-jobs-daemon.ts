@@ -5,7 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { isJobRunning } from './job-lock.js';
-import { listJobs } from './test-jobs-config.js';
+import { listJobs, resolveJob } from './test-jobs-config.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const CLI_PATH = path.resolve(__filename, 'test-job-cli.ts');
@@ -29,6 +29,13 @@ function triggerJob(jobId: string): void {
     return;
   }
 
+  let playwrightEnv = process.env.PLAYWRIGHT_ENV || 'stage';
+  try {
+    playwrightEnv = resolveJob(jobId).playwrightEnv;
+  } catch {
+    /* fallback */
+  }
+
   const child = spawn(
     fs.existsSync(path.join(process.cwd(), 'node_modules', '.bin', 'tsx'))
       ? path.join(process.cwd(), 'node_modules', '.bin', 'tsx')
@@ -39,11 +46,11 @@ function triggerJob(jobId: string): void {
     {
       detached: true,
       stdio: 'ignore',
-      env: process.env,
+      env: { ...process.env, PLAYWRIGHT_ENV: playwrightEnv },
     },
   );
   child.unref();
-  console.log(`⏰ [schedule] 已触发 Job「${jobId}」(pid=${child.pid})`);
+  console.log(`⏰ [schedule] 已触发 Job「${jobId}」(pid=${child.pid}, env=${playwrightEnv})`);
 }
 
 function main(): void {

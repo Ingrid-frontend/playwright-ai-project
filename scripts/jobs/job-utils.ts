@@ -64,12 +64,50 @@ function isDraftOptimizedSpecAbs(absPath: string): boolean {
   return base === 'studio-unsaved-draft.optimized.spec.ts';
 }
 
+/** 优先扫描 tests/optimized/<env>/，减少跨环境误匹配 */
+export function resolveOptimizedScanDir(optimizedDir: string, playwrightEnv?: string): string {
+  const env = String(playwrightEnv || '').trim();
+  if (!env) return optimizedDir;
+  const envAbs = path.join(process.cwd(), optimizedDir, env);
+  if (fs.existsSync(envAbs) && fs.statSync(envAbs).isDirectory()) {
+    return path.join(optimizedDir, env).replace(/\\/g, '/');
+  }
+  return optimizedDir;
+}
+
+const KNOWN_ENV_IDS = ['dev', 'uat', 'stage', 'stage9084'];
+
+/** 将 Job 配置中的 glob 规范化为带 env 段的路径 */
+export function normalizeSpecPatterns(specs: string[], playwrightEnv: string): string[] {
+  const env = String(playwrightEnv || 'stage').trim();
+  const envPrefix = `tests/optimized/${env}/`;
+  return specs.map((raw) => {
+    let pat = String(raw || '').replace(/\\/g, '/').trim();
+    if (!pat) return pat;
+    if (!pat.startsWith('tests/')) {
+      pat = pat.startsWith('optimized/') ? `tests/${pat}` : `${envPrefix}${pat}`;
+    }
+    // legacy: tests/optimized/260612/foo → tests/optimized/<env>/260612/foo
+    const legacy = pat.match(/^tests\/optimized\/(\d{6})\/(.+)$/);
+    if (legacy && !KNOWN_ENV_IDS.includes(legacy[1])) {
+      return `tests/optimized/${env}/${legacy[1]}/${legacy[2]}`;
+    }
+    // 已有 tests/optimized/<env>/...
+    const withEnv = pat.match(/^tests\/optimized\/([^/]+)\/(.+)$/);
+    if (withEnv && KNOWN_ENV_IDS.includes(withEnv[1])) return pat;
+    // tests/optimized/<dateCategory>/file 缺 env
+    if (legacy) return `tests/optimized/${env}/${legacy[1]}/${legacy[2]}`;
+    return pat;
+  });
+}
+
 export function resolveSpecPaths(
   specs: 'all' | string[],
   optimizedDir: string,
   playwrightEnv?: string,
 ): string[] {
-  let allSpecs = findOptimizedSpecFiles(optimizedDir).filter((p) => !isDraftOptimizedSpecAbs(p));
+  const scanDir = resolveOptimizedScanDir(optimizedDir, playwrightEnv);
+  let allSpecs = findOptimizedSpecFiles(scanDir).filter((p) => !isDraftOptimizedSpecAbs(p));
   if (playwrightEnv) {
     allSpecs = allSpecs.filter((abs) => {
       const rel = path.relative(process.cwd(), abs).replace(/\\/g, '/');
@@ -78,13 +116,21 @@ export function resolveSpecPaths(
   }
   if (specs === 'all') return allSpecs;
 
-  const patterns = specs.map((s) => s.replace(/\\/g, '/'));
+  const patterns = normalizeSpecPatterns(specs, playwrightEnv || 'stage');
   const matched = allSpecs.filter((abs) => {
     const rel = path.relative(process.cwd(), abs).replace(/\\/g, '/');
     return matchesAnyPattern(rel, patterns);
   });
 
   return matched.sort((a, b) => a.localeCompare(b));
+}
+
+export function countResolvedSpecs(
+  specs: 'all' | string[],
+  optimizedDir: string,
+  playwrightEnv?: string,
+): number {
+  return resolveSpecPaths(specs, optimizedDir, playwrightEnv).length;
 }
 
 export function scriptKeyFromOptimizedPath(optimizedTestPath: string, optimizedDir = 'tests/optimized'): string {

@@ -79,12 +79,24 @@ function isEnvSegmentEnabled(repoRoot) {
   return loadTestPathLayout(repoRoot).envSegmentEnabled !== false;
 }
 
-function normalizeRel(p) {
-  return String(p || "").replace(/\\/g, "/").replace(/^\.\/+/, "");
+function normalizeRel(p, repoRoot) {
+  const rawInput = String(p || "").trim();
+  if (!rawInput) return "";
+  let raw = rawInput.replace(/\\/g, "/").replace(/^\.\/+/, "");
+  if (raw.startsWith("tests/")) return raw;
+  const root = resolveRepoRoot(repoRoot);
+  const abs = path.isAbsolute(rawInput) || /^[A-Za-z]:[/\\]/.test(rawInput)
+    ? path.resolve(rawInput.replace(/\\/g, path.sep))
+    : path.resolve(root, rawInput.replace(/\\/g, path.sep));
+  const rel = path.relative(root, abs);
+  if (rel && !rel.startsWith("..") && !path.isAbsolute(rel)) {
+    return rel.split(path.sep).join("/");
+  }
+  return raw;
 }
 
 function parseOptimizedRel(relPath, repoRoot) {
-  const norm = normalizeRel(relPath);
+  const norm = normalizeRel(relPath, repoRoot);
   const prefix = "tests/optimized/";
   if (!norm.startsWith(prefix)) return null;
   const rest = norm.slice(prefix.length);
@@ -112,7 +124,7 @@ function parseOptimizedRel(relPath, repoRoot) {
 }
 
 function parseRawOriginalRel(relPath, repoRoot) {
-  const norm = normalizeRel(relPath);
+  const norm = normalizeRel(relPath, repoRoot);
   const prefix = "tests/raw-recordings/original/";
   if (!norm.startsWith(prefix)) return null;
   const rest = norm.slice(prefix.length);
@@ -231,7 +243,7 @@ function optimizedImportPathsForDepth(depth) {
 }
 
 function parseEnvAndDateCategoryFromRawOrProcessed(absOrRel, repoRoot) {
-  const norm = normalizeRel(absOrRel);
+  const norm = normalizeRel(absOrRel, repoRoot);
   let m = norm.match(/^tests\/raw-recordings\/original\/([^/]+)\/([^/]+)\/.+\.spec\.ts$/);
   if (m) {
     if (isKnownEnv(m[1], repoRoot)) return { env: m[1], dateCategory: m[2], legacy: false };

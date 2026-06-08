@@ -46,7 +46,7 @@ jobs:
       - name: Run test job
         run: npm run test-job -- run --id=${{ inputs.job_id || 'nightly-regression' }} --trigger=schedule
         env:
-          PLAYWRIGHT_ENV: stage
+          # PLAYWRIGHT_ENV 由 job-runner 按 config/test-jobs.json 中 job.playwrightEnv 设置
           TEST_USERNAME: ${{ secrets.TEST_USERNAME }}
           TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}

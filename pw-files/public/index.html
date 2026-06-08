@@ -2558,10 +2558,11 @@ function applyWorkflowLayout() {
   document.getElementById('centerEditorWrap')?.classList.toggle('studio-hidden', isJobs);
 }
 
-function formatJobSpecsLabel(specs) {
-  if (specs === 'all') return '全部 optimized';
-  if (Array.isArray(specs)) return specs.join(', ');
-  return String(specs || '—');
+function formatJobSpecsLabel(job) {
+  if (job.specsLabel) return job.specsLabel;
+  if (job.specs === 'all') return `全部 (${job.playwrightEnv || 'stage'})`;
+  if (Array.isArray(job.specs)) return job.specs.join(', ');
+  return String(job.specs || '—');
 }
 
 function renderJobsWorkspace(job) {
@@ -2586,8 +2587,10 @@ function renderJobsWorkspace(job) {
   const sum = lr?.summary;
   const meta = [
     ['状态', job.running ? '运行中' : job.enabled ? '空闲' : '已禁用'],
+    ['环境', job.playwrightEnv || 'stage'],
     ['调度', formatJobSchedule(job)],
-    ['用例范围', formatJobSpecsLabel(job.specs)],
+    ['用例范围', formatJobSpecsLabel(job)],
+    ['Projects', Array.isArray(job.projects) ? job.projects.join(', ') : '—'],
     ['最近 runId', lr?.runId || '—'],
     ['最近结果', sum ? `${st} · ${sum.successCount}/${sum.executedCount} 成功` : st],
     ['时区', job.timezone || 'Asia/Shanghai'],
@@ -2642,7 +2645,7 @@ function renderTestJobsList(jobs) {
       return `
       <div class="test-job-card${running ? ' running' : ''}${selected}" data-job-id="${id}" onclick="selectTestJob('${id}')">
         <div class="job-title">${id}${running ? ' 🟢' : ''}${disabled}</div>
-        <div class="job-meta">${esc(job.description || '—')}<br>调度: ${esc(formatJobSchedule(job))}<br>最近: ${esc(formatJobLatestRun(job))}</div>
+        <div class="job-meta">${esc(job.description || '—')}<br>环境: ${esc(job.playwrightEnv || 'stage')} · 用例: ${esc(String(job.specCount ?? '—'))} 个<br>调度: ${esc(formatJobSchedule(job))}<br>最近: ${esc(formatJobLatestRun(job))}</div>
         <div class="job-actions" onclick="event.stopPropagation()">
           <button type="button" class="btn" style="font-size:var(--fs-xs);padding:3px 6px" onclick="runTestJob('${id}', false)" ${running ? 'disabled' : ''}>前台</button>
           <button type="button" class="btn" style="font-size:var(--fs-xs);padding:3px 6px" onclick="runTestJob('${id}', true)" ${running ? 'disabled' : ''}>后台</button>
@@ -3722,9 +3725,20 @@ function handleMessage(msg) {
       if (msg.relativePath) repoState.suggestedRelative = msg.relativePath;
       repoState.lastPrimaryOptimizedRelative = msg.optimizedRelative || repoState.lastPrimaryOptimizedRelative;
       repoState.draftRelativePath = '';
+      repoState.draftOptimizedRelative = REPO_DRAFT_OPTIMIZED_SPEC;
+      if (msg.optimizedRelative) {
+        repoState.optimizedSpecs = [
+          msg.optimizedRelative,
+          ...(repoState.optimizedSpecs || []).filter((p) => p !== msg.optimizedRelative && !isDraftOptimizedSpecPath(p)),
+        ];
+        fillRepoOptimizedSelect(repoState.optimizedSpecs);
+      }
       markRepoArtifactsCommitted();
       showToast('已保存录制与优化脚本到项目', 'ok');
       log('ok', '[repo] 已保存: ' + (msg.relativePath || '') + ' · ' + (msg.optimizedRelative || ''));
+      if (msg.removedDraftOptimized?.length) {
+        log('dim', '[repo] 已清理草稿: ' + msg.removedDraftOptimized.join(', '));
+      }
       syncWorkflowUi();
       break;
     case 'repo:pipeline:start':
@@ -3752,11 +3766,20 @@ function handleMessage(msg) {
         setOptMeta(msg.optimizedCode, false);
         state.hasOpt = true;
         buildDiff();
-        switchTab('diff', document.querySelectorAll('.tab')[2]);
+        switchTab('opt', document.querySelectorAll('.tab')[1]);
+      } else if (msg.primaryOptimizedRelative) {
+        log('warn', `[repo] 未读取到优化脚本内容: ${msg.primaryOptimizedRelative}`);
+        if (msg.hint) log('warn', `[repo] ${msg.hint}`);
+      }
+      if (msg.suggestedFormalOptimized) {
+        repoState.suggestedFormalOptimized = msg.suggestedFormalOptimized;
+        log('info', `[repo] 正式用例将保存为: ${msg.suggestedFormalOptimized}`);
+      } else if (msg.suggestedFormalRelative) {
+        log('info', `[repo] 正式录制将保存为: ${msg.suggestedFormalRelative}`);
       }
       const rawFp = document.getElementById('rawCode')?.value?.trim();
       if (rawFp) repoState.rawFingerprintAtPipeline = scriptFingerprint(rawFp);
-      repoState.draftOptimizedExists = true;
+      repoState.draftOptimizedExists = Boolean(msg.optimizedCode || msg.primaryOptimizedRelative);
       updateStudioStatusBar();
       syncWorkflowUi();
       syncActionButtons();
@@ -3764,7 +3787,12 @@ function handleMessage(msg) {
         setStep(2, '');
         setStepSub(2, STEP2_SUB.repo);
         showToast('生成失败（退出码 ' + msg.exitCode + '）', 'err');
-        log('err', '[repo] 生成失败，退出码 ' + msg.exitCode);
+        log('err', '[repo] 生成失败，退出码 ' + msg.exitCode + (msg.hint ? ' · ' + msg.hint : ''));
+      } else if (!msg.optimizedCode) {
+        setStep(2, '');
+        setStepSub(2, msg.hint || STEP2_SUB.repo);
+        showToast(msg.hint || 'pipeline 已完成但未载入优化脚本', 'err');
+        log('warn', '[repo] pipeline 完成但未载入优化脚本');
       } else {
         setStep(2, 'done');
         setStepSub(2, STEP2_SUB.repo);

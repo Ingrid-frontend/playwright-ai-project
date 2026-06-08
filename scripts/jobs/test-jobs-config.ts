@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { countResolvedSpecs } from './job-utils.js';
 
 export type FeishuMode = 'interactive' | 'text' | 'links' | 'none';
 export type NotifyOn = 'success' | 'failure';
@@ -161,6 +162,10 @@ export function resolveJob(jobId: string): ResolvedTestJob {
 export function listJobs(): ResolvedTestJob[] {
   const config = loadTestJobsConfig();
   return config.jobs.map((j) => resolveJob(j.id));
+}
+
+export function countJobSpecs(job: ResolvedTestJob): number {
+  return countResolvedSpecs(job.specs, job.optimizedDir, job.playwrightEnv);
 }
 
 export function getConfigPath(): string {

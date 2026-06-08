@@ -220,6 +220,8 @@ export async function runDirect(opts: DirectRunOptions, ctx: JobRunContext): Pro
 
   console.log(`\n🎬 开始执行任务${ctx.jobId ? `「${ctx.jobId}」` : ''} (runId=${runId}, trigger=${ctx.trigger})\n`);
 
+  const runtimeEnv = opts.playwrightEnv || process.env.PLAYWRIGHT_ENV || 'stage';
+
   const absOptimizedDir = path.resolve(process.cwd(), opts.optimizedDir);
   if (!fs.existsSync(absOptimizedDir) || !fs.statSync(absOptimizedDir).isDirectory()) {
     throw new Error(`优化测试目录不存在或不是目录: ${absOptimizedDir}`);
@@ -227,13 +229,18 @@ export async function runDirect(opts: DirectRunOptions, ctx: JobRunContext): Pro
 
   const specAbsPaths = resolveSpecPaths(opts.specs, opts.optimizedDir, opts.playwrightEnv);
   if (specAbsPaths.length === 0) {
-    console.log('⚠️  未找到匹配的优化测试文件');
+    const envLabel = opts.playwrightEnv || process.env.PLAYWRIGHT_ENV || 'stage';
+    const specHint =
+      opts.specs === 'all'
+        ? `tests/optimized/${envLabel}/ 下无正式用例（已排除 studio-unsaved-draft）`
+        : `未匹配 specs: ${JSON.stringify(opts.specs)}（环境 ${envLabel}）`;
+    console.error(`❌ ${specHint}`);
     const emptySummary: JobSummaryFile = {
       jobId,
       runId,
       trigger: ctx.trigger,
-      testPassed: true,
-      comparePassed: true,
+      testPassed: false,
+      comparePassed: false,
       compareSkipped: true,
       aborted: false,
       totalSpecs: 0,
@@ -245,23 +252,21 @@ export async function runDirect(opts: DirectRunOptions, ctx: JobRunContext): Pro
     };
     if (persist && ctx.jobId) {
       writeSummary(ctx.jobId, runId, emptySummary);
-      updateStatus(ctx, { status: 'success', finishedAt: new Date().toISOString() });
+      updateStatus(ctx, { status: 'failed', finishedAt: new Date().toISOString() });
       clearLock(ctx.jobId);
     }
     return {
-      exitCode: 0,
-      testPassed: true,
-      comparePassed: true,
+      exitCode: 1,
+      testPassed: false,
+      comparePassed: false,
       compareSkipped: true,
       aborted: false,
-      feishuDocPassed: true,
+      feishuDocPassed: false,
       summary: emptySummary,
     };
   }
 
-  console.log(`📋 找到 ${specAbsPaths.length} 个测试文件\n`);
-
-  const runtimeEnv = opts.playwrightEnv || process.env.PLAYWRIGHT_ENV || 'stage';
+  console.log(`📋 找到 ${specAbsPaths.length} 个测试文件（PLAYWRIGHT_ENV=${runtimeEnv}）\n`);
   for (const abs of specAbsPaths) {
     const rel = path.relative(process.cwd(), abs).replace(/\\/g, '/');
     assertSpecEnvMatch(rel, runtimeEnv);

@@ -12,7 +12,7 @@ import {
 } from './job-lock.js';
 import { runJobById, stopJob } from './job-runner.js';
 import { listJobs, loadTestJobsConfig, resolveJob } from './test-jobs-config.js';
-import { formatRunId } from './job-utils.js';
+import { countResolvedSpecs, formatRunId } from './job-utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const CLI_PATH = path.resolve(__filename);
@@ -115,6 +115,7 @@ function tsxSpawnArgs(scriptArgs: string[]): { cmd: string; args: string[] } {
 }
 
 function spawnBackground(jobId: string, runId: string, trigger: ParsedArgs['trigger'], force: boolean): void {
+  const job = resolveJob(jobId);
   const logPath = stdoutLogPath(jobId, runId);
   fs.mkdirSync(path.dirname(logPath), { recursive: true });
   const logFd = fs.openSync(logPath, 'a');
@@ -132,7 +133,7 @@ function spawnBackground(jobId: string, runId: string, trigger: ParsedArgs['trig
   const child = spawn(cmd, args, {
     detached: true,
     stdio: ['ignore', logFd, logFd],
-    env: process.env,
+    env: { ...process.env, PLAYWRIGHT_ENV: job.playwrightEnv },
   });
   child.unref();
   fs.closeSync(logFd);
@@ -184,11 +185,17 @@ function cmdList(): void {
   for (const job of jobs) {
     const running = isJobRunning(job.id) ? '🟢 运行中' : job.enabled ? '⚪ 空闲' : '⏸️  已禁用';
     const schedule = job.schedule ? `cron: ${job.schedule} (${job.timezone})` : '仅手动';
+    const specCount = countResolvedSpecs(job.specs, job.optimizedDir, job.playwrightEnv);
+    const specsLabel =
+      job.specs === 'all'
+        ? `全部 (${job.playwrightEnv}, ${specCount} 个)`
+        : `${JSON.stringify(job.specs)} (${specCount} 个)`;
     console.log(`  ${job.id}`);
     console.log(`    状态: ${running}`);
     console.log(`    说明: ${job.description || '—'}`);
+    console.log(`    环境: ${job.playwrightEnv}`);
     console.log(`    调度: ${schedule}`);
-    console.log(`    用例: ${job.specs === 'all' ? '全部 optimized' : JSON.stringify(job.specs)}`);
+    console.log(`    用例: ${specsLabel}`);
     console.log('');
   }
 }

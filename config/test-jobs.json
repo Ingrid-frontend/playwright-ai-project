@@ -44,7 +44,7 @@
       "description": "工作台冒烟（手动或按需触发）",
       "schedule": null,
       "playwrightEnv": "stage",
-      "specs": ["tests/optimized/stage/260612/工作台_*.optimized.spec.ts"],
+      "specs": ["260612/工作台_*.optimized.spec.ts"],
       "stopOnTestFailure": true,
       "steps": {
         "login": true,
