@@ -133,10 +133,18 @@ function parseRawOriginalRel(relPath, repoRoot) {
   const fileName = parts[parts.length - 1];
   const legacyDefault = getLegacyEnvDefault(repoRoot);
   if (isKnownEnv(parts[0], repoRoot)) {
+    if (parts.length >= 3) {
+      return {
+        env: parts[0],
+        legacy: false,
+        dateCategory: parts[1],
+        fileName,
+      };
+    }
     return {
       env: parts[0],
       legacy: false,
-      dateCategory: parts[1],
+      dateCategory: null,
       fileName,
     };
   }
@@ -257,6 +265,10 @@ function parseEnvAndDateCategoryFromRawOrProcessed(absOrRel, repoRoot) {
   m = norm.match(/^tests\/raw-recordings\/original\/([^/]+)\/.+\.spec\.ts$/);
   if (m && isDateCategoryDirSegment(m[1])) {
     return { env: getLegacyEnvDefault(repoRoot), dateCategory: m[1], legacy: true };
+  }
+  m = norm.match(/^tests\/raw-recordings\/original\/([^/]+)\/([^/]+)\.spec\.ts$/);
+  if (m && isKnownEnv(m[1], repoRoot)) {
+    return { env: m[1], dateCategory: null, legacy: false };
   }
   return { env: getLegacyEnvDefault(repoRoot), dateCategory: null, legacy: true };
 }

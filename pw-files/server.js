@@ -661,6 +661,13 @@ function ensureDraftOptimizedAtCanonical(repoRoot, sinceMs, targetRelative, env)
     const srcAbs = assertAllowedOptimizedSpec(repoRoot, srcRel);
     fs.mkdirSync(path.dirname(canonicalAbs), { recursive: true });
     fs.copyFileSync(srcAbs, canonicalAbs);
+    if (srcRel !== DRAFT_OPTIMIZED_RELATIVE && isDraftOptimizedPath(srcRel)) {
+      try {
+        fs.unlinkSync(srcAbs);
+      } catch {
+        /* ignore */
+      }
+    }
     return DRAFT_OPTIMIZED_RELATIVE;
   } catch {
     return fs.existsSync(canonicalAbs) ? DRAFT_OPTIMIZED_RELATIVE : null;

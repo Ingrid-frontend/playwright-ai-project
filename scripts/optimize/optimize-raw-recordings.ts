@@ -126,6 +126,10 @@ class RawRecordingOptimizer {
     this.optimizedImportLayout = layout;
   }
 
+  setPathDateCategory(dateCategory: string | null): void {
+    this.pathDateCategory = dateCategory;
+  }
+
   setImportPathsFromOutputRel(outputRel: string): void {
     const depth = optimizedImportDepthFromRel(outputRel);
     this.importPathsOverride = optimizedImportPathsForDepth(depth);
@@ -575,6 +579,9 @@ class RawRecordingOptimizer {
     if (dateStr && !dateCategory) {
       dateCategory = this.getDateCategoryForDate(dateStr);
     }
+    if (!dateCategory && fileName === STUDIO_DRAFT_STEM) {
+      dateCategory = getDateCategoryForCalendarDay(new Date().toISOString().slice(0, 10));
+    }
 
     const screenshotDir = buildScreenshotDir({
       playwrightEnv: this.playwrightEnv,
@@ -978,6 +985,9 @@ const filePath = process.argv[2];
 // 如果没有提供参数，默认处理 tests/raw-recordings 文件夹下的所有文件
 const targetPath = filePath || 'tests/raw-recordings/';
 
+const STUDIO_DRAFT_OPTIMIZED_BASENAME = 'studio-unsaved-draft.optimized.spec.ts';
+const STUDIO_DRAFT_OPTIMIZED_REL = `tests/optimized/${STUDIO_DRAFT_OPTIMIZED_BASENAME}`;
+const STUDIO_DRAFT_STEM = 'studio-unsaved-draft';
 const outputDir = 'tests/optimized';
 if (!fs.existsSync(outputDir)) {
   fs.mkdirSync(outputDir, { recursive: true });
@@ -996,9 +1006,16 @@ async function processFile(filePath: string): Promise<void> {
   if (dateStr && !dateCategory) {
     dateCategory = optimizer.getDateCategoryForDate(dateStr);
   }
+  const isStudioDraft = fileName === STUDIO_DRAFT_STEM;
+  if (isStudioDraft && !dateCategory) {
+    dateCategory = getDateCategoryForCalendarDay(new Date().toISOString().slice(0, 10));
+    optimizer.setPathDateCategory(dateCategory);
+  }
 
   let finalOutputDir = outputDir;
-  if (isEnvSegmentEnabled()) {
+  if (isStudioDraft) {
+    finalOutputDir = outputDir;
+  } else if (isEnvSegmentEnabled()) {
     finalOutputDir = dateCategory ? path.join(outputDir, env, dateCategory) : path.join(outputDir, env);
   } else if (dateCategory) {
     finalOutputDir = path.join(outputDir, dateCategory);
@@ -1008,7 +1025,9 @@ async function processFile(filePath: string): Promise<void> {
     fs.mkdirSync(finalOutputDir, { recursive: true });
   }
 
-  const outputPath = path.join(finalOutputDir, `${fileName}.optimized.spec.ts`);
+  const outputPath = isStudioDraft
+    ? path.join(process.cwd(), STUDIO_DRAFT_OPTIMIZED_REL)
+    : path.join(finalOutputDir, `${fileName}.optimized.spec.ts`);
   const outputRel = path.relative(process.cwd(), outputPath).replace(/\\/g, '/');
   optimizer.setImportPathsFromOutputRel(outputRel);
 
