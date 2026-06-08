@@ -26,6 +26,15 @@ const {
   normalizeDateCategoryList,
   isDateCategoryDirSegment,
 } = require(path.join(__dirname, '../src/utils/date-category.cjs'));
+const {
+  specMatchesEnv,
+  buildOptimizedRel,
+  parseEnvFromSpecRel,
+  parseRawOriginalRel,
+  listKnownEnvs,
+  isKnownEnv,
+  assertSpecEnvMatch,
+} = require(path.join(__dirname, '../src/utils/test-env-path.cjs'));
 
 const PORT = process.env.PORT || 3001;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
@@ -359,6 +368,7 @@ function setSessionPlaywrightEnv(ws, session, envId) {
     storageState: resolved?.storageState || '',
     hasStorage: resolved?.hasStorage ?? false,
     accountProfile: session.accountProfile,
+    optimizedSpecs: listOptimizedSpecs(repoRoot, { limit: 40, env: entry.id }),
   });
   sendAccountInfo(ws, session, repoRoot, true);
   logLine(ws, `[env] 已切换为 ${entry.id} · ${entry.baseURL}`, 'info');
@@ -409,6 +419,7 @@ function listOptimizedSpecs(repoRoot, opts = {}) {
   const limit = opts.limit ?? 40;
   const sinceMs = opts.sinceMs;
   const nameIncludes = opts.nameIncludes;
+  const envFilter = opts.env != null ? String(opts.env).trim() : null;
   const base = path.join(repoRoot, 'tests', 'optimized');
   if (!fs.existsSync(base)) return [];
   const found = [];
@@ -428,6 +439,7 @@ function listOptimizedSpecs(repoRoot, opts = {}) {
           if (sinceMs != null && st.mtimeMs < sinceMs - 3000) continue;
           const rel = path.relative(repoRoot, full).split(path.sep).join('/');
           if (nameIncludes && !rel.includes(nameIncludes)) continue;
+          if (envFilter && !specMatchesEnv(rel, envFilter, repoRoot)) continue;
           found.push({ rel, mtime: st.mtimeMs });
         } catch {
           /* ignore */
@@ -441,19 +453,20 @@ function listOptimizedSpecs(repoRoot, opts = {}) {
 }
 
 /** pipeline 结束后：优先本次新生成/更新的，否则回退为仓库内最近用例，并按保存文件名优先匹配 */
-function resolveOptimizedSpecsAfterPipeline(repoRoot, sinceMs, targetRelative) {
-  let specs = listOptimizedSpecs(repoRoot, { sinceMs, limit: 12 });
+function resolveOptimizedSpecsAfterPipeline(repoRoot, sinceMs, targetRelative, env) {
+  const envFilter = env != null ? String(env).trim() : null;
+  let specs = listOptimizedSpecs(repoRoot, { sinceMs, limit: 12, env: envFilter });
   const stem = targetRelative && targetRelative.endsWith('.spec.ts')
     ? path.basename(targetRelative, '.spec.ts')
     : '';
   if (stem) {
-    const byName = listOptimizedSpecs(repoRoot, { limit: 50, nameIncludes: stem });
+    const byName = listOptimizedSpecs(repoRoot, { limit: 50, nameIncludes: stem, env: envFilter });
     if (byName.length) {
       specs = [...new Set([...byName, ...specs])];
     }
   }
   if (specs.length === 0) {
-    specs = listOptimizedSpecs(repoRoot, { limit: 40 });
+    specs = listOptimizedSpecs(repoRoot, { limit: 40, env: envFilter });
   }
   return specs.slice(0, 40);
 }
@@ -583,7 +596,7 @@ function hasDraftRecordingInRepo(repoRoot) {
 }
 
 /** pipeline 后将产物归并到固定草稿 optimized 路径，供 Studio 执行流程使用 */
-function ensureDraftOptimizedAtCanonical(repoRoot, sinceMs, targetRelative) {
+function ensureDraftOptimizedAtCanonical(repoRoot, sinceMs, targetRelative, env) {
   const canonicalAbs = assertAllowedOptimizedSpec(repoRoot, DRAFT_OPTIMIZED_RELATIVE);
   if (fs.existsSync(canonicalAbs)) {
     try {
@@ -598,9 +611,10 @@ function ensureDraftOptimizedAtCanonical(repoRoot, sinceMs, targetRelative) {
   const byName = listOptimizedSpecs(repoRoot, {
     limit: 20,
     nameIncludes: 'studio-unsaved-draft',
+    env: env != null ? String(env).trim() : null,
   });
   const draftCandidate = byName.find((s) => s.endsWith(DRAFT_OPTIMIZED_BASENAME)) || byName[0];
-  const recent = resolveOptimizedSpecsAfterPipeline(repoRoot, sinceMs, targetRelative);
+  const recent = resolveOptimizedSpecsAfterPipeline(repoRoot, sinceMs, targetRelative, env);
   const srcRel = draftCandidate || recent[0];
   if (!srcRel) {
     return fs.existsSync(canonicalAbs) ? DRAFT_OPTIMIZED_RELATIVE : null;
@@ -642,12 +656,13 @@ function buildDraftRecordingRelative(resolved) {
   return `${dir}/${DRAFT_RECORDING_BASENAME}`;
 }
 
-async function ensureDraftRecordingPath(repoRoot, { code, name, description }) {
+async function ensureDraftRecordingPath(repoRoot, session, { code, name, description }) {
   const resolved = await resolveRecordingPathViaRepo(repoRoot, {
     code,
     name,
     description,
     target: 'original',
+    playwrightEnv: getSessionPlaywrightEnv(session),
   });
   const draftRelative = buildDraftRecordingRelative(resolved);
   const abs = assertAllowedSavePath(repoRoot, draftRelative);
@@ -668,7 +683,7 @@ function removeDraftRecordingIfAny(repoRoot, session) {
   session.draftRelativePath = null;
 }
 
-function resolveRecordingPathViaRepo(repoRoot, { code, name, description, target = 'original' }) {
+function resolveRecordingPathViaRepo(repoRoot, { code, name, description, target = 'original', playwrightEnv }) {
   return new Promise((resolve, reject) => {
     const script = path.join(repoRoot, 'scripts/recording/resolve-recording-path.ts');
     if (!fs.existsSync(script)) {
@@ -708,6 +723,7 @@ function resolveRecordingPathViaRepo(repoRoot, { code, name, description, target
         name: name || undefined,
         description: description || undefined,
         target,
+        playwrightEnv: playwrightEnv || undefined,
       }),
     );
     proc.stdin.end();
@@ -731,6 +747,7 @@ async function suggestRepoSavePath(ws, msg) {
       name: msg.name,
       description: msg.description,
       target: 'original',
+      playwrightEnv: getSessionPlaywrightEnv(session),
     });
     send(ws, 'repo:suggest-path:done', result);
     logLine(ws, `[repo] 建议路径: ${result.relativePath}`, 'dim');
@@ -852,6 +869,7 @@ async function repoCommitArtifacts(ws, session, msg) {
         name: msg.name,
         description: msg.description,
         target: 'original',
+        playwrightEnv: getSessionPlaywrightEnv(session),
       });
       relativePath = resolved.relativePath;
       logLine(ws, `[repo] 录制落盘: ${relativePath}`, 'dim');
@@ -861,14 +879,29 @@ async function repoCommitArtifacts(ws, session, msg) {
     }
   }
   if (!optimizedRelative) {
-    const norm = relativePath.replace(/\\/g, '/');
-    const parts = norm.split('/');
-    const stem = path.basename(norm, '.spec.ts');
-    const dateCategory = parts[parts.length - 2];
-    optimizedRelative =
-      parts.includes('original') && isDateCategoryDirSegment(dateCategory)
-        ? `tests/optimized/${dateCategory}/${stem}.optimized.spec.ts`
-        : `tests/optimized/${stem}.optimized.spec.ts`;
+    const parsed = parseRawOriginalRel(relativePath, repoRoot);
+    const stem = path.basename(relativePath.replace(/\\/g, '/'), '.spec.ts');
+    if (parsed) {
+      optimizedRelative = buildOptimizedRel({
+        playwrightEnv: parsed.env,
+        dateCategory: parsed.dateCategory,
+        stem,
+        repoRoot,
+      });
+    } else {
+      const norm = relativePath.replace(/\\/g, '/');
+      const parts = norm.split('/');
+      const dateCategory = parts[parts.length - 2];
+      optimizedRelative =
+        parts.includes('original') && isDateCategoryDirSegment(dateCategory)
+          ? buildOptimizedRel({
+              playwrightEnv: getSessionPlaywrightEnv(session),
+              dateCategory,
+              stem,
+              repoRoot,
+            })
+          : `tests/optimized/${stem}.optimized.spec.ts`;
+    }
   }
   let rawAbs;
   let optAbs;
@@ -909,7 +942,7 @@ async function runRepoPipeline(ws, session, msg) {
   const pipelineCode = typeof msg.code === 'string' ? msg.code : '';
   if (pipelineCode.trim()) {
     try {
-      const { draftRelative, formalHint } = await ensureDraftRecordingPath(repoRoot, {
+      const { draftRelative, formalHint } = await ensureDraftRecordingPath(repoRoot, session, {
         code: pipelineCode,
         name: msg.name,
         description: msg.description,
@@ -978,10 +1011,16 @@ async function runRepoPipeline(ws, session, msg) {
     return;
   }
 
-  const optimizedSpecs = resolveOptimizedSpecsAfterPipeline(repoRoot, since, targetArg);
+  const optimizedSpecs = resolveOptimizedSpecsAfterPipeline(
+    repoRoot,
+    since,
+    targetArg,
+    getSessionPlaywrightEnv(session),
+  );
   session.optimizedSpecs = optimizedSpecs;
   const draftOptimizedRelative =
-    ensureDraftOptimizedAtCanonical(repoRoot, since, targetArg) || DRAFT_OPTIMIZED_RELATIVE;
+    ensureDraftOptimizedAtCanonical(repoRoot, since, targetArg, getSessionPlaywrightEnv(session)) ||
+    DRAFT_OPTIMIZED_RELATIVE;
   session.draftOptimizedRelative = draftOptimizedRelative;
   session.lastPrimaryOptimizedRelative = draftOptimizedRelative;
   let optimizedCode = '';
@@ -1036,6 +1075,14 @@ async function runRepoTest(ws, session, msg) {
   if (!fs.existsSync(absSpec)) {
     send(ws, 'error', { message: `文件不存在: ${specRel}` });
     return;
+  }
+  if (!isDraftOptimizedPath(specRel)) {
+    try {
+      assertSpecEnvMatch(specRel, getSessionPlaywrightEnv(session), repoRoot);
+    } catch (e) {
+      send(ws, 'error', { message: errText(e) });
+      return;
+    }
   }
 
   const cli = getRepoPlaywrightCli(repoRoot);
@@ -1184,6 +1231,21 @@ async function executeRepoSpecForBatch(ws, session, specRel, headed, projects) {
       error: err,
       failures: [{ title: specRel, location: specRel, status: 'error', message: err, hint: '' }],
     };
+  }
+  if (!isDraftOptimizedPath(specRel)) {
+    try {
+      assertSpecEnvMatch(specRel, getSessionPlaywrightEnv(session), repoRoot);
+    } catch (e) {
+      const err = errText(e);
+      return {
+        exitCode: 1,
+        passed: 0,
+        failed: 1,
+        total: 1,
+        error: err,
+        failures: [{ title: specRel, location: specRel, status: 'error', message: err, hint: '请切换侧栏环境或选择当前环境下的用例。' }],
+      };
+    }
   }
   const cli = getRepoPlaywrightCli(repoRoot);
   if (!cli) {
@@ -1586,7 +1648,7 @@ async function repoLoadOptimized(ws, msg) {
   }
 }
 
-async function repoDeleteOptimizedSpecs(ws, msg) {
+async function repoDeleteOptimizedSpecs(ws, session, msg) {
   const repoRoot = resolveRepoRoot();
   if (!fs.existsSync(path.join(repoRoot, 'playwright.config.ts'))) {
     send(ws, 'error', { message: '未找到项目根，无法删除用例' });
@@ -1624,7 +1686,10 @@ async function repoDeleteOptimizedSpecs(ws, msg) {
     }
   }
 
-  const optimizedSpecs = listOptimizedSpecs(repoRoot, { limit: 40 });
+  const optimizedSpecs = listOptimizedSpecs(repoRoot, {
+    limit: 40,
+    env: getSessionPlaywrightEnv(session),
+  });
   send(ws, 'repo:delete-spec:done', {
     deleted,
     failed,
@@ -2985,7 +3050,9 @@ wss.on('connection', (ws) => {
 
   const root = resolveRepoRoot();
   const repoReady = fs.existsSync(path.join(root, 'playwright.config.ts'));
-  const optimizedSpecs = repoReady ? listOptimizedSpecs(root, { limit: 40 }) : [];
+  const optimizedSpecs = repoReady
+    ? listOptimizedSpecs(root, { limit: 40, env: getSessionPlaywrightEnv(session) })
+    : [];
   let draftOptimizedExists = false;
   let draftRecordingExists = false;
   let dateCategories = [];
@@ -3114,7 +3181,10 @@ wss.on('connection', (ws) => {
           send(ws, 'error', { message: '未找到项目根，无法列出 optimized 用例' });
           break;
         }
-        const optimizedSpecs = listOptimizedSpecs(repoRoot, { limit: 40 });
+        const optimizedSpecs = listOptimizedSpecs(repoRoot, {
+          limit: 40,
+          env: getSessionPlaywrightEnv(session),
+        });
         send(ws, 'repo:list-optimized:done', { optimizedSpecs, repoRoot });
         break;
       }
@@ -3136,7 +3206,7 @@ wss.on('connection', (ws) => {
         break;
 
       case 'repo:delete-spec':
-        await repoDeleteOptimizedSpecs(ws, msg);
+        await repoDeleteOptimizedSpecs(ws, session, msg);
         break;
 
       case 'config:get-date-categories':

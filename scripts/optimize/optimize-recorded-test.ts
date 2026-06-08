@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { getDateCategoryForCalendarDay } from '../../src/utils/date-category.cjs';
+import { buildOptimizedRel, getLegacyEnvDefault } from '../../src/utils/test-env-path.js';
 
 interface Action {
   index: number;
@@ -388,13 +389,15 @@ async function processFile(filePath: string): Promise<void> {
   if (dateMatch) {
     dateCategory = getDateCategoryForDate(dateMatch[1]);
   }
-  
-  const outputDir = `tests/optimized/${dateCategory}`;
+
+  const playwrightEnv = process.env.PLAYWRIGHT_ENV?.trim() || getLegacyEnvDefault();
+  const stem = fileName.replace('.spec.ts', '');
+  const outputRel = buildOptimizedRel({ playwrightEnv, dateCategory, stem });
+  const outputPath = path.join(process.cwd(), outputRel);
+  const outputDir = path.dirname(outputPath);
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
   }
-  
-  const outputPath = path.join(outputDir, fileName.replace('.spec.ts', '.optimized.spec.ts'));
 
   fs.writeFileSync(outputPath, result, 'utf-8');
   console.log(`✅ 优化完成: ${outputPath}`);

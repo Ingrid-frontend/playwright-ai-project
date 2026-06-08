@@ -132,14 +132,59 @@
   .batch-spec-toolbar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
   .batch-progress { font-size: var(--fs-xs); color: var(--teal); margin-bottom: 8px; min-height: 1.2em; }
   .test-job-list { display: flex; flex-direction: column; gap: 8px; max-height: 220px; overflow-y: auto; }
+  .test-job-list.jobs-panel-list { max-height: none; flex: 1; min-height: 120px; padding: 0 16px 16px; }
   .test-job-card {
     border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px;
-    background: var(--bg3); font-size: var(--fs-xs);
+    background: var(--bg3); font-size: var(--fs-xs); cursor: pointer; transition: border-color .15s, background .15s;
   }
+  .test-job-card:hover { border-color: var(--border2); background: var(--bg4); }
+  .test-job-card.selected { border-color: rgba(61,217,204,.55); background: rgba(61,217,204,.06); }
   .test-job-card.running { border-color: rgba(46,232,154,.45); }
   .test-job-card .job-title { font-weight: 600; color: var(--text); margin-bottom: 4px; }
   .test-job-card .job-meta { color: var(--muted); line-height: 1.5; margin-bottom: 6px; }
   .test-job-card .job-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+  .step-branch-chip.active[data-workflow="jobs"] {
+    border-color: rgba(61,217,204,.55); color: var(--teal); background: rgba(61,217,204,.1);
+  }
+  #pipelineJobs {
+    display: flex; flex-direction: column; flex: 1; min-height: 0; border-bottom: none;
+  }
+  #pipelineJobs:not(.studio-hidden) { display: flex; }
+  .jobs-workspace {
+    display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden;
+    background: var(--bg); border-right: 1px solid var(--border);
+  }
+  .jobs-workspace-head {
+    padding: 16px 20px; border-bottom: 1px solid var(--border); background: var(--bg2);
+  }
+  .jobs-workspace-title { font-family: var(--font-head); font-size: var(--fs-lg); font-weight: 600; margin-bottom: 6px; }
+  .jobs-workspace-sub { font-size: var(--fs-sm); color: var(--text-tertiary); line-height: 1.5; }
+  .jobs-workspace-body { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 16px; }
+  .jobs-meta-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px;
+  }
+  .jobs-meta-item {
+    padding: 10px 12px; border-radius: var(--radius); border: 1px solid var(--border);
+    background: var(--bg2); font-size: var(--fs-xs);
+  }
+  .jobs-meta-item .label { color: var(--text-tertiary); margin-bottom: 4px; }
+  .jobs-meta-item .value { color: var(--text); font-weight: 500; word-break: break-all; }
+  .jobs-log-panel {
+    flex: 1; min-height: 200px; display: flex; flex-direction: column; border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden; background: var(--bg2);
+  }
+  .jobs-log-panel-head {
+    padding: 8px 12px; font-size: var(--fs-xs); color: var(--text-secondary);
+    border-bottom: 1px solid var(--border); background: var(--bg3);
+  }
+  .jobs-log-panel pre {
+    flex: 1; margin: 0; padding: 12px; overflow: auto; font-size: 11px; line-height: 1.6;
+    font-family: var(--font-mono); color: var(--text-secondary); white-space: pre-wrap; word-break: break-all;
+  }
+  .jobs-workspace-empty {
+    flex: 1; display: flex; align-items: center; justify-content: center; color: var(--text-tertiary);
+    font-size: var(--fs-sm); text-align: center; padding: 32px;
+  }
   .studio-status-bar {
     display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
     font-size: var(--fs-xs); color: var(--text-tertiary); margin-top: 6px;
@@ -381,6 +426,8 @@
 
   /* Center editor area */
   .center { display: flex; flex-direction: column; overflow: hidden; min-height: 0; min-width: 0; }
+  #centerEditorWrap { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+  .jobs-workspace:not(.studio-hidden) { flex: 1; min-height: 0; }
 
   .tab-bar {
     display: flex; border-bottom: 1px solid var(--border);
@@ -678,6 +725,7 @@
         <div class="provider-row step-branch-row" role="group" aria-label="工作模式">
           <button type="button" class="step-branch-chip active" data-workflow="new" id="workflowModeNew" onclick="setWorkflowMode('new', this)">新建用例</button>
           <button type="button" class="step-branch-chip" data-workflow="run" id="workflowModeRun" onclick="setWorkflowMode('run', this)">运行用例</button>
+          <button type="button" class="step-branch-chip" data-workflow="jobs" id="workflowModeJobs" onclick="setWorkflowMode('jobs', this)">定时任务</button>
         </div>
       </div>
 
@@ -733,19 +781,13 @@
         </div>
       </div>
 
-      <div class="sidebar-accordion studio-hidden" id="accordionTestJobs">
-        <button type="button" class="accordion-trigger" aria-expanded="false">
-          定时任务 <span class="acc-chevron">›</span>
-        </button>
-        <div class="accordion-body">
-          <p class="sidebar-hint">读取 <code style="font-size:var(--fs-xs)">config/test-jobs.json</code>，支持后台运行与失败即停。</p>
-          <div style="display:flex;gap:6px;margin-bottom:8px">
-            <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px;flex:1" onclick="refreshTestJobsList()">刷新</button>
-            <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px;flex:1" onclick="openAccordion('accordionTestJobs')">展开</button>
-          </div>
-          <div id="testJobsList" class="test-job-list"></div>
-          <pre id="testJobLogTail" class="studio-hidden" style="margin-top:8px;max-height:120px;overflow:auto;font-size:10px;background:var(--bg2);padding:8px;border-radius:6px;border:1px solid var(--border)"></pre>
+      <div class="pipeline studio-hidden" id="pipelineJobs">
+        <div class="sidebar-section" style="padding-bottom:10px">
+          <div class="sidebar-label">任务列表</div>
+          <p class="sidebar-hint">读取 <code>config/test-jobs.json</code>。支持前台/后台执行、失败即停；本地 Cron 守护：<code>npm run test-job:daemon</code></p>
+          <button type="button" class="btn btn-full" style="margin-top:4px" onclick="refreshTestJobsList()">刷新任务</button>
         </div>
+        <div id="testJobsList" class="test-job-list jobs-panel-list"></div>
       </div>
 
       <div class="pipeline" id="pipelineNew">
@@ -932,6 +974,24 @@
 
     <!-- Center editor -->
     <div class="center">
+      <div class="jobs-workspace studio-hidden" id="jobsWorkspace">
+        <div class="jobs-workspace-head">
+          <div class="jobs-workspace-title" id="jobsWorkspaceTitle">定时任务</div>
+          <div class="jobs-workspace-sub" id="jobsWorkspaceSub">在左侧选择任务，查看配置、运行状态与日志</div>
+        </div>
+        <div class="jobs-workspace-body">
+          <div class="jobs-workspace-empty" id="jobsWorkspaceEmpty">← 从左侧选择一个任务</div>
+          <div id="jobsWorkspaceDetail" class="studio-hidden" style="display:flex;flex-direction:column;gap:16px;flex:1;min-height:0">
+            <div class="jobs-meta-grid" id="jobsMetaGrid"></div>
+            <div class="jobs-log-panel">
+              <div class="jobs-log-panel-head">运行日志（最近一次）</div>
+              <pre id="testJobLogTail">（暂无日志）</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="centerEditorWrap">
       <div class="tab-bar">
         <div class="tab active" onclick="switchTab('raw',this)">
           录制脚本 <span class="tab-badge" id="rawBadge">空</span>
@@ -1001,6 +1061,7 @@
             </div>
           </div>
         </div>
+      </div>
       </div>
     </div>
 
@@ -1121,7 +1182,7 @@ const repoState = {
   compareHasReport: false,
   compareHasScreenshots: false,
 };
-const testJobsState = { jobs: [], pollTimer: null };
+const testJobsState = { jobs: [], pollTimer: null, selectedJobId: null };
 const optimizeKeyState = { serverAnthropic: false, serverDeepseek: false };
 const envState = { current: 'stage', environments: [], repoReady: false };
 const accountState = {
@@ -2392,6 +2453,11 @@ function applyEnvChanged(msg) {
   if (!msg.hasStorage && msg.storageState) {
     showToast(`${msg.env}: 未找到登录态文件`, 'err');
   }
+  if (Array.isArray(msg.optimizedSpecs)) {
+    repoState.optimizedSpecs = msg.optimizedSpecs;
+    fillRepoOptimizedSelect(msg.optimizedSpecs);
+    fillRepoBatchChecklist(msg.optimizedSpecs);
+  }
   updateStudioStatusBar();
 }
 
@@ -2476,7 +2542,72 @@ function refreshRepoOptimizedList() {
 }
 
 function syncTestJobsPanelVisibility() {
-  document.getElementById('accordionTestJobs')?.classList.toggle('studio-hidden', !repoState.repoReady);
+  applyWorkflowLayout();
+}
+
+function applyWorkflowLayout() {
+  const isNew = workflowMode === 'new';
+  const isRun = workflowMode === 'run';
+  const isJobs = workflowMode === 'jobs';
+  document.getElementById('pipelineNew')?.classList.toggle('studio-hidden', !isNew);
+  document.getElementById('pipelineRun')?.classList.toggle('studio-hidden', !isRun);
+  document.getElementById('pipelineJobs')?.classList.toggle('studio-hidden', !isJobs);
+  document.getElementById('repoSpecPickerSection')?.classList.toggle('studio-hidden', !isRun);
+  document.getElementById('accordionRun')?.classList.toggle('studio-hidden', isJobs);
+  document.getElementById('jobsWorkspace')?.classList.toggle('studio-hidden', !isJobs);
+  document.getElementById('centerEditorWrap')?.classList.toggle('studio-hidden', isJobs);
+}
+
+function formatJobSpecsLabel(specs) {
+  if (specs === 'all') return '全部 optimized';
+  if (Array.isArray(specs)) return specs.join(', ');
+  return String(specs || '—');
+}
+
+function renderJobsWorkspace(job) {
+  const emptyEl = document.getElementById('jobsWorkspaceEmpty');
+  const detailEl = document.getElementById('jobsWorkspaceDetail');
+  const titleEl = document.getElementById('jobsWorkspaceTitle');
+  const subEl = document.getElementById('jobsWorkspaceSub');
+  const metaEl = document.getElementById('jobsMetaGrid');
+  if (!job) {
+    emptyEl?.classList.remove('studio-hidden');
+    detailEl?.classList.add('studio-hidden');
+    if (titleEl) titleEl.textContent = '定时任务';
+    if (subEl) subEl.textContent = '在左侧选择任务，查看配置、运行状态与日志';
+    return;
+  }
+  emptyEl?.classList.add('studio-hidden');
+  detailEl?.classList.remove('studio-hidden');
+  if (titleEl) titleEl.textContent = job.id;
+  if (subEl) subEl.textContent = job.description || '—';
+  const lr = job.latestRun;
+  const st = lr?.status?.status || '尚无记录';
+  const sum = lr?.summary;
+  const meta = [
+    ['状态', job.running ? '运行中' : job.enabled ? '空闲' : '已禁用'],
+    ['调度', formatJobSchedule(job)],
+    ['用例范围', formatJobSpecsLabel(job.specs)],
+    ['最近 runId', lr?.runId || '—'],
+    ['最近结果', sum ? `${st} · ${sum.successCount}/${sum.executedCount} 成功` : st],
+    ['时区', job.timezone || 'Asia/Shanghai'],
+  ];
+  if (metaEl) {
+    metaEl.innerHTML = meta
+      .map(
+        ([label, value]) =>
+          `<div class="jobs-meta-item"><div class="label">${escHtml(label)}</div><div class="value">${escHtml(value)}</div></div>`,
+      )
+      .join('');
+  }
+}
+
+function selectTestJob(jobId) {
+  testJobsState.selectedJobId = jobId;
+  const job = testJobsState.jobs.find((j) => j.id === jobId) || null;
+  renderTestJobsList(testJobsState.jobs);
+  renderJobsWorkspace(job);
+  if (jobId) fetchTestJobStatus(jobId);
 }
 
 function formatJobSchedule(job) {
@@ -2507,11 +2638,12 @@ function renderTestJobsList(jobs) {
       const disabled = !job.enabled ? ' · 已禁用' : '';
       const esc = (s) => String(s || '').replace(/</g, '&lt;').replace(/"/g, '&quot;');
       const id = esc(job.id);
+      const selected = testJobsState.selectedJobId === job.id ? ' selected' : '';
       return `
-      <div class="test-job-card${running ? ' running' : ''}" data-job-id="${id}">
+      <div class="test-job-card${running ? ' running' : ''}${selected}" data-job-id="${id}" onclick="selectTestJob('${id}')">
         <div class="job-title">${id}${running ? ' 🟢' : ''}${disabled}</div>
         <div class="job-meta">${esc(job.description || '—')}<br>调度: ${esc(formatJobSchedule(job))}<br>最近: ${esc(formatJobLatestRun(job))}</div>
-        <div class="job-actions">
+        <div class="job-actions" onclick="event.stopPropagation()">
           <button type="button" class="btn" style="font-size:var(--fs-xs);padding:3px 6px" onclick="runTestJob('${id}', false)" ${running ? 'disabled' : ''}>前台</button>
           <button type="button" class="btn" style="font-size:var(--fs-xs);padding:3px 6px" onclick="runTestJob('${id}', true)" ${running ? 'disabled' : ''}>后台</button>
           <button type="button" class="btn" style="font-size:var(--fs-xs);padding:3px 6px" onclick="stopTestJob('${id}')" ${running ? '' : 'disabled'}>停止</button>
@@ -2520,6 +2652,10 @@ function renderTestJobsList(jobs) {
       </div>`;
     })
     .join('');
+  const selected = testJobsState.selectedJobId
+    ? jobs.find((j) => j.id === testJobsState.selectedJobId)
+    : null;
+  if (selected) renderJobsWorkspace(selected);
   const anyRunning = jobs.some((j) => j.running);
   if (anyRunning && !testJobsState.pollTimer) startTestJobsPolling();
   if (!anyRunning) stopTestJobsPolling();
@@ -2530,6 +2666,7 @@ function refreshTestJobsList() {
 }
 
 function runTestJob(jobId, background) {
+  testJobsState.selectedJobId = jobId;
   send('jobs:run', { jobId, background: Boolean(background) });
   if (background) startTestJobsPolling();
 }
@@ -2539,7 +2676,8 @@ function stopTestJob(jobId) {
 }
 
 function fetchTestJobStatus(jobId) {
-  send('jobs:status', { jobId, lines: 60 });
+  testJobsState.selectedJobId = jobId;
+  send('jobs:status', { jobId, lines: 120 });
 }
 
 function startTestJobsPolling() {
@@ -2556,8 +2694,8 @@ function stopTestJobsPolling() {
 }
 
 function setWorkflowMode(mode, el) {
-  const next = mode === 'run' ? 'run' : 'new';
-  if (next !== workflowMode) {
+  const next = mode === 'run' ? 'run' : mode === 'jobs' ? 'jobs' : 'new';
+  if (next !== workflowMode && workflowMode !== 'jobs' && next !== 'jobs') {
     const raw = document.getElementById('rawCode')?.value?.trim();
     const opt = document.getElementById('optCode')?.value?.trim();
     if ((raw || opt) && !window.confirm('切换工作模式将保留当前编辑器内容，是否继续？')) {
@@ -2574,16 +2712,19 @@ function setWorkflowMode(mode, el) {
   } catch {
     /* ignore */
   }
-  document.getElementById('pipelineNew')?.classList.toggle('studio-hidden', workflowMode !== 'new');
-  document.getElementById('pipelineRun')?.classList.toggle('studio-hidden', workflowMode !== 'run');
-  document.getElementById('repoSpecPickerSection')?.classList.toggle('studio-hidden', workflowMode !== 'run');
+  applyWorkflowLayout();
   if (workflowMode === 'run') {
     expandRunPipelineStep(1);
     refreshRepoOptimizedList();
     restoreEditorTab();
+  } else if (workflowMode === 'jobs') {
+    refreshTestJobsList();
+    if (!testJobsState.selectedJobId && testJobsState.jobs.length) {
+      selectTestJob(testJobsState.jobs[0].id);
+    }
   } else {
     expandPipelineStep(currentPipelineStep || 1);
-    if (workflowMode === 'new') openAccordion('accordionRun');
+    openAccordion('accordionRun');
   }
   syncWorkflowUi();
   if (el) el.blur();
@@ -2615,7 +2756,7 @@ function setRunSubMode(mode, el) {
 function restoreWorkflowMode() {
   try {
     const saved = sessionStorage.getItem(SS_WORKFLOW_MODE);
-    if (saved === 'run' || saved === 'new') workflowMode = saved;
+    if (saved === 'run' || saved === 'new' || saved === 'jobs') workflowMode = saved;
     const sub = sessionStorage.getItem(SS_RUN_SUB_MODE);
     if (sub === 'batch' || sub === 'single') runSubMode = sub;
   } catch {
@@ -2627,9 +2768,7 @@ function restoreWorkflowMode() {
   document.querySelectorAll('[data-run-sub]').forEach((chip) => {
     chip.classList.toggle('active', chip.dataset.runSub === runSubMode);
   });
-  document.getElementById('pipelineNew')?.classList.toggle('studio-hidden', workflowMode !== 'new');
-  document.getElementById('pipelineRun')?.classList.toggle('studio-hidden', workflowMode !== 'run');
-  document.getElementById('repoSpecPickerSection')?.classList.toggle('studio-hidden', workflowMode !== 'run');
+  applyWorkflowLayout();
   document.getElementById('runSpecSingle')?.classList.toggle('studio-hidden', runSubMode !== 'single');
   document.getElementById('runSpecBatch')?.classList.toggle('studio-hidden', runSubMode !== 'batch');
 }
@@ -2786,6 +2925,8 @@ function syncRepoButtons() {
   const specPick = document.getElementById('repoOptimizedPick')?.value?.trim();
   const batchCount = getSelectedBatchSpecs().length;
   const hasBrowsers = getSelectedBrowserProjects().length > 0;
+
+  if (workflowMode === 'jobs') return;
 
   if (workflowMode === 'new') {
     const rs = document.getElementById('btnRepoSave');
@@ -3645,6 +3786,9 @@ function handleMessage(msg) {
       break;
     case 'jobs:list:done':
       renderTestJobsList(msg.jobs || []);
+      if (workflowMode === 'jobs' && !testJobsState.selectedJobId && msg.jobs?.length) {
+        selectTestJob(msg.jobs[0].id);
+      }
       break;
     case 'jobs:status:done': {
       if (msg.job) {
@@ -3652,13 +3796,25 @@ function handleMessage(msg) {
         if (idx >= 0) {
           testJobsState.jobs[idx] = msg.job;
           renderTestJobsList(testJobsState.jobs);
+        } else {
+          renderJobsWorkspace(msg.job);
         }
       }
       const logEl = document.getElementById('testJobLogTail');
-      if (logEl && msg.logs?.text) {
-        logEl.classList.remove('studio-hidden');
-        logEl.textContent = msg.logs.text;
-        openAccordion('accordionTestJobs');
+      if (logEl) {
+        logEl.textContent = msg.logs?.text?.trim() ? msg.logs.text : '（暂无日志）';
+      }
+      if (workflowMode !== 'jobs') {
+        workflowMode = 'jobs';
+        document.querySelectorAll('[data-workflow]').forEach((chip) => {
+          chip.classList.toggle('active', chip.dataset.workflow === 'jobs');
+        });
+        applyWorkflowLayout();
+        try {
+          sessionStorage.setItem(SS_WORKFLOW_MODE, 'jobs');
+        } catch {
+          /* ignore */
+        }
       }
       break;
     }
@@ -4622,6 +4778,7 @@ restoreEditorTab();
 renderRunHistory();
 if (workflowMode === 'new') openAccordion('accordionRun');
 if (workflowMode === 'run') expandRunPipelineStep(1);
+if (workflowMode === 'jobs') refreshTestJobsList();
 syncWorkflowUi();
 syncActionButtons();
 document.getElementById('repoSpecSearch')?.addEventListener('input', () => {

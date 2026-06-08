@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { browserToRunSegment, recordLastGreenRun } from '../report/baseline-manager.js';
+import { specMatchesEnv } from '../../src/utils/test-env-path.js';
 
 export function findOptimizedSpecFiles(rootDir: string): string[] {
   const absRoot = path.resolve(process.cwd(), rootDir);
@@ -58,11 +59,23 @@ function matchesAnyPattern(relPath: string, patterns: string[]): boolean {
   });
 }
 
+function isDraftOptimizedSpecAbs(absPath: string): boolean {
+  const base = path.basename(absPath);
+  return base === 'studio-unsaved-draft.optimized.spec.ts';
+}
+
 export function resolveSpecPaths(
   specs: 'all' | string[],
   optimizedDir: string,
+  playwrightEnv?: string,
 ): string[] {
-  const allSpecs = findOptimizedSpecFiles(optimizedDir);
+  let allSpecs = findOptimizedSpecFiles(optimizedDir).filter((p) => !isDraftOptimizedSpecAbs(p));
+  if (playwrightEnv) {
+    allSpecs = allSpecs.filter((abs) => {
+      const rel = path.relative(process.cwd(), abs).replace(/\\/g, '/');
+      return specMatchesEnv(rel, playwrightEnv);
+    });
+  }
   if (specs === 'all') return allSpecs;
 
   const patterns = specs.map((s) => s.replace(/\\/g, '/'));

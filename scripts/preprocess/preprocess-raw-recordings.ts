@@ -10,6 +10,12 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const { isKnownEnv } = require('../../src/utils/test-env-path.cjs') as {
+  isKnownEnv: (envId: string, repoRoot?: string) => boolean;
+};
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '../..');
@@ -77,10 +83,14 @@ export function ensurePlaywrightImport(content: string): string {
   return `import { test, expect } from '@playwright/test';\n\n${trimmed}`;
 }
 
-/** 输出路径：original/<batch>/file → <batch>/processed/file */
+/** 输出路径：original/<env>/<batch>/file 或 original/<batch>/file → 对应 processed */
 export function resolveProcessedOutputPath(inputFile: string): string {
   const normalized = path.resolve(inputFile).replace(/\\/g, '/');
   const rel = path.relative(projectRoot, normalized).replace(/\\/g, '/');
+  const withEnv = rel.match(/^tests\/raw-recordings\/original\/([^/]+)\/([^/]+)\/(.+\.spec\.ts)$/);
+  if (withEnv && isKnownEnv(withEnv[1], projectRoot)) {
+    return path.join(projectRoot, 'tests', 'raw-recordings', withEnv[1], withEnv[2], 'processed', withEnv[3]);
+  }
   const m = rel.match(/^tests\/raw-recordings\/original\/([^/]+)\/(.+\.spec\.ts)$/);
   if (m) {
     return path.join(projectRoot, 'tests', 'raw-recordings', m[1], 'processed', m[2]);

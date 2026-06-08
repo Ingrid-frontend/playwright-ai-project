@@ -1,0 +1,111 @@
+name: Playwright Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    timeout-minutes: 90
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Cache Playwright Browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps
+
+      - name: Login (storage state)
+        run: npm run login
+        env:
+          PLAYWRIGHT_ENV: stage
+          TEST_USERNAME: ${{ secrets.TEST_USERNAME }}
+          TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+
+      - name: Run optimized tests (Chromium + WebKit)
+        run: npx playwright test --project=optimized --project=optimized-webkit
+        env:
+          PLAYWRIGHT_ENV: stage
+          TEST_USERNAME: ${{ secrets.TEST_USERNAME }}
+          TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+
+      - name: Screenshot compare with gate
+        run: npm run compare-screenshots -- --gate
+
+      - name: PR UI issues comment (optional)
+        if: github.event_name == 'pull_request' && always()
+        run: npm run pr-comment-ui-issues
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        continue-on-error: true
+
+      - name: Upload playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: screenshots/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload screenshot comparison report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshot-comparison-report
+          path: |
+            results/screenshot-comparison.html
+            results/ui-issues.json
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Upload diffs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diffs
+          path: results/diffs/
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Feishu notify on failure
+        if: failure() && secrets.FEISHU_WEBHOOK_URL != ''
+        run: npx tsx scripts/flow/auto-test-flow.ts --feishu-mode=interactive
+        env:
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          FEISHU_WEBHOOK_SECRET: ${{ secrets.FEISHU_WEBHOOK_SECRET }}
+        continue-on-error: true

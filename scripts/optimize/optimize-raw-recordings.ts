@@ -1,6 +1,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { getDateCategoryForCalendarDay } from '../../src/utils/date-category.cjs';
+import {
+  buildScreenshotDir,
+  optimizedImportPathsForDepth,
+  optimizedImportDepthFromRel,
+  parseEnvAndDateCategoryFromRawOrProcessed,
+  isEnvSegmentEnabled,
+} from '../../src/utils/test-env-path.js';
 
 /**
  * optimize-raw-recordings.ts
@@ -53,6 +60,19 @@ interface TestBlock {
   bodyStart: number;
 }
 
+/** 生成用例时注入的等待/超时（偏短，依赖 Playwright auto-wait + waitForPostInteractionPaint） */
+const GEN_WAIT = {
+  testTimeoutMs: 90_000,
+  networkIdleGotoMs: 5_000,
+  networkIdleAfterMs: 5_000,
+  skipGuardVisibleMs: 4_000,
+  iframeAttachedMs: 12_000,
+  expectVisibleIframeMs: 12_000,
+  expectVisibleMs: 8_000,
+  locatorVisibleIframeMs: 12_000,
+  locatorVisibleMs: 6_000,
+} as const;
+
 // 优化选项
 interface OptimizeOptions {
   removeIframe: boolean;
@@ -87,9 +107,15 @@ class RawRecordingOptimizer {
   private options: OptimizeOptions;
   /** `nested`: `tests/optimized/<date>/x.optimized.spec.ts`；`flat`: `tests/optimized/x.optimized.spec.ts`（无日期子目录时） */
   private optimizedImportLayout: OptimizedImportLayout = 'nested';
+  private playwrightEnv: string;
+  private pathDateCategory: string | null;
+  private importPathsOverride: ReturnType<typeof optimizedImportPathsForDepth> | null = null;
 
   constructor(filePath: string) {
     this.filePath = filePath;
+    const meta = parseEnvAndDateCategoryFromRawOrProcessed(filePath);
+    this.playwrightEnv = meta.env;
+    this.pathDateCategory = meta.dateCategory;
     this.content = fs.readFileSync(filePath, 'utf-8');
     this.lines = this.content.split('\n');
     this.detectIframe();
@@ -100,12 +126,18 @@ class RawRecordingOptimizer {
     this.optimizedImportLayout = layout;
   }
 
+  setImportPathsFromOutputRel(outputRel: string): void {
+    const depth = optimizedImportDepthFromRel(outputRel);
+    this.importPathsOverride = optimizedImportPathsForDepth(depth);
+  }
+
   private getOptimizedImportPaths(): {
     fixtures: string;
     screenshot: string;
     optimizedActions: string;
     fixturesCommentPhrase: string;
   } {
+    if (this.importPathsOverride) return this.importPathsOverride;
     if (this.optimizedImportLayout === 'flat') {
       return {
         fixtures: './fixtures',
@@ -537,14 +569,18 @@ class RawRecordingOptimizer {
 
     const testName = this.extractTestName(this.lines[this.testBlock.start]);
     const fileName = path.basename(this.filePath, '.spec.ts');
-    
+
     const dateStr = this.extractDateFromFileName(fileName);
-    let screenshotDir = `screenshots/${fileName}`;
-    
-    if (dateStr) {
-      const dateCategory = this.getDateCategoryForDate(dateStr);
-      screenshotDir = `screenshots/${dateCategory}/${fileName}`;
+    let dateCategory = this.pathDateCategory;
+    if (dateStr && !dateCategory) {
+      dateCategory = this.getDateCategoryForDate(dateStr);
     }
+
+    const screenshotDir = buildScreenshotDir({
+      playwrightEnv: this.playwrightEnv,
+      dateCategory: dateCategory || '',
+      fileName,
+    });
 
     // 提取 test.use 设置
     const testUseLines = this.extractTestUseSettings();
@@ -573,7 +609,7 @@ import { takeStepScreenshot, waitForPostInteractionPaint, withScreenshotRunSegme
 import { ${actionImports.join(', ')} } from '${imp.optimizedActions}';
 
 ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testName}', async ({ page }) => {
-  ${this.options.addTimeout ? 'test.setTimeout(120000);' : ''}
+  ${this.options.addTimeout ? `test.setTimeout(${GEN_WAIT.testTimeoutMs});` : ''}
 
   // 截图根目录；Chrome/WebKit 子目录由 ${imp.fixturesCommentPhrase} 按引擎自动设置（仍可用 PLAYWRIGHT_SCREENSHOT_RUN_SEGMENT 手动覆盖）
   const screenshotDir = withScreenshotRunSegment('${screenshotDir}');
@@ -617,7 +653,7 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
         code += `  await step('导航到页面', async () => {
     console.log('🌐 导航到: ${action.url}');
     await page.goto('${action.url}', { waitUntil: 'load' });
-    ${this.options.waitLoad ? 'await page.waitForLoadState(\'networkidle\', { timeout: 10000 }).catch(() => {});' : ''}
+    ${this.options.waitLoad ? `await page.waitForLoadState('networkidle', { timeout: ${GEN_WAIT.networkIdleGotoMs} }).catch(() => {});` : ''}
     await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-导航到页面.png\`));
   });
 
@@ -646,7 +682,7 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
    */
   private buildLocatorDeclaration(action: Action, locatorCode: string): string {
     if (this.hasIframe && this.actionUsesIframeContext(action)) {
-      return `await page.locator('iframe').first().waitFor({ state: 'attached', timeout: 20000 }).catch(() => {});
+      return `await page.locator('iframe').first().waitFor({ state: 'attached', timeout: ${GEN_WAIT.iframeAttachedMs} }).catch(() => {});
     const baseContext = page.frameLocator('iframe').first();
     const locator = ${locatorCode};`;
     }
@@ -656,7 +692,7 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
   private expectVisibleLine(action: Action, isKeyAction: boolean): string {
     if (!this.options.addVisible || !isKeyAction) return '';
     const iframeStep = this.hasIframe && this.actionUsesIframeContext(action);
-    const timeout = iframeStep ? 25_000 : 15_000;
+    const timeout = iframeStep ? GEN_WAIT.expectVisibleIframeMs : GEN_WAIT.expectVisibleMs;
     return `await expect(locator).toBeVisible({ timeout: ${timeout} });`;
   }
 
@@ -682,7 +718,7 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
     const skipGuard = isCritical
       ? ''
       : `    try {
-      await expect(locator).toBeVisible({ timeout: 6000 });
+      await expect(locator).toBeVisible({ timeout: ${GEN_WAIT.skipGuardVisibleMs} });
     } catch {
       console.log('ℹ️  ${label}：元素未出现（非关键步骤），跳过本步');
       await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-skipped.png\`), { mode: 'stable' });
@@ -691,6 +727,9 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
 `;
 
     const visibleLine = isCritical ? this.expectVisibleLine(action, isKeyAction) : '';
+    const locatorVisibleTimeout = this.actionUsesIframeContext(action)
+      ? GEN_WAIT.locatorVisibleIframeMs
+      : GEN_WAIT.locatorVisibleMs;
 
     switch (action.type) {
       case 'click':
@@ -698,8 +737,7 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
     await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`));
     ${this.buildLocatorDeclaration(action, locatorCode)}
 ${skipGuard}${visibleLine}    await smartClick(locator, '${label}');
-    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState('networkidle', { timeout: ${GEN_WAIT.networkIdleAfterMs} }).catch(() => {});
     await waitForPostInteractionPaint(page);
     await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { mode: 'stable' });
   });
@@ -712,7 +750,7 @@ ${skipGuard}${visibleLine}    await smartClick(locator, '${label}');
     await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`));
     ${this.buildLocatorDeclaration(action, locatorCode)}
 ${skipGuard}${visibleLine}    await smartFill(locator, "${text}", '${label}');
-    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await page.waitForLoadState('networkidle', { timeout: ${GEN_WAIT.networkIdleAfterMs} }).catch(() => {});
     await waitForPostInteractionPaint(page);
     await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { mode: 'stable' });
   });
@@ -723,7 +761,7 @@ ${skipGuard}${visibleLine}    await smartFill(locator, "${text}", '${label}');
     await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`));
     ${this.buildLocatorDeclaration(action, locatorCode)}
 ${skipGuard}${visibleLine}    try {
-      await locator.waitFor({ state: 'visible', timeout: this.actionUsesIframeContext(action) ? 25000 : 10000 });
+      await locator.waitFor({ state: 'visible', timeout: ${locatorVisibleTimeout} });
     } catch (e) {
       console.log('⚠️ 元素不可见，尝试暂停调试');
       await maybePause(page, '元素不可见');
@@ -734,7 +772,7 @@ ${skipGuard}${visibleLine}    try {
       console.log(\`⚠️ 勾选失败: \${e.message}\`);
       await maybePause(page, '勾选失败');
     }
-    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await page.waitForLoadState('networkidle', { timeout: ${GEN_WAIT.networkIdleAfterMs} }).catch(() => {});
     await waitForPostInteractionPaint(page);
     await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { mode: 'stable' });
   });
@@ -745,7 +783,7 @@ ${skipGuard}${visibleLine}    try {
     await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`));
     ${this.buildLocatorDeclaration(action, locatorCode)}
 ${skipGuard}${visibleLine}    try {
-      await locator.waitFor({ state: 'visible', timeout: this.actionUsesIframeContext(action) ? 25000 : 10000 });
+      await locator.waitFor({ state: 'visible', timeout: ${locatorVisibleTimeout} });
     } catch (e) {
       console.log('⚠️ 元素不可见，尝试暂停调试');
       await maybePause(page, '元素不可见');
@@ -756,7 +794,7 @@ ${skipGuard}${visibleLine}    try {
       console.log(\`⚠️ 选择失败: \${e.message}\`);
       await maybePause(page, '选择失败');
     }
-    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await page.waitForLoadState('networkidle', { timeout: ${GEN_WAIT.networkIdleAfterMs} }).catch(() => {});
     await waitForPostInteractionPaint(page);
     await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { mode: 'stable' });
   });
@@ -767,7 +805,7 @@ ${skipGuard}${visibleLine}    try {
     await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`));
     ${this.buildLocatorDeclaration(action, locatorCode)}
 ${skipGuard}${visibleLine}    try {
-      await locator.waitFor({ state: 'visible', timeout: this.actionUsesIframeContext(action) ? 25000 : 10000 });
+      await locator.waitFor({ state: 'visible', timeout: ${locatorVisibleTimeout} });
     } catch (e) {
       console.log('⚠️ 元素不可见，尝试暂停调试');
       await maybePause(page, '元素不可见');
@@ -778,7 +816,7 @@ ${skipGuard}${visibleLine}    try {
       console.log(\`⚠️ 按键失败: \${e.message}\`);
       await maybePause(page, '按键失败');
     }
-    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await page.waitForLoadState('networkidle', { timeout: ${GEN_WAIT.networkIdleAfterMs} }).catch(() => {});
     await waitForPostInteractionPaint(page);
     await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { mode: 'stable' });
   });
@@ -951,24 +989,34 @@ async function processFile(filePath: string): Promise<void> {
   const fileName = path.basename(filePath, '.spec.ts');
   const dateStr = optimizer.extractDateFromFileName(fileName);
   optimizer.setOptimizedImportLayout(dateStr ? 'nested' : 'flat');
+
+  const meta = parseEnvAndDateCategoryFromRawOrProcessed(filePath);
+  const env = meta.env;
+  let dateCategory = meta.dateCategory;
+  if (dateStr && !dateCategory) {
+    dateCategory = optimizer.getDateCategoryForDate(dateStr);
+  }
+
+  let finalOutputDir = outputDir;
+  if (isEnvSegmentEnabled()) {
+    finalOutputDir = dateCategory ? path.join(outputDir, env, dateCategory) : path.join(outputDir, env);
+  } else if (dateCategory) {
+    finalOutputDir = path.join(outputDir, dateCategory);
+  }
+
+  if (!fs.existsSync(finalOutputDir)) {
+    fs.mkdirSync(finalOutputDir, { recursive: true });
+  }
+
+  const outputPath = path.join(finalOutputDir, `${fileName}.optimized.spec.ts`);
+  const outputRel = path.relative(process.cwd(), outputPath).replace(/\\/g, '/');
+  optimizer.setImportPathsFromOutputRel(outputRel);
+
   const result = optimizer.optimize();
   if (!result || result.trim().length === 0) {
     console.log(`❌ 优化失败（未生成内容），跳过写入: ${filePath}`);
     return;
   }
-
-  let finalOutputDir = outputDir;
-  
-  if (dateStr) {
-    const dateCategory = optimizer.getDateCategoryForDate(dateStr);
-    finalOutputDir = path.join(outputDir, dateCategory);
-    
-    if (!fs.existsSync(finalOutputDir)) {
-      fs.mkdirSync(finalOutputDir, { recursive: true });
-    }
-  }
-  
-  const outputPath = path.join(finalOutputDir, `${fileName}.optimized.spec.ts`);
 
   fs.writeFileSync(outputPath, result, 'utf-8');
   console.log(`✅ 优化完成: ${outputPath}`);

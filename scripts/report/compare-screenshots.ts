@@ -1,7 +1,26 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { compareImagesWithDiff, formatDifference, getDifferenceColor, getDifferenceLabel, ImageComparison } from './image-diff.js';
+import {
+  compareImagesWithDiff,
+  formatDifference,
+  getDifferenceColor,
+  getDifferenceLabel,
+  ImageComparison,
+  loadCachedDiffResult,
+  runWithConcurrency,
+} from './image-diff.js';
+import { generateBaselineComparisons } from './baseline-comparisons.js';
+import { loadUiRegressionConfig } from './ui-regression-config.js';
+import {
+  buildUiIssuesReport,
+  comparisonToUiIssue,
+  gateShouldFail,
+  writeUiIssuesReport,
+  type UiIssue,
+} from './ui-issues.js';
+import { appendHistorySnapshot } from './ui-regression-history.js';
+import { buildPlainLanguageAnalysis } from './ui-issues-analysis.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -57,6 +76,37 @@ const PIXELMATCH_INCLUDE_AA = (() => {
   return true;
 })();
 
+/** 并行对比任务数，默认 4。覆盖：PLAYWRIGHT_COMPARE_CONCURRENCY=8 */
+const COMPARE_CONCURRENCY = (() => {
+  const v = process.env.PLAYWRIGHT_COMPARE_CONCURRENCY;
+  if (v !== undefined && v !== '' && !Number.isNaN(Number.parseInt(v, 10))) {
+    return Math.max(1, Number.parseInt(v, 10));
+  }
+  return 4;
+})();
+
+/** 源图未变时复用 results/diffs 下已有对比结果，默认开启。关闭：PLAYWRIGHT_COMPARE_INCREMENTAL=0 */
+const COMPARE_INCREMENTAL = (() => {
+  const v = (process.env.PLAYWRIGHT_COMPARE_INCREMENTAL ?? '1').toLowerCase();
+  return !(v === '0' || v === 'false' || v === 'no');
+})();
+
+const RUN_SEGMENT_DIR = /^run-(chromium|webkit|firefox|safari|edge)-/i;
+
+/** 跨浏览器对比：Chrome(基线) vs WebKit。关闭：PLAYWRIGHT_COMPARE_CROSS_BROWSER=0 */
+const COMPARE_CROSS_BROWSER = (() => {
+  const v = (process.env.PLAYWRIGHT_COMPARE_CROSS_BROWSER ?? '1').toLowerCase();
+  return !(v === '0' || v === 'false' || v === 'no');
+})();
+
+const CROSS_BROWSER_BASE = 'chrome';
+const CROSS_BROWSER_TARGET = 'webkit';
+
+interface ScriptScanTarget {
+  testDir: string;
+  scriptPath: string;
+}
+
 interface StepComparison {
   stepNumber: number;
   stepName?: string;
@@ -64,6 +114,8 @@ interface StepComparison {
   optimizedScreenshots: ScreenshotInfo[];
   pomComparisons: ImageComparison[];
   optimizedComparisons: ImageComparison[];
+  baselineComparisons: ImageComparison[];
+  crossBrowserComparisons: ImageComparison[];
   outputPath?: string;
   testDir?: string;
 }
@@ -88,6 +140,31 @@ function getMenuNameByRoute(route: string): string {
   return '';
 }
 
+/** 从运行目录名解析展示用时间（支持 ISO：2026-05-21T10-46-34-813Z 与旧版 2026-04-23_19-29-05） */
+function formatDisplayTimestampFromRunDir(runDirName: string): string {
+  const iso = runDirName.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})/);
+  if (iso) {
+    const utc = Date.parse(`${iso[1]}-${iso[2]}-${iso[3]}T${iso[4]}:${iso[5]}:${iso[6]}Z`);
+    if (!Number.isNaN(utc)) {
+      const local = new Date(utc + 8 * 60 * 60 * 1000);
+      return `${String(local.getUTCHours()).padStart(2, '0')}:${String(local.getUTCMinutes()).padStart(2, '0')}:${String(local.getUTCSeconds()).padStart(2, '0')}`;
+    }
+  }
+
+  const legacy = runDirName.match(/(\d{2})-(\d{2})-(\d{2})-/);
+  if (legacy) {
+    const hours = Number.parseInt(legacy[1], 10);
+    const minutes = Number.parseInt(legacy[2], 10);
+    const seconds = Number.parseInt(legacy[3], 10);
+    const dateObj = new Date();
+    dateObj.setHours(hours, minutes, seconds, 0);
+    const adjustedDate = new Date(dateObj.getTime() + 8 * 60 * 60 * 1000);
+    return `${String(adjustedDate.getHours()).padStart(2, '0')}:${String(adjustedDate.getMinutes()).padStart(2, '0')}:${String(adjustedDate.getSeconds()).padStart(2, '0')}`;
+  }
+
+  return runDirName;
+}
+
 function getRouteDisplayName(route: string): string {
   for (const [key, routeValue] of Object.entries(MENU_ROUTES)) {
     const normalizedRouteValue = String(routeValue).replace(/\//g, '_').replace(/^_/, '');
@@ -99,39 +176,107 @@ function getRouteDisplayName(route: string): string {
   return route;
 }
 
+/** 按运行时间戳升序，最早一次作为基线 */
+function sortScreenshotsByRunTime(screenshots: ScreenshotInfo[]): ScreenshotInfo[] {
+  return [...screenshots].sort((a, b) => {
+    const ta = runTimestampSortKey(a.timestamp);
+    const tb = runTimestampSortKey(b.timestamp);
+    if (ta !== tb) return ta - tb;
+    return a.path.localeCompare(b.path);
+  });
+}
+
+function runTimestampSortKey(timestamp: string): number {
+  const iso = timestamp.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})/);
+  if (iso) {
+    const t = Date.parse(`${iso[1]}-${iso[2]}-${iso[3]}T${iso[4]}:${iso[5]}:${iso[6]}Z`);
+    if (!Number.isNaN(t)) return t;
+  }
+  const legacy = timestamp.match(/(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})-(\d{2})/);
+  if (legacy) {
+    const t = Date.parse(`${legacy[1]}T${legacy[2]}:${legacy[3]}:${legacy[4]}`);
+    if (!Number.isNaN(t)) return t;
+  }
+  return 0;
+}
+
+interface ComparePairMeta {
+  browser?: string;
+  compareKind?: ImageComparison['compareKind'];
+  browser1?: string;
+  browser2?: string;
+  pairLabel?: string;
+}
+
+async function comparePair(
+  baseline: ScreenshotInfo,
+  compareScreenshot: ScreenshotInfo,
+  diffOutputPath: string,
+  relativeDiffPath: string,
+  meta: ComparePairMeta = {},
+): Promise<ImageComparison> {
+  if (COMPARE_INCREMENTAL) {
+    const cached = loadCachedDiffResult(baseline.path, compareScreenshot.path, diffOutputPath);
+    if (cached) {
+      return {
+        image1Path: baseline.relativePath,
+        image2Path: compareScreenshot.relativePath,
+        difference: cached.difference,
+        diffImagePath: cached.diffImagePath ? relativeDiffPath : undefined,
+        browser: meta.browser ?? compareScreenshot.browser,
+        sizeMismatch: cached.sizeMismatch,
+        compareKind: meta.compareKind,
+        browser1: meta.browser1,
+        browser2: meta.browser2,
+        pairLabel: meta.pairLabel,
+      };
+    }
+  }
+
+  const result = await compareImagesWithDiff(
+    baseline.path,
+    compareScreenshot.path,
+    diffOutputPath,
+    PIXELMATCH_COLOR_THRESHOLD,
+    { includeAA: PIXELMATCH_INCLUDE_AA },
+  );
+
+  return {
+    image1Path: baseline.relativePath,
+    image2Path: compareScreenshot.relativePath,
+    difference: result.difference,
+    diffImagePath: result.diffImagePath ? relativeDiffPath : undefined,
+    browser: meta.browser ?? compareScreenshot.browser,
+    sizeMismatch: result.sizeMismatch,
+    compareKind: meta.compareKind,
+    browser1: meta.browser1,
+    browser2: meta.browser2,
+    pairLabel: meta.pairLabel,
+  };
+}
+
 async function generateComparisons(screenshots: ScreenshotInfo[], diffOutputDir: string, outputPath: string): Promise<ImageComparison[]> {
-  if (screenshots.length < 2) {
+  const sorted = sortScreenshotsByRunTime(screenshots);
+  if (sorted.length < 2) {
     return [];
   }
 
-  const comparisons: ImageComparison[] = [];
   const outputDir = path.dirname(outputPath);
   const relativeDiffDir = path.relative(outputDir, diffOutputDir);
+  const baseline = sorted[0];
 
-  for (let i = 1; i < screenshots.length; i++) {
-    const compareScreenshot = screenshots[i];
+  const tasks = sorted.slice(1).map((compareScreenshot) => {
     const diffFileName = `diff-${compareScreenshot.timestamp}.png`;
     const diffOutputPath = path.join(diffOutputDir, diffFileName);
-    const relativeDiffPath = path.join(relativeDiffDir, diffFileName);
+    const relativeDiffPath = path.join(relativeDiffDir, diffFileName).replaceAll(path.sep, '/');
+    return () =>
+      comparePair(baseline, compareScreenshot, diffOutputPath, relativeDiffPath, {
+        browser: compareScreenshot.browser,
+        compareKind: 'run-drift',
+      });
+  });
 
-    const result = await compareImagesWithDiff(
-      screenshots[0].path,
-      compareScreenshot.path,
-      diffOutputPath,
-      PIXELMATCH_COLOR_THRESHOLD,
-      { includeAA: PIXELMATCH_INCLUDE_AA },
-    );
-
-    comparisons.push({
-      image1Path: screenshots[0].relativePath,
-      image2Path: compareScreenshot.relativePath,
-      difference: result.difference,
-      diffImagePath: relativeDiffPath,
-      browser: compareScreenshot.browser
-    });
-  }
-
-  return comparisons;
+  return runWithConcurrency(tasks, COMPARE_CONCURRENCY);
 }
 
 async function generateComparisonsByStepName(stepScreenshots: ScreenshotInfo[], stepNumber: number, diffOutputDir: string, outputPath: string): Promise<ImageComparison[]> {
@@ -171,11 +316,134 @@ async function generateComparisonsByStepName(stepScreenshots: ScreenshotInfo[], 
         continue;
       }
       
-      const browserComparisons = await generateComparisons(browserScreenshots, stepDiffDir, outputPath);
+      const browserComparisons = await generateComparisons(
+        sortScreenshotsByRunTime(browserScreenshots),
+        stepDiffDir,
+        outputPath,
+      );
       allComparisons.push(...browserComparisons);
     }
   }
   
+  return allComparisons;
+}
+
+function groupScreenshotsByCalendarDayForPairing(screenshots: ScreenshotInfo[]): Map<string, ScreenshotInfo[]> {
+  const grouped = new Map<string, ScreenshotInfo[]>();
+  screenshots.forEach((s) => {
+    const key = calendarDayKeyForScreenshot(s);
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)!.push(s);
+  });
+  return grouped;
+}
+
+/**
+ * 同日对齐：优先相同运行目录名（timestamp），否则按时间序第 N 次运行配对。
+ */
+function pairCrossBrowserByDay(
+  chromeList: ScreenshotInfo[],
+  webkitList: ScreenshotInfo[],
+): Array<{ chrome: ScreenshotInfo; webkit: ScreenshotInfo; pairLabel: string }> {
+  const pairs: Array<{ chrome: ScreenshotInfo; webkit: ScreenshotInfo; pairLabel: string }> = [];
+  const chromeByDay = groupScreenshotsByCalendarDayForPairing(chromeList);
+  const webkitByDay = groupScreenshotsByCalendarDayForPairing(webkitList);
+  const days = new Set([...chromeByDay.keys(), ...webkitByDay.keys()]);
+
+  for (const day of Array.from(days).sort()) {
+    const chromeRuns = sortScreenshotsByRunTime(chromeByDay.get(day) || []);
+    const webkitRuns = sortScreenshotsByRunTime(webkitByDay.get(day) || []);
+    if (chromeRuns.length === 0 || webkitRuns.length === 0) continue;
+
+    const webkitByTimestamp = new Map(webkitRuns.map((s) => [s.timestamp, s]));
+    const usedWebkitTs = new Set<string>();
+    const usedChromeTs = new Set<string>();
+    const dayTitle = formatDateGroupTitle(day);
+
+    for (const chrome of chromeRuns) {
+      const matched = webkitByTimestamp.get(chrome.timestamp);
+      if (matched) {
+        pairs.push({
+          chrome,
+          webkit: matched,
+          pairLabel: `${dayTitle} · 同次运行 (${chrome.displayTimestamp})`,
+        });
+        usedWebkitTs.add(chrome.timestamp);
+        usedChromeTs.add(chrome.timestamp);
+      }
+    }
+
+    const chromeRemain = chromeRuns.filter((c) => !usedChromeTs.has(c.timestamp));
+    const webkitRemain = webkitRuns.filter((w) => !usedWebkitTs.has(w.timestamp));
+    const alignCount = Math.min(chromeRemain.length, webkitRemain.length);
+
+    for (let i = 0; i < alignCount; i++) {
+      const chrome = chromeRemain[i];
+      const webkit = webkitRemain[i];
+      pairs.push({
+        chrome,
+        webkit,
+        pairLabel: `${dayTitle} · 第 ${i + 1} 组 (${chrome.displayTimestamp} ↔ ${webkit.displayTimestamp})`,
+      });
+    }
+  }
+
+  return pairs;
+}
+
+async function generateCrossBrowserComparisonsByStepName(
+  stepScreenshots: ScreenshotInfo[],
+  stepNumber: number,
+  diffOutputDir: string,
+  outputPath: string,
+): Promise<ImageComparison[]> {
+  if (!COMPARE_CROSS_BROWSER) return [];
+
+  const groupedByStepName = new Map<string, ScreenshotInfo[]>();
+  stepScreenshots.forEach((screenshot) => {
+    const name = screenshot.stepName;
+    if (!groupedByStepName.has(name)) groupedByStepName.set(name, []);
+    groupedByStepName.get(name)!.push(screenshot);
+  });
+
+  const outputDir = path.dirname(outputPath);
+  const allComparisons: ImageComparison[] = [];
+
+  for (const [stepName, nameScreenshots] of groupedByStepName) {
+    const chromeList = nameScreenshots.filter((s) => s.browser === CROSS_BROWSER_BASE);
+    const webkitList = nameScreenshots.filter((s) => s.browser === CROSS_BROWSER_TARGET);
+    if (chromeList.length === 0 || webkitList.length === 0) continue;
+
+    const stepDiffDir = path.join(
+      diffOutputDir,
+      `step-${stepNumber}-${stepName.replace(/[<>:"|?*\\/]/g, '_')}`,
+      'cross-browser',
+    );
+    if (!fs.existsSync(stepDiffDir)) {
+      fs.mkdirSync(stepDiffDir, { recursive: true });
+    }
+    const relativeDiffDir = path.relative(outputDir, stepDiffDir).replaceAll(path.sep, '/');
+
+    const pairs = pairCrossBrowserByDay(chromeList, webkitList);
+    const tasks = pairs.map(({ chrome, webkit, pairLabel }) => {
+      const safeTs = webkit.timestamp.replace(/[<>:"|?*\\/]/g, '_');
+      const diffFileName = `diff-chrome-vs-webkit-${safeTs}.png`;
+      const diffOutputPath = path.join(stepDiffDir, diffFileName);
+      const relativeDiffPath = `${relativeDiffDir}/${diffFileName}`;
+      return () =>
+        comparePair(chrome, webkit, diffOutputPath, relativeDiffPath, {
+          browser: CROSS_BROWSER_TARGET,
+          compareKind: 'cross-browser',
+          browser1: CROSS_BROWSER_BASE,
+          browser2: CROSS_BROWSER_TARGET,
+          pairLabel,
+        });
+    });
+
+    const comparisons = await runWithConcurrency(tasks, COMPARE_CONCURRENCY);
+    allComparisons.push(...comparisons);
+  }
+
   return allComparisons;
 }
 
@@ -215,9 +483,11 @@ function getAllScreenshots(dir: string, type: 'pom' | 'optimized', outputPath: s
             result.set(stepNumber, []);
           }
           
-          const browserMatch = currentDir.match(/-(chrome|firefox|safari|edge|webkit|chromium)-/);
-          let browser = browserMatch ? browserMatch[1] : 'unknown';
-          
+          const browserMatch =
+            fullPath.match(/run-(chromium|webkit|firefox|safari|edge)-/i) ||
+            fullPath.match(/-(chrome|firefox|safari|edge|webkit|chromium)-/i);
+          let browser = browserMatch ? browserMatch[1].toLowerCase() : 'unknown';
+
           if (browser === 'chromium') {
             browser = 'chrome';
           }
@@ -230,20 +500,7 @@ function getAllScreenshots(dir: string, type: 'pom' | 'optimized', outputPath: s
           const dateMatch = currentDir.match(/^(\d{4}-\d{2}-\d{2})_/);
           const date = dateMatch ? dateMatch[1] : path.basename(currentDir);
           
-          const timeMatch = currentDir.match(/(\d{2})-(\d{2})-(\d{2})-/);
-          let displayTimestamp = path.basename(currentDir);
-          if (timeMatch) {
-            const hours = parseInt(timeMatch[1]);
-            const minutes = parseInt(timeMatch[2]);
-            const seconds = parseInt(timeMatch[3]);
-            
-            const dateObj = new Date();
-            dateObj.setHours(hours, minutes, seconds, 0);
-            
-            const adjustedDate = new Date(dateObj.getTime() + 8 * 60 * 60 * 1000);
-            
-            displayTimestamp = `${String(adjustedDate.getHours()).padStart(2, '0')}:${String(adjustedDate.getMinutes()).padStart(2, '0')}:${String(adjustedDate.getSeconds()).padStart(2, '0')}`;
-          }
+          const displayTimestamp = formatDisplayTimestampFromRunDir(path.basename(currentDir));
           
           result.get(stepNumber)!.push({
             path: fullPath,
@@ -285,15 +542,34 @@ async function generateTestComparisons(testDir: string, screenshots: Map<number,
     const stepScreenshots = screenshots.get(stepNumber) || [];
 
     const stepComparisons = await generateComparisonsByStepName(stepScreenshots, stepNumber, diffOutputDir, outputPath);
+    const baselineComparisons = await generateBaselineComparisons(
+      testDir,
+      stepScreenshots,
+      stepNumber,
+      diffOutputDir,
+      outputPath,
+      PIXELMATCH_COLOR_THRESHOLD,
+      PIXELMATCH_INCLUDE_AA,
+      COMPARE_CONCURRENCY,
+      COMPARE_INCREMENTAL,
+    );
+    const crossBrowserComparisons = await generateCrossBrowserComparisonsByStepName(
+      stepScreenshots,
+      stepNumber,
+      diffOutputDir,
+      outputPath,
+    );
 
     comparisons.push({
       stepNumber,
       pomScreenshots: [],
       optimizedScreenshots: stepScreenshots,
       pomComparisons: [],
-      optimizedComparisons: stepComparisons,
+      optimizedComparisons: [...baselineComparisons, ...stepComparisons],
+      baselineComparisons,
+      crossBrowserComparisons,
       outputPath,
-      testDir
+      testDir,
     });
   }
   
@@ -556,10 +832,25 @@ function groupImageComparisonsByCalendarDay(comparisons: ImageComparison[]): Map
 }
 
 function generateDiffStep(comp: StepComparison, type: 'pom' | 'optimized' | 'all', onlyDiffs: boolean = false): string {
-  const comparisons = type === 'pom' ? comp.pomComparisons : 
-                     type === 'optimized' ? comp.optimizedComparisons : 
-                     [...comp.pomComparisons, ...comp.optimizedComparisons];
-  
+  const comparisons =
+    type === 'pom'
+      ? comp.pomComparisons
+      : type === 'optimized'
+        ? comp.optimizedComparisons
+        : [...comp.pomComparisons, ...comp.optimizedComparisons];
+  return generateDiffStepFromComparisons(comp, comparisons, onlyDiffs, type);
+}
+
+function generateCrossBrowserDiffStep(comp: StepComparison, onlyDiffs: boolean = false): string {
+  return generateDiffStepFromComparisons(comp, comp.crossBrowserComparisons, onlyDiffs, 'cross-browser');
+}
+
+function generateDiffStepFromComparisons(
+  comp: StepComparison,
+  comparisons: ImageComparison[],
+  onlyDiffs: boolean = false,
+  cardType: string = '',
+): string {
   if (comparisons.length === 0) {
     return '';
   }
@@ -614,7 +905,7 @@ function generateDiffStep(comp: StepComparison, type: 'pom' | 'optimized' | 'all
           <div class="date-group">
             <div class="date-title">${formatDateGroupTitle(dateKey)}</div>
             <div class="diff-grid">
-              ${comps.map((c) => generateDiffCard(c, type)).join('')}
+              ${comps.map((c) => generateDiffCard(c, cardType)).join('')}
             </div>
           </div>`
             )
@@ -630,9 +921,25 @@ function getOptimizedDiffCountsForScript(tdc: TestDirComparisons): { all: number
   const all = tdc.comparisons.reduce((sum, comp) => sum + (comp.optimizedComparisons?.length || 0), 0);
   const only = tdc.comparisons.reduce(
     (sum, comp) => sum + (comp.optimizedComparisons?.filter((c) => passesDiffOnlyTabFilter(c.difference)).length || 0),
-    0
+    0,
   );
   return { all, only };
+}
+
+function getCrossBrowserDiffCountsForScript(tdc: TestDirComparisons): { all: number; only: number } {
+  const all = tdc.comparisons.reduce((sum, comp) => sum + (comp.crossBrowserComparisons?.length || 0), 0);
+  const only = tdc.comparisons.reduce(
+    (sum, comp) => sum + (comp.crossBrowserComparisons?.filter((c) => passesDiffOnlyTabFilter(c.difference)).length || 0),
+    0,
+  );
+  return { all, only };
+}
+
+function getTotalCrossBrowserComparisons(testDirComparisons: TestDirComparisons[]): number {
+  return testDirComparisons.reduce(
+    (sum, tdc) => sum + tdc.comparisons.reduce((s, c) => s + (c.crossBrowserComparisons?.length || 0), 0),
+    0,
+  );
 }
 
 /** 与 getAllScreenshots 中 stepName 规则一致；勿依赖文件名里必须有 `__`（否则大量子图会落到 unknown，差异 Tab 分组错乱） */
@@ -693,17 +1000,38 @@ function extractImageLabelWithRoute(path: string, index: number): string {
 function generateDiffCard(comparison: ImageComparison, type: string): string {
   const diffColor = getDifferenceColor(comparison.difference);
   const diffLabel = getDifferenceLabel(comparison.difference);
-  const browser = comparison.browser || 'unknown';
-  
-  const image1Label = extractImageLabelWithRoute(comparison.image1Path, 1);
-  const image2Label = extractImageLabelWithRoute(comparison.image2Path, 2);
-  
+  const isCross = comparison.compareKind === 'cross-browser';
+  const browser = isCross ? 'cross' : comparison.browser || 'unknown';
+  const sizeHint = comparison.sizeMismatch
+    ? '<span class="diff-size-hint" title="两张图尺寸不一致，仅对比重叠区域">尺寸不一致</span>'
+    : '';
+  const browserPairHint = isCross
+    ? `<span class="diff-browser-pair" title="Chrome 为基线，对比 WebKit">${getBrowserIcon('chrome')} Chrome ↔ ${getBrowserIcon('webkit')} WebKit</span>`
+    : '';
+  const pairLabelHint = comparison.pairLabel
+    ? `<span class="diff-pair-label" title="配对规则">${comparison.pairLabel}</span>`
+    : '';
+
+  const image1Label = isCross
+    ? `Chrome · ${extractImageLabelWithRoute(comparison.image1Path, 1)}`
+    : extractImageLabelWithRoute(comparison.image1Path, 1);
+  const image2Label = isCross
+    ? `WebKit · ${extractImageLabelWithRoute(comparison.image2Path, 2)}`
+    : extractImageLabelWithRoute(comparison.image2Path, 2);
+
+  const diffVisual = comparison.diffImagePath
+    ? `<img src="${comparison.diffImagePath}" alt="差异" onclick="openModal('${comparison.diffImagePath}')">`
+    : `<div class="diff-no-visual">无像素差异</div>`;
+
   return `
-  <div class="diff-card diff-browser-content" data-browser="${browser}">
+  <div class="diff-card diff-browser-content" data-browser="${browser}" data-compare-kind="${isCross ? 'cross-browser' : 'same-browser'}">
     <div class="diff-header">
       <span class="diff-badge" style="background-color: ${diffColor};">${diffLabel}</span>
       <span class="diff-percentage">${formatDifference(comparison.difference)}</span>
+      ${browserPairHint}
+      ${sizeHint}
     </div>
+    ${pairLabelHint ? `<div class="diff-pair-row">${pairLabelHint}</div>` : ''}
     <div class="diff-images">
       <div class="diff-image-container">
         <div class="diff-image-label">${image1Label}</div>
@@ -715,7 +1043,7 @@ function generateDiffCard(comparison: ImageComparison, type: string): string {
       </div>
       <div class="diff-image-container">
         <div class="diff-image-label">差异</div>
-        <img src="${comparison.diffImagePath}" alt="差异" onclick="openModal('${comparison.diffImagePath}')">
+        ${diffVisual}
       </div>
     </div>
   </div>`;
@@ -736,7 +1064,82 @@ function scriptDirTimestampMs(scriptDir: string): number {
   return last;
 }
 
-function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: string, optDirName: string, hasPomData: boolean, hasOptimizedData: boolean): string {
+function generateIssuesTabHtml(issues: UiIssue[]): string {
+  if (issues.length === 0) {
+    return `
+    <div class="empty-state">
+      <div class="empty-state-icon">✅</div>
+      <div class="empty-state-title">未发现需关注的 UI 问题</div>
+      <div class="empty-state-description">当前阈值下无 blocker / warning 项。</div>
+    </div>`;
+  }
+
+  const rows = issues
+    .map((issue) => {
+      const diffLink = issue.diffImagePath
+        ? `<a href="${issue.diffImagePath}" target="_blank" rel="noopener">diff</a>`
+        : '—';
+      const pct = (issue.difference * 100).toFixed(3);
+      return `<tr data-severity="${issue.severity}" data-kind="${issue.compareKind}">
+        <td><span class="severity-badge severity-${issue.severity}">${issue.severity}</span></td>
+        <td>${issue.compareKind}</td>
+        <td>${issue.scriptKey}</td>
+        <td>${issue.stepNumber}</td>
+        <td>${issue.stepName}</td>
+        <td>${issue.browser}</td>
+        <td>${pct}%</td>
+        <td>${diffLink}</td>
+      </tr>`;
+    })
+    .join('');
+
+  return `
+    <div class="issues-summary">
+      <p>共 <strong>${issues.length}</strong> 项 · blocker: <strong>${issues.filter((i) => i.severity === 'blocker').length}</strong> · warning: <strong>${issues.filter((i) => i.severity === 'warning').length}</strong></p>
+      <p class="issues-hint">结构化清单见 <code>results/ui-issues.json</code></p>
+    </div>
+    <table class="issues-table">
+      <thead>
+        <tr>
+          <th>严重度</th><th>类型</th><th>脚本</th><th>步骤</th><th>步骤名</th><th>浏览器</th><th>差异</th><th>Diff</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function collectAllUiIssues(testDirComparisons: TestDirComparisons[]): UiIssue[] {
+  const issues: UiIssue[] = [];
+  for (const tdc of testDirComparisons) {
+    for (const comp of tdc.comparisons) {
+      const stepName =
+        comp.optimizedScreenshots[0]?.stepName || comp.stepName || `step-${comp.stepNumber}`;
+      const route = comp.optimizedScreenshots[0]?.route;
+      const comparisons = [...comp.optimizedComparisons, ...comp.crossBrowserComparisons];
+      for (const c of comparisons) {
+        const issue = comparisonToUiIssue(c, {
+          scriptKey: tdc.testDir,
+          stepNumber: comp.stepNumber,
+          stepName,
+          browser: c.browser || c.browser2 || 'chrome',
+          route,
+        });
+        if (issue) issues.push(issue);
+      }
+    }
+  }
+  return issues;
+}
+
+function generateHTML(
+  testDirComparisons: TestDirComparisons[],
+  pomDirName: string,
+  optDirName: string,
+  hasPomData: boolean,
+  hasOptimizedData: boolean,
+  uiIssues: UiIssue[] = [],
+  analysisHtml: string = '',
+): string {
   const allComparisons = testDirComparisons.flatMap(tdc => tdc.comparisons);
   const optimizedSteps = hasOptimizedData ? allComparisons.map(comp => generateOptimizedStep(comp, optDirName)).join('') : '';
   
@@ -885,7 +1288,25 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
     </div>
   `)
     .join('');
-  
+
+  const totalCrossBrowser = getTotalCrossBrowserComparisons(testDirComparisons);
+  const hasCrossBrowserData = totalCrossBrowser > 0;
+
+  const crossBrowserDiffByIteration = iterations
+    .map((iter, index) => `
+    <div class="iteration-content" data-iteration="${iter}" ${index === 0 ? '' : 'style="display: none;"'}>
+      ${buildScriptContents(
+        iter,
+        (tdc) => tdc.comparisons.map((comp) => generateCrossBrowserDiffStep(comp)).join(''),
+        (tdc) => {
+          const c = getCrossBrowserDiffCountsForScript(tdc);
+          return `data-diff-all="${c.all}" data-diff-only="${c.only}"`;
+        },
+      )}
+    </div>
+  `)
+    .join('');
+
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -1536,6 +1957,50 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       color: #1d2129;
       margin-left: auto;
     }
+
+    .diff-size-hint {
+      font-size: 11px;
+      color: #d46b08;
+      background: #fff7e6;
+      border: 1px solid #ffd591;
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-left: 8px;
+      white-space: nowrap;
+    }
+
+    .diff-no-visual {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 120px;
+      background: #f7f8fa;
+      border: 1px dashed #d9d9d9;
+      border-radius: 6px;
+      color: #86909c;
+      font-size: 13px;
+    }
+
+    .diff-browser-pair {
+      font-size: 12px;
+      color: #1677ff;
+      background: #e6f4ff;
+      border: 1px solid #91caff;
+      padding: 2px 8px;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+
+    .diff-pair-row {
+      padding: 0 12px 8px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .diff-pair-label {
+      font-size: 12px;
+      color: #86909c;
+      line-height: 1.4;
+    }
     
     .diff-images {
       display: grid;
@@ -1679,6 +2144,45 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       font-weight: 600;
     }
     
+    .issues-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      margin-top: 12px;
+    }
+    .issues-table th,
+    .issues-table td {
+      border: 1px solid #e5e7eb;
+      padding: 8px 10px;
+      text-align: left;
+    }
+    .issues-table th {
+      background: #f9fafb;
+    }
+    .severity-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .severity-blocker { background: #fee2e2; color: #b91c1c; }
+    .severity-warning { background: #fef3c7; color: #b45309; }
+    .severity-noise { background: #f3f4f6; color: #6b7280; }
+    .issues-summary { margin: 16px 0 8px; color: #374151; }
+    .issues-hint { font-size: 12px; color: #6b7280; }
+    .analysis-wrap { padding: 16px 20px 24px; max-width: 1200px; }
+    .analysis-heading { margin: 20px 0 10px; font-size: 16px; color: #111827; }
+    .analysis-heading:first-child { margin-top: 0; }
+    .analysis-hint { font-size: 13px; color: #6b7280; margin: 8px 0 16px; line-height: 1.5; }
+    .analysis-flow { font-size: 13px; color: #374151; margin: 0 0 8px; }
+    .analysis-meta { font-size: 12px; color: #6b7280; margin: 0 0 8px; }
+    .analysis-script-title { margin: 16px 0 6px; font-size: 14px; color: #1f2937; }
+    .analysis-table { margin-bottom: 8px; }
+    .analysis-overview-table th { width: 100px; background: #f3f4f6; font-weight: 600; }
+    .analysis-suggestions { margin: 8px 0 20px 18px; font-size: 13px; color: #4b5563; line-height: 1.5; }
+
     .tab-content {
       display: none;
     }
@@ -1764,6 +2268,11 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       <h3>执行次数</h3>
       <div class="value">${getTotalExecutions(allComparisons)}</div>
     </div>
+    ${hasCrossBrowserData ? `
+    <div class="stat-card">
+      <h3>跨浏览器对比</h3>
+      <div class="value">${totalCrossBrowser}</div>
+    </div>` : ''}
   </div>
   
   <div class="controls-row">
@@ -1811,6 +2320,9 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
   <div class="tabs">
     <button class="tab active" onclick="switchTab('optimized')">Optimized 版本</button>
     <button class="tab" onclick="switchTab('optimized-diff')">Optimized 差异</button>
+    ${hasCrossBrowserData ? `<button class="tab" onclick="switchTab('cross-browser')">跨浏览器</button>` : ''}
+    <button class="tab" onclick="switchTab('analysis')">分析摘要</button>
+    <button class="tab" onclick="switchTab('issues')">问题明细</button>
     <button class="tab" onclick="switchTab('diff-only')">有差异</button>
   </div>
   
@@ -1833,6 +2345,30 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
     ${optimizedDiffByIteration}
   </div>
   
+  ${hasCrossBrowserData ? `
+  <div id="cross-browser-content" class="tab-content">
+    <div class="empty-state" id="cross-browser-empty" style="display: none;">
+      <div class="empty-state-icon">🌐</div>
+      <div class="empty-state-title">暂无跨浏览器对比</div>
+      <div class="empty-state-description">
+        <ul class="empty-state-hint">
+          <li>需同时存在 <strong>run-chromium-optimized</strong> 与 <strong>run-webkit-optimized</strong> 下的同步骤截图。</li>
+          <li>同一日历日内按运行时间或相同 timestamp 目录配对（Chrome 为基线）。</li>
+          <li>可执行 <code>npm run test:optimized -- --project=optimized --project=optimized-webkit</code> 生成双引擎截图。</li>
+        </ul>
+      </div>
+    </div>
+    ${crossBrowserDiffByIteration}
+  </div>` : ''}
+
+  <div id="analysis-content" class="tab-content">
+    ${analysisHtml || '<div class="empty-state"><div class="empty-state-title">暂无分析</div></div>'}
+  </div>
+
+  <div id="issues-content" class="tab-content">
+    ${generateIssuesTabHtml(uiIssues)}
+  </div>
+
   <div id="diff-only-content" class="tab-content">
     <div class="empty-state" id="diff-only-empty" style="display: none;">
       <div class="empty-state-icon">📋</div>
@@ -2083,6 +2619,18 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
           updateDiffPanelComparisonVisibility(target);
         }
       }
+
+      if (activeTab.id === 'cross-browser-content') {
+        const target = document.querySelector(
+          '#cross-browser-content .script-content[data-iteration=\"' + iteration + '\"][data-script=\"' + script + '\"]'
+        );
+        const empty = document.getElementById('cross-browser-empty');
+        if (empty && target) {
+          var visible3 = scriptDiffPanelHasVisibleDiff(target);
+          empty.style.display = visible3 ? 'none' : 'flex';
+          updateDiffPanelComparisonVisibility(target);
+        }
+      }
     }
     
     function updateOptimizedBrowserEmptyStates(effectiveBrowser) {
@@ -2119,6 +2667,8 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       const tabs = document.querySelectorAll('.global-browser-tab');
       const sections = document.querySelectorAll('.browser-content-section');
       const diffCards = document.querySelectorAll('.diff-card.diff-browser-content');
+      const activeTabNow = document.querySelector('.tab-content.active');
+      const isCrossBrowserTab = activeTabNow && activeTabNow.id === 'cross-browser-content';
       let browserForEmptyState = '';
       
       tabs.forEach(function(tab) {
@@ -2153,11 +2703,16 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
         targetSections.forEach(function(section) {
           section.classList.add('active');
         });
-        // 与 Optimized 一致：差异 Tab 也只展示当前「浏览器」筛选下的对比，避免选中 webkit 却仍看到 chrome 的 diff 造成误解。
-        const targetDiffCards = document.querySelectorAll('.diff-card.diff-browser-content[data-browser="' + effectiveBrowser + '"]');
-        targetDiffCards.forEach(function(card) {
-          card.classList.add('active');
-        });
+        if (isCrossBrowserTab) {
+          document.querySelectorAll('.diff-card.diff-browser-content[data-browser="cross"]').forEach(function(card) {
+            card.classList.add('active');
+          });
+        } else {
+          const targetDiffCards = document.querySelectorAll('.diff-card.diff-browser-content[data-browser="' + effectiveBrowser + '"]');
+          targetDiffCards.forEach(function(card) {
+            card.classList.add('active');
+          });
+        }
       }
       
       const allSubsections = document.querySelectorAll('.step-subsection');
@@ -2194,8 +2749,13 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
       }
       
       const activeTab = document.querySelector('.tab-content.active');
-      if (activeTab && (activeTab.id === 'diff-only-content' || activeTab.id === 'optimized-diff-content')) {
-        // 差异类 Tab：不显式全部 display:block，避免当前浏览器无数据时仍露出空步骤；由 updateDiffEmptyStates 按脚本面板设置。
+      if (
+        activeTab &&
+        (activeTab.id === 'diff-only-content' ||
+          activeTab.id === 'optimized-diff-content' ||
+          activeTab.id === 'cross-browser-content')
+      ) {
+        /* 差异类 Tab 由 updateDiffEmptyStates 控制步骤可见性 */
       } else if (activeTab && activeTab.id === 'optimized-content') {
         activeTab.querySelectorAll('.comparison').forEach(function(comparison) {
           comparison.style.display = 'block';
@@ -2239,79 +2799,131 @@ function generateHTML(testDirComparisons: TestDirComparisons[], pomDirName: stri
 </html>`;
 }
 
+function discoverScriptScanTargets(screenshotsDir: string): ScriptScanTarget[] {
+  const skipTop = new Set(['results', 'diffs', 'pom']);
+  const targets: ScriptScanTarget[] = [];
+
+  const topEntries = fs
+    .readdirSync(screenshotsDir)
+    .filter((f) => !f.startsWith('.') && !skipTop.has(f))
+    .filter((f) => fs.statSync(path.join(screenshotsDir, f)).isDirectory());
+
+  for (const top of topEntries) {
+    const topPath = path.join(screenshotsDir, top);
+    const children = fs
+      .readdirSync(topPath)
+      .filter((f) => !f.startsWith('.'))
+      .filter((f) => fs.statSync(path.join(topPath, f)).isDirectory());
+
+    const directRunSegment = children.some((c) => RUN_SEGMENT_DIR.test(c));
+
+    if (directRunSegment) {
+      // screenshots/<script>/run-chromium-optimized/<timestamp>/...
+      targets.push({ testDir: top, scriptPath: topPath });
+      continue;
+    }
+
+    for (const scriptDir of children) {
+      targets.push({
+        testDir: `${top}/${scriptDir}`,
+        scriptPath: path.join(topPath, scriptDir),
+      });
+    }
+  }
+
+  return targets.sort((a, b) => a.testDir.localeCompare(b.testDir, 'zh-CN'));
+}
+
 async function main() {
   const args = process.argv.slice(2);
-  let outputPath = 'results/screenshot-comparison.html';
-  
-  if (args.length > 0) {
-    outputPath = args[0];
-  }
-  
+  const gateMode = args.includes('--gate');
+  const positional = args.filter((a) => !a.startsWith('--'));
+  let outputPath = positional[0] || 'results/screenshot-comparison.html';
+  const issuesOut = process.env.UI_ISSUES_OUT || 'results/ui-issues.json';
+
   const screenshotsDir = 'screenshots';
-  
+
   if (!fs.existsSync(screenshotsDir)) {
     console.log(`⚠️  截图目录不存在: ${screenshotsDir}`);
     return;
   }
-  
-  // 目录结构约定：
-  // screenshots/<dateDir>/<scriptDir>/<timestamp>/<step-*.png>
-  const dateDirs = fs.readdirSync(screenshotsDir)
-    .filter((f) => fs.statSync(path.join(screenshotsDir, f)).isDirectory())
-    .filter((f) => !f.startsWith('.'))
-    .sort()
-    .reverse();
-  
+
+  const scanTargets = discoverScriptScanTargets(screenshotsDir);
+
   console.log('📸 正在扫描截图目录...');
   console.log(`  截图根目录: ${screenshotsDir}`);
-  console.log(`  找到 ${dateDirs.length} 个日期目录: ${dateDirs.join(', ')}`);
+  console.log(`  脚本数: ${scanTargets.length}`);
   console.log(`  输出文件: ${outputPath}`);
-  
+  console.log(`  并行对比: ${COMPARE_CONCURRENCY}，增量缓存: ${COMPARE_INCREMENTAL ? '开启' : '关闭'}，跨浏览器: ${COMPARE_CROSS_BROWSER ? '开启' : '关闭'}`);
+
   const testDirComparisons: TestDirComparisons[] = [];
-  
-  for (const dateDir of dateDirs) {
-    const datePath = path.join(screenshotsDir, dateDir);
-    const scriptDirs = fs
-      .readdirSync(datePath)
-      .filter((f) => fs.statSync(path.join(datePath, f)).isDirectory())
-      .filter((f) => !f.startsWith('.'))
-      .sort();
+  const startedAt = Date.now();
+  let compareTaskCount = 0;
 
-    if (scriptDirs.length === 0) continue;
+  for (const { testDir, scriptPath } of scanTargets) {
+    console.log(`\n🔍 处理脚本: ${testDir}`);
 
-    console.log(`\n🗓️  处理日期目录: ${dateDir}（脚本数: ${scriptDirs.length}）`);
+    const screenshots = getAllScreenshots(scriptPath, 'optimized', outputPath);
 
-    for (const scriptDir of scriptDirs) {
-      const scriptPath = path.join(datePath, scriptDir);
-      const scriptKey = `${dateDir}/${scriptDir}`;
-      console.log(`\n🔍 处理脚本目录: ${scriptKey}`);
-
-      const screenshots = getAllScreenshots(scriptPath, 'optimized', outputPath);
-
-      if (screenshots.size > 0) {
-        const comparisons = await generateTestComparisons(scriptKey, screenshots, outputPath);
-        testDirComparisons.push({
-          testDir: scriptKey,
-          comparisons,
-        });
-      }
+    if (screenshots.size > 0) {
+      const comparisons = await generateTestComparisons(testDir, screenshots, outputPath);
+      comparisons.forEach((c) => {
+        compareTaskCount += (c.optimizedComparisons?.length || 0) + (c.crossBrowserComparisons?.length || 0);
+      });
+      testDirComparisons.push({
+        testDir,
+        comparisons,
+      });
     }
   }
-  
+
   if (testDirComparisons.length === 0) {
     console.log('\n⚠️  没有找到任何截图');
     return;
   }
-  
-  const html = generateHTML(testDirComparisons, '', '', false, true);
-  
+
+  const uiIssues = collectAllUiIssues(testDirComparisons);
+  const issuesReport = buildUiIssuesReport(uiIssues);
+  issuesReport.plainLanguageAnalysis = buildPlainLanguageAnalysis(issuesReport);
+  writeUiIssuesReport(issuesReport, issuesOut);
+
+  const analysisMdPath = path.join(path.dirname(issuesOut), 'ui-issues-analysis.md');
+  fs.writeFileSync(analysisMdPath, issuesReport.plainLanguageAnalysis.markdown, 'utf-8');
+
+  const historyPath = appendHistorySnapshot(issuesReport);
+
+  const html = generateHTML(
+    testDirComparisons,
+    '',
+    '',
+    false,
+    true,
+    uiIssues,
+    issuesReport.plainLanguageAnalysis.html,
+  );
+
   const outputDir = path.dirname(outputPath);
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
   }
-  
+
   fs.writeFileSync(outputPath, html, 'utf-8');
+  const elapsed = ((Date.now() - startedAt) / 1000).toFixed(2);
   console.log(`\n✅ 对比报告已生成: ${outputPath}`);
+  const pla = issuesReport.plainLanguageAnalysis;
+  console.log(`   UI 问题: ${issuesOut}（blocker ${issuesReport.summary.blocker} / warning ${issuesReport.summary.warning}）`);
+  if (pla) {
+    console.log(
+      `   分析摘要: ${analysisMdPath}（合并后 ${pla.overview.mergedRowCount} 行，原始 ${pla.overview.rawIssueCount} 条）`,
+    );
+  }
+  console.log(`   历史快照: ${historyPath}`);
+  console.log(`   对比任务: ${compareTaskCount} 项，耗时 ${elapsed}s`);
+
+  if (gateMode && gateShouldFail(issuesReport)) {
+    console.error(`\n❌ --gate：存在 blocker 级 UI 问题，退出码 1`);
+    process.exit(1);
+  }
 }
 
 main();

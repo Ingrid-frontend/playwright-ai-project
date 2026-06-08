@@ -26,6 +26,7 @@
       "description": "每日 Stage 全量回归",
       "schedule": "0 2 * * *",
       "timezone": "Asia/Shanghai",
+      "playwrightEnv": "stage",
       "specs": "all",
       "steps": {
         "login": true,
@@ -42,7 +43,8 @@
       "enabled": true,
       "description": "工作台冒烟（手动或按需触发）",
       "schedule": null,
-      "specs": ["tests/optimized/260612/工作台_*.optimized.spec.ts"],
+      "playwrightEnv": "stage",
+      "specs": ["tests/optimized/stage/260612/工作台_*.optimized.spec.ts"],
       "stopOnTestFailure": true,
       "steps": {
         "login": true,

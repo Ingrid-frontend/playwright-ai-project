@@ -88,6 +88,7 @@ async function main(): Promise<void> {
       stopOnCompareGate: false,
       runCompareAfterAbort: true,
       verbose,
+      playwrightEnv: process.env.PLAYWRIGHT_ENV?.trim() || 'stage',
       steps: {
         login: false,
         compare: true,

@@ -1,5 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import {
+  buildOptimizedRel,
+  buildScreenshotDir,
+  getLegacyEnvDefault,
+} from '../../src/utils/test-env-path.js';
 
 interface Action {
   index: number;
@@ -21,11 +26,21 @@ class ChromeRecorderOptimizer {
   private lines: string[];
   private actions: Action[] = [];
   private testBlock: TestBlock | null = null;
+  private screenshotDir: string;
+  private playwrightEnv: string;
 
-  constructor(filePath: string) {
+  constructor(filePath: string, opts?: { screenshotDir?: string; playwrightEnv?: string }) {
     this.filePath = filePath;
     this.content = fs.readFileSync(filePath, 'utf-8');
     this.lines = this.content.split('\n');
+    this.playwrightEnv = opts?.playwrightEnv?.trim() || getLegacyEnvDefault();
+    this.screenshotDir =
+      opts?.screenshotDir ||
+      buildScreenshotDir({
+        playwrightEnv: this.playwrightEnv,
+        dateCategory: '',
+        fileName: path.basename(filePath, '.js'),
+      });
   }
 
   optimize(): string {
@@ -144,7 +159,7 @@ class ChromeRecorderOptimizer {
     result.push("import { screenshotWhenStable } from '../../utils/screenshot';");
     result.push("");
     result.push(`${indent}test.use({`);
-    result.push(`${indent}  storageState: 'storage/loginState/stage.json'`);
+    result.push(`${indent}  storageState: 'storage/loginState/${this.playwrightEnv}.json'`);
     result.push(`${indent}});`);
     result.push("");
     result.push(`${indent}test("${testName}", async ({ page }) => {`);
@@ -156,7 +171,7 @@ class ChromeRecorderOptimizer {
     result.push(`${indent}  let browserInfo = 'unknown';`);
     result.push(`${indent}  let runDir = '';`);
     result.push(`${indent}  const getScreenshotPath = (step: number, label: string) => \`\${runDir}/step-\${step}-\${label}.png\`;`);
-    result.push(`${indent}  test.setTimeout(60000);`);
+    result.push(`${indent}  test.setTimeout(90000);`);
     result.push("");
     
     if (gotoUrl) {
@@ -204,17 +219,17 @@ class ChromeRecorderOptimizer {
     
     switch (action.type) {
       case 'click':
-        return `const _locator = page.locator("${optimizedSelector}").first();\n      await page.waitForTimeout(1000).catch(() => {});\n      await _locator.waitFor({ state: 'attached', timeout: 30000 }).catch(() => {});\n      await _locator.scrollIntoViewIfNeeded().catch(() => {});\n      await _locator.click({ timeout: 30000, force: true });`;
+        return `const _locator = page.locator("${optimizedSelector}").first();\n      await page.waitForTimeout(300).catch(() => {});\n      await _locator.waitFor({ state: 'attached', timeout: 15000 }).catch(() => {});\n      await _locator.scrollIntoViewIfNeeded().catch(() => {});\n      await _locator.click({ timeout: 15000, force: true });`;
       case 'fill':
-        return `const _locator = page.locator("${optimizedSelector}").first();\n      await page.waitForTimeout(1000).catch(() => {});\n      await _locator.waitFor({ state: 'attached', timeout: 30000 }).catch(() => {});\n      await _locator.scrollIntoViewIfNeeded().catch(() => {});\n      await _locator.fill("${action.text || ''}", { timeout: 30000 });`;
+        return `const _locator = page.locator("${optimizedSelector}").first();\n      await page.waitForTimeout(300).catch(() => {});\n      await _locator.waitFor({ state: 'attached', timeout: 15000 }).catch(() => {});\n      await _locator.scrollIntoViewIfNeeded().catch(() => {});\n      await _locator.fill("${action.text || ''}", { timeout: 15000 });`;
       case 'type':
-        return `const _locator = page.locator("${optimizedSelector}").first();\n      await page.waitForTimeout(1000).catch(() => {});\n      await _locator.waitFor({ state: 'attached', timeout: 30000 }).catch(() => {});\n      await _locator.scrollIntoViewIfNeeded().catch(() => {});\n      await _locator.type("${action.text || ''}", { timeout: 30000 });`;
+        return `const _locator = page.locator("${optimizedSelector}").first();\n      await page.waitForTimeout(300).catch(() => {});\n      await _locator.waitFor({ state: 'attached', timeout: 15000 }).catch(() => {});\n      await _locator.scrollIntoViewIfNeeded().catch(() => {});\n      await _locator.type("${action.text || ''}", { timeout: 15000 });`;
       case 'check':
-        return `const _locator = page.locator("${optimizedSelector}").first();\n      await page.waitForTimeout(1000).catch(() => {});\n      await _locator.waitFor({ state: 'attached', timeout: 30000 }).catch(() => {});\n      await _locator.scrollIntoViewIfNeeded().catch(() => {});\n      await _locator.check({ timeout: 30000 });`;
+        return `const _locator = page.locator("${optimizedSelector}").first();\n      await page.waitForTimeout(300).catch(() => {});\n      await _locator.waitFor({ state: 'attached', timeout: 15000 }).catch(() => {});\n      await _locator.scrollIntoViewIfNeeded().catch(() => {});\n      await _locator.check({ timeout: 15000 });`;
       case 'selectOption':
-        return `const _locator = page.locator("${optimizedSelector}").first();\n      await page.waitForTimeout(1000).catch(() => {});\n      await _locator.waitFor({ state: 'attached', timeout: 30000 }).catch(() => {});\n      await _locator.scrollIntoViewIfNeeded().catch(() => {});\n      await _locator.selectOption("${action.text || ''}", { timeout: 30000 });`;
+        return `const _locator = page.locator("${optimizedSelector}").first();\n      await page.waitForTimeout(300).catch(() => {});\n      await _locator.waitFor({ state: 'attached', timeout: 15000 }).catch(() => {});\n      await _locator.scrollIntoViewIfNeeded().catch(() => {});\n      await _locator.selectOption("${action.text || ''}", { timeout: 15000 });`;
       case 'press':
-        return `const _locator = page.locator("${optimizedSelector}").first();\n      await page.waitForTimeout(1000).catch(() => {});\n      await _locator.waitFor({ state: 'attached', timeout: 30000 }).catch(() => {});\n      await _locator.scrollIntoViewIfNeeded().catch(() => {});\n      await _locator.press("${action.text || ''}", { timeout: 30000 });`;
+        return `const _locator = page.locator("${optimizedSelector}").first();\n      await page.waitForTimeout(300).catch(() => {});\n      await _locator.waitFor({ state: 'attached', timeout: 15000 }).catch(() => {});\n      await _locator.scrollIntoViewIfNeeded().catch(() => {});\n      await _locator.press("${action.text || ''}", { timeout: 15000 });`;
       default:
         return `// Unknown action type: ${action.type}`;
     }
@@ -283,8 +298,7 @@ class ChromeRecorderOptimizer {
   }
 
   private getScreenshotDir(): string {
-    const name = path.basename(this.filePath).replace(".js", "");
-    return `screenshots/${name}`;
+    return this.screenshotDir;
   }
 }
 
@@ -303,11 +317,15 @@ if (!fs.existsSync(outputDir)) {
 }
 
 async function processFile(filePath: string): Promise<void> {
-  const optimizer = new ChromeRecorderOptimizer(filePath);
+  const playwrightEnv = process.env.PLAYWRIGHT_ENV?.trim() || getLegacyEnvDefault();
+  const fileName = path.basename(filePath, '.js');
+  const screenshotDir = buildScreenshotDir({ playwrightEnv, dateCategory: '', fileName });
+  const optimizer = new ChromeRecorderOptimizer(filePath, { screenshotDir, playwrightEnv });
   const result = optimizer.optimize();
 
-  const fileName = path.basename(filePath, '.js');
-  const outputPath = path.join(outputDir, `${fileName}.optimized.spec.ts`);
+  const outputRel = buildOptimizedRel({ playwrightEnv, dateCategory: '', stem: fileName });
+  const outputPath = path.join(process.cwd(), outputRel);
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 
   fs.writeFileSync(outputPath, result, 'utf-8');
   console.log(`✅ 优化完成: ${outputPath}`);

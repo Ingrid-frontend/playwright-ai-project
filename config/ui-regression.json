@@ -1,0 +1,19 @@
+{
+  "blockerRatio": 0.005,
+  "warningRatio": 0.001,
+  "diffOnlyTabMinRatio": 0.003,
+  "defaultBrowsers": ["chrome", "webkit"],
+  "compareCrossBrowser": true,
+  "baselineStrategy": "hybrid",
+  "ignoreRegions": [],
+  "maskSelectors": [],
+  "screenshot": {
+    "freezeAnimations": true,
+    "deviceScaleFactor": 1
+  },
+  "crossBrowser": {
+    "blockerRatio": 0.01,
+    "warningRatio": 0.003,
+    "countAsBlockerInGate": false
+  }
+}

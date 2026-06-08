@@ -1,14 +1,14 @@
-import { test, expect } from '../fixtures';
+import { test, expect } from '../../fixtures';
 import fs from 'fs';
 import path from 'path';
 import { takeStepScreenshot, waitForPostInteractionPaint, withScreenshotRunSegment } from '../../../utils/screenshot';
-import { step, maybePause, smartClick } from '../../utils/optimized-actions';
+import { step, maybePause, smartClick } from '../../../utils/optimized-actions';
 
 test('test', async ({ page }) => {
-  test.setTimeout(120000);
+  test.setTimeout(90000);
 
   // 截图根目录；Chrome/WebKit 子目录由 ../fixtures 按引擎自动设置（仍可用 PLAYWRIGHT_SCREENSHOT_RUN_SEGMENT 手动覆盖）
-  const screenshotDir = withScreenshotRunSegment('screenshots/260612/工作台_2026-05-18_17-00-07');
+  const screenshotDir = withScreenshotRunSegment('screenshots/stage/260612/工作台_2026-05-18_17-00-07');
   if (!fs.existsSync(screenshotDir)) {
     fs.mkdirSync(screenshotDir, { recursive: true });
   }
@@ -31,63 +31,60 @@ test('test', async ({ page }) => {
     await step('导航到页面', async () => {
     console.log('🌐 导航到: /');
     await page.goto('/', { waitUntil: 'load' });
-    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
     await takeStepScreenshot(page, path.join(runDir, `step-1-导航到页面.png`));
   });
 
   await step('工作台', async () => {
     await takeStepScreenshot(page, path.join(runDir, `step-2-工作台-before.png`));
-    await page.locator('iframe').first().waitFor({ state: 'attached', timeout: 20000 }).catch(() => {});
+    await page.locator('iframe').first().waitFor({ state: 'attached', timeout: 12000 }).catch(() => {});
     const baseContext = page.frameLocator('iframe').first();
     const locator = baseContext.getByRole('tab', { name: '工作台' }).filter({ visible: true }).first();
     try {
-      await expect(locator).toBeVisible({ timeout: 6000 });
+      await expect(locator).toBeVisible({ timeout: 4000 });
     } catch {
       console.log('ℹ️  工作台：元素未出现（非关键步骤），跳过本步');
       await takeStepScreenshot(page, path.join(runDir, `step-2-工作台-skipped.png`), { mode: 'stable' });
       return;
     }
     await smartClick(locator, '工作台');
-    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
     await waitForPostInteractionPaint(page);
     await takeStepScreenshot(page, path.join(runDir, `step-2-工作台-after.png`), { mode: 'stable' });
   });
 
   await step('申请单', async () => {
     await takeStepScreenshot(page, path.join(runDir, `step-3-申请单-before.png`));
-    await page.locator('iframe').first().waitFor({ state: 'attached', timeout: 20000 }).catch(() => {});
+    await page.locator('iframe').first().waitFor({ state: 'attached', timeout: 12000 }).catch(() => {});
     const baseContext = page.frameLocator('iframe').first();
     const locator = baseContext.getByText('申请单', { exact: true }).filter({ visible: true }).first();
     try {
-      await expect(locator).toBeVisible({ timeout: 6000 });
+      await expect(locator).toBeVisible({ timeout: 4000 });
     } catch {
       console.log('ℹ️  申请单：元素未出现（非关键步骤），跳过本步');
       await takeStepScreenshot(page, path.join(runDir, `step-3-申请单-skipped.png`), { mode: 'stable' });
       return;
     }
     await smartClick(locator, '申请单');
-    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
     await waitForPostInteractionPaint(page);
     await takeStepScreenshot(page, path.join(runDir, `step-3-申请单-after.png`), { mode: 'stable' });
   });
 
   await step('1', async () => {
     await takeStepScreenshot(page, path.join(runDir, `step-4-1-before.png`));
-    await page.locator('iframe').first().waitFor({ state: 'attached', timeout: 20000 }).catch(() => {});
+    await page.locator('iframe').first().waitFor({ state: 'attached', timeout: 12000 }).catch(() => {});
     const baseContext = page.frameLocator('iframe').first();
     const locator = baseContext.getByRole('cell', { name: '1', exact: true }).filter({ visible: true }).first();
     try {
-      await expect(locator).toBeVisible({ timeout: 6000 });
+      await expect(locator).toBeVisible({ timeout: 4000 });
     } catch {
       console.log('ℹ️  1：元素未出现（非关键步骤），跳过本步');
       await takeStepScreenshot(page, path.join(runDir, `step-4-1-skipped.png`), { mode: 'stable' });
       return;
     }
     await smartClick(locator, '1');
-    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
     await waitForPostInteractionPaint(page);
     await takeStepScreenshot(page, path.join(runDir, `step-4-1-after.png`), { mode: 'stable' });
   });

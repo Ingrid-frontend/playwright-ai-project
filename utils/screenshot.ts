@@ -29,10 +29,44 @@ async function lockViewportForSnapshot(page: Page): Promise<void> {
   await page.setViewportSize(SNAPSHOT_VIEWPORT);
 }
 
+let freezeAnimationsApplied = false;
+
+/** 可选：禁用 CSS 动画/过渡，减少截图抖动（config/ui-regression.json → screenshot.freezeAnimations） */
+async function applyScreenshotStabilityStyles(page: Page): Promise<void> {
+  if (freezeAnimationsApplied) return;
+  let enabled = process.env.SCREENSHOT_FREEZE_ANIMATIONS !== '0';
+  try {
+    const cfgPath = path.join(__dirname, '../config/ui-regression.json');
+    if (fs.existsSync(cfgPath)) {
+      const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf-8')) as {
+        screenshot?: { freezeAnimations?: boolean };
+      };
+      if (cfg.screenshot?.freezeAnimations === false) enabled = false;
+      if (cfg.screenshot?.freezeAnimations === true) enabled = true;
+    }
+  } catch {
+    /* use env default */
+  }
+  if (!enabled) return;
+  try {
+    await page.addStyleTag({
+      content: `*, *::before, *::after {
+        animation-duration: 0s !important;
+        animation-delay: 0s !important;
+        transition-duration: 0s !important;
+        transition-delay: 0s !important;
+      }`,
+    });
+    freezeAnimationsApplied = true;
+  } catch {
+    /* frame 可能已销毁 */
+  }
+}
+
 /**
  * 多浏览器串跑时区分截图目录，便于 compare-screenshots 按浏览器归档。
  * 目录名需包含 `-chromium-` / `-webkit-` 等片段（见 compare-screenshots 的 browser 检测）。
- * `tests/optimized/<日期>/` 下 spec：`import { test, expect } from '../fixtures'`；直接放在 `tests/optimized/` 根下时用 `./fixtures`。会按 Chromium/WebKit 自动设子目录；手动串跑仍可 export 本变量覆盖。
+ * `tests/optimized/<env>/<日期>/` 下 spec：`import { test, expect } from '../../fixtures'`（层级随 env/date 段数变化，见 `test-env-path.cjs`）。
  */
 export function withScreenshotRunSegment(baseScreenshotDir: string): string {
   const seg = process.env.PLAYWRIGHT_SCREENSHOT_RUN_SEGMENT?.trim();
@@ -55,11 +89,12 @@ export async function screenshotWhenStable(page: Page, path: string, options: { 
   const fullPage = options.fullPage ?? useFullPageByDefault();
 
   await lockViewportForSnapshot(page);
+  await applyScreenshotStabilityStyles(page);
 
-  await waitForRouteStable(page, 3000);
+  await waitForRouteStable(page, 2000);
 
   try {
-    await page.waitForLoadState('networkidle', { timeout: 3000 });
+    await page.waitForLoadState('networkidle', { timeout: 2000 });
   } catch (error) {
     console.log('⚠️  等待网络空闲超时，继续执行截图');
   }
@@ -75,7 +110,7 @@ export async function screenshotWhenStable(page: Page, path: string, options: { 
       const el = page.locator(sel);
       const count = await el.count();
       if (count > 0) {
-        await expect(el, `等待 ${sel} 消失`).toBeHidden({ timeout: 2000 });
+        await expect(el, `等待 ${sel} 消失`).toBeHidden({ timeout: 1500 });
       }
     } catch (error) {
       continue;
@@ -84,7 +119,7 @@ export async function screenshotWhenStable(page: Page, path: string, options: { 
 
   await waitForContentReady(page);
 
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(200);
 
   const route = await getCurrentRoute(page);
   const routePath = addRouteToPath(path, route);
@@ -98,8 +133,8 @@ export async function screenshotWhenStable(page: Page, path: string, options: { 
  * 点击/填写等操作后：等待全局 loading 消失并留一帧给 Drawer/Tab CSS 动画，减少「after 截图花屏、空白、半开抽屉」。
  */
 export async function waitForPostInteractionPaint(page: Page): Promise<void> {
-  await page.locator('.ant-spin-spinning, .ant-loading').first().waitFor({ state: 'hidden', timeout: 15_000 }).catch(() => {});
-  await page.locator('.page-loading-mask').first().waitFor({ state: 'hidden', timeout: 10_000 }).catch(() => {});
+  await page.locator('.ant-spin-spinning, .ant-loading').first().waitFor({ state: 'hidden', timeout: 8_000 }).catch(() => {});
+  await page.locator('.page-loading-mask').first().waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => {});
 
   const antdAnimationSelectors = [
     '.ant-drawer-open',
@@ -118,10 +153,10 @@ export async function waitForPostInteractionPaint(page: Page): Promise<void> {
   ];
 
   for (const sel of antdAnimationSelectors) {
-    await page.locator(sel).first().waitFor({ state: 'attached', timeout: 3_000 }).catch(() => {});
+    await page.locator(sel).first().waitFor({ state: 'attached', timeout: 1_500 }).catch(() => {});
   }
 
-  await page.waitForTimeout(350);
+  await page.waitForTimeout(150);
 }
 
 export async function takeStepScreenshot(
@@ -154,10 +189,10 @@ function addRouteToPath(originalPath: string, route: string): string {
   return path.join(dir, newFilename);
 }
 
-async function waitForRouteStable(page: Page, maxWaitTime: number = 5000): Promise<void> {
+async function waitForRouteStable(page: Page, maxWaitTime: number = 3000): Promise<void> {
   try {
     let currentRoute = await getCurrentRoute(page);
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(300);
     
     let stableCount = 0;
     const maxStableCount = 3;
@@ -179,9 +214,9 @@ async function waitForRouteStable(page: Page, maxWaitTime: number = 5000): Promi
         stableCount = 0;
       }
       
-      await page.waitForTimeout(200);
+      await page.waitForTimeout(150);
     }
-    
+
     console.log(`✅ 路由稳定: ${currentRoute}`);
   } catch (error) {
     console.log('⚠️  路由稳定检测失败，继续执行');
@@ -221,7 +256,7 @@ async function waitForContentReady(page: Page): Promise<void> {
     });
 
     if (!hasContent) {
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(300);
     }
   } catch (error) {
     console.log('⚠️  内容检测失败，继续执行截图');

@@ -58,6 +58,7 @@
     "preprocess-raw-recordings": "tsx scripts/preprocess/preprocess-raw-recordings.ts",
     "pipeline-raw-to-optimized": "tsx scripts/preprocess/pipeline-raw-to-optimized.ts",
     "optimize-raw-recordings": "tsx scripts/optimize/optimize-raw-recordings.ts",
+    "migrate:test-env-paths": "tsx scripts/migrate/add-env-to-test-paths.ts",
     "run-raw-recordings-optimized": "tsx scripts/report/run-raw-recordings-optimized.ts",
     "remove-iframe-logic": "tsx scripts/optimize/remove-iframe-logic.ts",
     "clean": "rm -rf test-results playwright-report screenshots/results",

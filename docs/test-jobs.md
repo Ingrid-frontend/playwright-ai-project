@@ -101,12 +101,11 @@ npm run test-job:daemon
 
 ## Playwright Studio
 
-Studio 侧栏「定时任务」面板支持：
+侧栏 **工作模式 → 定时任务** 进入独立工作区（非折叠面板）：
 
-- 查看 `config/test-jobs.json` 中的 Job 列表与最近运行状态
-- 前台 / 后台手动触发
-- 停止运行中的 Job
-- 查看最近运行日志 tail
+- **左侧**：任务列表（`config/test-jobs.json`），支持前台/后台运行、停止
+- **中间**：选中任务的配置摘要、最近运行状态与完整日志
+- **右侧**：控制台仍输出执行过程日志
 
 WebSocket 消息：`jobs:list`、`jobs:run`、`jobs:stop`、`jobs:status`
 
@@ -120,9 +119,9 @@ WebSocket 消息：`jobs:list`、`jobs:run`、`jobs:stop`、`jobs:status`
 
 ## 环境变量
 
-与现有流程一致：
+与现有流程一致（路径约定见 [test-env-paths.md](./test-env-paths.md)）：
 
-- `PLAYWRIGHT_ENV` — 可被 Job 内 `playwrightEnv` 覆盖
+- `PLAYWRIGHT_ENV` — 可被 Job 内 `playwrightEnv` 覆盖；`specs: all` 时仅执行该环境下的用例
 - `TEST_USERNAME` / `TEST_PASSWORD` — 登录
 - `FEISHU_WEBHOOK_URL` / `FEISHU_WEBHOOK_SECRET` — 飞书通知
 

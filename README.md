@@ -77,6 +77,8 @@ cp datasource/accounts.json.example datasource/accounts.json
 
 **图形界面（可选）**：仓库根执行 `npm run studio`，在 Playwright Studio 中选择 **新建用例** 或 **运行用例** 模式，完成录制 → 生成用例 → 执行 → 报告。操作说明见 [pw-files/README.md](pw-files/README.md#工作模式侧栏顶部)。
 
+若目标是 **发现 UI 视觉回归**（而不仅是功能通过），请走下方 [UI 回归流程](#-ui-回归流程录制--截图对比--发现-ui-问题)：`录制 → 优化 → 双浏览器执行 → 截图对比 → 问题清单 / Golden 基线`。
+
 ## 📁 项目结构
 
 ```
@@ -89,10 +91,18 @@ my-playwright-ai-project/
 │   ├── fixtures/            # 增强型 Fixtures（登录、数据库初始化）
 │   └── setup/               # 测试前置设置（登录等）
 ├── tests/
-│   ├── ai-generated/        # 由 AI Agent 自动生成的测试脚本
+│   ├── ai-generated/        # Legacy：旧 AI 生成用例，新用例请用 raw-recordings
 │   ├── e2e/                 # 手写/精修的核心业务逻辑测试
-│   ├── optimized/            # 优化后的测试脚本（来自 raw-recordings）
-│   └── raw-recordings/       # 录制生成的原始测试脚本
+│   ├── optimized/           # 优化后的可执行用例（主执行目录）
+│   └── raw-recordings/      # 录制原始脚本（Codegen / Studio 写入）
+├── config/
+│   └── ui-regression.json   # UI 回归阈值、mask、基线策略
+├── screenshots/             # 每次运行的步骤截图
+├── screenshots-baseline/    # Golden 基线截图（promote 后）
+├── results/
+│   ├── screenshot-comparison.html
+│   ├── ui-issues.json       # 结构化 UI 问题清单
+│   └── ui-regression/       # baseline manifest、last-green 元数据
 ├── .ai-prompts/             # 存放专门给 AI 的提示词模板
 ├── playwright.config.ts     # 核心配置文件
 └── package.json
@@ -604,6 +614,143 @@ npm run rename-recordings
 5. **测试命名不清晰**：使用通用名称 "test"
 6. **缺少错误处理**：没有异常处理机制
 
+## 📸 UI 回归流程（录制 → 截图对比 → 发现 UI 问题）
+
+本项目的 **UI 回归** 能力：在功能测试通过的基础上，用步骤截图 + 像素对比找出页面视觉变化，并输出可分级、可阻断 CI 的问题清单。
+
+更细的命令表与配置说明见：[docs/ui-regression-workflow.md](docs/ui-regression-workflow.md)。
+
+### 流程总览
+
+```
+登录 (storageState)
+    ↓
+录制 → tests/raw-recordings/*.spec.ts
+    ↓
+优化 → tests/optimized/**/*.optimized.spec.ts
+    ↓
+执行 (Chromium + WebKit) → screenshots/<迭代>/<脚本>/run-*-optimized/<timestamp>/step-*.png
+    ↓
+对比 → results/screenshot-comparison.html + results/ui-issues.json
+    ↓
+[可选] Promote Golden → screenshots-baseline/...
+    ↓
+[CI] compare-screenshots --gate → blocker 时失败
+```
+
+### 推荐：一键全流程（本地）
+
+```bash
+# 录制 → 优化 → 执行（optimized + webkit）→ 截图对比
+npm run auto-test
+
+# 指定某条 raw 录制（不只用「最新一条」）
+npm run auto-test -- --spec tests/raw-recordings/2026-05-18/我的用例.spec.ts
+
+# 批量：raw-recordings 下全部用例
+npm run auto-test -- --batch
+
+# 对比存在 blocker 时整个流程失败（与 CI 一致）
+npm run auto-test -- --gate
+```
+
+**产出**：
+
+| 文件 | 说明 |
+|------|------|
+| `tests/raw-recordings/...` | 原始录制 |
+| `tests/optimized/.../*.optimized.spec.ts` | 可执行优化用例 |
+| `screenshots/<迭代>/<脚本>/run-chromium-optimized/` 或 `run-webkit-optimized/<时间戳>/` | 每步 PNG |
+| `results/screenshot-comparison.html` | 可视化对比报告（含「问题列表」Tab） |
+| `results/ui-issues.json` | 结构化问题：脚本、步骤、浏览器、严重度、compareKind |
+| `results/history/<日期>.json` | 按日聚合的差异趋势 |
+
+CI 环境下 `auto-test` 会跳过录制，使用仓库内已有用例与截图（见 `.github/workflows/playwright.yml`）。
+
+### 推荐：分步手动执行
+
+```bash
+# 0. 登录（首次或 storage 过期）
+npm run login
+
+# 1. 录制
+npm run record
+
+# 2. 优化（单文件 / 目录 / 默认整库 raw-recordings）
+npm run optimize-raw-recordings -- tests/raw-recordings/你的用例.spec.ts
+
+# 3. 执行并截图（建议双浏览器，便于跨浏览器对比）
+npx playwright test tests/optimized/你的路径/xxx.optimized.spec.ts \
+  --project=optimized --project=optimized-webkit
+
+# 4. 生成对比报告 + 问题清单
+npm run compare-screenshots
+
+# 5. 在浏览器中打开报告（也可不跑用例，只要有 screenshots/）
+npm run screenshot-report
+```
+
+### Golden 基线（预期 UI）
+
+当某次运行的 UI **确认为正确** 时，可将其提升为 Golden，后续对比优先与 Golden 比（Hybrid 策略）。
+
+```bash
+# 将某次 run 的截图复制到 screenshots-baseline/
+npm run promote-baseline -- --script 260612/工作台_2026-05-18_17-00-07 --run 2026-05-21T10-46-34-813Z
+
+# 撤销该脚本的 Golden
+npm run promote-baseline -- --script 260612/工作台_2026-05-18_17-00-07 --revert
+```
+
+**Hybrid 对比优先级**（可用 `PLAYWRIGHT_COMPARE_BASELINE` 强制）：
+
+1. **golden** — `screenshots-baseline/` 中同步骤 PNG  
+2. **last-green** — 测试通过后写入的 `results/ui-regression/last-green-run.json`  
+3. **oldest** — 同浏览器最早一次 run（兼容旧数据，标记为 `run-drift`）
+
+### 问题分级与门禁
+
+阈值在 `config/ui-regression.json`：
+
+| 配置项 | 默认 | 含义 |
+|--------|------|------|
+| `blockerRatio` | `0.005` (0.5%) | 达到即 **blocker**，`--gate` 时导致失败 |
+| `warningRatio` | `0.001` (0.1%) | **warning**，记入报告但不阻断（除非调高 gate 逻辑） |
+| `crossBrowser.*` | 单独阈值 | Chrome vs WebKit；默认不参与 CI gate |
+| `ignoreRegions` | `[]` | 对比前涂黑的固定区域，降低动态区误报 |
+
+```bash
+# 本地/CI：存在 golden/last-green/run-drift 的 blocker 时 exit 1
+npm run compare-screenshots -- --gate
+```
+
+打开 `results/screenshot-comparison.html` → **「问题列表」** Tab，或查看 `results/ui-issues.json`。
+
+### Playwright Studio
+
+```bash
+npm run studio
+```
+
+在 **报告 → 截图对比** 中可：
+
+- **打开已有对比报告** / **从 screenshots 重新生成**（无需先跑用例）
+- 填写脚本键 + run 时间戳 → **将本次 run 设为 Golden**（二次确认）
+- **刷新问题列表**（读取 `ui-issues.json`）
+
+### CI（GitHub Actions）
+
+推送/PR 到 `main` / `develop` 时，`.github/workflows/playwright.yml` 会：
+
+1. `npm run login`（需 Secrets：`TEST_USERNAME`、`TEST_PASSWORD`）  
+2. `playwright test --project=optimized --project=optimized-webkit`  
+3. `npm run compare-screenshots -- --gate`  
+4. 上传 artifact：`screenshot-comparison.html`、`ui-issues.json`、`diffs/`  
+
+可选：`FEISHU_WEBHOOK_URL` 配置后，失败时发送含 blocker 数的飞书摘要。
+
+---
+
 ### 脚本速查（高效使用）
 
 建议按下面的顺序使用（从录制到对比一条链路跑通即可）：
@@ -662,8 +809,45 @@ npm run generate-pom -- tests/raw-recordings/2026-03-02_10-20-26.spec.ts
 npm run compare-screenshots
 ```
 
+**不执行用例也可打开报告**（只需 `screenshots/` 里已有 PNG，或已生成过 HTML）：
+
+```bash
+# 有 screenshots 时生成并打开；已有 results/screenshot-comparison.html 则直接打开
+npm run open-screenshot-report
+
+# 仅打开已有 HTML（不重新跑 pixelmatch）
+npm run open-screenshot-report:only
+```
+
+在 Playwright Studio（`npm run studio`）中：侧栏 **「截图对比报告」** → 报告面板 **「截图对比」** → **打开已有对比报告** / **从 screenshots 重新生成并打开**。
+
+**可选环境变量**（对比引擎与报告筛选）：
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `PLAYWRIGHT_COMPARE_CONCURRENCY` | `4` | 并行对比任务数 |
+| `PLAYWRIGHT_COMPARE_INCREMENTAL` | `1` | 源图未变时复用 `results/diffs/*.meta.json` 缓存 |
+| `PLAYWRIGHT_PIXELMATCH_THRESHOLD` | `0.06` | pixelmatch 颜色阈值（越小越敏感） |
+| `PLAYWRIGHT_PIXELMATCH_INCLUDE_AA` | 开启 | 设为 `0` 时不计入抗锯齿像素 |
+| `PLAYWRIGHT_DIFF_ONLY_TAB_MIN_RATIO` | `0.003` | 「有差异」Tab 最低收录比例（0.3%） |
+| `PLAYWRIGHT_COMPARE_CROSS_BROWSER` | `1` | Chrome(基线) vs WebKit 同步骤跨浏览器对比 |
+| `PLAYWRIGHT_COMPARE_BASELINE` | hybrid | 基线策略：`golden` / `last-green` / `oldest` / `hybrid` |
+
+**UI 回归（Golden + 问题清单）** — 详见 [docs/ui-regression-workflow.md](docs/ui-regression-workflow.md)：
+
+```bash
+npm run compare-screenshots -- --gate          # blocker 时 exit 1（CI 门禁）
+npm run promote-baseline -- --script 260612/xxx --run <timestamp>
+```
+
+- 配置：`config/ui-regression.json`（阈值、mask 区域）
+- Golden：`screenshots-baseline/`；Hybrid 对比：golden → last-green → 最早 run
+- 输出：`results/ui-issues.json` + `results/ui-issues-analysis.md` + HTML「**分析摘要**」（合并重复行）/「问题明细」Tab
+- 主录制目录：`tests/raw-recordings/`（`tests/ai-generated` 为 legacy）
+
 **生成内容**：
 - HTML 格式的对比报告（`results/screenshot-comparison.html`）
+- 结构化 UI 问题清单（`results/ui-issues.json`）
 - 可视化展示所有截图
 - 按步骤分组对比
 - 支持点击放大查看
@@ -814,15 +998,26 @@ npm run auto-test -- --feishu-mode=none
 ```
 
 这个命令会自动执行以下步骤：
-1. 🎬 录制测试脚本
-2. ⚙️ 优化测试脚本
-3. ▶️ 执行优化后的测试
-4. 📊 生成截图对比报告
+1. 🎬 录制测试脚本（CI 环境跳过，使用已有用例）
+2. ⚙️ 优化测试脚本（`optimize-raw-recordings`）
+3. ▶️ 执行优化后的测试（默认 `optimized` + `optimized-webkit`）
+4. 📊 生成截图对比报告与 `ui-issues.json`（测试通过时记录 last-green）
+
+**常用参数**：
+
+```bash
+npm run auto-test -- --spec tests/raw-recordings/xxx.spec.ts   # 指定录制
+npm run auto-test -- --batch                                   # 批量 raw
+npm run auto-test -- --gate                                    # 对比 blocker 则失败
+npm run auto-test -- --playwright-project=optimized            # 仅 Chromium
+npm run auto-test -- --feishu-mode=interactive               # 飞书卡片含 UI 问题摘要
+```
 
 **输出文件**：
-- 录制文件：`tests/raw-recordings/YYYY-MM-DD_HH-MM-SS.spec.ts`
-- 优化文件：`tests/optimized/YYYY-MM-DD_HH-MM-SS.optimized.spec.ts`
+- 录制文件：`tests/raw-recordings/.../*.spec.ts`
+- 优化文件：`tests/optimized/.../*.optimized.spec.ts`
 - 对比报告：`results/screenshot-comparison.html`
+- UI 问题：`results/ui-issues.json`
 
 #### 手动流程
 

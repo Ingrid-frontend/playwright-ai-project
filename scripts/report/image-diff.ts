@@ -1,30 +1,62 @@
 import fs from 'fs';
 import path from 'path';
 import { PNG } from 'pngjs';
+import pixelmatch from 'pixelmatch';
+import { loadUiRegressionConfig } from './ui-regression-config.js';
 
 export interface ImageDiffResult {
   difference: number;
   diffImagePath?: string;
+  width?: number;
+  height?: number;
+  sizeMismatch?: boolean;
 }
+
+export type CompareKind =
+  | 'same-browser'
+  | 'cross-browser'
+  | 'golden'
+  | 'last-green'
+  | 'run-drift';
 
 export interface ImageComparison {
   image1Path: string;
   image2Path: string;
   difference: number;
   diffImagePath?: string;
+  /** 同浏览器多次运行对比时为目标浏览器；跨浏览器时为 secondary（如 webkit） */
   browser?: string;
+  sizeMismatch?: boolean;
+  compareKind?: CompareKind;
+  /** 跨浏览器：基线侧（固定 chrome） */
+  browser1?: string;
+  /** 跨浏览器：对比侧（固定 webkit） */
+  browser2?: string;
+  /** 跨浏览器配对说明（同日按运行序或同 timestamp 目录对齐） */
+  pairLabel?: string;
 }
 
-/** pixelmatch 额外选项；includeAA 默认 false 时会忽略抗锯齿像素，易导致 WebKit/Chrome 细边差异被算成 0%。 */
+/** pixelmatch 额外选项；includeAA 默认 true。设为 false 时抗锯齿像素不计入差异。 */
 export interface CompareImagesOptions {
   includeAA?: boolean;
+  /** 为 false 时不写入 diff PNG（difference 为 0 时默认跳过） */
+  writeDiffImage?: boolean;
+}
+
+interface PreparedPair {
+  croppedImg1: PNG;
+  croppedImg2: PNG;
+  diff: PNG;
+  width: number;
+  height: number;
+  sizeMismatch: boolean;
 }
 
 function readPNG(filePath: string): Promise<PNG> {
   return new Promise((resolve, reject) => {
     fs.createReadStream(filePath)
       .pipe(new PNG())
-      .on('parsed', function(this: PNG) {
+      .on('parsed', function (this: PNG) {
         resolve(this);
       })
       .on('error', reject);
@@ -40,62 +72,100 @@ function writePNG(png: PNG, outputPath: string): Promise<void> {
   });
 }
 
+/** 裁切到重叠区域，使用 Buffer 行拷贝替代逐像素循环 */
+function cropToOverlap(img1: PNG, img2: PNG, width: number, height: number): { croppedImg1: PNG; croppedImg2: PNG } {
+  const croppedImg1 = new PNG({ width, height });
+  const croppedImg2 = new PNG({ width, height });
+  const rowBytes = width * 4;
+
+  for (let y = 0; y < height; y++) {
+    const srcOff1 = (y * img1.width) * 4;
+    const srcOff2 = (y * img2.width) * 4;
+    const dstOff = y * rowBytes;
+    img1.data.copy(croppedImg1.data, dstOff, srcOff1, srcOff1 + rowBytes);
+    img2.data.copy(croppedImg2.data, dstOff, srcOff2, srcOff2 + rowBytes);
+  }
+
+  return { croppedImg1, croppedImg2 };
+}
+
+async function prepareImagePair(img1Path: string, img2Path: string): Promise<PreparedPair> {
+  const img1 = await readPNG(img1Path);
+  const img2 = await readPNG(img2Path);
+
+  const width = Math.min(img1.width, img2.width);
+  const height = Math.min(img1.height, img2.height);
+  const sizeMismatch = img1.width !== img2.width || img1.height !== img2.height;
+
+  if (sizeMismatch) {
+    console.log(
+      `⚠️  图片尺寸不同: ${img1.width}x${img1.height} vs ${img2.width}x${img2.height}, 使用重叠区域 ${width}x${height}`,
+    );
+  }
+
+  const { croppedImg1, croppedImg2 } = cropToOverlap(img1, img2, width, height);
+  const diff = new PNG({ width, height });
+
+  return { croppedImg1, croppedImg2, diff, width, height, sizeMismatch };
+}
+
+/** 将 ignoreRegions 涂黑，降低动态区误报 */
+function applyIgnoreRegionsToPair(prepared: PreparedPair): void {
+  const regions = loadUiRegressionConfig().ignoreRegions;
+  if (!regions.length) return;
+  for (const region of regions) {
+    const x0 = Math.max(0, Math.floor(region.x));
+    const y0 = Math.max(0, Math.floor(region.y));
+    const x1 = Math.min(prepared.width, x0 + Math.floor(region.width));
+    const y1 = Math.min(prepared.height, y0 + Math.floor(region.height));
+    for (let y = y0; y < y1; y++) {
+      for (let x = x0; x < x1; x++) {
+        const idx = (y * prepared.width + x) * 4;
+        prepared.croppedImg1.data[idx] = 0;
+        prepared.croppedImg1.data[idx + 1] = 0;
+        prepared.croppedImg1.data[idx + 2] = 0;
+        prepared.croppedImg2.data[idx] = 0;
+        prepared.croppedImg2.data[idx + 2] = 0;
+        prepared.croppedImg2.data[idx + 1] = 0;
+      }
+    }
+  }
+}
+
+function runPixelmatch(
+  prepared: PreparedPair,
+  threshold: number,
+  includeAA: boolean,
+): number {
+  return pixelmatch(
+    prepared.croppedImg1.data,
+    prepared.croppedImg2.data,
+    prepared.diff.data,
+    prepared.width,
+    prepared.height,
+    { threshold, includeAA },
+  );
+}
+
 export async function compareImages(
   img1Path: string,
   img2Path: string,
   threshold: number = 0.1,
-  opts: CompareImagesOptions = {}
+  opts: CompareImagesOptions = {},
 ): Promise<ImageDiffResult> {
   const includeAA = opts.includeAA ?? true;
+
   try {
-    const img1 = await readPNG(img1Path);
-    const img2 = await readPNG(img2Path);
-
-    const width = Math.min(img1.width, img2.width);
-    const height = Math.min(img1.height, img2.height);
-
-    if (width !== img2.width || height !== img2.height) {
-      console.log(`⚠️  图片尺寸不同: ${img1.width}x${img1.height} vs ${img2.width}x${img2.height}, 使用重叠区域 ${width}x${height}`);
-    }
-
-    const diff = new PNG({ width, height });
-    const pixelmatch = (await import('pixelmatch')).default;
-
-    const croppedImg1 = new PNG({ width, height });
-    const croppedImg2 = new PNG({ width, height });
-
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const idx1 = (y * img1.width + x) * 4;
-        const idx2 = (y * img2.width + x) * 4;
-        const idxCropped = (y * width + x) * 4;
-
-        croppedImg1.data[idxCropped] = img1.data[idx1];
-        croppedImg1.data[idxCropped + 1] = img1.data[idx1 + 1];
-        croppedImg1.data[idxCropped + 2] = img1.data[idx1 + 2];
-        croppedImg1.data[idxCropped + 3] = img1.data[idx1 + 3];
-
-        croppedImg2.data[idxCropped] = img2.data[idx2];
-        croppedImg2.data[idxCropped + 1] = img2.data[idx2 + 1];
-        croppedImg2.data[idxCropped + 2] = img2.data[idx2 + 2];
-        croppedImg2.data[idxCropped + 3] = img2.data[idx2 + 3];
-      }
-    }
-
-    const numDiffPixels = pixelmatch(
-      croppedImg1.data,
-      croppedImg2.data,
-      diff.data,
-      width,
-      height,
-      { threshold, includeAA }
-    );
-
-    const totalPixels = width * height;
-    const difference = numDiffPixels / totalPixels;
+    const prepared = await prepareImagePair(img1Path, img2Path);
+    const numDiffPixels = runPixelmatch(prepared, threshold, includeAA);
+    const totalPixels = prepared.width * prepared.height;
+    const difference = totalPixels > 0 ? numDiffPixels / totalPixels : 0;
 
     return {
-      difference
+      difference,
+      width: prepared.width,
+      height: prepared.height,
+      sizeMismatch: prepared.sizeMismatch,
     };
   } catch (error) {
     console.error('Error comparing images:', error);
@@ -108,61 +178,51 @@ export async function compareImagesWithDiff(
   img2Path: string,
   diffOutputPath: string,
   threshold: number = 0.1,
-  opts: CompareImagesOptions = {}
+  opts: CompareImagesOptions = {},
 ): Promise<ImageDiffResult> {
   const includeAA = opts.includeAA ?? true;
+  const writeDiffImage = opts.writeDiffImage ?? true;
+
   try {
-    const img1 = await readPNG(img1Path);
-    const img2 = await readPNG(img2Path);
+    const prepared = await prepareImagePair(img1Path, img2Path);
+    applyIgnoreRegionsToPair(prepared);
+    const numDiffPixels = runPixelmatch(prepared, threshold, includeAA);
+    const totalPixels = prepared.width * prepared.height;
+    const difference = totalPixels > 0 ? numDiffPixels / totalPixels : 0;
 
-    const width = Math.min(img1.width, img2.width);
-    const height = Math.min(img1.height, img2.height);
-
-    if (width !== img2.width || height !== img2.height) {
-      console.log(`⚠️  图片尺寸不同: ${img1.width}x${img1.height} vs ${img2.width}x${img2.height}, 使用重叠区域 ${width}x${height}`);
+    const shouldWrite = writeDiffImage && difference > 0;
+    const outDir = path.dirname(diffOutputPath);
+    if (!fs.existsSync(outDir)) {
+      fs.mkdirSync(outDir, { recursive: true });
     }
 
-    const diff = new PNG({ width, height });
-    const pixelmatch = (await import('pixelmatch')).default;
-
-    const croppedImg1 = new PNG({ width, height });
-    const croppedImg2 = new PNG({ width, height });
-
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const idx1 = (y * img1.width + x) * 4;
-        const idx2 = (y * img2.width + x) * 4;
-        const idxCropped = (y * width + x) * 4;
-
-        croppedImg1.data[idxCropped] = img1.data[idx1];
-        croppedImg1.data[idxCropped + 1] = img1.data[idx1 + 1];
-        croppedImg1.data[idxCropped + 2] = img1.data[idx1 + 2];
-        croppedImg1.data[idxCropped + 3] = img1.data[idx1 + 3];
-
-        croppedImg2.data[idxCropped] = img2.data[idx2];
-        croppedImg2.data[idxCropped + 1] = img2.data[idx2 + 1];
-        croppedImg2.data[idxCropped + 2] = img2.data[idx2 + 2];
-        croppedImg2.data[idxCropped + 3] = img2.data[idx2 + 3];
+    if (shouldWrite) {
+      await writePNG(prepared.diff, diffOutputPath);
+    } else if (fs.existsSync(diffOutputPath)) {
+      try {
+        fs.unlinkSync(diffOutputPath);
+      } catch {
+        /* 忽略清理失败 */
       }
     }
 
-    const numDiffPixels = pixelmatch(
-      croppedImg1.data,
-      croppedImg2.data,
-      diff.data,
-      width,
-      height,
-      { threshold, includeAA }
-    );
-
-    const totalPixels = width * height;
-    const difference = numDiffPixels / totalPixels;
-
-    await writePNG(diff, diffOutputPath);
+    const t1 = fs.statSync(img1Path).mtimeMs;
+    const t2 = fs.statSync(img2Path).mtimeMs;
+    writeDiffMeta(diffOutputPath, {
+      difference,
+      sizeMismatch: prepared.sizeMismatch,
+      width: prepared.width,
+      height: prepared.height,
+      img1Mtime: t1,
+      img2Mtime: t2,
+    });
 
     return {
       difference,
-      diffImagePath: diffOutputPath
+      diffImagePath: shouldWrite ? diffOutputPath : undefined,
+      width: prepared.width,
+      height: prepared.height,
+      sizeMismatch: prepared.sizeMismatch,
     };
   } catch (error) {
     console.error('Error comparing images with diff:', error);
@@ -170,11 +230,74 @@ export async function compareImagesWithDiff(
   }
 }
 
+export interface DiffMeta {
+  difference: number;
+  sizeMismatch?: boolean;
+  width?: number;
+  height?: number;
+  img1Mtime: number;
+  img2Mtime: number;
+}
+
+function diffMetaPath(diffOutputPath: string): string {
+  return `${diffOutputPath}.meta.json`;
+}
+
+export function writeDiffMeta(diffOutputPath: string, meta: DiffMeta): void {
+  fs.writeFileSync(diffMetaPath(diffOutputPath), JSON.stringify(meta), 'utf-8');
+}
+
+export function readDiffMeta(diffOutputPath: string): DiffMeta | null {
+  const metaFile = diffMetaPath(diffOutputPath);
+  if (!fs.existsSync(metaFile)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(metaFile, 'utf-8')) as DiffMeta;
+  } catch {
+    return null;
+  }
+}
+
+/** 源图未更新且 meta 与 diff 图均有效时跳过 pixelmatch */
+export function isDiffCacheValid(img1Path: string, img2Path: string, diffOutputPath: string): boolean {
+  try {
+    const t1 = fs.statSync(img1Path).mtimeMs;
+    const t2 = fs.statSync(img2Path).mtimeMs;
+    const meta = readDiffMeta(diffOutputPath);
+    if (meta && meta.img1Mtime === t1 && meta.img2Mtime === t2) {
+      if (meta.difference <= 0) return true;
+      return fs.existsSync(diffOutputPath);
+    }
+    if (!fs.existsSync(diffOutputPath)) return false;
+    const diffMtime = fs.statSync(diffOutputPath).mtimeMs;
+    return diffMtime >= t1 && diffMtime >= t2;
+  } catch {
+    return false;
+  }
+}
+
+export function loadCachedDiffResult(
+  img1Path: string,
+  img2Path: string,
+  diffOutputPath: string,
+): ImageDiffResult | null {
+  if (!isDiffCacheValid(img1Path, img2Path, diffOutputPath)) return null;
+  const meta = readDiffMeta(diffOutputPath);
+  if (!meta) return null;
+  return {
+    difference: meta.difference,
+    diffImagePath: meta.difference > 0 && fs.existsSync(diffOutputPath) ? diffOutputPath : undefined,
+    width: meta.width,
+    height: meta.height,
+    sizeMismatch: meta.sizeMismatch,
+  };
+}
+
 export async function compareMultipleImages(
   baseImagePath: string,
   compareImagePaths: string[],
   diffOutputDir: string,
-  threshold: number = 0.1
+  threshold: number = 0.1,
+  opts: CompareImagesOptions = {},
 ): Promise<ImageComparison[]> {
   const results: ImageComparison[] = [];
 
@@ -182,19 +305,14 @@ export async function compareMultipleImages(
     const fileName = `diff-${path.basename(compareImagePath, '.png')}.png`;
     const diffOutputPath = path.join(diffOutputDir, fileName);
 
-    const result = await compareImagesWithDiff(
-      baseImagePath,
-      compareImagePath,
-      diffOutputPath,
-      threshold,
-      {}
-    );
+    const result = await compareImagesWithDiff(baseImagePath, compareImagePath, diffOutputPath, threshold, opts);
 
     results.push({
       image1Path: baseImagePath,
       image2Path: compareImagePath,
       difference: result.difference,
-      diffImagePath: result.diffImagePath
+      diffImagePath: result.diffImagePath,
+      sizeMismatch: result.sizeMismatch,
     });
   }
 
@@ -203,7 +321,6 @@ export async function compareMultipleImages(
 
 /**
  * 与 getDifferenceLabel 对齐：比例 < 0.01% 时若仍用 toFixed(2) 会得到 0.00%，却标成「微小差异」。
- * 对极小正比例逐步提高小数位，直到非零；与「无差异」（difference < 1e-12）仍显示 0.00%。
  */
 export function formatDifference(difference: number): string {
   if (difference < 1e-12) {
@@ -253,7 +370,8 @@ export function getDifferenceLabel(difference: number): string {
 export async function batchCompareImages(
   imageGroups: Map<string, string[]>,
   diffOutputDir: string,
-  threshold: number = 0.1
+  threshold: number = 0.1,
+  opts: CompareImagesOptions = {},
 ): Promise<Map<string, ImageComparison[]>> {
   const results = new Map<string, ImageComparison[]>();
 
@@ -275,11 +393,34 @@ export async function batchCompareImages(
       baseImagePath,
       compareImagePaths,
       stepDiffDir,
-      threshold
+      threshold,
+      opts,
     );
 
     results.set(stepName, comparisons);
   }
 
+  return results;
+}
+
+/** 限制并发的任务队列 */
+export async function runWithConcurrency<T>(
+  tasks: (() => Promise<T>)[],
+  concurrency: number,
+): Promise<T[]> {
+  if (tasks.length === 0) return [];
+  const limit = Math.max(1, concurrency);
+  const results: T[] = new Array(tasks.length);
+  let nextIndex = 0;
+
+  async function worker(): Promise<void> {
+    while (true) {
+      const i = nextIndex++;
+      if (i >= tasks.length) return;
+      results[i] = await tasks[i]();
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, () => worker()));
   return results;
 }

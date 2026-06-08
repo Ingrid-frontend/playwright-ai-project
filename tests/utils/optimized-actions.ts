@@ -1,7 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 
 const PAUSE_ENABLED = process.env.ENABLE_PAUSE === '1';
-const RETRY_DELAY_MS = 800;
+const RETRY_DELAY_MS = 400;
 
 export async function maybePause(page: Page, reason: string): Promise<void> {
   if (!PAUSE_ENABLED) return;
@@ -16,7 +16,7 @@ export type SmartClickOptions = {
 async function waitForPageStable(page: Page): Promise<void> {
   await page
     .locator('.ant-spin-spinning, .ant-loading')
-    .waitFor({ state: 'hidden', timeout: 10_000 })
+    .waitFor({ state: 'hidden', timeout: 6_000 })
     .catch(() => {});
 }
 
@@ -53,7 +53,7 @@ async function dismissOverlay(page: Page): Promise<void> {
     if (await overlay.isVisible().catch(() => false)) {
       console.log(`⚠️ 检测到遮挡层: ${sel}，尝试关闭`);
       await overlay.click({ force: true }).catch(() => {});
-      await page.waitForTimeout(300);
+      await page.waitForTimeout(150);
     }
   }
 }
@@ -68,7 +68,7 @@ export async function smartClick(
   console.log(`🔍 元素数量: ${await locator.count()}`);
 
   try {
-    await locator.waitFor({ state: 'visible', timeout: 8_000 });
+    await locator.waitFor({ state: 'visible', timeout: 5_000 });
   } catch (e: any) {
     console.log(`⚠️ 元素不可见: ${e?.message ?? String(e)}`);
     await maybePause(locator.page(), `元素不可见: ${stepName}`);
@@ -130,14 +130,14 @@ async function waitForPostClick(page: Page, stepName: string, locator: Locator):
   if (stepName.includes('选择') || stepName.includes('下拉') || locator.toString().includes('ant-select')) {
     await page
       .locator('.ant-select-dropdown:not(.ant-select-dropdown--hidden)')
-      .waitFor({ timeout: 5_000 })
+      .waitFor({ timeout: 3_000 })
       .catch(() => {});
   }
 
   if (stepName.includes('日期') || locator.toString().includes('date')) {
     await page
       .locator('.ant-calendar-picker-container')
-      .waitFor({ timeout: 5_000 })
+      .waitFor({ timeout: 3_000 })
       .catch(() => {});
   }
 }
@@ -147,7 +147,7 @@ export async function smartFill(locator: Locator, text: string, stepName: string
   console.log(`🔍 元素数量: ${await locator.count()}`);
 
   try {
-    await locator.waitFor({ state: 'visible', timeout: 8_000 });
+    await locator.waitFor({ state: 'visible', timeout: 5_000 });
   } catch (e: any) {
     console.log(`⚠️ 元素不可见: ${e?.message ?? String(e)}`);
     await maybePause(locator.page(), `元素不可见: ${stepName}`);

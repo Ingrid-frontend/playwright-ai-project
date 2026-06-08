@@ -22,6 +22,7 @@ import {
   resolveSpecPaths,
   scriptKeyFromOptimizedPath,
 } from './job-utils.js';
+import { assertSpecEnvMatch } from '../../src/utils/test-env-path.js';
 
 export type DirectRunOptions = {
   /** 非 Job 模式：直接传入执行参数（run-optimized-tests 使用） */
@@ -224,7 +225,7 @@ export async function runDirect(opts: DirectRunOptions, ctx: JobRunContext): Pro
     throw new Error(`优化测试目录不存在或不是目录: ${absOptimizedDir}`);
   }
 
-  const specAbsPaths = resolveSpecPaths(opts.specs, opts.optimizedDir);
+  const specAbsPaths = resolveSpecPaths(opts.specs, opts.optimizedDir, opts.playwrightEnv);
   if (specAbsPaths.length === 0) {
     console.log('⚠️  未找到匹配的优化测试文件');
     const emptySummary: JobSummaryFile = {
@@ -259,6 +260,12 @@ export async function runDirect(opts: DirectRunOptions, ctx: JobRunContext): Pro
   }
 
   console.log(`📋 找到 ${specAbsPaths.length} 个测试文件\n`);
+
+  const runtimeEnv = opts.playwrightEnv || process.env.PLAYWRIGHT_ENV || 'stage';
+  for (const abs of specAbsPaths) {
+    const rel = path.relative(process.cwd(), abs).replace(/\\/g, '/');
+    assertSpecEnvMatch(rel, runtimeEnv);
+  }
 
   if (opts.steps.login) {
     const loginCmd = opts.steps.refreshLogin ? 'npm run login:force' : 'npm run login';

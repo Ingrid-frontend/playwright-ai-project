@@ -2,6 +2,17 @@ import { execSync } from 'child_process';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import {
+  browserToRunSegment,
+  recordLastGreenRun,
+} from '../report/baseline-manager.js';
+import type { UiIssuesReport } from '../report/ui-issues.js';
+import {
+  assertSpecEnvMatch,
+  getLegacyEnvDefault,
+  parseEnvAndDateCategoryFromRawOrProcessed,
+  specMatchesEnv,
+} from '../../src/utils/test-env-path.js';
 
 type FeishuMode = 'interactive' | 'text' | 'links' | 'none';
 
@@ -12,6 +23,12 @@ type CliOptions = {
   playwrightProjects: string[];
   /** 显式指定录制根目录（相对 cwd）；未传则看 RAW_RECORDINGS_DIR，再自动回退 */
   rawRecordingsDir?: string;
+  /** 指定 raw 或 optimized spec 路径（跳过「仅最新一条」逻辑） */
+  specPath?: string;
+  /** 批量：处理 raw-recordings 下全部可用 .spec.ts */
+  batch: boolean;
+  /** compare-screenshots --gate */
+  compareGate: boolean;
 };
 
 /** 供飞书通知与最终退出码：反映「执行 / 对比 / 飞书文档」真实结果（录制、优化在此前失败会直接 throw） */
@@ -21,6 +38,7 @@ type AutoTestNotifySummary = {
   comparePassed: boolean;
   feishuDocAttempted: boolean;
   feishuDocPassed: boolean;
+  uiIssues?: UiIssuesReport['summary'];
 };
 
 function buildNotifyResultMarkdown(s: AutoTestNotifySummary): string {
@@ -33,6 +51,12 @@ function buildNotifyResultMarkdown(s: AutoTestNotifySummary): string {
   ];
   if (s.feishuDocAttempted) {
     lines.push(`${s.feishuDocPassed ? '✅' : '❌'} 飞书文档：${s.feishuDocPassed ? '成功' : '失败'}`);
+  }
+  if (s.uiIssues) {
+    lines.push(
+      `**UI 问题**：blocker ${s.uiIssues.blocker} · warning ${s.uiIssues.warning} · 共 ${s.uiIssues.total} 项`,
+    );
+    lines.push(`报告：results/screenshot-comparison.html · results/ui-issues.json`);
   }
   return lines.join('\n');
 }
@@ -56,6 +80,9 @@ function printHelp(): void {
   --create-feishu-doc                           流程末尾执行 npm run create-feishu-doc
   --playwright-project=<a>[,<b>...]          执行用例的 project，逗号分隔（默认 optimized,optimized-webkit）
   --raw-recordings-dir=<path>                 原始录制根目录（相对项目根；优先于环境变量）
+  --spec=<path>                               指定 raw 或 optimized spec（跳过「仅最新录制」）
+  --batch                                     批量：优化并执行 raw-recordings 下全部用例
+  --gate                                      截图对比启用 --gate（blocker 时失败）
   -h, --help                                  显示帮助
 
 环境变量 FEISHU_MODE 与 --feishu-mode 相同；命令行优先。
@@ -82,6 +109,9 @@ function parseCli(argv: string[]): CliOptions {
   let createFeishuDoc = false;
   let playwrightProjects: string[] = ['optimized', 'optimized-webkit'];
   let rawRecordingsDir: string | undefined;
+  let specPath: string | undefined;
+  let batch = false;
+  let compareGate = false;
 
   for (const arg of argv) {
     if (arg === '-h' || arg === '--help') {
@@ -121,9 +151,21 @@ function parseCli(argv: string[]): CliOptions {
       rawRecordingsDir = v;
       continue;
     }
+    if (arg.startsWith('--spec=')) {
+      specPath = arg.slice('--spec='.length).trim();
+      continue;
+    }
+    if (arg === '--batch') {
+      batch = true;
+      continue;
+    }
+    if (arg === '--gate') {
+      compareGate = true;
+      continue;
+    }
   }
 
-  return { feishuMode, createFeishuDoc, playwrightProjects, rawRecordingsDir };
+  return { feishuMode, createFeishuDoc, playwrightProjects, rawRecordingsDir, specPath, batch, compareGate };
 }
 
 async function sendFeishuNotification(mode: FeishuMode, summary: AutoTestNotifySummary): Promise<void> {
@@ -345,16 +387,23 @@ function isRawRecordingSpecPath(fullPath: string, rawRoot: string): boolean {
   return !rel.startsWith(`original${path.sep}`) && rel !== 'original';
 }
 
-/** 与本次录制对应的优化产物（basename 匹配），避免误跑其它 .optimized.spec.ts */
+/** 与本次录制对应的优化产物（basename 匹配），优先当前环境 */
 function findOptimizedSpecForRawRecording(rawSpecPath: string, optimizedRoot: string): string | null {
   const stem = path.basename(rawSpecPath, '.spec.ts');
   const wantBase = `${stem}.optimized.spec.ts`;
+  const meta = parseEnvAndDateCategoryFromRawOrProcessed(rawSpecPath);
+  const runtimeEnv = process.env.PLAYWRIGHT_ENV?.trim() || meta.env || getLegacyEnvDefault();
   const candidates = findFiles(optimizedRoot, /\.optimized\.spec\.ts$/).filter(
     (p) => path.basename(p) === wantBase,
   );
   if (candidates.length === 0) return null;
-  if (candidates.length === 1) return candidates[0];
-  return candidates.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)[0];
+  const envMatched = candidates.filter((p) => {
+    const rel = path.relative(process.cwd(), p).replace(/\\/g, '/');
+    return specMatchesEnv(rel, meta.env || runtimeEnv);
+  });
+  const pool = envMatched.length ? envMatched : candidates;
+  if (pool.length === 1) return pool[0];
+  return pool.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)[0];
 }
 
 /** 解析录制根目录：CLI > RAW_RECORDINGS_DIR > 默认路径回退（首个含可用 .spec.ts 的目录） */
@@ -397,6 +446,99 @@ function resolveRawRecordingsRoot(cliDir: string | undefined): string {
     `未找到可用录制文件。请将用例放在 tests/raw-recordings/，或设置 RAW_RECORDINGS_DIR / --raw-recordings-dir。\n` +
       `已检查: ${defaultRawRoot}（须含非 original 的 .spec.ts）`,
   );
+}
+
+function scriptKeyFromOptimizedPath(optimizedTestPath: string): string {
+  const rel = path.relative(path.join(process.cwd(), 'tests/optimized'), path.resolve(optimizedTestPath));
+  const parts = rel.split(path.sep).filter(Boolean);
+  const file = parts.pop() || '';
+  const stem = file.replace(/\.optimized\.spec\.ts$/, '').replace(/\.spec\.ts$/, '');
+  if (parts.length) return `${parts.join('/')}/${stem}`;
+  return stem;
+}
+
+function findLatestRunTimestamp(scriptKey: string, browser: string): string | null {
+  const runDir = path.join(process.cwd(), 'screenshots', scriptKey, browserToRunSegment(browser));
+  if (!fs.existsSync(runDir)) return null;
+  const runs = fs
+    .readdirSync(runDir)
+    .filter((f) => fs.statSync(path.join(runDir, f)).isDirectory())
+    .sort((a, b) => fs.statSync(path.join(runDir, b)).mtimeMs - fs.statSync(path.join(runDir, a)).mtimeMs);
+  return runs[0] || null;
+}
+
+function recordLastGreenForScript(scriptKey: string, browsers: string[]): void {
+  for (const browser of browsers) {
+    const ts = findLatestRunTimestamp(scriptKey, browser);
+    if (ts) recordLastGreenRun(scriptKey, browser, ts);
+  }
+}
+
+function readUiIssuesSummary(): UiIssuesReport['summary'] | undefined {
+  const p = path.join(process.cwd(), 'results/ui-issues.json');
+  if (!fs.existsSync(p)) return undefined;
+  try {
+    const report = JSON.parse(fs.readFileSync(p, 'utf-8')) as UiIssuesReport;
+    return report.summary;
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveRawSpecs(
+  opts: CliOptions,
+  rawRecordingsDir: string,
+): string[] {
+  if (opts.specPath) {
+    const abs = path.resolve(process.cwd(), opts.specPath);
+    if (!fs.existsSync(abs)) throw new Error(`--spec 路径不存在: ${abs}`);
+    if (abs.includes('.optimized.')) {
+      throw new Error('--spec 请指向 raw 录制 .spec.ts；optimized 请直接 playwright test');
+    }
+    return [abs];
+  }
+  const all = findFiles(rawRecordingsDir, /\.spec\.ts$/)
+    .filter((p) => isRawRecordingSpecPath(p, rawRecordingsDir))
+    .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+  if (opts.batch) return all;
+  if (all.length === 0) throw new Error('录制文件不存在');
+  return [all[0]];
+}
+
+async function processOneRecording(
+  rawRecordingPath: string,
+  optimizedDir: string,
+  opts: CliOptions,
+): Promise<{
+  optimizedTestPath: string;
+  testPassed: boolean;
+}> {
+  console.log(`\n📁 处理录制: ${rawRecordingPath}`);
+  runCommand(`npm run optimize-raw-recordings -- "${rawRecordingPath}"`, '优化测试脚本（raw → optimized）');
+
+  const optimizedTestPath = findOptimizedSpecForRawRecording(rawRecordingPath, optimizedDir);
+  if (!optimizedTestPath) {
+    throw new Error(`未找到优化产物: ${rawRecordingPath}`);
+  }
+  console.log(`📁 优化文件: ${optimizedTestPath}`);
+
+  const optimizedRel = path.relative(process.cwd(), optimizedTestPath).replace(/\\/g, '/');
+  const runtimeEnv = process.env.PLAYWRIGHT_ENV?.trim() || getLegacyEnvDefault();
+  assertSpecEnvMatch(optimizedRel, runtimeEnv);
+
+  const projectArgs = opts.playwrightProjects.map((p) => `--project=${p}`).join(' ');
+  const testPassed = runCommand(
+    `npx playwright test "${optimizedTestPath}" ${projectArgs}`,
+    '执行优化后的测试',
+    true,
+  );
+
+  if (testPassed) {
+    const scriptKey = scriptKeyFromOptimizedPath(optimizedTestPath);
+    recordLastGreenForScript(scriptKey, ['chrome', 'webkit']);
+  }
+
+  return { optimizedTestPath, testPassed };
 }
 
 async function main(): Promise<void> {
@@ -442,41 +584,38 @@ async function main(): Promise<void> {
     // 录制完成后再解析目录：Codegen 写入 tests/raw-recordings
     const rawRecordingsDir = resolveRawRecordingsRoot(opts.rawRecordingsDir);
 
-    const rawRecordingFiles = findFiles(rawRecordingsDir, /\.spec\.ts$/)
-      .filter((p) => isRawRecordingSpecPath(p, rawRecordingsDir))
-      // 按 mtime 取「最近修改」的录制，避免仅靠路径字典序误选旧文件
-      .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+    const rawSpecs = resolveRawSpecs(opts, rawRecordingsDir);
+    if (rawSpecs.length === 0) throw new Error('录制文件不存在');
 
-    if (rawRecordingFiles.length === 0) {
-      throw new Error('录制文件不存在');
+    let testPassed = true;
+    let comparePassed = true;
+    let lastOptimized = '';
+    let lastRaw = '';
+
+    for (let i = 0; i < rawSpecs.length; i++) {
+      const rawRecordingPath = rawSpecs[i];
+      if (opts.batch && rawSpecs.length > 1) {
+        console.log(`\n━━━ 批量 [${i + 1}/${rawSpecs.length}] ━━━`);
+      }
+      const result = await processOneRecording(rawRecordingPath, optimizedDir, opts);
+      lastRaw = rawRecordingPath;
+      lastOptimized = result.optimizedTestPath;
+      testPassed = testPassed && result.testPassed;
     }
 
-    const rawRecordingPath = rawRecordingFiles[0];
-    console.log(`📁 找到录制文件: ${rawRecordingPath}`);
-
-    runCommand(`npm run optimize-raw-recordings -- "${rawRecordingPath}"`, '2. 优化测试脚本（raw 录制 → smartClick/step 管线）');
-
-    const optimizedTestPath = findOptimizedSpecForRawRecording(rawRecordingPath, optimizedDir);
-    if (!optimizedTestPath) {
-      throw new Error(
-        `未找到与录制文件对应的优化产物（期望 tests/optimized/**/${path.basename(rawRecordingPath, '.spec.ts')}.optimized.spec.ts）。请确认 optimize-raw-recordings 已正常生成。`,
-      );
-    }
-    console.log(`📁 找到优化文件: ${optimizedTestPath}`);
-
-    const projectArgs = opts.playwrightProjects.map((p) => `--project=${p}`).join(' ');
-    const testPassed = runCommand(
-      `npx playwright test "${optimizedTestPath}" ${projectArgs}`,
-      '3. 执行优化后的测试',
-      true,
+    const gateFlag = opts.compareGate ? ' -- --gate' : '';
+    comparePassed = runCommand(
+      `npm run compare-screenshots${gateFlag}`,
+      '4. 生成截图对比报告',
+      !opts.compareGate,
     );
-
-    const comparePassed = runCommand('npm run compare-screenshots', '4. 生成截图对比报告', true);
 
     let feishuDocPassed = true;
     if (opts.createFeishuDoc) {
       feishuDocPassed = runCommand('npm run create-feishu-doc', '5. 创建飞书文档', true);
     }
+
+    const uiIssues = readUiIssuesSummary();
 
     const notifySummary: AutoTestNotifySummary = {
       recordSkipped: isCI,
@@ -484,6 +623,7 @@ async function main(): Promise<void> {
       comparePassed,
       feishuDocAttempted: opts.createFeishuDoc,
       feishuDocPassed,
+      uiIssues,
     };
 
     await sendFeishuNotification(opts.feishuMode, notifySummary);
@@ -492,9 +632,10 @@ async function main(): Promise<void> {
       testPassed && comparePassed && (!opts.createFeishuDoc || feishuDocPassed);
 
     console.log(`\n📁 生成的文件:`);
-    console.log(`  - 录制文件: ${rawRecordingPath}`);
-    console.log(`  - 优化文件: ${optimizedTestPath}`);
+    console.log(`  - 录制: ${lastRaw}`);
+    console.log(`  - 优化: ${lastOptimized}`);
     console.log(`  - 对比报告: results/screenshot-comparison.html`);
+    console.log(`  - UI 问题: results/ui-issues.json`);
 
     if (flowAllOk) {
       console.log('\n🎉 所有步骤执行成功！');

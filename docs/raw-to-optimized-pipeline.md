@@ -3,7 +3,7 @@
 ## 1. 目标
 
 - 在**不修改** `optimize-raw-recordings` 核心逻辑的前提下，增加**预处理**层。
-- 将 `tests/raw-recordings/original/<batch>/` 中的备份（可含首行中文标题）转为合法 `.spec.ts`，写入 **`tests/raw-recordings/<batch>/processed/`**，再交给现有优化脚本生成 `tests/optimized/**.optimized.spec.ts`。
+- 将 `tests/raw-recordings/original/<env>/<batch>/` 中的备份（可含首行中文标题）转为合法 `.spec.ts`，写入 **`tests/raw-recordings/<env>/<batch>/processed/`**（或 legacy 无 env 结构），再交给现有优化脚本生成 `tests/optimized/<env>/<batch>/*.optimized.spec.ts`。
 - `playwright.config` 已忽略 `**/raw-recordings/**`，中间产物不会进入默认 `npm test`。
 
 ---
@@ -12,9 +12,9 @@
 
 | 路径 | 含义 |
 |------|------|
-| `tests/raw-recordings/original/<batch>/*.spec.ts` | 人工 / codegen 原始备份（`optimize-raw-recordings` **默认不递归 `original`**） |
-| `tests/raw-recordings/<batch>/processed/*.spec.ts` | 预处理后、可供优化的合法 spec |
-| `tests/optimized/<日期分类>/*.optimized.spec.ts` | 最终用例（由 `optimize-raw-recordings` 生成，子目录规则见该脚本） |
+| `tests/raw-recordings/original/<env>/<batch>/*.spec.ts` | 人工 / codegen 原始备份（`optimize-raw-recordings` **默认不递归 `original`**） |
+| `tests/raw-recordings/<env>/<batch>/processed/*.spec.ts` | 预处理后、可供优化的合法 spec |
+| `tests/optimized/<env>/<日期分类>/*.optimized.spec.ts` | 最终用例（详见 [test-env-paths.md](./test-env-paths.md)） |
 
 ---
 

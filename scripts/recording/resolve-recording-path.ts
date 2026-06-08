@@ -10,6 +10,11 @@ import {
   getDateCategoryForCalendarDay,
 } from './raw-recording-naming.js';
 
+import {
+  buildRawOriginalRel,
+  isEnvSegmentEnabled,
+} from '../../src/utils/test-env-path.js';
+
 export type RecordingPathTarget = 'original' | 'raw';
 
 export interface ResolveRecordingPathInput {
@@ -17,6 +22,8 @@ export interface ResolveRecordingPathInput {
   name?: string;
   description?: string;
   target?: RecordingPathTarget;
+  /** Playwright 环境 id，与 datasource/base-config.json 一致 */
+  playwrightEnv?: string;
   /** 用于 timestamp / dateCategory；默认当前时间 */
   at?: Date;
 }
@@ -28,6 +35,7 @@ export interface ResolveRecordingPathResult {
   dateCategory: string;
   timestamp: string;
   target: RecordingPathTarget;
+  playwrightEnv: string | null;
 }
 
 export function formatRecordingTimestamp(at: Date): string {
@@ -47,10 +55,13 @@ export function resolveRecordingPath(input: ResolveRecordingPathInput): ResolveR
   });
   const baseName = `${baseSlug}_${timestamp}`;
   const fileName = `${baseName}.spec.ts`;
+  const playwrightEnv = input.playwrightEnv?.trim() || process.env.PLAYWRIGHT_ENV?.trim() || undefined;
   const relativePath =
     target === 'original'
-      ? `tests/raw-recordings/original/${dateCategory}/${fileName}`
-      : `tests/raw-recordings/${dateCategory}/${fileName}`;
+      ? buildRawOriginalRel({ playwrightEnv, dateCategory, fileName, repoRoot: undefined })
+      : isEnvSegmentEnabled() && playwrightEnv
+        ? `tests/raw-recordings/${playwrightEnv}/${dateCategory}/${fileName}`
+        : `tests/raw-recordings/${dateCategory}/${fileName}`;
 
   return {
     relativePath,
@@ -59,6 +70,7 @@ export function resolveRecordingPath(input: ResolveRecordingPathInput): ResolveR
     dateCategory,
     timestamp,
     target,
+    playwrightEnv: playwrightEnv || null,
   };
 }
 

@@ -1,0 +1,5 @@
+{
+  "envSegmentEnabled": true,
+  "legacyEnvDefault": "stage",
+  "enforceSpecEnvInCi": true
+}
