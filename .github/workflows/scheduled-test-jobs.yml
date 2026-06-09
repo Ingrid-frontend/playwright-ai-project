@@ -11,6 +11,14 @@ on:
         required: false
         default: nightly-regression
         type: string
+      playwright_env:
+        description: 覆盖 Job 的 playwrightEnv（留空则用 Job 配置）
+        required: false
+        type: string
+      account_profile:
+        description: 限定账号档案（如 default；留空则按 meta 分组执行全部）
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -44,7 +52,15 @@ jobs:
         run: npx playwright install --with-deps
 
       - name: Run test job
-        run: npm run test-job -- run --id=${{ inputs.job_id || 'nightly-regression' }} --trigger=schedule
+        run: |
+          ARGS="run --id=${{ inputs.job_id || 'nightly-regression' }} --trigger=schedule"
+          if [ -n "${{ inputs.playwright_env }}" ]; then
+            ARGS="$ARGS --env=${{ inputs.playwright_env }}"
+          fi
+          if [ -n "${{ inputs.account_profile }}" ]; then
+            ARGS="$ARGS --profile=${{ inputs.account_profile }}"
+          fi
+          npm run test-job -- $ARGS
         env:
           # PLAYWRIGHT_ENV 由 job-runner 按 config/test-jobs.json 中 job.playwrightEnv 设置
           TEST_USERNAME: ${{ secrets.TEST_USERNAME }}

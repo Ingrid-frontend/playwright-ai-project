@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "playwrightEnv": "stage",
+  "accountProfile": "default",
+  "loginAccount": null,
+  "loginUserId": null,
+  "storageStateRel": null,
+  "recordedAt": "2026-06-09T06:56:33.581Z",
+  "recordSource": "backfill",
+  "rawOriginalRel": null,
+  "optimizedRel": "tests/optimized/studio-unsaved-draft.optimized.spec.ts"
+}

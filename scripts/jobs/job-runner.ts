@@ -2,7 +2,7 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import type { NotifyOn, ResolvedTestJob } from './test-jobs-config.js';
-import { resolveJob } from './test-jobs-config.js';
+import { resolveJob, resolveJobRunEnv } from './test-jobs-config.js';
 import {
   clearLock,
   readLock,
@@ -19,10 +19,18 @@ import {
   isProcessAlive,
   projectToBrowser,
   recordLastGreenForScript,
-  resolveSpecPaths,
+  resolveSpecEntries,
+  groupSpecEntriesByProfile,
+  summarizeSpecProfileCounts,
   scriptKeyFromOptimizedPath,
+  countResolvedSpecs,
+  type SpecRunEntry,
+  type AccountProfileFilter,
 } from './job-utils.js';
-import { assertSpecEnvMatch } from '../../src/utils/test-env-path.js';
+import { assertSpecEnvMatch, listKnownEnvs } from '../../src/utils/test-env-path.js';
+import { resolveAccountProfile } from '../../src/utils/env-config.js';
+
+const UNKNOWN_PROFILE = 'unknown';
 
 export type DirectRunOptions = {
   /** 非 Job 模式：直接传入执行参数（run-optimized-tests 使用） */
@@ -34,6 +42,7 @@ export type DirectRunOptions = {
   runCompareAfterAbort: boolean;
   verbose: boolean;
   playwrightEnv?: string;
+  accountProfile?: AccountProfileFilter;
   steps: ResolvedTestJob['steps'];
   feishuMode: ResolvedTestJob['feishuMode'];
   notifyOn: NotifyOn[];
@@ -61,17 +70,41 @@ export type JobRunResult = {
   summary: JobSummaryFile;
 };
 
-function runCommandBool(command: string, description: string): boolean {
+function runCommandBool(command: string, description: string, env: NodeJS.ProcessEnv = process.env): boolean {
   console.log(`\n📋 ${description}`);
   console.log(`🔧 执行命令: ${command}`);
   try {
-    execSync(command, { stdio: 'inherit' });
+    execSync(command, { stdio: 'inherit', env });
     console.log(`✅ ${description} 完成`);
     return true;
   } catch {
     console.error(`❌ ${description} 失败`);
     return false;
   }
+}
+
+function runLoginForProfile(
+  playwrightEnv: string,
+  profile: string,
+  refreshLogin: boolean,
+): boolean {
+  const resolved = resolveAccountProfile(playwrightEnv, profile);
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    PLAYWRIGHT_ENV: playwrightEnv,
+    PLAYWRIGHT_ACCOUNT: resolved,
+    ...(refreshLogin ? { PLAYWRIGHT_REFRESH_STORAGE: '1' } : {}),
+  };
+  const cmd = refreshLogin ? 'npm run login:force' : 'npm run login';
+  return runCommandBool(cmd, `登录 ${playwrightEnv} / ${resolved}`, env);
+}
+
+function buildTestRunEnv(playwrightEnv: string, accountProfile?: string): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, PLAYWRIGHT_ENV: playwrightEnv };
+  if (accountProfile && accountProfile !== UNKNOWN_PROFILE) {
+    env.PLAYWRIGHT_ACCOUNT = resolveAccountProfile(playwrightEnv, accountProfile);
+  }
+  return env;
 }
 
 function shouldNotify(notifyOn: NotifyOn[], success: boolean): boolean {
@@ -106,7 +139,7 @@ function updateStatus(
 
 async function executeTests(
   opts: DirectRunOptions,
-  specAbsPaths: string[],
+  entries: SpecRunEntry[],
 ): Promise<{
   totalSuccessCount: number;
   totalFailCount: number;
@@ -117,36 +150,67 @@ async function executeTests(
   let totalFailCount = 0;
   let aborted = false;
   const executedSpecPaths: string[] = [];
+  const runtimeEnv = opts.playwrightEnv || process.env.PLAYWRIGHT_ENV || 'stage';
+  const groups = groupSpecEntriesByProfile(entries);
 
-  for (const project of opts.projects) {
-    console.log(`\n🌐 开始执行 project「${project}」...\n`);
+  for (const [profile, groupEntries] of groups) {
+    const profLabel = profile === UNKNOWN_PROFILE ? 'default（未标注 meta）' : profile;
+    console.log(`\n👤 账号组 ${profLabel}（${groupEntries.length} 个用例）\n`);
 
-    for (const absPath of specAbsPaths) {
-      const relPath = path.relative(process.cwd(), absPath);
-      console.log(`\n🧪 执行测试: ${relPath} (${project})`);
-      executedSpecPaths.push(absPath);
-
-      const reporter = opts.verbose ? '--reporter=list' : '';
-      const env = opts.playwrightEnv ? { ...process.env, PLAYWRIGHT_ENV: opts.playwrightEnv } : process.env;
-      try {
-        execSync(`npx playwright test "${relPath}" --project=${project} --workers=1 ${reporter}`.trim(), {
-          stdio: 'inherit',
-          env,
-        });
-        console.log(`✅ ${relPath} 测试通过 (${project})`);
-        totalSuccessCount++;
-      } catch {
-        console.error(`❌ ${relPath} 测试失败 (${project})`);
-        totalFailCount++;
+    if (opts.steps.login) {
+      const loginProfile = profile === UNKNOWN_PROFILE ? 'default' : profile;
+      const loginOk = runLoginForProfile(runtimeEnv, loginProfile, opts.steps.refreshLogin);
+      if (!loginOk) {
+        for (const entry of groupEntries) {
+          for (const _project of opts.projects) {
+            executedSpecPaths.push(entry.absPath);
+            totalFailCount++;
+          }
+        }
         if (opts.stopOnTestFailure) {
           aborted = true;
+          console.log('\n⏹️  登录失败且已启用失败即停，后续账号组不再执行。');
           break;
         }
+        continue;
       }
     }
 
+    for (const project of opts.projects) {
+      console.log(`\n🌐 开始执行 project「${project}」（账号组 ${profLabel}）...\n`);
+
+      for (const entry of groupEntries) {
+        const relPath = entry.relPath;
+        console.log(`\n🧪 执行测试: ${relPath} (${project})`);
+        executedSpecPaths.push(entry.absPath);
+
+        const reporter = opts.verbose ? '--reporter=list' : '';
+        const env = buildTestRunEnv(runtimeEnv, entry.accountProfile);
+        if (env.PLAYWRIGHT_ACCOUNT) {
+          console.log(`   PLAYWRIGHT_ACCOUNT=${env.PLAYWRIGHT_ACCOUNT}`);
+        }
+        try {
+          execSync(`npx playwright test "${relPath}" --project=${project} --workers=1 ${reporter}`.trim(), {
+            stdio: 'inherit',
+            env,
+          });
+          console.log(`✅ ${relPath} 测试通过 (${project})`);
+          totalSuccessCount++;
+        } catch {
+          console.error(`❌ ${relPath} 测试失败 (${project})`);
+          totalFailCount++;
+          if (opts.stopOnTestFailure) {
+            aborted = true;
+            break;
+          }
+        }
+      }
+
+      if (aborted) break;
+    }
+
     if (aborted) {
-      console.log('\n⏹️  已启用失败即停，后续 project / 用例不再执行。');
+      console.log('\n⏹️  已启用失败即停，后续 project / 账号组 / 用例不再执行。');
       break;
     }
   }
@@ -156,12 +220,21 @@ async function executeTests(
 
 export async function runJobById(
   jobId: string,
-  ctxPartial: Omit<JobRunContext, 'jobId' | 'job' | 'runId'> & { runId?: string },
+  ctxPartial: Omit<JobRunContext, 'jobId' | 'job' | 'runId'> & {
+    runId?: string;
+    /** 覆盖 config 中的 playwrightEnv，仅执行该环境下的用例 */
+    playwrightEnv?: string;
+    /** 覆盖 config 中的 accountProfile，仅执行该档案的用例 */
+    accountProfile?: AccountProfileFilter;
+  },
 ): Promise<JobRunResult> {
   const job = resolveJob(jobId);
   if (!job.enabled && !ctxPartial.force) {
     throw new Error(`Job「${jobId}」已禁用（enabled: false）`);
   }
+
+  const effectiveEnv = resolveJobRunEnv(job, ctxPartial.playwrightEnv);
+  const effectiveProfile = ctxPartial.accountProfile ?? job.accountProfile ?? null;
 
   const runId = ctxPartial.runId ?? formatRunId();
   const ctx: JobRunContext = {
@@ -182,7 +255,8 @@ export async function runJobById(
       stopOnCompareGate: job.stopOnCompareGate,
       runCompareAfterAbort: job.runCompareAfterAbort,
       verbose: false,
-      playwrightEnv: job.playwrightEnv,
+      playwrightEnv: effectiveEnv,
+      accountProfile: effectiveProfile,
       steps: job.steps,
       feishuMode: job.feishuMode,
       notifyOn: job.notifyOn,
@@ -221,20 +295,43 @@ export async function runDirect(opts: DirectRunOptions, ctx: JobRunContext): Pro
   console.log(`\n🎬 开始执行任务${ctx.jobId ? `「${ctx.jobId}」` : ''} (runId=${runId}, trigger=${ctx.trigger})\n`);
 
   const runtimeEnv = opts.playwrightEnv || process.env.PLAYWRIGHT_ENV || 'stage';
+  if (ctx.jobId && ctx.job && opts.playwrightEnv && opts.playwrightEnv !== ctx.job.playwrightEnv) {
+    console.log(`ℹ️  运行环境 ${runtimeEnv}（Job 配置默认: ${ctx.job.playwrightEnv}）\n`);
+  }
 
   const absOptimizedDir = path.resolve(process.cwd(), opts.optimizedDir);
   if (!fs.existsSync(absOptimizedDir) || !fs.statSync(absOptimizedDir).isDirectory()) {
     throw new Error(`优化测试目录不存在或不是目录: ${absOptimizedDir}`);
   }
 
-  const specAbsPaths = resolveSpecPaths(opts.specs, opts.optimizedDir, opts.playwrightEnv);
-  if (specAbsPaths.length === 0) {
+  const specEntries = resolveSpecEntries(
+    opts.specs,
+    opts.optimizedDir,
+    opts.playwrightEnv,
+    opts.accountProfile,
+  );
+  if (specEntries.length === 0) {
     const envLabel = opts.playwrightEnv || process.env.PLAYWRIGHT_ENV || 'stage';
+    const profileLabel =
+      opts.accountProfile && opts.accountProfile !== 'all'
+        ? ` accountProfile=${JSON.stringify(opts.accountProfile)}`
+        : '';
     const specHint =
       opts.specs === 'all'
-        ? `tests/optimized/${envLabel}/ 下无正式用例（已排除 studio-unsaved-draft）`
-        : `未匹配 specs: ${JSON.stringify(opts.specs)}（环境 ${envLabel}）`;
+        ? `tests/optimized/${envLabel}/ 下无正式用例（已排除 studio-unsaved-draft）${profileLabel}`
+        : `未匹配 specs: ${JSON.stringify(opts.specs)}（环境 ${envLabel}${profileLabel}）`;
     console.error(`❌ ${specHint}`);
+    if (opts.specs !== 'all') {
+      const others = listKnownEnvs()
+        .filter((e) => e !== envLabel)
+        .map((e) => ({ env: e, count: countResolvedSpecs(opts.specs, opts.optimizedDir, e) }))
+        .filter((x) => x.count > 0);
+      if (others.length) {
+        console.error(
+          `💡 其它环境有匹配: ${others.map((o) => `${o.env}(${o.count})`).join(', ')}，可执行 npm run test-job -- run --id=${jobId} --env=<env>`,
+        );
+      }
+    }
     const emptySummary: JobSummaryFile = {
       jobId,
       runId,
@@ -266,51 +363,27 @@ export async function runDirect(opts: DirectRunOptions, ctx: JobRunContext): Pro
     };
   }
 
-  console.log(`📋 找到 ${specAbsPaths.length} 个测试文件（PLAYWRIGHT_ENV=${runtimeEnv}）\n`);
-  for (const abs of specAbsPaths) {
-    const rel = path.relative(process.cwd(), abs).replace(/\\/g, '/');
-    assertSpecEnvMatch(rel, runtimeEnv);
+  const profileCounts = summarizeSpecProfileCounts(specEntries);
+  const groupCount = groupSpecEntriesByProfile(specEntries).length;
+  console.log(
+    `📋 找到 ${specEntries.length} 个测试文件（PLAYWRIGHT_ENV=${runtimeEnv}${opts.accountProfile ? `, accountProfile=${JSON.stringify(opts.accountProfile)}` : ''}）`,
+  );
+  if (groupCount > 1) {
+    console.log(
+      `👥 将按 ${groupCount} 个账号档案分组执行: ${Object.entries(profileCounts)
+        .map(([p, n]) => `${p}(${n})`)
+        .join(', ')}\n`,
+    );
+  } else {
+    console.log('');
   }
-
-  if (opts.steps.login) {
-    const loginCmd = opts.steps.refreshLogin ? 'npm run login:force' : 'npm run login';
-    const loginOk = runCommandBool(loginCmd, '登录（storage state）');
-    if (!loginOk) {
-      const failSummary: JobSummaryFile = {
-        jobId,
-        runId,
-        trigger: ctx.trigger,
-        testPassed: false,
-        comparePassed: false,
-        compareSkipped: true,
-        aborted: true,
-        totalSpecs: specAbsPaths.length,
-        executedCount: 0,
-        successCount: 0,
-        failCount: 0,
-        projects: opts.projects,
-        specPaths: specAbsPaths.map((p) => path.relative(process.cwd(), p)),
-      };
-      if (persist && ctx.jobId) {
-        writeSummary(ctx.jobId, runId, failSummary);
-        updateStatus(ctx, { status: 'failed', finishedAt: new Date().toISOString() });
-        clearLock(ctx.jobId);
-      }
-      return {
-        exitCode: 1,
-        testPassed: false,
-        comparePassed: false,
-        compareSkipped: true,
-        aborted: true,
-        feishuDocPassed: false,
-        summary: failSummary,
-      };
-    }
+  for (const entry of specEntries) {
+    assertSpecEnvMatch(entry.relPath, runtimeEnv);
   }
 
   const { totalSuccessCount, totalFailCount, aborted, executedSpecPaths } = await executeTests(
     opts,
-    specAbsPaths,
+    specEntries,
   );
 
   const testPassed = totalFailCount === 0 && !aborted;
@@ -359,12 +432,12 @@ export async function runDirect(opts: DirectRunOptions, ctx: JobRunContext): Pro
     comparePassed,
     compareSkipped,
     aborted,
-    totalSpecs: specAbsPaths.length,
+    totalSpecs: specEntries.length,
     executedCount: totalSuccessCount + totalFailCount,
     successCount: totalSuccessCount,
     failCount: totalFailCount,
     projects: opts.projects,
-    specPaths: specAbsPaths.map((p) => path.relative(process.cwd(), p)),
+    specPaths: specEntries.map(e => e.relPath),
   };
 
   if (opts.steps.feishuNotify && shouldNotify(opts.notifyOn, flowAllOk)) {

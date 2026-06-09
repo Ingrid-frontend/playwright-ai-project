@@ -1,11 +1,11 @@
 /**
  * @spec-meta
- * {"playwrightEnv":"stage","accountProfile":"default","loginAccount":null,"recordedAt":"2026-06-09T06:56:33.581Z"}
+ * {"playwrightEnv":"dev","accountProfile":"default","loginAccount":null,"recordedAt":"2026-06-09T06:56:33.580Z"}
  */
 import { test, expect } from '../../fixtures';
 import fs from 'fs';
 import path from 'path';
-import { takeStepScreenshot, waitForPostInteractionPaint, withScreenshotRunSegment } from '../../../utils/screenshot';
+import { takeStepScreenshot, waitForPostInteractionPaint, withScreenshotRunSegment } from '../../../../utils/screenshot';
 import { step, maybePause, smartClick, smartFill } from '../../../utils/optimized-actions';
 
 test('test', async ({ page }) => {

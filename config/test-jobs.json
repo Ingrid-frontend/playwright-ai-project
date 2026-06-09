@@ -23,7 +23,7 @@
     {
       "id": "nightly-regression",
       "enabled": true,
-      "description": "每日 Stage 全量回归",
+      "description": "全量回归（定时默认 stage；多账号按 meta 分组 login 后执行）",
       "schedule": "0 2 * * *",
       "timezone": "Asia/Shanghai",
       "playwrightEnv": "stage",

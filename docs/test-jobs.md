@@ -14,6 +14,10 @@ npm run test-job -- run --id=smoke-workbench
 # 后台执行
 npm run test-job -- run --id=smoke-workbench --background
 
+# 指定环境（仅执行 tests/optimized/<env>/ 下匹配的用例）
+npm run test-job -- run --id=nightly-regression --env=uat
+npm run test-job -- run --id=smoke-workbench --env=dev --background
+
 # 查看状态 / 日志 / 停止
 npm run test-job -- status --id=smoke-workbench
 npm run test-job -- logs --id=smoke-workbench
@@ -34,7 +38,7 @@ npm run test-job:daemon
 | `jobs[].enabled` | 是否启用 |
 | `jobs[].schedule` | Cron 表达式，`null` 表示仅手动 |
 | `jobs[].timezone` | 时区，默认 `Asia/Shanghai` |
-| `jobs[].playwrightEnv` | 目标环境，对应 `tests/optimized/<env>/`；执行时写入 `PLAYWRIGHT_ENV` |
+| `jobs[].playwrightEnv` | 目标环境（定时/Cron 默认）；手动执行可用 `--env` 或 Studio 下拉覆盖 |
 | `jobs[].specs` | `"all"` 或 glob 路径数组；`all` 仅扫描当前 env 目录；缺 env 段的 legacy glob 会自动补全 |
 | `jobs[].stopOnTestFailure` | 用例失败即停 |
 | `jobs[].stopOnCompareGate` | UI gate blocker 时任务失败 |
@@ -105,18 +109,18 @@ npm run test-job:daemon
 侧栏 **工作模式 → 定时任务** 进入独立工作区（非折叠面板）：
 
 - **左侧**：任务列表（`config/test-jobs.json`），支持前台/后台运行、停止
-- **中间**：选中任务的配置摘要、最近运行状态与完整日志
+- **中间**：选中任务后可切换**执行环境**、查看对应用例数，以及配置摘要与日志
 - **右侧**：控制台仍输出执行过程日志
 
-WebSocket 消息：`jobs:list`、`jobs:run`、`jobs:stop`、`jobs:status`
+WebSocket 消息：`jobs:list`、`jobs:preview`、`jobs:run`、`jobs:stop`、`jobs:status`
 
 ## GitHub Actions 定时
 
 云端定时见 [`.github/workflows/scheduled-test-jobs.yml`](../.github/workflows/scheduled-test-jobs.yml)：
 
 - Cron：`0 18 * * *`（UTC，约北京时间 02:00）
-- 手动触发时可指定 `job_id` 输入参数
-- 与本地共用 `npm run test-job -- run --id=...`
+- 手动触发时可指定 `playwright_env` 输入参数覆盖 Job 环境
+- 与本地共用 `npm run test-job -- run --id=... [--env=...]`
 
 ## 环境变量
 

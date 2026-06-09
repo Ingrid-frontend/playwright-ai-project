@@ -1039,6 +1039,23 @@ async function processFile(filePath: string): Promise<void> {
 
   fs.writeFileSync(outputPath, result, 'utf-8');
   console.log(`✅ 优化完成: ${outputPath}`);
+
+  try {
+    const { createRequire } = await import('module');
+    const requireCjs = createRequire(import.meta.url);
+    const specMeta = requireCjs('../../src/utils/spec-meta.cjs');
+    const rawRel = path.relative(process.cwd(), filePath).replace(/\\/g, '/');
+    const rawOriginalRel = specMeta.mapProcessedToOriginalRel(rawRel) || rawRel;
+    specMeta.copyRawMetaToOptimized(process.cwd(), rawOriginalRel, outputRel, {
+      playwrightEnv: env,
+      recordSource: 'pipeline',
+    });
+    const meta = specMeta.resolveOptimizedSpecMeta(process.cwd(), outputRel);
+    const withHeader = specMeta.appendSpecMetaHeaderToCode(fs.readFileSync(outputPath, 'utf8'), meta);
+    fs.writeFileSync(outputPath, withHeader, 'utf8');
+  } catch (e) {
+    console.warn(`⚠️ 元数据写入跳过: ${e instanceof Error ? e.message : e}`);
+  }
 }
 
 // 递归查找所有 .spec.ts 文件

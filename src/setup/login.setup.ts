@@ -18,7 +18,7 @@ const { annotateStorageStateMeta } = require('../utils/storage-state-meta.cjs') 
  * 使用 Project Setup 模式
  * 优势：自动享受 Trace Viewer、自动重试、并行隔离
  */
-const STORAGE_PATH = resolveStorageState(env);
+const STORAGE_PATH = resolveStorageState(env, process.env.PLAYWRIGHT_ACCOUNT);
 const forceRefresh = shouldRefreshStorageState();
 
 setup('🔐 全局登录并持久化状态', { timeout: 120_000 }, async ({ page }) => {

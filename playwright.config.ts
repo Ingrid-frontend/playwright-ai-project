@@ -11,7 +11,7 @@ import { resolveStorageState } from './src/utils/env-config.js';
 const defaultEnv = "stage";
 export const env = process.env.PLAYWRIGHT_ENV || process.env.NODE_ENV || defaultEnv;
 export const curConfig = (baseConfig as Record<string, any>)[env] || (baseConfig as Record<string, any>)[defaultEnv];
-export const storageStatePath = resolveStorageState(env);
+export const storageStatePath = resolveStorageState(env, process.env.PLAYWRIGHT_ACCOUNT);
 
 function buildReporter() {
   const reporters: any[] = [['html']];

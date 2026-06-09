@@ -36,6 +36,7 @@ const {
   assertSpecEnvMatch,
   getLegacyEnvDefault,
 } = require(path.join(__dirname, '../src/utils/test-env-path.cjs'));
+const specMeta = require(path.join(__dirname, '../src/utils/spec-meta.cjs'));
 
 const PORT = process.env.PORT || 3001;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
@@ -124,12 +125,12 @@ function getEnvEntryResolved(repoRoot, envId, profileId) {
   };
 }
 
-function buildRepoSpawnEnv(session) {
+function buildRepoSpawnEnv(session, profileOverride) {
   const env = { ...process.env };
   const id = getSessionPlaywrightEnv(session);
   if (id) env.PLAYWRIGHT_ENV = id;
   const repoRoot = resolveRepoRoot();
-  const prof = getSessionAccountProfile(session, repoRoot);
+  const prof = profileOverride || getSessionAccountProfile(session, repoRoot);
   if (prof) env.PLAYWRIGHT_ACCOUNT = prof;
   return env;
 }
@@ -370,6 +371,10 @@ function setSessionPlaywrightEnv(ws, session, envId) {
     hasStorage: resolved?.hasStorage ?? false,
     accountProfile: session.accountProfile,
     optimizedSpecs: listOptimizedSpecs(repoRoot, { limit: 40, env: entry.id }),
+    optimizedSpecEntries: listOptimizedSpecEntries(repoRoot, { limit: 40, env: entry.id }),
+    profileCounts: specMeta.summarizeProfileCounts(
+      listOptimizedSpecEntries(repoRoot, { limit: 200, env: entry.id }),
+    ),
   });
   sendAccountInfo(ws, session, repoRoot, true);
   logLine(ws, `[env] 已切换为 ${entry.id} · ${entry.baseURL}`, 'info');
@@ -451,6 +456,89 @@ function listOptimizedSpecs(repoRoot, opts = {}) {
   walk(base);
   found.sort((a, b) => b.mtime - a.mtime);
   return found.slice(0, limit).map((x) => x.rel);
+}
+
+/** 列出 optimized 用例并附带账号档案等元数据 */
+function listOptimizedSpecEntries(repoRoot, opts = {}) {
+  const rels = listOptimizedSpecs(repoRoot, opts);
+  const accountFilter = opts.accountProfile != null ? String(opts.accountProfile).trim() : null;
+  let entries = rels.map((rel) => specMeta.enrichOptimizedSpecEntry(repoRoot, rel));
+  if (accountFilter && accountFilter !== 'all') {
+    entries = entries.filter((e) => e.accountProfile === accountFilter);
+  }
+  return entries;
+}
+
+function resolveSpecAccountProfile(repoRoot, specRel) {
+  return specMeta.resolveOptimizedSpecMeta(repoRoot, specRel).accountProfile;
+}
+
+function writeSpecMetaForSession(repoRoot, session, { rawRel, optimizedRel, rawCode, optCode }) {
+  const envId = getSessionPlaywrightEnv(session);
+  const profile = getSessionAccountProfile(session, repoRoot);
+  const storageRel = repoEnv.resolveStorageStateRel(repoRoot, envId, profile);
+  const storageAbs = path.join(repoRoot, storageRel);
+  const sessionMeta = {
+    playwrightEnv: envId,
+    accountProfile: profile,
+    code: rawCode || optCode || '',
+    storageAbs: fs.existsSync(storageAbs) ? storageAbs : null,
+    storageStateRel: storageRel,
+    recordSource: 'studio',
+    rawOriginalRel: rawRel || null,
+    optimizedRel: optimizedRel || null,
+  };
+  if (rawRel) {
+    specMeta.writeRawSpecMetaFromSession(repoRoot, rawRel, sessionMeta);
+  }
+  if (optimizedRel) {
+    const meta = specMeta.copyRawMetaToOptimized(repoRoot, rawRel || optimizedRel, optimizedRel, {
+      playwrightEnv: envId,
+      accountProfile: profile,
+      code: rawCode || optCode,
+      storageAbs: sessionMeta.storageAbs,
+      recordSource: 'studio',
+    });
+    try {
+      const abs = path.join(repoRoot, optimizedRel);
+      if (fs.existsSync(abs)) {
+        const withHeader = specMeta.appendSpecMetaHeaderToCode(fs.readFileSync(abs, 'utf8'), meta);
+        fs.writeFileSync(abs, withHeader, 'utf8');
+      }
+    } catch {
+      /* ignore header append */
+    }
+  }
+}
+
+async function ensureAccountLoginForProfile(ws, session, profileId) {
+  const repoRoot = resolveRepoRoot();
+  const envId = getSessionPlaywrightEnv(session);
+  const profile = repoEnv.resolveAccountProfile(repoRoot, envId, profileId);
+  const storageRel = repoEnv.resolveStorageStateRel(repoRoot, envId, profile);
+  if (repoEnv.storageExists(repoRoot, storageRel)) {
+    return { ok: true, profile, skipped: true };
+  }
+  logLine(ws, `[account] 档案 ${profile} 无登录态，正在登录…`, 'warn');
+  const savedProfile = session.accountProfile;
+  session.accountProfile = profile;
+  try {
+    await runAccountLogin(ws, session);
+    const ok = repoEnv.storageExists(repoRoot, storageRel);
+    return { ok, profile, skipped: false };
+  } finally {
+    session.accountProfile = savedProfile;
+  }
+}
+
+async function ensureSpecAccountReady(ws, session, specRel) {
+  if (isDraftOptimizedPath(specRel)) return { ok: true, profile: null };
+  const repoRoot = resolveRepoRoot();
+  const meta = specMeta.resolveOptimizedSpecMeta(repoRoot, specRel);
+  if (!meta.accountProfile || meta.accountProfile === specMeta.UNKNOWN_PROFILE) {
+    return { ok: true, profile: null };
+  }
+  return ensureAccountLoginForProfile(ws, session, meta.accountProfile);
 }
 
 /** 根据 raw original 路径推断 optimized 产物位置（pipeline 刚结束时优先用） */
@@ -730,6 +818,11 @@ async function ensureDraftRecordingPath(repoRoot, session, { code, name, descrip
   const abs = assertAllowedSavePath(repoRoot, draftRelative);
   fs.mkdirSync(path.dirname(abs), { recursive: true });
   fs.writeFileSync(abs, String(code || ''), 'utf8');
+  try {
+    writeSpecMetaForSession(repoRoot, session, { rawRel: draftRelative, rawCode: code });
+  } catch {
+    /* meta 写入失败不阻断草稿 */
+  }
   return { draftRelative, formalHint: resolved.relativePath };
 }
 
@@ -1008,6 +1101,17 @@ async function repoCommitArtifacts(ws, session, msg) {
   fs.mkdirSync(path.dirname(optAbs), { recursive: true });
   fs.writeFileSync(optAbs, optContent, 'utf8');
 
+  try {
+    writeSpecMetaForSession(repoRoot, session, {
+      rawRel: relativePath,
+      optimizedRel: optimizedRelative,
+      rawCode,
+      optCode: optContent,
+    });
+  } catch (e) {
+    logLine(ws, `[repo] 元数据写入失败: ${errText(e)}`, 'warn');
+  }
+
   session.lastSavedRelative = relativePath;
   session.lastPrimaryOptimizedRelative = optimizedRelative;
   session.rawCode = rawCode;
@@ -1136,6 +1240,30 @@ async function runRepoPipeline(ws, session, msg) {
     );
     if (optimizedCode) session.optCode = optimizedCode;
 
+    if (session.draftRelativePath) {
+      try {
+        writeSpecMetaForSession(repoRoot, session, {
+          rawRel: session.draftRelativePath,
+          rawCode: pipelineCode || session.rawCode,
+        });
+      } catch {
+        /* ignore */
+      }
+    }
+    for (const optRel of optimizedSpecs) {
+      try {
+        const rawRel = session.draftRelativePath || targetArg;
+        specMeta.copyRawMetaToOptimized(repoRoot, rawRel, optRel, {
+          playwrightEnv: pipelineEnv,
+          accountProfile: getSessionAccountProfile(session, repoRoot),
+          code: pipelineCode || session.rawCode,
+          recordSource: 'pipeline',
+        });
+      } catch {
+        /* ignore per-spec meta */
+      }
+    }
+
     let suggestedFormalRelative = session.suggestedFormalRelative || null;
     let suggestedFormalOptimized = null;
     if (suggestedFormalRelative) {
@@ -1230,6 +1358,15 @@ async function runRepoTest(ws, session, msg) {
     }
   }
 
+  const specProfile = isDraftOptimizedPath(specRel)
+    ? getSessionAccountProfile(session, repoRoot)
+    : resolveSpecAccountProfile(repoRoot, specRel);
+  const loginReady = await ensureSpecAccountReady(ws, session, specRel);
+  if (!loginReady.ok) {
+    send(ws, 'error', { message: `账号档案 ${loginReady.profile || specProfile} 登录失败，无法执行用例` });
+    return;
+  }
+
   const cli = getRepoPlaywrightCli(repoRoot);
   if (!cli) {
     send(ws, 'error', { message: '项目根未安装 @playwright/test，请在仓库根执行 npm install' });
@@ -1249,9 +1386,15 @@ async function runRepoTest(ws, session, msg) {
   else args.push('--reporter=json');
 
   logLine(ws, `[repo] PLAYWRIGHT_ENV=${getSessionPlaywrightEnv(session)}`, 'dim');
+  if (specProfile && specProfile !== specMeta.UNKNOWN_PROFILE) {
+    logLine(ws, `[repo] PLAYWRIGHT_ACCOUNT=${specProfile}`, 'dim');
+  }
   const proc = spawn(process.execPath, args, {
     cwd: repoRoot,
-    env: buildRepoSpawnEnv(session),
+    env: buildRepoSpawnEnv(
+      session,
+      specProfile && specProfile !== specMeta.UNKNOWN_PROFILE ? specProfile : undefined,
+    ),
   });
   session.repoTestProc = proc;
 
@@ -1350,7 +1493,7 @@ function cancelRepoBatch(session) {
   }
 }
 
-async function executeRepoSpecForBatch(ws, session, specRel, headed, projects) {
+async function executeRepoSpecForBatch(ws, session, specRel, headed, projects, profileOverride) {
   const repoRoot = resolveRepoRoot();
   let absSpec;
   try {
@@ -1413,7 +1556,7 @@ async function executeRepoSpecForBatch(ws, session, specRel, headed, projects) {
 
   const proc = spawn(process.execPath, args, {
     cwd: repoRoot,
-    env: buildRepoSpawnEnv(session),
+    env: buildRepoSpawnEnv(session, profileOverride),
   });
   session.repoTestProc = proc;
 
@@ -1504,42 +1647,95 @@ async function runRepoBatchTest(ws, session, msg) {
 
   const results = [];
   let stoppedEarly = false;
-  for (let i = 0; i < specs.length; i++) {
+
+  const repoRootForBatch = resolveRepoRoot();
+  const batchEntries = specs.map((rel) => ({
+    rel,
+    ...specMeta.enrichOptimizedSpecEntry(repoRootForBatch, rel),
+  }));
+  const profileGroups = specMeta.groupEntriesByAccountProfile(batchEntries);
+
+  let globalIndex = 0;
+  for (const [profile, groupEntries] of profileGroups) {
     if (session.repoBatchCancelled) break;
-    const specRel = specs[i];
-    send(ws, 'repo:batch-test:progress', {
-      index: i,
-      total: specs.length,
-      specRelative: specRel,
-      phase: 'running',
-    });
-    const r = await executeRepoSpecForBatch(ws, session, specRel, headed, testProjects);
-    const item = { specRelative: specRel, ...r };
-    results.push(item);
-    send(ws, 'repo:batch-test:progress', {
-      index: i,
-      total: specs.length,
-      specRelative: specRel,
-      phase: 'done',
-      exitCode: r.exitCode,
-      passed: r.passed,
-      failed: r.failed,
-      total: r.total,
-      cancelled: Boolean(r.cancelled),
-      error: r.error || null,
-      failures: r.failures || [],
-    });
-    if (r.cancelled) break;
-    const failedRun = r.exitCode !== 0 || (r.failed != null && r.failed > 0);
-    if (failedRun) {
-      logLine(ws, `[batch] 失败: ${specRel}`, 'warn');
-      if (stopOnError) {
-        stoppedEarly = true;
-        break;
+    if (profile && profile !== specMeta.UNKNOWN_PROFILE) {
+      logLine(ws, `[batch] 账号组 ${profile}（${groupEntries.length} 个用例）`, 'info');
+      const loginReady = await ensureAccountLoginForProfile(ws, session, profile);
+      if (!loginReady.ok) {
+        for (const entry of groupEntries) {
+          const err = `账号档案 ${profile} 登录失败`;
+          const item = {
+            specRelative: entry.rel,
+            exitCode: 1,
+            passed: 0,
+            failed: 1,
+            total: 1,
+            error: err,
+            failures: [{ title: entry.rel, location: entry.rel, status: 'error', message: err, hint: '请先在侧栏完成该档案登录' }],
+          };
+          results.push(item);
+          send(ws, 'repo:batch-test:progress', {
+            index: globalIndex,
+            total: specs.length,
+            specRelative: entry.rel,
+            phase: 'done',
+            ...item,
+          });
+          globalIndex++;
+        }
+        if (stopOnError) {
+          stoppedEarly = true;
+          break;
+        }
+        continue;
       }
-    } else {
-      logLine(ws, `[batch] 完成: ${specRel}`, 'ok');
     }
+
+    const profileOverride =
+      profile && profile !== specMeta.UNKNOWN_PROFILE ? profile : undefined;
+
+    for (const entry of groupEntries) {
+      if (session.repoBatchCancelled) break;
+      const specRel = entry.rel;
+      const i = globalIndex;
+      send(ws, 'repo:batch-test:progress', {
+        index: i,
+        total: specs.length,
+        specRelative: specRel,
+        phase: 'running',
+        accountProfile: entry.accountProfile || null,
+      });
+      const r = await executeRepoSpecForBatch(ws, session, specRel, headed, testProjects, profileOverride);
+      const item = { specRelative: specRel, accountProfile: entry.accountProfile || null, ...r };
+      results.push(item);
+      send(ws, 'repo:batch-test:progress', {
+        index: i,
+        total: specs.length,
+        specRelative: specRel,
+        phase: 'done',
+        exitCode: r.exitCode,
+        passed: r.passed,
+        failed: r.failed,
+        total: r.total,
+        cancelled: Boolean(r.cancelled),
+        error: r.error || null,
+        failures: r.failures || [],
+        accountProfile: entry.accountProfile || null,
+      });
+      globalIndex++;
+      if (r.cancelled) break;
+      const failedRun = r.exitCode !== 0 || (r.failed != null && r.failed > 0);
+      if (failedRun) {
+        logLine(ws, `[batch] 失败: ${specRel}`, 'warn');
+        if (stopOnError) {
+          stoppedEarly = true;
+          break;
+        }
+      } else {
+        logLine(ws, `[batch] 完成: ${specRel}`, 'ok');
+      }
+    }
+    if (stoppedEarly || session.repoBatchCancelled) break;
   }
 
   session.repoBatchRunning = false;
@@ -1655,6 +1851,7 @@ function mergeTestJobDef(config, jobDef) {
     projects: jobDef.projects?.length ? [...jobDef.projects] : [...(d.projects || ['optimized', 'optimized-webkit'])],
     optimizedDir: jobDef.optimizedDir ?? d.optimizedDir ?? 'tests/optimized',
     specs: jobDef.specs ?? d.specs ?? 'all',
+    accountProfile: jobDef.accountProfile ?? d.accountProfile ?? null,
     stopOnTestFailure: jobDef.stopOnTestFailure ?? d.stopOnTestFailure ?? true,
     stopOnCompareGate: jobDef.stopOnCompareGate ?? d.stopOnCompareGate ?? true,
     runCompareAfterAbort: jobDef.runCompareAfterAbort ?? d.runCompareAfterAbort ?? false,
@@ -1719,12 +1916,16 @@ function isDraftOptimizedRel(rel) {
   return path.basename(String(rel || '')) === 'studio-unsaved-draft.optimized.spec.ts';
 }
 
+function relPathForJobSpecMatch(rel, playwrightEnv) {
+  const legacy = rel.match(/^tests\/optimized\/(\d{6})\/(.+\.optimized\.spec\.ts)$/);
+  if (legacy && !KNOWN_JOB_ENV_IDS.includes(legacy[1])) {
+    return `tests/optimized/${playwrightEnv}/${legacy[1]}/${legacy[2]}`;
+  }
+  return rel;
+}
+
 function listAllOptimizedSpecsForJob(repoRoot, env, optimizedDir) {
-  const envAbs = path.join(repoRoot, optimizedDir, env);
-  const scanBase =
-    env && fs.existsSync(envAbs) && fs.statSync(envAbs).isDirectory()
-      ? envAbs
-      : path.join(repoRoot, optimizedDir);
+  const scanBase = path.join(repoRoot, optimizedDir);
   const found = [];
   const walk = (dir) => {
     let ents;
@@ -1748,12 +1949,37 @@ function listAllOptimizedSpecsForJob(repoRoot, env, optimizedDir) {
   return found.sort((a, b) => a.localeCompare(b));
 }
 
-function countSpecsForMergedJob(repoRoot, merged) {
+function resolveJobSpecRelsForMerged(repoRoot, merged, accountProfileOverride) {
   const all = listAllOptimizedSpecsForJob(repoRoot, merged.playwrightEnv, merged.optimizedDir);
-  if (merged.specs === 'all') return all.length;
-  const rawSpecs = Array.isArray(merged.specs) ? merged.specs : [merged.specs];
-  const patterns = normalizeJobSpecPatterns(rawSpecs, merged.playwrightEnv);
-  return all.filter((rel) => matchesAnyJobPattern(rel, patterns)).length;
+  let matched = all;
+  if (merged.specs !== 'all') {
+    const rawSpecs = Array.isArray(merged.specs) ? merged.specs : [merged.specs];
+    const patterns = normalizeJobSpecPatterns(rawSpecs, merged.playwrightEnv);
+    const env = merged.playwrightEnv || 'stage';
+    matched = all.filter((rel) => {
+      const normRel = relPathForJobSpecMatch(rel, env);
+      return matchesAnyJobPattern(normRel, patterns) || matchesAnyJobPattern(rel, patterns);
+    });
+  }
+  const profileFilter = accountProfileOverride ?? merged.accountProfile ?? null;
+  if (profileFilter && profileFilter !== 'all') {
+    const allowed = Array.isArray(profileFilter) ? profileFilter : [String(profileFilter)];
+    matched = matched.filter((rel) => {
+      const meta = specMeta.enrichOptimizedSpecEntry(repoRoot, rel);
+      return allowed.includes(meta.accountProfile);
+    });
+  }
+  return matched;
+}
+
+function countSpecsForMergedJob(repoRoot, merged, accountProfileOverride) {
+  return resolveJobSpecRelsForMerged(repoRoot, merged, accountProfileOverride).length;
+}
+
+function summarizeJobProfileCounts(repoRoot, merged, accountProfileOverride) {
+  const rels = resolveJobSpecRelsForMerged(repoRoot, merged, accountProfileOverride);
+  const entries = rels.map((rel) => specMeta.enrichOptimizedSpecEntry(repoRoot, rel));
+  return specMeta.summarizeProfileCounts(entries);
 }
 
 function formatJobSpecsDisplay(merged, specCount) {
@@ -1776,6 +2002,7 @@ function buildTestJobEntry(repoRoot, jobDef, config) {
     schedule: merged.schedule,
     timezone: merged.timezone,
     playwrightEnv: merged.playwrightEnv,
+    accountProfile: merged.accountProfile ?? null,
     projects: merged.projects,
     optimizedDir: merged.optimizedDir,
     specs: merged.specs,
@@ -1792,7 +2019,68 @@ function buildTestJobEntry(repoRoot, jobDef, config) {
 function buildTestJobsListPayload(repoRoot) {
   const config = loadTestJobsConfigFile(repoRoot);
   const jobs = (config.jobs || []).map((j) => buildTestJobEntry(repoRoot, j, config));
-  return { jobs, configPath: path.join(repoRoot, TEST_JOBS_CONFIG_REL) };
+  return {
+    jobs,
+    configPath: path.join(repoRoot, TEST_JOBS_CONFIG_REL),
+    availableEnvs: listKnownEnvs(repoRoot),
+  };
+}
+
+function resolveJobRunEnvForRepo(repoRoot, merged, override) {
+  const env = String(override ?? merged.playwrightEnv ?? 'stage').trim();
+  if (!isKnownEnv(env, repoRoot)) {
+    throw new Error(`未知环境: ${env}`);
+  }
+  return env;
+}
+
+function buildJobPreviewPayload(repoRoot, def, config, playwrightEnv, accountProfile) {
+  const merged = mergeTestJobDef(config, def);
+  const env = resolveJobRunEnvForRepo(repoRoot, merged, playwrightEnv);
+  const profileFilter =
+    accountProfile != null && String(accountProfile).trim() && accountProfile !== 'all'
+      ? String(accountProfile).trim()
+      : merged.accountProfile ?? null;
+  const previewMerged = { ...merged, playwrightEnv: env, accountProfile: profileFilter };
+  const specCount = countSpecsForMergedJob(repoRoot, previewMerged, profileFilter);
+  const profileCounts = summarizeJobProfileCounts(repoRoot, previewMerged, profileFilter);
+  return {
+    jobId: merged.id,
+    playwrightEnv: env,
+    configPlaywrightEnv: merged.playwrightEnv,
+    configAccountProfile: merged.accountProfile ?? null,
+    accountProfile: profileFilter,
+    envOverridden: env !== merged.playwrightEnv,
+    profileOverridden:
+      profileFilter != null &&
+      JSON.stringify(profileFilter) !== JSON.stringify(merged.accountProfile ?? null),
+    specCount,
+    profileCounts,
+    specsLabel: formatJobSpecsDisplay(previewMerged, specCount),
+  };
+}
+
+async function handleJobsPreview(ws, msg) {
+  const repoRoot = resolveRepoRoot();
+  const jobId = String(msg.jobId || '').trim();
+  if (!jobId) {
+    send(ws, 'error', { message: 'jobs:preview 需要 jobId' });
+    return;
+  }
+  const config = loadTestJobsConfigFile(repoRoot);
+  const def = (config.jobs || []).find((j) => j.id === jobId);
+  if (!def) {
+    send(ws, 'error', { message: `未找到 Job: ${jobId}` });
+    send(ws, 'jobs:preview:done', { jobId, ok: false });
+    return;
+  }
+  try {
+    const preview = buildJobPreviewPayload(repoRoot, def, config, msg.playwrightEnv, msg.accountProfile);
+    send(ws, 'jobs:preview:done', { ok: true, ...preview });
+  } catch (e) {
+    send(ws, 'error', { message: errText(e) });
+    send(ws, 'jobs:preview:done', { jobId, ok: false });
+  }
 }
 
 function tailJobLog(repoRoot, jobId, lines = 40) {
@@ -1846,12 +2134,19 @@ async function handleJobsRun(ws, msg) {
     return;
   }
   const merged = mergeTestJobDef(config, def);
+  const runEnv = resolveJobRunEnvForRepo(repoRoot, merged, msg.playwrightEnv);
+  const runProfile =
+    msg.accountProfile != null && String(msg.accountProfile).trim() && msg.accountProfile !== 'all'
+      ? String(msg.accountProfile).trim()
+      : merged.accountProfile ?? null;
 
   const background = Boolean(msg.background);
   const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  const args = ['run', 'test-job', '--', 'run', `--id=${jobId}`, '--trigger=manual'];
+  const args = ['run', 'test-job', '--', 'run', `--id=${jobId}`, `--env=${runEnv}`, '--trigger=manual'];
+  if (runProfile) args.push(`--profile=${runProfile}`);
   if (background) args.push('--background');
-  const spawnEnv = { ...process.env, PLAYWRIGHT_ENV: merged.playwrightEnv };
+  const spawnEnv = { ...process.env, PLAYWRIGHT_ENV: runEnv };
+  if (runProfile) spawnEnv.PLAYWRIGHT_ACCOUNT = runProfile;
 
   if (background) {
     const proc = spawn(npmCmd, args, {
@@ -1862,13 +2157,27 @@ async function handleJobsRun(ws, msg) {
       shell: false,
     });
     proc.unref();
-    send(ws, 'jobs:run:done', { jobId, background: true, pid: proc.pid });
-    logLine(ws, `[jobs] 已在后台启动 Job「${jobId}」(env=${merged.playwrightEnv})`, 'ok');
+    send(ws, 'jobs:run:done', {
+      jobId,
+      background: true,
+      pid: proc.pid,
+      playwrightEnv: runEnv,
+      accountProfile: runProfile,
+    });
+    logLine(
+      ws,
+      `[jobs] 已在后台启动 Job「${jobId}」(env=${runEnv}${runProfile ? `, profile=${runProfile}` : ''}${runEnv !== merged.playwrightEnv ? `, 覆盖默认 ${merged.playwrightEnv}` : ''})`,
+      'ok',
+    );
     return;
   }
 
-  send(ws, 'jobs:run:start', { jobId });
-  logLine(ws, `[jobs] 开始执行 Job「${jobId}」(env=${merged.playwrightEnv})`, 'info');
+  send(ws, 'jobs:run:start', { jobId, playwrightEnv: runEnv, accountProfile: runProfile });
+  logLine(
+    ws,
+    `[jobs] 开始执行 Job「${jobId}」(env=${runEnv}${runProfile ? `, profile=${runProfile}` : ''}${runEnv !== merged.playwrightEnv ? `, 覆盖默认 ${merged.playwrightEnv}` : ''})`,
+    'info',
+  );
   const proc = spawn(npmCmd, args, { cwd: repoRoot, env: spawnEnv, shell: false });
   proc.stdout.on('data', (d) => {
     const t = stripAnsi(d.toString());
@@ -1960,6 +2269,7 @@ async function repoDeleteOptimizedSpecs(ws, session, msg) {
         continue;
       }
       fs.unlinkSync(abs);
+      specMeta.deleteSpecMetaFile(repoRoot, specRel);
       deleted.push(specRel);
       logLine(ws, `[repo] 已删除用例: ${specRel}`, 'ok');
     } catch (e) {
@@ -1967,14 +2277,16 @@ async function repoDeleteOptimizedSpecs(ws, session, msg) {
     }
   }
 
-  const optimizedSpecs = listOptimizedSpecs(repoRoot, {
+  const optimizedSpecEntries = listOptimizedSpecEntries(repoRoot, {
     limit: 40,
     env: getSessionPlaywrightEnv(session),
   });
   send(ws, 'repo:delete-spec:done', {
     deleted,
     failed,
-    optimizedSpecs,
+    optimizedSpecs: optimizedSpecEntries.map((e) => e.rel),
+    optimizedSpecEntries,
+    profileCounts: specMeta.summarizeProfileCounts(optimizedSpecEntries),
     repoRoot,
   });
   if (deleted.length && failed.length) {
@@ -3331,9 +3643,10 @@ wss.on('connection', (ws) => {
 
   const root = resolveRepoRoot();
   const repoReady = fs.existsSync(path.join(root, 'playwright.config.ts'));
-  const optimizedSpecs = repoReady
-    ? listOptimizedSpecs(root, { limit: 40, env: getSessionPlaywrightEnv(session) })
+  const optimizedSpecEntries = repoReady
+    ? listOptimizedSpecEntries(root, { limit: 40, env: getSessionPlaywrightEnv(session) })
     : [];
+  const optimizedSpecs = optimizedSpecEntries.map((e) => e.rel);
   let draftOptimizedExists = false;
   let draftRecordingExists = false;
   let dateCategories = [];
@@ -3357,6 +3670,8 @@ wss.on('connection', (ws) => {
     repoRoot: root,
     repoReady,
     optimizedSpecs,
+    optimizedSpecEntries,
+    profileCounts: specMeta.summarizeProfileCounts(optimizedSpecEntries),
     draftOptimizedRelative: DRAFT_OPTIMIZED_RELATIVE,
     draftOptimizedExists,
     draftRecordingExists,
@@ -3462,11 +3777,20 @@ wss.on('connection', (ws) => {
           send(ws, 'error', { message: '未找到项目根，无法列出 optimized 用例' });
           break;
         }
-        const optimizedSpecs = listOptimizedSpecs(repoRoot, {
-          limit: 40,
+        const accountProfile = msg.accountProfile != null ? String(msg.accountProfile).trim() : null;
+        const optimizedSpecEntries = listOptimizedSpecEntries(repoRoot, {
+          limit: msg.limit ?? 40,
           env: getSessionPlaywrightEnv(session),
+          accountProfile: accountProfile || undefined,
         });
-        send(ws, 'repo:list-optimized:done', { optimizedSpecs, repoRoot });
+        send(ws, 'repo:list-optimized:done', {
+          optimizedSpecs: optimizedSpecEntries.map((e) => e.rel),
+          optimizedSpecEntries,
+          profileCounts: specMeta.summarizeProfileCounts(
+            listOptimizedSpecEntries(repoRoot, { limit: 200, env: getSessionPlaywrightEnv(session) }),
+          ),
+          repoRoot,
+        });
         break;
       }
 
@@ -3540,6 +3864,10 @@ wss.on('connection', (ws) => {
 
       case 'jobs:status':
         await handleJobsStatus(ws, msg);
+        break;
+
+      case 'jobs:preview':
+        await handleJobsPreview(ws, msg);
         break;
 
       case 'jobs:run':

@@ -1,6 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import { countResolvedSpecs } from './job-utils.js';
+import { isKnownEnv } from '../../src/utils/test-env-path.js';
+import { countResolvedSpecs, type AccountProfileFilter } from './job-utils.js';
+
+export type { AccountProfileFilter };
 
 export type FeishuMode = 'interactive' | 'text' | 'links' | 'none';
 export type NotifyOn = 'success' | 'failure';
@@ -38,6 +41,8 @@ export type TestJobDefinition = {
   projects?: string[];
   optimizedDir?: string;
   specs?: JobSpecs;
+  /** 仅执行指定账号档案的用例；不传则跑全部并按 meta 分组 login */
+  accountProfile?: AccountProfileFilter;
   stopOnTestFailure?: boolean;
   stopOnCompareGate?: boolean;
   runCompareAfterAbort?: boolean;
@@ -59,6 +64,7 @@ export type ResolvedTestJob = TestJobDefaults & {
   schedule: string | null;
   timezone: string;
   specs: JobSpecs;
+  accountProfile: AccountProfileFilter;
 };
 
 const CONFIG_PATH = path.join(process.cwd(), 'config/test-jobs.json');
@@ -150,6 +156,7 @@ export function resolveJob(jobId: string): ResolvedTestJob {
     projects: job.projects?.length ? [...job.projects] : [...d.projects],
     optimizedDir: job.optimizedDir ?? d.optimizedDir,
     specs: job.specs ?? 'all',
+    accountProfile: job.accountProfile ?? null,
     stopOnTestFailure: job.stopOnTestFailure ?? d.stopOnTestFailure,
     stopOnCompareGate: job.stopOnCompareGate ?? d.stopOnCompareGate,
     runCompareAfterAbort: job.runCompareAfterAbort ?? d.runCompareAfterAbort,
@@ -164,8 +171,26 @@ export function listJobs(): ResolvedTestJob[] {
   return config.jobs.map((j) => resolveJob(j.id));
 }
 
-export function countJobSpecs(job: ResolvedTestJob): number {
-  return countResolvedSpecs(job.specs, job.optimizedDir, job.playwrightEnv);
+export function resolveJobRunEnv(job: ResolvedTestJob, override?: string): string {
+  const env = String(override ?? job.playwrightEnv ?? 'stage').trim();
+  if (!isKnownEnv(env)) {
+    throw new Error(`未知环境: ${env}（请在 datasource/base-config.json 中配置）`);
+  }
+  return env;
+}
+
+export function countJobSpecsForEnv(
+  job: ResolvedTestJob,
+  playwrightEnv: string,
+  accountProfile?: AccountProfileFilter,
+): number {
+  const filter = accountProfile ?? job.accountProfile;
+  return countResolvedSpecs(job.specs, job.optimizedDir, playwrightEnv, filter);
+}
+
+export function countJobSpecs(job: ResolvedTestJob, accountProfile?: AccountProfileFilter): number {
+  const filter = accountProfile ?? job.accountProfile;
+  return countResolvedSpecs(job.specs, job.optimizedDir, job.playwrightEnv, filter);
 }
 
 export function getConfigPath(): string {

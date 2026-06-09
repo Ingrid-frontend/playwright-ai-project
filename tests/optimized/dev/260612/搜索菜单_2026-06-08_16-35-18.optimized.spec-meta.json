@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "playwrightEnv": "dev",
+  "accountProfile": "default",
+  "loginAccount": null,
+  "loginUserId": null,
+  "storageStateRel": null,
+  "recordedAt": "2026-06-09T06:56:33.580Z",
+  "recordSource": "backfill",
+  "rawOriginalRel": null,
+  "optimizedRel": "tests/optimized/dev/260612/搜索菜单_2026-06-08_16-35-18.optimized.spec.ts"
+}

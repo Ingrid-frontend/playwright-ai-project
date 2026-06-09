@@ -1,7 +1,36 @@
 import fs from 'fs';
 import path from 'path';
+import { createRequire } from 'module';
 import { browserToRunSegment, recordLastGreenRun } from '../report/baseline-manager.js';
 import { specMatchesEnv } from '../../src/utils/test-env-path.js';
+
+const requireCjs = createRequire(import.meta.url);
+const specMeta = requireCjs('../../src/utils/spec-meta.cjs') as {
+  enrichOptimizedSpecEntry: (
+    repoRoot: string,
+    rel: string,
+  ) => { accountProfile?: string };
+  groupEntriesByAccountProfile: (
+    entries: { rel: string; accountProfile?: string }[],
+  ) => [string, { rel: string; accountProfile?: string }[]][];
+  summarizeProfileCounts: (entries: { accountProfile?: string }[]) => Record<string, number>;
+  UNKNOWN_PROFILE: string;
+};
+
+export type AccountProfileFilter = string | string[] | null | undefined;
+
+export type SpecRunEntry = {
+  absPath: string;
+  relPath: string;
+  accountProfile: string;
+};
+
+function normalizeAccountProfileFilter(filter: AccountProfileFilter): string[] | null {
+  if (filter == null || filter === '' || filter === 'all') return null;
+  if (Array.isArray(filter)) return filter.map(String).filter(Boolean);
+  const one = String(filter).trim();
+  return one ? [one] : null;
+}
 
 export function findOptimizedSpecFiles(rootDir: string): string[] {
   const absRoot = path.resolve(process.cwd(), rootDir);
@@ -64,15 +93,26 @@ function isDraftOptimizedSpecAbs(absPath: string): boolean {
   return base === 'studio-unsaved-draft.optimized.spec.ts';
 }
 
-/** 优先扫描 tests/optimized/<env>/，减少跨环境误匹配 */
-export function resolveOptimizedScanDir(optimizedDir: string, playwrightEnv?: string): string {
-  const env = String(playwrightEnv || '').trim();
-  if (!env) return optimizedDir;
-  const envAbs = path.join(process.cwd(), optimizedDir, env);
-  if (fs.existsSync(envAbs) && fs.statSync(envAbs).isDirectory()) {
-    return path.join(optimizedDir, env).replace(/\\/g, '/');
+/** 将 legacy 路径 tests/optimized/<dateCategory>/file 规范为带 env 段，便于 glob 匹配 */
+function relPathForJobSpecMatch(relPath: string, playwrightEnv: string): string {
+  const rel = relPath.replace(/\\/g, '/');
+  const legacy = rel.match(/^tests\/optimized\/(\d{6})\/(.+\.optimized\.spec\.ts)$/);
+  if (legacy && !KNOWN_ENV_IDS.includes(legacy[1])) {
+    return `tests/optimized/${playwrightEnv}/${legacy[1]}/${legacy[2]}`;
   }
-  return optimizedDir;
+  return rel;
+}
+
+/** 收集某 env 下全部正式 optimized 用例（含 legacy 无 env 段路径） */
+export function collectOptimizedSpecsForEnv(optimizedDir: string, playwrightEnv?: string): string[] {
+  let allSpecs = findOptimizedSpecFiles(optimizedDir).filter((p) => !isDraftOptimizedSpecAbs(p));
+  if (playwrightEnv) {
+    allSpecs = allSpecs.filter((abs) => {
+      const rel = path.relative(process.cwd(), abs).replace(/\\/g, '/');
+      return specMatchesEnv(rel, playwrightEnv);
+    });
+  }
+  return allSpecs;
 }
 
 const KNOWN_ENV_IDS = ['dev', 'uat', 'stage', 'stage9084'];
@@ -106,31 +146,78 @@ export function resolveSpecPaths(
   optimizedDir: string,
   playwrightEnv?: string,
 ): string[] {
-  const scanDir = resolveOptimizedScanDir(optimizedDir, playwrightEnv);
-  let allSpecs = findOptimizedSpecFiles(scanDir).filter((p) => !isDraftOptimizedSpecAbs(p));
-  if (playwrightEnv) {
-    allSpecs = allSpecs.filter((abs) => {
-      const rel = path.relative(process.cwd(), abs).replace(/\\/g, '/');
-      return specMatchesEnv(rel, playwrightEnv);
-    });
-  }
+  const env = playwrightEnv || 'stage';
+  const allSpecs = collectOptimizedSpecsForEnv(optimizedDir, playwrightEnv);
   if (specs === 'all') return allSpecs;
 
-  const patterns = normalizeSpecPatterns(specs, playwrightEnv || 'stage');
+  const patterns = normalizeSpecPatterns(specs, env);
   const matched = allSpecs.filter((abs) => {
     const rel = path.relative(process.cwd(), abs).replace(/\\/g, '/');
-    return matchesAnyPattern(rel, patterns);
+    const normRel = relPathForJobSpecMatch(rel, env);
+    return matchesAnyPattern(normRel, patterns) || matchesAnyPattern(rel, patterns);
   });
 
   return matched.sort((a, b) => a.localeCompare(b));
+}
+
+/** 优先扫描 tests/optimized/<env>/（仅用于文档/兼容；resolveSpecPaths 已全树扫描） */
+export function resolveOptimizedScanDir(optimizedDir: string, playwrightEnv?: string): string {
+  const env = String(playwrightEnv || '').trim();
+  if (!env) return optimizedDir;
+  const envAbs = path.join(process.cwd(), optimizedDir, env);
+  if (fs.existsSync(envAbs) && fs.statSync(envAbs).isDirectory()) {
+    return path.join(optimizedDir, env).replace(/\\/g, '/');
+  }
+  return optimizedDir;
+}
+
+export function resolveSpecEntries(
+  specs: 'all' | string[],
+  optimizedDir: string,
+  playwrightEnv?: string,
+  accountProfileFilter?: AccountProfileFilter,
+): SpecRunEntry[] {
+  const absPaths = resolveSpecPaths(specs, optimizedDir, playwrightEnv);
+  const allowed = normalizeAccountProfileFilter(accountProfileFilter);
+  const repoRoot = process.cwd();
+
+  let entries: SpecRunEntry[] = absPaths.map(absPath => {
+    const relPath = path.relative(repoRoot, absPath).replace(/\\/g, '/');
+    const enriched = specMeta.enrichOptimizedSpecEntry(repoRoot, relPath);
+    return {
+      absPath,
+      relPath,
+      accountProfile: enriched.accountProfile || specMeta.UNKNOWN_PROFILE,
+    };
+  });
+
+  if (allowed) {
+    entries = entries.filter(e => allowed.includes(e.accountProfile));
+  }
+  return entries;
+}
+
+export function groupSpecEntriesByProfile(entries: SpecRunEntry[]): [string, SpecRunEntry[]][] {
+  const grouped = specMeta.groupEntriesByAccountProfile(
+    entries.map(e => ({ rel: e.relPath, accountProfile: e.accountProfile })),
+  );
+  return grouped.map(([profile, group]) => [
+    profile,
+    group.map(g => entries.find(e => e.relPath === g.rel)!),
+  ]);
+}
+
+export function summarizeSpecProfileCounts(entries: SpecRunEntry[]): Record<string, number> {
+  return specMeta.summarizeProfileCounts(entries.map(e => ({ accountProfile: e.accountProfile })));
 }
 
 export function countResolvedSpecs(
   specs: 'all' | string[],
   optimizedDir: string,
   playwrightEnv?: string,
+  accountProfileFilter?: AccountProfileFilter,
 ): number {
-  return resolveSpecPaths(specs, optimizedDir, playwrightEnv).length;
+  return resolveSpecEntries(specs, optimizedDir, playwrightEnv, accountProfileFilter).length;
 }
 
 export function scriptKeyFromOptimizedPath(optimizedTestPath: string, optimizedDir = 'tests/optimized'): string {
