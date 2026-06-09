@@ -41,10 +41,10 @@
     {
       "id": "smoke-workbench",
       "enabled": true,
-      "description": "工作台冒烟（手动或按需触发）",
+      "description": "stage/260612 冒烟（手动触发；Studio 可勾选子集）",
       "schedule": null,
       "playwrightEnv": "stage",
-      "specs": ["260612/工作台_*.optimized.spec.ts"],
+      "specs": ["260612/*.optimized.spec.ts"],
       "stopOnTestFailure": true,
       "steps": {
         "login": true,

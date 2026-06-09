@@ -35,7 +35,9 @@ const {
   isKnownEnv,
   assertSpecEnvMatch,
   getLegacyEnvDefault,
+  rewriteOptimizedSpecImports,
 } = require(path.join(__dirname, '../src/utils/test-env-path.cjs'));
+const { cleanSpecScreenshots } = require(path.join(__dirname, '../src/utils/clean-spec-screenshots.cjs'));
 const specMeta = require(path.join(__dirname, '../src/utils/spec-meta.cjs'));
 
 const PORT = process.env.PORT || 3001;
@@ -1099,6 +1101,7 @@ async function repoCommitArtifacts(ws, session, msg) {
   fs.mkdirSync(path.dirname(rawAbs), { recursive: true });
   fs.writeFileSync(rawAbs, rawCode, 'utf8');
   fs.mkdirSync(path.dirname(optAbs), { recursive: true });
+  optContent = rewriteOptimizedSpecImports(optContent, optimizedRelative, repoRoot);
   fs.writeFileSync(optAbs, optContent, 'utf8');
 
   try {
@@ -1983,9 +1986,9 @@ function summarizeJobProfileCounts(repoRoot, merged, accountProfileOverride) {
 }
 
 function formatJobSpecsDisplay(merged, specCount) {
-  if (merged.specs === 'all') return `全部 (${merged.playwrightEnv}, ${specCount} 个)`;
-  const arr = Array.isArray(merged.specs) ? merged.specs : [merged.specs];
-  return `${arr.join(', ')} (${specCount} 个)`;
+  if (merged.specs === 'all') return `全部 · ${specCount} 个`;
+  if (specCount === 0) return '请在下方选用例';
+  return `${specCount} 个用例`;
 }
 
 function buildTestJobEntry(repoRoot, jobDef, config) {
@@ -2034,7 +2037,7 @@ function resolveJobRunEnvForRepo(repoRoot, merged, override) {
   return env;
 }
 
-function buildJobPreviewPayload(repoRoot, def, config, playwrightEnv, accountProfile) {
+function buildJobPreviewPayload(repoRoot, def, config, playwrightEnv, accountProfile, specRelatives) {
   const merged = mergeTestJobDef(config, def);
   const env = resolveJobRunEnvForRepo(repoRoot, merged, playwrightEnv);
   const profileFilter =
@@ -2042,8 +2045,37 @@ function buildJobPreviewPayload(repoRoot, def, config, playwrightEnv, accountPro
       ? String(accountProfile).trim()
       : merged.accountProfile ?? null;
   const previewMerged = { ...merged, playwrightEnv: env, accountProfile: profileFilter };
-  const specCount = countSpecsForMergedJob(repoRoot, previewMerged, profileFilter);
+  let candidateSpecs = resolveJobSpecRelsForMerged(repoRoot, previewMerged, profileFilter);
+  const configMatchedEmpty = candidateSpecs.length === 0 && merged.specs !== 'all';
+  if (configMatchedEmpty) {
+    candidateSpecs = listAllOptimizedSpecsForJob(repoRoot, env, merged.optimizedDir);
+  }
+
+  let effectiveSpecs = candidateSpecs;
+  let specsOverridden = false;
+  if (Array.isArray(specRelatives) && specRelatives.length) {
+    const selected = [
+      ...new Set(
+        specRelatives.map((s) => String(s || '').trim().replace(/\\/g, '/')).filter(Boolean),
+      ),
+    ];
+    effectiveSpecs = selected.filter((rel) => {
+      try {
+        assertAllowedOptimizedSpec(repoRoot, rel);
+        return candidateSpecs.includes(rel);
+      } catch {
+        return false;
+      }
+    });
+    specsOverridden = effectiveSpecs.length > 0;
+  }
+
+  const specCount = specsOverridden ? effectiveSpecs.length : countSpecsForMergedJob(repoRoot, previewMerged, profileFilter);
   const profileCounts = summarizeJobProfileCounts(repoRoot, previewMerged, profileFilter);
+  const candidateEntries = candidateSpecs.map((rel) => {
+    const meta = specMeta.enrichOptimizedSpecEntry(repoRoot, rel);
+    return { rel, accountProfile: meta.accountProfile || 'unknown' };
+  });
   return {
     jobId: merged.id,
     playwrightEnv: env,
@@ -2056,7 +2088,14 @@ function buildJobPreviewPayload(repoRoot, def, config, playwrightEnv, accountPro
       JSON.stringify(profileFilter) !== JSON.stringify(merged.accountProfile ?? null),
     specCount,
     profileCounts,
-    specsLabel: formatJobSpecsDisplay(previewMerged, specCount),
+    specsLabel: specsOverridden
+      ? `已选用例 · ${specCount} 个`
+      : configMatchedEmpty
+        ? `${candidateEntries.length} 个可选用例`
+        : formatJobSpecsDisplay(previewMerged, specCount),
+    specsOverridden,
+    configMatchedEmpty,
+    candidateSpecs: candidateEntries,
   };
 }
 
@@ -2075,7 +2114,14 @@ async function handleJobsPreview(ws, msg) {
     return;
   }
   try {
-    const preview = buildJobPreviewPayload(repoRoot, def, config, msg.playwrightEnv, msg.accountProfile);
+    const preview = buildJobPreviewPayload(
+      repoRoot,
+      def,
+      config,
+      msg.playwrightEnv,
+      msg.accountProfile,
+      msg.specRelatives,
+    );
     send(ws, 'jobs:preview:done', { ok: true, ...preview });
   } catch (e) {
     send(ws, 'error', { message: errText(e) });
@@ -2140,10 +2186,19 @@ async function handleJobsRun(ws, msg) {
       ? String(msg.accountProfile).trim()
       : merged.accountProfile ?? null;
 
+  const specRelatives = [
+    ...new Set(
+      (Array.isArray(msg.specRelatives) ? msg.specRelatives : [])
+        .map((s) => String(s || '').trim().replace(/\\/g, '/'))
+        .filter(Boolean),
+    ),
+  ];
+
   const background = Boolean(msg.background);
   const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
   const args = ['run', 'test-job', '--', 'run', `--id=${jobId}`, `--env=${runEnv}`, '--trigger=manual'];
   if (runProfile) args.push(`--profile=${runProfile}`);
+  for (const spec of specRelatives) args.push(`--spec=${spec}`);
   if (background) args.push('--background');
   const spawnEnv = { ...process.env, PLAYWRIGHT_ENV: runEnv };
   if (runProfile) spawnEnv.PLAYWRIGHT_ACCOUNT = runProfile;
@@ -2166,33 +2221,49 @@ async function handleJobsRun(ws, msg) {
     });
     logLine(
       ws,
-      `[jobs] 已在后台启动 Job「${jobId}」(env=${runEnv}${runProfile ? `, profile=${runProfile}` : ''}${runEnv !== merged.playwrightEnv ? `, 覆盖默认 ${merged.playwrightEnv}` : ''})`,
+      `[jobs] 已在后台启动 Job「${jobId}」(env=${runEnv}${runProfile ? `, profile=${runProfile}` : ''}${specRelatives.length ? `, ${specRelatives.length} 个选用例` : ''}${runEnv !== merged.playwrightEnv ? `, 覆盖默认 ${merged.playwrightEnv}` : ''})`,
       'ok',
     );
     return;
   }
 
   send(ws, 'jobs:run:start', { jobId, playwrightEnv: runEnv, accountProfile: runProfile });
-  logLine(
-    ws,
-    `[jobs] 开始执行 Job「${jobId}」(env=${runEnv}${runProfile ? `, profile=${runProfile}` : ''}${runEnv !== merged.playwrightEnv ? `, 覆盖默认 ${merged.playwrightEnv}` : ''})`,
+  const logChunks = [];
+  const emitJobRunLog = (text, level = 'dim') => {
+    const line = String(text || '').trimEnd();
+    if (!line) return;
+    logLine(ws, line, level);
+    logChunks.push(line);
+    send(ws, 'jobs:run:log', { jobId, text: line });
+  };
+  emitJobRunLog(
+    `[jobs] 开始执行 Job「${jobId}」(env=${runEnv}${runProfile ? `, profile=${runProfile}` : ''}${specRelatives.length ? `, ${specRelatives.length} 个选用例` : ''}${runEnv !== merged.playwrightEnv ? `, 覆盖默认 ${merged.playwrightEnv}` : ''})`,
     'info',
   );
   const proc = spawn(npmCmd, args, { cwd: repoRoot, env: spawnEnv, shell: false });
   proc.stdout.on('data', (d) => {
     const t = stripAnsi(d.toString());
-    if (t.trim()) logLine(ws, t.trimEnd(), 'dim');
+    if (t.trim()) emitJobRunLog(t.trimEnd(), 'dim');
   });
   proc.stderr.on('data', (d) => {
     const t = stripAnsi(d.toString());
-    if (t.trim()) logLine(ws, t.trimEnd(), 'warn');
+    if (t.trim()) emitJobRunLog(t.trimEnd(), 'warn');
   });
   const exitCode = await new Promise((resolve) => {
     proc.on('close', resolve);
   });
+  emitJobRunLog(`[jobs] Job「${jobId}」结束，退出码 ${exitCode}`, exitCode === 0 ? 'ok' : 'warn');
   const latestRun = readLatestJobRunFile(repoRoot, jobId);
-  send(ws, 'jobs:run:done', { jobId, background: false, exitCode, latestRun });
-  logLine(ws, `[jobs] Job「${jobId}」结束，退出码 ${exitCode}`, exitCode === 0 ? 'ok' : 'warn');
+  const logTail = logChunks.join('\n');
+  if (latestRun?.logPath && logTail) {
+    try {
+      fs.mkdirSync(path.dirname(latestRun.logPath), { recursive: true });
+      fs.writeFileSync(latestRun.logPath, `${logTail}\n`, 'utf-8');
+    } catch {
+      /* ignore */
+    }
+  }
+  send(ws, 'jobs:run:done', { jobId, background: false, exitCode, latestRun, logTail });
 }
 
 async function handleJobsStop(ws, msg) {
@@ -2294,6 +2365,50 @@ async function repoDeleteOptimizedSpecs(ws, session, msg) {
   } else if (failed.length) {
     logLine(ws, `[repo] 删除失败 ${failed.length} 项`, 'err');
   }
+}
+
+async function repoCleanSpecScreenshots(ws, session, msg) {
+  const repoRoot = resolveRepoRoot();
+  if (!fs.existsSync(path.join(repoRoot, 'playwright.config.ts'))) {
+    send(ws, 'error', { message: '未找到项目根，无法清理截图' });
+    return;
+  }
+
+  const mode = msg.mode === 'latest' ? 'latest' : 'all';
+  const list = Array.isArray(msg.specRelatives)
+    ? msg.specRelatives
+    : msg.specRelative
+      ? [msg.specRelative]
+      : [];
+  const specs = [...new Set(list.map((s) => String(s || '').trim().replace(/\\/g, '/')).filter(Boolean))];
+  if (!specs.length) {
+    send(ws, 'error', { message: '请指定要清理截图的 tests/optimized/.../*.optimized.spec.ts' });
+    return;
+  }
+
+  const results = [];
+  const failed = [];
+  for (const specRel of specs) {
+    try {
+      assertAllowedOptimizedSpec(repoRoot, specRel);
+      const result = cleanSpecScreenshots(repoRoot, specRel, { mode, cleanDiffs: true });
+      results.push(result);
+      if (result.removed.length) {
+        const detail =
+          mode === 'latest'
+            ? `${result.removedRuns} 个 run 目录`
+            : result.screenshotDir || specRel;
+        logLine(ws, `[repo] 已清理截图 (${mode}): ${specRel} · ${detail}`, 'ok');
+      } else {
+        logLine(ws, `[repo] 无需清理 (${mode}): ${specRel} — ${result.message || '无截图'}`, 'dim');
+      }
+    } catch (e) {
+      failed.push({ specRelative: specRel, error: errText(e) });
+      logLine(ws, `[repo] 清理截图失败 ${specRel}: ${errText(e)}`, 'err');
+    }
+  }
+
+  send(ws, 'repo:clean-screenshots:done', { mode, results, failed });
 }
 
 /** 仅允许通过 Studio 暴露仓库内 results/ 与 screenshots/（对比报告 HTML 引用 ../screenshots） */
@@ -3812,6 +3927,10 @@ wss.on('connection', (ws) => {
 
       case 'repo:delete-spec':
         await repoDeleteOptimizedSpecs(ws, session, msg);
+        break;
+
+      case 'repo:clean-screenshots':
+        await repoCleanSpecScreenshots(ws, session, msg);
         break;
 
       case 'config:get-date-categories':

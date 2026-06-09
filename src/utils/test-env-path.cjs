@@ -236,18 +236,59 @@ function assertSpecEnvMatch(relPath, runtimeEnv, repoRoot) {
 
 function optimizedImportDepthFromRel(relPath) {
   const parsed = parseOptimizedRel(relPath);
-  if (!parsed) return 1;
-  return Math.max(1, parsed.segments.length);
+  if (!parsed) return 0;
+  return parsed.segments.length;
 }
 
+/** depth = tests/optimized/ 下目录段数（不含文件名） */
 function optimizedImportPathsForDepth(depth) {
-  const up = "../".repeat(depth);
+  const toOptimized = depth > 0 ? "../".repeat(depth) : "./";
+  const toTests = "../".repeat(depth + 1);
+  const toRoot = "../".repeat(depth + 2);
+  const fixturesPrefix = depth > 0 ? "../".repeat(depth) : "./";
   return {
-    fixtures: `${up}fixtures`,
-    screenshot: `${up}../utils/screenshot`,
-    optimizedActions: `${up}../utils/optimized-actions`,
-    fixturesCommentPhrase: `${up}fixtures`,
+    fixtures: `${fixturesPrefix}fixtures`,
+    screenshot: `${toRoot}utils/screenshot`,
+    optimizedActions: `${toTests}utils/optimized-actions`,
+    fixturesCommentPhrase: `${fixturesPrefix}fixtures`,
   };
+}
+
+/** 按 optimized 相对路径重写 import 与截图目录（草稿保存到正式 env 子目录时使用） */
+function rewriteOptimizedSpecImports(code, optimizedRel, repoRoot) {
+  const norm = String(optimizedRel || "").replace(/\\/g, "/");
+  const parsed = parseOptimizedRel(norm, repoRoot);
+  if (!parsed) return String(code || "");
+
+  const depth = optimizedImportDepthFromRel(norm);
+  const paths = optimizedImportPathsForDepth(depth);
+  const stem = parsed.fileName.replace(/\.optimized\.spec\.ts$/, "");
+  const dateCategory = parsed.segments.filter((s) => isDateCategoryDirSegment(s)).pop() || "";
+  const screenshotDir = buildScreenshotDir({
+    playwrightEnv: parsed.env || getLegacyEnvDefault(repoRoot),
+    dateCategory,
+    fileName: stem,
+    repoRoot,
+  });
+
+  return String(code || "")
+    .replace(
+      /^import \{ test, expect \} from ['"][^'"]+['"];/m,
+      `import { test, expect } from '${paths.fixtures}';`,
+    )
+    .replace(
+      /^import \{ takeStepScreenshot, waitForPostInteractionPaint, withScreenshotRunSegment \} from ['"][^'"]+['"];/m,
+      `import { takeStepScreenshot, waitForPostInteractionPaint, withScreenshotRunSegment } from '${paths.screenshot}';`,
+    )
+    .replace(
+      /^import \{ (step, maybePause, smartClick(?:, smartFill)?) \} from ['"][^'"]+['"];/m,
+      `import { $1 } from '${paths.optimizedActions}';`,
+    )
+    .replace(
+      /\/\/ 截图根目录；Chrome\/WebKit 子目录由 [^ ]+ 按引擎自动设置/,
+      `// 截图根目录；Chrome/WebKit 子目录由 ${paths.fixturesCommentPhrase} 按引擎自动设置`,
+    )
+    .replace(/withScreenshotRunSegment\(['"][^'"]+['"]\)/, `withScreenshotRunSegment('${screenshotDir}')`);
 }
 
 function parseEnvAndDateCategoryFromRawOrProcessed(absOrRel, repoRoot) {
@@ -290,6 +331,7 @@ module.exports = {
   assertSpecEnvMatch,
   optimizedImportDepthFromRel,
   optimizedImportPathsForDepth,
+  rewriteOptimizedSpecImports,
   parseEnvAndDateCategoryFromRawOrProcessed,
   resolveRepoRoot,
 };

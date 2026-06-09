@@ -151,7 +151,10 @@ export async function generateBaselineComparisons(
 
       tasks.push(async () => {
         if (incremental) {
-          const cached = loadCachedDiffResult(resolved.baselinePath, latest.path, diffOutputPath);
+          const cached = loadCachedDiffResult(resolved.baselinePath, latest.path, diffOutputPath, {
+            threshold: pixelThreshold,
+            includeAA,
+          });
           if (cached) {
             return {
               image1Path: baselineRelative,

@@ -20,7 +20,16 @@ export interface UiRegressionConfig {
     blockerRatio: number;
     warningRatio: number;
     countAsBlockerInGate: boolean;
+    /** 跨浏览器 pixelmatch 颜色阈值（0~1），默认可比同浏览器更宽松 */
+    pixelmatchThreshold: number;
+    /** 跨浏览器是否将抗锯齿像素计为差异，默认 false 以降低引擎渲染噪声 */
+    includeAA: boolean;
   };
+}
+
+export interface PixelmatchOptions {
+  threshold: number;
+  includeAA: boolean;
 }
 
 const DEFAULT_CONFIG: UiRegressionConfig = {
@@ -37,9 +46,11 @@ const DEFAULT_CONFIG: UiRegressionConfig = {
     deviceScaleFactor: 1,
   },
   crossBrowser: {
-    blockerRatio: 0.01,
+    blockerRatio: 0.03,
     warningRatio: 0.003,
     countAsBlockerInGate: false,
+    pixelmatchThreshold: 0.1,
+    includeAA: false,
   },
 };
 
@@ -77,6 +88,39 @@ export function loadUiRegressionConfig(): UiRegressionConfig {
 
   cached = merged;
   return merged;
+}
+
+/** 同浏览器 golden / run-drift 等对比的 pixelmatch 参数（由 compare-screenshots 环境变量控制） */
+export function resolveSameBrowserPixelmatch(): PixelmatchOptions {
+  let threshold = 0.06;
+  const envThreshold = process.env.PLAYWRIGHT_PIXELMATCH_THRESHOLD;
+  if (envThreshold !== undefined && envThreshold !== '' && !Number.isNaN(Number.parseFloat(envThreshold))) {
+    threshold = Number.parseFloat(envThreshold);
+  }
+
+  let includeAA = true;
+  const envAa = (process.env.PLAYWRIGHT_PIXELMATCH_INCLUDE_AA ?? '').toLowerCase();
+  if (envAa === '0' || envAa === 'false' || envAa === 'no') includeAA = false;
+
+  return { threshold, includeAA };
+}
+
+/** 跨浏览器对比专用 pixelmatch 参数（默认可比同浏览器更宽松） */
+export function resolveCrossBrowserPixelmatch(): PixelmatchOptions {
+  const cfg = loadUiRegressionConfig();
+  let threshold = cfg.crossBrowser.pixelmatchThreshold;
+  let includeAA = cfg.crossBrowser.includeAA;
+
+  const envThreshold = process.env.PLAYWRIGHT_CROSS_BROWSER_PIXELMATCH_THRESHOLD;
+  if (envThreshold !== undefined && envThreshold !== '' && !Number.isNaN(Number.parseFloat(envThreshold))) {
+    threshold = Number.parseFloat(envThreshold);
+  }
+
+  const envAa = (process.env.PLAYWRIGHT_CROSS_BROWSER_PIXELMATCH_INCLUDE_AA ?? '').toLowerCase();
+  if (envAa === '0' || envAa === 'false' || envAa === 'no') includeAA = false;
+  if (envAa === '1' || envAa === 'true' || envAa === 'yes') includeAA = true;
+
+  return { threshold, includeAA };
 }
 
 export function resolveBaselineStrategy(): BaselineStrategy {

@@ -220,6 +220,46 @@ export function countResolvedSpecs(
   return resolveSpecEntries(specs, optimizedDir, playwrightEnv, accountProfileFilter).length;
 }
 
+const DRAFT_SPEC_BASENAME = 'studio-unsaved-draft.optimized.spec.ts';
+
+function isDraftOptimizedRel(relPath: string): boolean {
+  return path.basename(String(relPath || '')) === DRAFT_SPEC_BASENAME;
+}
+
+/** 按相对路径解析用例（Job / CLI 运行时覆盖 glob 配置） */
+export function resolveSpecEntriesFromRelatives(
+  specRelatives: string[],
+  optimizedDir: string,
+  playwrightEnv?: string,
+  accountProfileFilter?: AccountProfileFilter,
+): SpecRunEntry[] {
+  const repoRoot = process.cwd();
+  const absOptimizedDir = path.resolve(repoRoot, optimizedDir);
+  const allowed = normalizeAccountProfileFilter(accountProfileFilter);
+  const seen = new Set<string>();
+  const entries: SpecRunEntry[] = [];
+
+  for (const raw of specRelatives) {
+    const relPath = String(raw || '').trim().replace(/\\/g, '/');
+    if (!relPath || isDraftOptimizedRel(relPath) || seen.has(relPath)) continue;
+    seen.add(relPath);
+
+    const absPath = path.resolve(repoRoot, relPath);
+    const relFromOptimized = path.relative(absOptimizedDir, absPath).replace(/\\/g, '/');
+    if (relFromOptimized.startsWith('..') || path.isAbsolute(relFromOptimized)) continue;
+    if (!fs.existsSync(absPath) || !fs.statSync(absPath).isFile()) continue;
+    if (!relPath.endsWith('.optimized.spec.ts')) continue;
+
+    const enriched = specMeta.enrichOptimizedSpecEntry(repoRoot, relPath);
+    const accountProfile = enriched.accountProfile || specMeta.UNKNOWN_PROFILE;
+    if (allowed && !allowed.includes(accountProfile)) continue;
+
+    entries.push({ absPath, relPath, accountProfile });
+  }
+
+  return entries.sort((a, b) => a.relPath.localeCompare(b.relPath));
+}
+
 export function scriptKeyFromOptimizedPath(optimizedTestPath: string, optimizedDir = 'tests/optimized'): string {
   const rel = path.relative(path.join(process.cwd(), optimizedDir), path.resolve(optimizedTestPath));
   const parts = rel.split(path.sep).filter(Boolean);

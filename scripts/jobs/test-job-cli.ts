@@ -11,6 +11,7 @@ import {
   stdoutLogPath,
 } from './job-lock.js';
 import { runJobById, stopJob } from './job-runner.js';
+import { buildJobFailReasons } from './job-notify.js';
 import { listJobs, loadTestJobsConfig, resolveJob, resolveJobRunEnv } from './test-jobs-config.js';
 import { countResolvedSpecs, formatRunId } from './job-utils.js';
 
@@ -31,6 +32,8 @@ run 选项:
   --id=<jobId>              必填（run 时）
   --env=<playwrightEnv>     覆盖 Job 配置中的环境，仅执行该 env 下用例
   --profile=<accountProfile>  覆盖/限定账号档案（如 default、admin；all 表示不限）
+  --spec=<relativePath>       覆盖 Job 配置 glob，仅执行指定用例（可重复）
+  --specs=<a,b,c>             同上，逗号分隔多个相对路径
   --background, -b          后台 detached 执行
   --force                   忽略并发锁
   --run-id=<runId>          指定 runId（后台模式内部使用）
@@ -39,6 +42,7 @@ run 选项:
 示例:
   npm run test-job -- run --id=nightly-regression
   npm run test-job -- run --id=smoke-workbench --env=uat --profile=default
+  npm run test-job -- run --id=smoke-workbench --spec=tests/optimized/stage/260612/我的审批_2026-06-09_16-48-19.optimized.spec.ts
   npm run test-job -- run --id=smoke-workbench --background
   npm run test-job -- list
   npm run test-job -- status --id=nightly-regression
@@ -52,6 +56,7 @@ type ParsedArgs = {
   jobId?: string;
   playwrightEnv?: string;
   accountProfile?: string;
+  specs: string[];
   background: boolean;
   force: boolean;
   runId?: string;
@@ -64,6 +69,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   let jobId: string | undefined;
   let playwrightEnv: string | undefined;
   let accountProfile: string | undefined;
+  const specs: string[] = [];
   let background = false;
   let force = false;
   let runId: string | undefined;
@@ -96,6 +102,21 @@ function parseArgs(argv: string[]): ParsedArgs {
       accountProfile = arg.slice('--profile='.length).trim();
       continue;
     }
+    if (arg.startsWith('--spec=')) {
+      const v = arg.slice('--spec='.length).trim();
+      if (v) specs.push(v);
+      continue;
+    }
+    if (arg.startsWith('--specs=')) {
+      specs.push(
+        ...arg
+          .slice('--specs='.length)
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean),
+      );
+      continue;
+    }
     if (arg.startsWith('--run-id=')) {
       runId = arg.slice('--run-id='.length).trim();
       continue;
@@ -118,7 +139,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     jobId = positional[1];
   }
 
-  return { command, jobId, playwrightEnv, accountProfile, background, force, runId, trigger, tailLines };
+  return { command, jobId, playwrightEnv, accountProfile, specs, background, force, runId, trigger, tailLines };
 }
 
 function tsxSpawnArgs(scriptArgs: string[]): { cmd: string; args: string[] } {
@@ -136,6 +157,7 @@ function spawnBackground(
   force: boolean,
   playwrightEnv?: string,
   accountProfile?: string,
+  specOverrides?: string[],
 ): void {
   const job = resolveJob(jobId);
   const effectiveEnv = resolveJobRunEnv(job, playwrightEnv);
@@ -156,6 +178,11 @@ function spawnBackground(
   if (effectiveProfile && effectiveProfile !== 'all') {
     scriptArgs.push(`--profile=${effectiveProfile}`);
   }
+  if (specOverrides?.length) {
+    for (const spec of specOverrides) {
+      scriptArgs.push(`--spec=${spec}`);
+    }
+  }
   const { cmd, args } = tsxSpawnArgs(scriptArgs);
 
   const child = spawn(cmd, args, {
@@ -170,6 +197,9 @@ function spawnBackground(
   console.log(`   env:   ${effectiveEnv}${playwrightEnv && playwrightEnv !== job.playwrightEnv ? `（覆盖 ${job.playwrightEnv}）` : ''}`);
   if (effectiveProfile && effectiveProfile !== 'all') {
     console.log(`   profile: ${effectiveProfile}`);
+  }
+  if (specOverrides?.length) {
+    console.log(`   specs:   ${specOverrides.length} 个用例（覆盖 Job 配置）`);
   }
   console.log(`   runId: ${runId}`);
   console.log(`   pid:   ${child.pid}`);
@@ -189,7 +219,7 @@ async function cmdRun(args: ParsedArgs, internalForeground = false): Promise<voi
   if (args.background && !internalForeground) {
     assertJobNotRunning(args.jobId, args.force);
     const runId = formatRunId();
-    spawnBackground(args.jobId, runId, args.trigger, args.force, args.playwrightEnv, args.accountProfile);
+    spawnBackground(args.jobId, runId, args.trigger, args.force, args.playwrightEnv, args.accountProfile, args.specs);
     return;
   }
 
@@ -197,6 +227,8 @@ async function cmdRun(args: ParsedArgs, internalForeground = false): Promise<voi
 
   const effectiveProfile =
     args.accountProfile && args.accountProfile !== 'all' ? args.accountProfile : job.accountProfile ?? null;
+
+  const specOverrides = args.specs.length ? [...new Set(args.specs)] : undefined;
 
   const runId = args.runId ?? formatRunId();
   const result = await runJobById(args.jobId, {
@@ -206,6 +238,7 @@ async function cmdRun(args: ParsedArgs, internalForeground = false): Promise<voi
     persistState: true,
     playwrightEnv: effectiveEnv,
     accountProfile: effectiveProfile,
+    specOverrides,
   });
 
   process.exit(result.exitCode);
@@ -266,9 +299,27 @@ function cmdStatus(jobId?: string): void {
     }
     if (latest?.summary) {
       const s = latest.summary;
+      const reasons =
+        s.failReasons?.length
+          ? s.failReasons
+          : buildJobFailReasons({
+              testPassed: s.testPassed,
+              comparePassed: s.comparePassed,
+              compareSkipped: s.compareSkipped,
+              aborted: s.aborted,
+              failCount: s.failCount,
+              executedCount: s.executedCount,
+              compareGate: s.compareGate,
+              feishuDocPassed: s.feishuDocPassed,
+              feishuDocAttempted: s.feishuDocAttempted,
+              uiIssuesBlocker: s.uiIssuesBlocker,
+            });
       console.log(
         `  结果: 执行 ${s.successCount}/${s.executedCount} 成功, 对比 ${s.compareSkipped ? '跳过' : s.comparePassed ? '通过' : '失败'}${s.aborted ? ', 已中断' : ''}`,
       );
+      if (reasons.length) {
+        console.log(`  原因: ${reasons.join('；')}`);
+      }
     }
   }
 }

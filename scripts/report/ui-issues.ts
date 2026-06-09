@@ -7,6 +7,16 @@ import type { PlainLanguageAnalysis } from './ui-issues-analysis.js';
 export type UiIssueCompareKind = 'golden' | 'last-green' | 'cross-browser' | 'run-drift';
 export type UiIssueSeverity = 'blocker' | 'warning' | 'noise';
 
+const SEVERITY_ORDER: Record<UiIssueSeverity, number> = {
+  blocker: 3,
+  warning: 2,
+  noise: 1,
+};
+
+function worstSeverity(a: UiIssueSeverity, b: UiIssueSeverity): UiIssueSeverity {
+  return SEVERITY_ORDER[a] >= SEVERITY_ORDER[b] ? a : b;
+}
+
 export interface UiIssue {
   issueId: string;
   scriptKey: string;
@@ -50,10 +60,72 @@ function severityForDifference(
       ? { blocker: cfg.crossBrowser.blockerRatio, warning: cfg.crossBrowser.warningRatio }
       : { blocker: cfg.blockerRatio, warning: cfg.warningRatio };
 
-  if (difference >= ratios.blocker) return 'blocker';
-  if (difference >= ratios.warning) return 'warning';
-  if (difference > 0) return 'noise';
-  return 'noise';
+  let severity: UiIssueSeverity = 'noise';
+  if (difference >= ratios.blocker) severity = 'blocker';
+  else if (difference >= ratios.warning) severity = 'warning';
+  else if (difference > 0) severity = 'noise';
+
+  // 跨浏览器差异多为渲染/抗锯齿噪声，不参与 gate；展示上最高 warning
+  if (compareKind === 'cross-browser' && severity === 'blocker') {
+    severity = 'warning';
+  }
+  return severity;
+}
+
+/** 问题明细 Tab 合并行（同日多次运行等同一步骤时去重） */
+export interface MergedDisplayIssue {
+  scriptKey: string;
+  stepNumber: number;
+  stepName: string;
+  browser: string;
+  compareKind: UiIssueCompareKind;
+  difference: number;
+  severity: UiIssueSeverity;
+  diffImagePath?: string;
+  rawCount: number;
+}
+
+function displayMergeKey(issue: UiIssue): string {
+  return `${issue.scriptKey}|${issue.stepNumber}|${issue.stepName}|${issue.compareKind}|${issue.browser}`;
+}
+
+export function mergeIssuesForDisplay(issues: UiIssue[]): MergedDisplayIssue[] {
+  const groups = new Map<string, UiIssue[]>();
+  for (const issue of issues) {
+    const key = displayMergeKey(issue);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(issue);
+  }
+
+  const merged: MergedDisplayIssue[] = [];
+  for (const group of groups.values()) {
+    const first = group[0];
+    let maxDifference = 0;
+    let severity: UiIssueSeverity = 'noise';
+    let diffImagePath: string | undefined;
+
+    for (const i of group) {
+      if (i.difference > maxDifference) {
+        maxDifference = i.difference;
+        diffImagePath = i.diffImagePath;
+      }
+      severity = worstSeverity(severity, i.severity);
+    }
+
+    merged.push({
+      scriptKey: first.scriptKey,
+      stepNumber: first.stepNumber,
+      stepName: first.stepName,
+      browser: first.browser,
+      compareKind: first.compareKind,
+      difference: maxDifference,
+      severity,
+      diffImagePath,
+      rawCount: group.length,
+    });
+  }
+
+  return merged.sort((a, b) => b.difference - a.difference);
 }
 
 function mapCompareKind(kind?: ImageComparison['compareKind']): UiIssueCompareKind {

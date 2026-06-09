@@ -12,8 +12,10 @@
     "deviceScaleFactor": 1
   },
   "crossBrowser": {
-    "blockerRatio": 0.01,
+    "blockerRatio": 0.03,
     "warningRatio": 0.003,
-    "countAsBlockerInGate": false
+    "countAsBlockerInGate": false,
+    "pixelmatchThreshold": 0.1,
+    "includeAA": false
   }
 }

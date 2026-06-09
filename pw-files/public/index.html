@@ -172,6 +172,8 @@
   .jobs-run-bar .jobs-run-env-select { min-width: 120px; width: auto; padding: 6px 8px; font-size: var(--fs-sm); }
   .jobs-run-bar .jobs-run-spec-hint { font-size: var(--fs-sm); color: var(--text-secondary); flex: 1; min-width: 160px; }
   .jobs-run-bar .jobs-run-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+  .jobs-spec-panel { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; background: var(--surface); }
+  .jobs-spec-panel .batch-spec-list { max-height: 200px; overflow: auto; margin-top: 8px; }
   .jobs-workspace-body { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 16px; }
   .jobs-meta-grid {
     display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px;
@@ -783,6 +785,10 @@
             <button type="button" class="btn btn-full" style="flex:1" onclick="loadSelectedOptimizedToEditor()">载入到编辑器</button>
             <button type="button" class="btn btn-full" id="btnDeleteSpecSingle" style="flex:1;border-color:rgba(248,113,113,.35);color:var(--red)" onclick="deleteSelectedOptimizedSpecs()">删除所选用例</button>
           </div>
+          <div style="display:flex;gap:6px;margin-bottom:6px">
+            <button type="button" class="btn btn-full" id="btnCleanLatestRunSingle" style="flex:1;font-size:var(--fs-xs)" onclick="cleanSelectedSpecScreenshots('latest')" title="删除 chrome/webkit 最近一次 run 的 timestamp 目录">清理最近 run</button>
+            <button type="button" class="btn btn-full" id="btnCleanAllScreenshotsSingle" style="flex:1;font-size:var(--fs-xs);border-color:rgba(251,191,36,.35);color:var(--amber,#d97706)" onclick="cleanSelectedSpecScreenshots('all')" title="删除该用例 screenshots/ 目录及 results/diffs 缓存">清理全部截图</button>
+          </div>
         </div>
         <div id="runSpecBatch" class="studio-hidden">
           <input type="text" class="url-input" id="repoBatchSpecSearch" placeholder="筛选批量列表…" style="margin-bottom:6px;width:100%" spellcheck="false">
@@ -791,6 +797,8 @@
             <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="selectAllBatchSpecs(true)">全选</button>
             <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="selectAllBatchSpecs(false)">全不选</button>
             <button type="button" class="btn" id="btnDeleteSpecBatch" style="font-size:var(--fs-xs);padding:4px 8px;color:var(--red)" onclick="deleteSelectedOptimizedSpecs()">删除所选</button>
+            <button type="button" class="btn" id="btnCleanLatestRunBatch" style="font-size:var(--fs-xs);padding:4px 8px" onclick="cleanSelectedSpecScreenshots('latest')" title="清理所选用例最近一次 run">清理最近 run</button>
+            <button type="button" class="btn" id="btnCleanAllScreenshotsBatch" style="font-size:var(--fs-xs);padding:4px 8px;color:var(--amber,#d97706)" onclick="cleanSelectedSpecScreenshots('all')" title="清理所选用例全部截图">清理全部截图</button>
           </div>
           <div id="repoBatchSpecList" class="batch-spec-list"></div>
           <label class="opt-chip" style="margin:0"><input type="checkbox" id="batchStopOnError"> 遇错停止</label>
@@ -800,7 +808,7 @@
       <div class="pipeline studio-hidden" id="pipelineJobs">
         <div class="sidebar-section" style="padding-bottom:10px">
           <div class="sidebar-label">任务列表</div>
-          <p class="sidebar-hint">读取 <code>config/test-jobs.json</code>。可选环境 / 账号档案执行；多账号 Job 会按 meta 分组 login。Cron：<code>npm run test-job:daemon</code></p>
+          <p class="sidebar-hint">读取 <code>config/test-jobs.json</code>。可选环境 / 账号档案 / 用例子集执行；多账号 Job 会按 meta 分组 login。Cron：<code>npm run test-job:daemon</code></p>
           <button type="button" class="btn btn-full" style="margin-top:4px" onclick="refreshTestJobsList()">刷新任务</button>
         </div>
         <div id="testJobsList" class="test-job-list jobs-panel-list"></div>
@@ -1013,6 +1021,17 @@
                 <button type="button" class="btn" onclick="fetchTestJobStatus(testJobsState.selectedJobId)">刷新日志</button>
               </div>
             </div>
+            <div class="jobs-spec-panel" id="jobsSpecPickerWrap">
+              <div class="jobs-log-panel-head">
+                选用例
+                <span class="sidebar-hint" id="jobsSpecPickerHint" style="font-weight:normal;margin-left:8px">不选则按 Job 配置 glob 执行</span>
+              </div>
+              <div class="batch-spec-toolbar">
+                <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="selectAllJobSpecs(true)">全选</button>
+                <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="selectAllJobSpecs(false)">全不选</button>
+              </div>
+              <div id="jobsSpecPickerList" class="batch-spec-list"></div>
+            </div>
             <div class="jobs-meta-grid" id="jobsMetaGrid"></div>
             <div class="jobs-log-panel">
               <div class="jobs-log-panel-head">运行日志（最近一次）</div>
@@ -1129,18 +1148,18 @@
       <!-- Report panel -->
       <div class="report-body" id="reportPanel" style="display:none">
         <div class="report-hub-tabs" role="tablist">
-          <button type="button" class="report-hub-tab active" data-report-hub="stats" onclick="switchReportHub('stats', this)">运行统计</button>
-          <button type="button" class="report-hub-tab" data-report-hub="compare" onclick="switchReportHub('compare', this)">截图对比</button>
+          <button type="button" class="report-hub-tab active" data-report-hub="compare" onclick="switchReportHub('compare', this)">截图对比</button>
+          <button type="button" class="report-hub-tab" data-report-hub="stats" onclick="switchReportHub('stats', this)">运行统计</button>
           <button type="button" class="report-hub-tab" data-report-hub="history" onclick="switchReportHub('history', this)">执行历史</button>
         </div>
-        <div class="report-hub-pane active" id="reportHubStats">
+        <div class="report-hub-pane" id="reportHubStats">
           <div class="empty-hint" id="reportStatsEmpty">
             <div class="empty-icon">📊</div>
             <div>执行测试后点击「生成报告」，或完成项目内执行</div>
           </div>
           <div id="reportStatsContent"></div>
         </div>
-        <div class="report-hub-pane" id="reportHubCompare">
+        <div class="report-hub-pane active" id="reportHubCompare">
           <p class="sidebar-hint" id="compareHubHint">无需执行用例：只要有 screenshots/ 截图即可生成报告；若已有 HTML 可直接打开。</p>
           <button type="button" class="btn btn-full" id="btnHubOpenCompare" onclick="openExistingCompareReport()" style="border-color:rgba(77,159,255,.35);color:var(--blue)">打开已有对比报告</button>
           <button type="button" class="btn btn-full" id="btnHubCompare" onclick="regenerateCompareReport()" style="margin-top:8px">从 screenshots 重新生成并打开</button>
@@ -1221,8 +1240,11 @@ const testJobsState = {
   selectedJobId: null,
   runEnvByJobId: {},
   runProfileByJobId: {},
+  runSpecsByJobId: {},
   availableEnvs: [],
   preview: null,
+  /** 后台执行中的 Job，结束后自动刷新日志 */
+  backgroundWatchJobIds: new Set(),
 };
 const optimizeKeyState = { serverAnthropic: false, serverDeepseek: false };
 const envState = { current: 'stage', environments: [], repoReady: false };
@@ -2027,8 +2049,9 @@ function switchReportHub(name, el) {
 
 function openReportHub(tab) {
   switchPanel('report', document.querySelectorAll('.ptab')[1]);
-  const tabEl = document.querySelector(`.report-hub-tab[data-report-hub="${tab || 'stats'}"]`);
-  switchReportHub(tab || 'stats', tabEl);
+  const hubTab = tab || 'compare';
+  const tabEl = document.querySelector(`.report-hub-tab[data-report-hub="${hubTab}"]`);
+  switchReportHub(hubTab, tabEl);
 }
 
 function pushRunHistory(entry) {
@@ -2738,6 +2761,114 @@ function applyJobPreview(preview) {
           .join(', ')}`
       : '';
   hintEl.textContent = `${preview.specsLabel || preview.specCount + ' 个用例'}${overrideNote}${profileNote}${groupNote}`;
+  renderJobsSpecPicker(preview);
+}
+
+function getJobSpecPickerCheckedSet(jobId) {
+  const saved = testJobsState.runSpecsByJobId[jobId];
+  return saved instanceof Set ? saved : saved ? new Set(saved) : null;
+}
+
+function renderJobsSpecPicker(preview) {
+  const wrap = document.getElementById('jobsSpecPickerWrap');
+  const box = document.getElementById('jobsSpecPickerList');
+  const hint = document.getElementById('jobsSpecPickerHint');
+  if (!wrap || !box) return;
+  const jobId = testJobsState.selectedJobId;
+  const candidates = preview?.candidateSpecs || [];
+  if (!preview?.ok || !jobId || !candidates.length) {
+    wrap.classList.add('studio-hidden');
+    box.innerHTML = '';
+    return;
+  }
+  wrap.classList.remove('studio-hidden');
+  if (hint) {
+    hint.textContent = preview.configMatchedEmpty
+      ? 'Job 配置 glob 未匹配到用例，可手动选择当前环境下的用例'
+      : '勾选子集将覆盖 Job 配置 glob；全选则按配置执行';
+  }
+  const checked = getJobSpecPickerCheckedSet(jobId);
+  const allRels = candidates.map((c) => (typeof c === 'string' ? c : c.rel)).filter(Boolean);
+  box.innerHTML = '';
+  const groups = new Map();
+  for (const item of candidates) {
+    const e = normalizeSpecEntry(item);
+    const prof = e.accountProfile || 'unknown';
+    if (!groups.has(prof)) groups.set(prof, []);
+    groups.get(prof).push(e);
+  }
+  const sortedGroups = [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  let idx = 0;
+  for (const [profile, entries] of sortedGroups) {
+    if (sortedGroups.length > 1) {
+      const hdr = document.createElement('div');
+      hdr.className = 'batch-spec-group';
+      hdr.textContent = profile === 'unknown' ? '未知账号档案' : `账号档案: ${profile}`;
+      box.appendChild(hdr);
+    }
+    entries.forEach((e) => {
+      const rel = e.rel;
+      const row = document.createElement('div');
+      row.className = 'batch-spec-item';
+      const id = `jobSpec_${idx}_${rel.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 40)}`;
+      idx++;
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.id = id;
+      cb.value = rel;
+      cb.checked = checked ? checked.has(rel) : true;
+      cb.addEventListener('change', onJobSpecSelectionChange);
+      const label = document.createElement('label');
+      label.htmlFor = id;
+      label.textContent = formatOptimizedSpecLabel(e);
+      row.appendChild(cb);
+      row.appendChild(label);
+      box.appendChild(row);
+    });
+  }
+  if (!testJobsState.runSpecsByJobId[jobId]) {
+    testJobsState.runSpecsByJobId[jobId] = new Set(allRels);
+  }
+}
+
+function getSelectedJobSpecsFromUI() {
+  const box = document.getElementById('jobsSpecPickerList');
+  if (!box) return [];
+  return [...box.querySelectorAll('input[type="checkbox"]:checked')].map((cb) => cb.value).filter(Boolean);
+}
+
+function getAllJobSpecCandidatesFromUI() {
+  const box = document.getElementById('jobsSpecPickerList');
+  if (!box) return [];
+  return [...box.querySelectorAll('input[type="checkbox"]')].map((cb) => cb.value).filter(Boolean);
+}
+
+function persistJobSpecSelection(jobId) {
+  if (!jobId) return;
+  testJobsState.runSpecsByJobId[jobId] = new Set(getSelectedJobSpecsFromUI());
+}
+
+function getJobSpecRelativesForRun(jobId) {
+  const selected = getSelectedJobSpecsFromUI();
+  const all = getAllJobSpecCandidatesFromUI();
+  if (!selected.length || !all.length) return undefined;
+  // Job glob 未匹配时，候选列表来自当前 env 全量；全选也应作为 override，避免仍走空 glob
+  if (testJobsState.preview?.configMatchedEmpty) return selected;
+  if (selected.length === all.length && selected.every((s) => all.includes(s))) return undefined;
+  return selected;
+}
+
+function selectAllJobSpecs(checked) {
+  document.querySelectorAll('#jobsSpecPickerList input[type="checkbox"]').forEach((cb) => {
+    cb.checked = checked;
+  });
+  onJobSpecSelectionChange();
+}
+
+function onJobSpecSelectionChange() {
+  const jobId = testJobsState.selectedJobId;
+  persistJobSpecSelection(jobId);
+  previewSelectedJobEnv();
 }
 
 function previewSelectedJobEnv() {
@@ -2746,10 +2877,12 @@ function previewSelectedJobEnv() {
   const job = testJobsState.jobs.find((j) => j.id === jobId);
   const env = document.getElementById('jobsRunEnvSelect')?.value || getJobRunEnv(job);
   const accountProfile = document.getElementById('jobsRunProfileSelect')?.value || getJobRunProfile(job);
+  const specRelatives = getJobSpecRelativesForRun(jobId);
   send('jobs:preview', {
     jobId,
     playwrightEnv: env,
     accountProfile: accountProfile && accountProfile !== 'all' ? accountProfile : undefined,
+    specRelatives,
   });
 }
 
@@ -2757,6 +2890,7 @@ function onJobRunEnvChange() {
   const jobId = testJobsState.selectedJobId;
   const env = document.getElementById('jobsRunEnvSelect')?.value;
   if (jobId && env) testJobsState.runEnvByJobId[jobId] = env;
+  if (jobId) delete testJobsState.runSpecsByJobId[jobId];
   previewSelectedJobEnv();
   const job = testJobsState.jobs.find((j) => j.id === jobId);
   if (job) renderJobsWorkspace(job, { skipPreview: true });
@@ -2766,16 +2900,16 @@ function onJobRunProfileChange() {
   const jobId = testJobsState.selectedJobId;
   const profile = document.getElementById('jobsRunProfileSelect')?.value;
   if (jobId && profile) testJobsState.runProfileByJobId[jobId] = profile;
+  if (jobId) delete testJobsState.runSpecsByJobId[jobId];
   previewSelectedJobEnv();
   const job = testJobsState.jobs.find((j) => j.id === jobId);
   if (job) renderJobsWorkspace(job, { skipPreview: true });
 }
 
 function formatJobSpecsLabel(job) {
-  if (job.specsLabel) return job.specsLabel;
-  if (job.specs === 'all') return `全部 (${job.playwrightEnv || 'stage'})`;
-  if (Array.isArray(job.specs)) return job.specs.join(', ');
-  return String(job.specs || '—');
+  if (job.specs === 'all') return `全部 · ${job.specCount ?? 0} 个`;
+  if (!job.specCount) return '请在下方选用例';
+  return `${job.specCount} 个用例`;
 }
 
 function renderJobsWorkspace(job, opts = {}) {
@@ -2823,7 +2957,13 @@ function renderJobsWorkspace(job, opts = {}) {
     ['用例范围', specsForDisplay],
     ['Projects', Array.isArray(job.projects) ? job.projects.join(', ') : '—'],
     ['最近 runId', lr?.runId || '—'],
-    ['最近结果', sum ? `${st} · ${sum.successCount}/${sum.executedCount} 成功` : st],
+    ['最近结果', sum ? formatJobRunDetail(lr) : st],
+    ...(sum && (st === 'failed' || st === 'aborted')
+      ? [['失败原因', buildJobFailReasonsFromSummary(sum).join('；') || '—']]
+      : []),
+    ...(sum && !sum.compareSkipped
+      ? [['截图对比', sum.comparePassed ? '通过' : `失败${sum.compareGate ? '（gate）' : ''}${sum.uiIssuesBlocker != null ? ` · blocker ${sum.uiIssuesBlocker}` : ''}`]]
+      : []),
     ['时区', job.timezone || 'Asia/Shanghai'],
   ];
   if (metaEl) {
@@ -2850,6 +2990,7 @@ function selectTestJob(jobId) {
   if (job && !testJobsState.runEnvByJobId[jobId]) {
     testJobsState.runEnvByJobId[jobId] = job.playwrightEnv || envState.current || 'stage';
   }
+  delete testJobsState.runSpecsByJobId[jobId];
   renderTestJobsList(testJobsState.jobs);
   renderJobsWorkspace(job);
   if (jobId) fetchTestJobStatus(jobId);
@@ -2860,13 +3001,75 @@ function formatJobSchedule(job) {
   return `${job.schedule} (${job.timezone || 'Asia/Shanghai'})`;
 }
 
-function formatJobLatestRun(job) {
-  const lr = job.latestRun;
-  if (!lr?.status) return '尚无运行记录';
-  const st = lr.status.status || 'unknown';
+/** 从 summary 推导失败原因（兼容旧 run 无 failReasons 字段） */
+function buildJobFailReasonsFromSummary(sum) {
+  if (!sum) return [];
+  if (Array.isArray(sum.failReasons) && sum.failReasons.length) return sum.failReasons;
+  const reasons = [];
+  if (sum.aborted) reasons.push('执行已中断');
+  if (sum.failCount > 0) reasons.push(`${sum.failCount} 个用例执行失败`);
+  else if (sum.testPassed === false && (sum.executedCount ?? 0) === 0) reasons.push('未匹配到可执行用例');
+  else if (sum.testPassed === false) reasons.push('用例执行未通过');
+  if (!sum.compareSkipped && sum.comparePassed === false) {
+    if (sum.compareGate) {
+      const b = sum.uiIssuesBlocker;
+      reasons.push(
+        b != null && b > 0 ? `截图对比 gate 未通过（blocker ${b}）` : '截图对比 gate 未通过',
+      );
+    } else {
+      reasons.push('截图对比失败');
+    }
+  }
+  if (sum.feishuDocAttempted && sum.feishuDocPassed === false) reasons.push('飞书文档创建失败');
+  return reasons;
+}
+
+function formatJobRunDetail(lr) {
+  if (!lr?.status?.status) return '尚无运行记录';
+  const st = lr.status.status;
   const sum = lr.summary;
-  if (sum) return `${st} · ${sum.successCount}/${sum.executedCount} 成功`;
-  return st;
+  if (!sum) return st;
+
+  const parts = [`${st} · ${sum.successCount}/${sum.executedCount} 用例通过`];
+  if (!sum.compareSkipped) {
+    parts.push(sum.comparePassed ? '对比通过' : '对比失败');
+  } else {
+    parts.push('对比跳过');
+  }
+
+  if (st === 'failed' || st === 'aborted') {
+    const reasons = buildJobFailReasonsFromSummary(sum);
+    if (reasons.length) parts.push(`原因：${reasons.join('；')}`);
+  } else if (st === 'success' && sum.uiIssuesBlocker > 0 && sum.comparePassed) {
+    parts.push(`（对比有 blocker ${sum.uiIssuesBlocker}，未启用 gate）`);
+  }
+
+  return parts.join(' · ');
+}
+
+function formatJobLatestRun(job) {
+  return formatJobRunDetail(job.latestRun);
+}
+
+function onBackgroundJobsFinished(prevJobs, newJobs) {
+  const watch = testJobsState.backgroundWatchJobIds;
+  if (!watch?.size) return;
+  for (const job of newJobs || []) {
+    if (!watch.has(job.id)) continue;
+    const prev = (prevJobs || []).find((p) => p.id === job.id);
+    if (!prev?.running || job.running) continue;
+    watch.delete(job.id);
+    const sum = job.latestRun?.summary;
+    const st = job.latestRun?.status?.status || 'unknown';
+    const reasons = buildJobFailReasonsFromSummary(sum);
+    const ok = sum ? sum.failCount === 0 && !sum.aborted && st !== 'failed' && st !== 'aborted' : st === 'success';
+    const reasonHint = !ok && reasons.length ? `：${reasons.join('；')}` : '';
+    showToast(`任务「${job.id}」${ok ? '执行完成' : '执行结束（有失败）'}${reasonHint}`, ok ? 'ok' : 'err');
+    log(ok ? 'ok' : 'err', `[jobs] 后台结束: ${job.id} status=${st}`);
+    if (job.id === testJobsState.selectedJobId) {
+      fetchTestJobStatus(job.id);
+    }
+  }
 }
 
 function renderTestJobsList(jobs) {
@@ -2915,13 +3118,18 @@ function runTestJob(jobId, background) {
   const job = testJobsState.jobs.find((j) => j.id === jobId);
   const playwrightEnv = getJobRunEnv(job);
   const accountProfile = getJobRunProfile(job);
+  const specRelatives = getJobSpecRelativesForRun(jobId);
   send('jobs:run', {
     jobId,
     background: Boolean(background),
     playwrightEnv,
     accountProfile: accountProfile && accountProfile !== 'all' ? accountProfile : undefined,
+    specRelatives,
   });
-  if (background) startTestJobsPolling();
+  if (background) {
+    testJobsState.backgroundWatchJobIds.add(jobId);
+    startTestJobsPolling();
+  }
 }
 
 function runSelectedTestJob(background) {
@@ -2937,6 +3145,21 @@ function stopSelectedTestJob() {
 
 function stopTestJob(jobId) {
   send('jobs:stop', { jobId });
+}
+
+function setJobLogTail(text) {
+  const logEl = document.getElementById('testJobLogTail');
+  if (!logEl) return;
+  logEl.textContent = text?.trim() ? text : '（暂无日志）';
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function appendJobLogTail(text) {
+  const logEl = document.getElementById('testJobLogTail');
+  if (!logEl || !text) return;
+  if (logEl.textContent === '（暂无日志）') logEl.textContent = '';
+  logEl.textContent += (logEl.textContent ? '\n' : '') + text;
+  logEl.scrollTop = logEl.scrollHeight;
 }
 
 function fetchTestJobStatus(jobId) {
@@ -3157,6 +3380,30 @@ function deleteSelectedOptimizedSpecs() {
     return;
   }
   send('repo:delete-spec', { specRelatives: specs });
+}
+
+function getSpecsForScreenshotClean() {
+  if (runSubMode === 'batch') return getSelectedBatchSpecs();
+  const spec = document.getElementById('repoOptimizedPick')?.value?.trim();
+  return spec ? [spec] : [];
+}
+
+function cleanSelectedSpecScreenshots(mode) {
+  const specs = getSpecsForScreenshotClean();
+  if (!specs.length) {
+    showToast(runSubMode === 'batch' ? '请至少勾选一个用例' : '请先选择用例', 'err');
+    return;
+  }
+  const label =
+    specs.length === 1 ? formatOptimizedSpecLabel(specs[0]) : `${specs.length} 个用例`;
+  const isLatest = mode === 'latest';
+  const ok = window.confirm(
+    isLatest
+      ? `确定清理 ${label} 的最近一次 run 截图？\n\n将删除 Chrome / WebKit 同批次（约 5 分钟内）的 timestamp 目录，并清除对应 results/diffs 缓存。`
+      : `确定清理 ${label} 的全部截图？\n\n将删除 screenshots/ 下该用例目录及 results/diffs/ 缓存，不可恢复。`,
+  );
+  if (!ok) return;
+  send('repo:clean-screenshots', { mode: isLatest ? 'latest' : 'all', specRelatives: specs });
 }
 
 function syncWorkflowUi() {
@@ -3913,6 +4160,34 @@ function handleMessage(msg) {
       }
       break;
     }
+    case 'repo:clean-screenshots:done': {
+      const results = msg.results || [];
+      const failed = msg.failed || [];
+      const cleaned = results.filter((r) => (r.removed || []).length > 0);
+      const empty = results.filter((r) => !(r.removed || []).length);
+      if (cleaned.length && !failed.length) {
+        const runs = cleaned.reduce((n, r) => n + (r.removedRuns || 0), 0);
+        const hint =
+          msg.mode === 'latest' && runs > 0
+            ? `已清理 ${cleaned.length} 个用例 · ${runs} 个 run`
+            : `已清理 ${cleaned.length} 个用例截图`;
+        showToast(hint, 'ok');
+        cleaned.forEach((r) => {
+          log('ok', `[repo] 截图已清理: ${r.specRel}${r.screenshotDir ? ` (${r.screenshotDir})` : ''}`);
+        });
+      } else if (cleaned.length && failed.length) {
+        showToast(`已清理 ${cleaned.length} 个，${failed.length} 个失败`, 'err');
+        failed.forEach((f) => log('err', `[repo] 清理失败 ${f.specRelative}: ${f.error}`));
+      } else if (!cleaned.length && !failed.length && empty.length) {
+        showToast(empty[0]?.message || '未找到可清理的截图', 'info');
+      } else if (failed.length) {
+        showToast(failed[0]?.error || '清理失败', 'err');
+      }
+      if (empty.length && cleaned.length) {
+        empty.forEach((r) => log('dim', `[repo] 跳过 ${r.specRel}: ${r.message || '无截图'}`));
+      }
+      break;
+    }
     case 'repo:batch-test:start':
       busyState.repoBatch = true;
       runState.lastBatchComplete = false;
@@ -4090,6 +4365,7 @@ function handleMessage(msg) {
       testJobsState.availableEnvs = msg.availableEnvs?.length
         ? msg.availableEnvs
         : envState.environments.map((e) => e.id);
+      onBackgroundJobsFinished(testJobsState.jobs, msg.jobs || []);
       renderTestJobsList(msg.jobs || []);
       if (workflowMode === 'jobs' && !testJobsState.selectedJobId && msg.jobs?.length) {
         selectTestJob(msg.jobs[0].id);
@@ -4134,6 +4410,7 @@ function handleMessage(msg) {
       break;
     }
     case 'jobs:run:start':
+      setJobLogTail('');
       showToast(
         `任务「${msg.jobId || ''}」开始执行${msg.playwrightEnv ? ` (${msg.playwrightEnv}` : ''}${msg.accountProfile ? ` / ${msg.accountProfile}` : ''}${msg.playwrightEnv ? ')' : ''}…`,
         'info',
@@ -4144,23 +4421,37 @@ function handleMessage(msg) {
       );
       startTestJobsPolling();
       break;
+    case 'jobs:run:log':
+      if (msg.jobId === testJobsState.selectedJobId || !testJobsState.selectedJobId) {
+        appendJobLogTail(msg.text);
+      }
+      break;
     case 'jobs:run:done': {
       const ok = msg.background ? true : msg.exitCode === 0;
+      const lr = msg.latestRun;
+      const failReasons = lr ? buildJobFailReasonsFromSummary(lr.summary) : [];
+      const reasonHint = !ok && failReasons.length ? `：${failReasons.join('；')}` : '';
       if (msg.background) {
         showToast(`任务「${msg.jobId || ''}」已在后台启动`, 'ok');
         log('ok', `[jobs] 后台启动: ${msg.jobId || ''}`);
       } else {
         showToast(
-          ok ? `任务「${msg.jobId || ''}」执行完成` : `任务「${msg.jobId || ''}」执行失败`,
+          ok ? `任务「${msg.jobId || ''}」执行完成` : `任务「${msg.jobId || ''}」执行失败${reasonHint}`,
           ok ? 'ok' : 'err',
         );
-        log(ok ? 'ok' : 'err', `[jobs] 结束: ${msg.jobId || ''} exit=${msg.exitCode}`);
+        log(ok ? 'ok' : 'err', `[jobs] 结束: ${msg.jobId || ''} exit=${msg.exitCode}${reasonHint}`);
+        if (msg.logTail) setJobLogTail(msg.logTail);
+        else if (msg.jobId) fetchTestJobStatus(msg.jobId);
       }
       refreshTestJobsList();
       break;
     }
     case 'jobs:stop:done':
       showToast(msg.ok ? `已停止任务「${msg.jobId || ''}」` : msg.message || '停止失败', msg.ok ? 'ok' : 'err');
+      if (msg.ok && msg.jobId) {
+        testJobsState.backgroundWatchJobIds.delete(msg.jobId);
+        if (msg.jobId === testJobsState.selectedJobId) fetchTestJobStatus(msg.jobId);
+      }
       refreshTestJobsList();
       break;
     case 'repo:promote-baseline:done':

@@ -11,11 +11,12 @@ import {
   runWithConcurrency,
 } from './image-diff.js';
 import { generateBaselineComparisons } from './baseline-comparisons.js';
-import { loadUiRegressionConfig } from './ui-regression-config.js';
+import { loadUiRegressionConfig, resolveCrossBrowserPixelmatch, resolveSameBrowserPixelmatch } from './ui-regression-config.js';
 import {
   buildUiIssuesReport,
   comparisonToUiIssue,
   gateShouldFail,
+  mergeIssuesForDisplay,
   writeUiIssuesReport,
   type UiIssue,
 } from './ui-issues.js';
@@ -59,22 +60,16 @@ function passesDiffOnlyTabFilter(difference: number): boolean {
 }
 
 /**
- * pixelmatch 颜色阈值（0~1），越小越敏感。覆盖：PLAYWRIGHT_PIXELMATCH_THRESHOLD=0.05
+ * 同浏览器对比 pixelmatch 参数。覆盖：PLAYWRIGHT_PIXELMATCH_THRESHOLD / PLAYWRIGHT_PIXELMATCH_INCLUDE_AA
  */
-const PIXELMATCH_COLOR_THRESHOLD = (() => {
-  const v = process.env.PLAYWRIGHT_PIXELMATCH_THRESHOLD;
-  if (v !== undefined && v !== '' && !Number.isNaN(Number.parseFloat(v))) {
-    return Number.parseFloat(v);
-  }
-  return 0.06;
-})();
+const SAME_BROWSER_PIXELMATCH = resolveSameBrowserPixelmatch();
 
-/** pixelmatch includeAA：false 时抗锯齿像素不计入差异（易与肉眼不一致）。覆盖：PLAYWRIGHT_PIXELMATCH_INCLUDE_AA=0 */
-const PIXELMATCH_INCLUDE_AA = (() => {
-  const v = (process.env.PLAYWRIGHT_PIXELMATCH_INCLUDE_AA ?? '').toLowerCase();
-  if (v === '0' || v === 'false' || v === 'no') return false;
-  return true;
-})();
+/** 跨浏览器对比 pixelmatch 参数。见 config/ui-regression.json → crossBrowser；覆盖：PLAYWRIGHT_CROSS_BROWSER_PIXELMATCH_* */
+const CROSS_BROWSER_PIXELMATCH = resolveCrossBrowserPixelmatch();
+
+function pixelmatchForCompareKind(compareKind?: ImageComparison['compareKind']) {
+  return compareKind === 'cross-browser' ? CROSS_BROWSER_PIXELMATCH : SAME_BROWSER_PIXELMATCH;
+}
 
 /** 并行对比任务数，默认 4。覆盖：PLAYWRIGHT_COMPARE_CONCURRENCY=8 */
 const COMPARE_CONCURRENCY = (() => {
@@ -215,8 +210,10 @@ async function comparePair(
   relativeDiffPath: string,
   meta: ComparePairMeta = {},
 ): Promise<ImageComparison> {
+  const pixelmatchOpts = pixelmatchForCompareKind(meta.compareKind);
+
   if (COMPARE_INCREMENTAL) {
-    const cached = loadCachedDiffResult(baseline.path, compareScreenshot.path, diffOutputPath);
+    const cached = loadCachedDiffResult(baseline.path, compareScreenshot.path, diffOutputPath, pixelmatchOpts);
     if (cached) {
       return {
         image1Path: baseline.relativePath,
@@ -237,8 +234,8 @@ async function comparePair(
     baseline.path,
     compareScreenshot.path,
     diffOutputPath,
-    PIXELMATCH_COLOR_THRESHOLD,
-    { includeAA: PIXELMATCH_INCLUDE_AA },
+    pixelmatchOpts.threshold,
+    { includeAA: pixelmatchOpts.includeAA },
   );
 
   return {
@@ -548,8 +545,8 @@ async function generateTestComparisons(testDir: string, screenshots: Map<number,
       stepNumber,
       diffOutputDir,
       outputPath,
-      PIXELMATCH_COLOR_THRESHOLD,
-      PIXELMATCH_INCLUDE_AA,
+      SAME_BROWSER_PIXELMATCH.threshold,
+      SAME_BROWSER_PIXELMATCH.includeAA,
       COMPARE_CONCURRENCY,
       COMPARE_INCREMENTAL,
     );
@@ -683,9 +680,15 @@ function getBrowserIcon(browser: string): string {
     'firefox': '🦊',
     'webkit': '🍎',
     'safari': '🍎',
-    'edge': '📦'
+    'edge': '📦',
+    'cross': '⇄',
   };
   return icons[browser] || '🌍';
+}
+
+function getBrowserFilterLabel(browser: string): string {
+  if (browser === 'cross') return '跨浏览器';
+  return browser;
 }
 
 function groupScreenshotsByBrowser(screenshots: ScreenshotInfo[]): Map<string, ScreenshotInfo[]> {
@@ -997,6 +1000,20 @@ function extractImageLabelWithRoute(path: string, index: number): string {
   return `图片 ${index}`;
 }
 
+function escapeHtmlAttr(s: string): string {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** 问题明细 / 分析摘要表格内联 diff 缩略图（点击放大，与 Optimized 差异 Tab 一致） */
+function renderInlineDiffThumb(diffImagePath?: string): string {
+  if (!diffImagePath) return '—';
+  const src = escapeHtmlAttr(diffImagePath);
+  return `<img class="issues-diff-thumb" src="${src}" alt="diff" loading="lazy" onclick="openModal('${src}')" title="点击放大">`;
+}
+
 function generateDiffCard(comparison: ImageComparison, type: string): string {
   const diffColor = getDifferenceColor(comparison.difference);
   const diffLabel = getDifferenceLabel(comparison.difference);
@@ -1074,13 +1091,16 @@ function generateIssuesTabHtml(issues: UiIssue[]): string {
     </div>`;
   }
 
-  const rows = issues
+  const merged = mergeIssuesForDisplay(issues);
+  const rows = merged
     .map((issue) => {
-      const diffLink = issue.diffImagePath
-        ? `<a href="${issue.diffImagePath}" target="_blank" rel="noopener">diff</a>`
-        : '—';
+      const diffCell = renderInlineDiffThumb(issue.diffImagePath);
       const pct = (issue.difference * 100).toFixed(3);
-      return `<tr data-severity="${issue.severity}" data-kind="${issue.compareKind}">
+      const countCell =
+        issue.rawCount > 1
+          ? `<span class="issues-raw-count" title="同日多次运行产生的重复对比已合并">${issue.rawCount}</span>`
+          : '1';
+      return `<tr class="issues-filter-row" data-severity="${issue.severity}" data-kind="${issue.compareKind}" data-browser="${issue.browser}">
         <td><span class="severity-badge severity-${issue.severity}">${issue.severity}</span></td>
         <td>${issue.compareKind}</td>
         <td>${issue.scriptKey}</td>
@@ -1088,20 +1108,32 @@ function generateIssuesTabHtml(issues: UiIssue[]): string {
         <td>${issue.stepName}</td>
         <td>${issue.browser}</td>
         <td>${pct}%</td>
-        <td>${diffLink}</td>
+        <td>${countCell}</td>
+        <td>${diffCell}</td>
       </tr>`;
     })
     .join('');
 
+  const deduped = issues.length - merged.length;
+  const dedupeNote =
+    deduped > 0
+      ? ` · 已合并 <strong>${deduped}</strong> 条重复（原始 ${issues.length} 条）`
+      : '';
+
   return `
     <div class="issues-summary">
-      <p>共 <strong>${issues.length}</strong> 项 · blocker: <strong>${issues.filter((i) => i.severity === 'blocker').length}</strong> · warning: <strong>${issues.filter((i) => i.severity === 'warning').length}</strong></p>
-      <p class="issues-hint">结构化清单见 <code>results/ui-issues.json</code></p>
+      <p>共 <strong id="issues-visible-count">${merged.length}</strong> 项<span id="issues-dedupe-note">${dedupeNote}</span><span id="issues-filter-note"></span> · blocker: <strong id="issues-blocker-count">${merged.filter((i) => i.severity === 'blocker').length}</strong> · warning: <strong id="issues-warning-count">${merged.filter((i) => i.severity === 'warning').length}</strong></p>
+      <p class="issues-hint">结构化清单见 <code>results/ui-issues.json</code>（含未合并原始条数）· 随上方「浏览器」筛选联动 · 跨浏览器差异展示最高为 warning</p>
     </div>
-    <table class="issues-table">
+    <div class="empty-state issues-browser-empty" id="issues-browser-empty" style="display: none;">
+      <div class="empty-state-icon">📋</div>
+      <div class="empty-state-title">当前浏览器筛选下暂无问题</div>
+      <div class="empty-state-description">可切换 chrome、webkit 或「跨浏览器」查看其他对比类型。</div>
+    </div>
+    <table class="issues-table" id="issues-table">
       <thead>
         <tr>
-          <th>严重度</th><th>类型</th><th>脚本</th><th>步骤</th><th>步骤名</th><th>浏览器</th><th>差异</th><th>Diff</th>
+          <th>严重度</th><th>类型</th><th>脚本</th><th>步骤</th><th>步骤名</th><th>浏览器</th><th>差异</th><th>条数</th><th>Diff</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
@@ -1198,7 +1230,14 @@ function generateHTML(
       }
     });
   });
-  const browserList = Array.from(allBrowsers).sort();
+  const browserListRaw = Array.from(allBrowsers).sort();
+  const totalCrossBrowser = getTotalCrossBrowserComparisons(testDirComparisons);
+  const hasCrossBrowserData = totalCrossBrowser > 0;
+  const browserFilterOrder = ['chrome', 'webkit', 'cross'];
+  const browserList = browserFilterOrder.filter(
+    (b) => (b === 'cross' ? hasCrossBrowserData : browserListRaw.includes(b)),
+  );
+  const showBrowserFilter = browserList.length > 0;
   
   const iterationTabs = iterations
     .map((iter, index) => `
@@ -1264,11 +1303,15 @@ function generateHTML(
     <div class="iteration-content" data-iteration="${iter}" ${index === 0 ? '' : 'style="display: none;"'}>
       ${buildScriptContents(
         iter,
-        (tdc) => tdc.comparisons.map((comp) => generateDiffStep(comp, 'optimized')).join(''),
+        (tdc) =>
+          tdc.comparisons
+            .map((comp) => generateDiffStep(comp, 'optimized') + generateCrossBrowserDiffStep(comp))
+            .join(''),
         (tdc) => {
           const c = getOptimizedDiffCountsForScript(tdc);
-          return `data-diff-all="${c.all}" data-diff-only="${c.only}"`;
-        }
+          const x = getCrossBrowserDiffCountsForScript(tdc);
+          return `data-diff-all="${c.all + x.all}" data-diff-only="${c.only + x.only}"`;
+        },
       )}
     </div>
   `)
@@ -1279,33 +1322,21 @@ function generateHTML(
     <div class="iteration-content" data-iteration="${iter}" ${index === 0 ? '' : 'style="display: none;"'}>
       ${buildScriptContents(
         iter,
-        (tdc) => tdc.comparisons.map((comp) => generateDiffStep(comp, 'all', true)).join(''),
+        (tdc) =>
+          tdc.comparisons
+            .map((comp) => generateDiffStep(comp, 'all', true) + generateCrossBrowserDiffStep(comp, true))
+            .join(''),
         (tdc) => {
           const c = getOptimizedDiffCountsForScript(tdc);
-          return `data-diff-all="${c.all}" data-diff-only="${c.only}"`;
-        }
-      )}
-    </div>
-  `)
-    .join('');
-
-  const totalCrossBrowser = getTotalCrossBrowserComparisons(testDirComparisons);
-  const hasCrossBrowserData = totalCrossBrowser > 0;
-
-  const crossBrowserDiffByIteration = iterations
-    .map((iter, index) => `
-    <div class="iteration-content" data-iteration="${iter}" ${index === 0 ? '' : 'style="display: none;"'}>
-      ${buildScriptContents(
-        iter,
-        (tdc) => tdc.comparisons.map((comp) => generateCrossBrowserDiffStep(comp)).join(''),
-        (tdc) => {
-          const c = getCrossBrowserDiffCountsForScript(tdc);
-          return `data-diff-all="${c.all}" data-diff-only="${c.only}"`;
+          const x = getCrossBrowserDiffCountsForScript(tdc);
+          return `data-diff-all="${c.all + x.all}" data-diff-only="${c.only + x.only}"`;
         },
       )}
     </div>
   `)
     .join('');
+
+  // hasCrossBrowserData / totalCrossBrowser 已在 browserList 构建处计算
 
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -2172,6 +2203,33 @@ function generateHTML(
     .severity-noise { background: #f3f4f6; color: #6b7280; }
     .issues-summary { margin: 16px 0 8px; color: #374151; }
     .issues-hint { font-size: 12px; color: #6b7280; }
+    .issues-raw-count {
+      display: inline-block;
+      min-width: 1.25rem;
+      padding: 0 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #4b5563;
+      background: #f3f4f6;
+      border-radius: 10px;
+      text-align: center;
+    }
+    .issues-diff-thumb {
+      display: block;
+      max-width: 128px;
+      max-height: 80px;
+      width: auto;
+      height: auto;
+      object-fit: contain;
+      border: 1px solid #e5e7eb;
+      border-radius: 4px;
+      cursor: pointer;
+      background: #f9fafb;
+    }
+    .issues-diff-thumb:hover {
+      border-color: #1677ff;
+      box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.12);
+    }
     .analysis-wrap { padding: 16px 20px 24px; max-width: 1200px; }
     .analysis-heading { margin: 20px 0 10px; font-size: 16px; color: #111827; }
     .analysis-heading:first-child { margin-top: 0; }
@@ -2268,11 +2326,6 @@ function generateHTML(
       <h3>执行次数</h3>
       <div class="value">${getTotalExecutions(allComparisons)}</div>
     </div>
-    ${hasCrossBrowserData ? `
-    <div class="stat-card">
-      <h3>跨浏览器对比</h3>
-      <div class="value">${totalCrossBrowser}</div>
-    </div>` : ''}
   </div>
   
   <div class="controls-row">
@@ -2302,14 +2355,14 @@ function generateHTML(
             .join('')}
         </div>
       </div>
-      ${hasOptimizedData ? `
+      ${showBrowserFilter ? `
       <div class="filter-row">
         <span class="filter-label">浏览器：</span>
         <div class="global-browser-buttons">
           ${browserList.map((browser, index) => `
-          <button class="global-browser-tab ${index === 0 ? 'active' : ''}" data-browser="${browser}" onclick="switchGlobalBrowser('${browser}')">
+          <button class="global-browser-tab ${index === 0 ? 'active' : ''}" data-browser="${browser}" onclick="switchGlobalBrowser('${browser}')" title="${browser === 'cross' ? 'Chrome 基线 vs WebKit 同步骤对比' : ''}">
             ${getBrowserIcon(browser)}
-            <span>${browser}</span>
+            <span>${getBrowserFilterLabel(browser)}</span>
           </button>
           `).join('')}
         </div>
@@ -2318,12 +2371,11 @@ function generateHTML(
   </div>
   
   <div class="tabs">
-    <button class="tab active" onclick="switchTab('optimized')">Optimized 版本</button>
-    <button class="tab" onclick="switchTab('optimized-diff')">Optimized 差异</button>
-    ${hasCrossBrowserData ? `<button class="tab" onclick="switchTab('cross-browser')">跨浏览器</button>` : ''}
-    <button class="tab" onclick="switchTab('analysis')">分析摘要</button>
-    <button class="tab" onclick="switchTab('issues')">问题明细</button>
-    <button class="tab" onclick="switchTab('diff-only')">有差异</button>
+    <button class="tab active" data-report-tab="optimized" onclick="switchTab('optimized')">Optimized 版本</button>
+    <button class="tab" data-report-tab="optimized-diff" onclick="switchTab('optimized-diff')">Optimized 差异</button>
+    <button class="tab" data-report-tab="diff-only" onclick="switchTab('diff-only')">有差异</button>
+    <button class="tab" data-report-tab="analysis" onclick="switchTab('analysis')">分析摘要</button>
+    <button class="tab" data-report-tab="issues" onclick="switchTab('issues')">问题明细</button>
   </div>
   
   <div id="optimized-content" class="tab-content active">
@@ -2337,36 +2389,12 @@ function generateHTML(
       <div class="empty-state-description">
         <ul class="empty-state-hint">
           <li>同一脚本、同一浏览器下若只有一次运行，无法与另一张图做对比。</li>
-          <li>当前「浏览器」筛选下可能没有可对齐的截图。</li>
-          <li>可切换上方「浏览器」，或确认截图目录里是否有多次运行结果。</li>
+          <li>当前「浏览器」筛选下可能没有可对齐的截图；可选 chrome、webkit，或「跨浏览器」（Chrome 基线 vs WebKit）。</li>
+          <li>跨浏览器需同时存在 run-chromium-optimized 与 run-webkit-optimized 下的同步骤截图。</li>
         </ul>
       </div>
     </div>
     ${optimizedDiffByIteration}
-  </div>
-  
-  ${hasCrossBrowserData ? `
-  <div id="cross-browser-content" class="tab-content">
-    <div class="empty-state" id="cross-browser-empty" style="display: none;">
-      <div class="empty-state-icon">🌐</div>
-      <div class="empty-state-title">暂无跨浏览器对比</div>
-      <div class="empty-state-description">
-        <ul class="empty-state-hint">
-          <li>需同时存在 <strong>run-chromium-optimized</strong> 与 <strong>run-webkit-optimized</strong> 下的同步骤截图。</li>
-          <li>同一日历日内按运行时间或相同 timestamp 目录配对（Chrome 为基线）。</li>
-          <li>可执行 <code>npm run test:optimized -- --project=optimized --project=optimized-webkit</code> 生成双引擎截图。</li>
-        </ul>
-      </div>
-    </div>
-    ${crossBrowserDiffByIteration}
-  </div>` : ''}
-
-  <div id="analysis-content" class="tab-content">
-    ${analysisHtml || '<div class="empty-state"><div class="empty-state-title">暂无分析</div></div>'}
-  </div>
-
-  <div id="issues-content" class="tab-content">
-    ${generateIssuesTabHtml(uiIssues)}
   </div>
 
   <div id="diff-only-content" class="tab-content">
@@ -2376,12 +2404,20 @@ function generateHTML(
       <div class="empty-state-description">
         <ul class="empty-state-hint">
           <li>本 Tab 只展示相对更明显的差异；更轻的对比不会列出，但在「Optimized 差异」里仍能看到全部结果。</li>
-          <li>若预期应有项却为空，可切换「浏览器」，或确认是否只有单次运行。</li>
+          <li>若预期应有项却为空，可切换「浏览器」（含跨浏览器），或确认是否只有单次运行。</li>
           <li>需要在本 Tab 看到更多项时，可调低生成报告时的「有差异」收录比例。</li>
         </ul>
       </div>
     </div>
     ${diffOnlyByIteration}
+  </div>
+
+  <div id="analysis-content" class="tab-content">
+    ${analysisHtml || '<div class="empty-state"><div class="empty-state-title">暂无分析</div></div>'}
+  </div>
+
+  <div id="issues-content" class="tab-content">
+    ${generateIssuesTabHtml(uiIssues)}
   </div>
   
   <div class="modal" id="modal" onclick="if (event.target === this) closeModal()">
@@ -2619,18 +2655,6 @@ function generateHTML(
           updateDiffPanelComparisonVisibility(target);
         }
       }
-
-      if (activeTab.id === 'cross-browser-content') {
-        const target = document.querySelector(
-          '#cross-browser-content .script-content[data-iteration=\"' + iteration + '\"][data-script=\"' + script + '\"]'
-        );
-        const empty = document.getElementById('cross-browser-empty');
-        if (empty && target) {
-          var visible3 = scriptDiffPanelHasVisibleDiff(target);
-          empty.style.display = visible3 ? 'none' : 'flex';
-          updateDiffPanelComparisonVisibility(target);
-        }
-      }
     }
     
     function updateOptimizedBrowserEmptyStates(effectiveBrowser) {
@@ -2663,13 +2687,138 @@ function generateHTML(
       });
     }
 
+    function updateReportTabsForBrowser(effectiveBrowser) {
+      const optimizedTab = document.querySelector('.tab[data-report-tab="optimized"]');
+      if (optimizedTab) {
+        optimizedTab.style.display = effectiveBrowser === 'cross' ? 'none' : '';
+      }
+      if (effectiveBrowser === 'cross') {
+        const activeContent = document.querySelector('.tab-content.active');
+        if (activeContent && activeContent.id === 'optimized-content') {
+          switchTab('optimized-diff');
+        }
+      }
+    }
+
+    function issueRowMatchesGlobalBrowser(row, effectiveBrowser) {
+      if (!effectiveBrowser) return true;
+      var kind = row.getAttribute('data-kind') || '';
+      var browser = row.getAttribute('data-browser') || '';
+      if (effectiveBrowser === 'cross') {
+        return kind === 'cross-browser';
+      }
+      if (kind === 'cross-browser') return false;
+      return browser === effectiveBrowser;
+    }
+
+    function analysisRowMatchesGlobalBrowser(row, effectiveBrowser) {
+      if (!effectiveBrowser) return true;
+      var kinds = (row.getAttribute('data-compare-kinds') || '').split(',').filter(Boolean);
+      var browsers = (row.getAttribute('data-browsers') || '').split(',').filter(Boolean);
+      if (effectiveBrowser === 'cross') {
+        return kinds.indexOf('cross-browser') >= 0;
+      }
+      if (kinds.length === 1 && kinds[0] === 'cross-browser') return false;
+      if (browsers.indexOf(effectiveBrowser) < 0) return false;
+      return kinds.some(function(k) { return k !== 'cross-browser'; });
+    }
+
+    function updateIssuesAnalysisBrowserFilter(effectiveBrowser) {
+      var hasBrowserTabs = document.querySelectorAll('.global-browser-tab').length > 0;
+      var filterBrowser = hasBrowserTabs ? effectiveBrowser : '';
+
+      var issueRows = document.querySelectorAll('#issues-content .issues-filter-row');
+      var visibleIssues = 0;
+      var issueBlockers = 0;
+      var issueWarnings = 0;
+      issueRows.forEach(function(row) {
+        var show = issueRowMatchesGlobalBrowser(row, filterBrowser);
+        row.style.display = show ? '' : 'none';
+        if (show) {
+          visibleIssues++;
+          var sev = row.getAttribute('data-severity') || '';
+          if (sev === 'blocker') issueBlockers++;
+          else if (sev === 'warning') issueWarnings++;
+        }
+      });
+
+      var issuesTable = document.getElementById('issues-table');
+      var issuesEmpty = document.getElementById('issues-browser-empty');
+      if (issuesTable) {
+        issuesTable.style.display = visibleIssues === 0 && issueRows.length > 0 ? 'none' : '';
+      }
+      if (issuesEmpty) {
+        issuesEmpty.style.display = visibleIssues === 0 && issueRows.length > 0 ? 'flex' : 'none';
+      }
+      var issueCountEl = document.getElementById('issues-visible-count');
+      var issueBlockerEl = document.getElementById('issues-blocker-count');
+      var issueWarningEl = document.getElementById('issues-warning-count');
+      var issueFilterNote = document.getElementById('issues-filter-note');
+      if (issueCountEl && hasBrowserTabs && filterBrowser) {
+        issueCountEl.textContent = String(visibleIssues);
+        if (issueBlockerEl) issueBlockerEl.textContent = String(issueBlockers);
+        if (issueWarningEl) issueWarningEl.textContent = String(issueWarnings);
+        if (issueFilterNote) {
+          var browserLabel = filterBrowser === 'cross' ? '跨浏览器' : filterBrowser;
+          issueFilterNote.textContent = ' · 当前「' + browserLabel + '」筛选';
+        }
+      } else if (issueFilterNote) {
+        issueFilterNote.textContent = '';
+      }
+
+      var analysisRows = document.querySelectorAll('#analysis-content .analysis-filter-row');
+      var visibleAnalysis = 0;
+      var analysisBlockers = 0;
+      var analysisWarnings = 0;
+      analysisRows.forEach(function(row) {
+        var show = analysisRowMatchesGlobalBrowser(row, filterBrowser);
+        row.style.display = show ? '' : 'none';
+        if (show) {
+          visibleAnalysis++;
+          var sev = row.getAttribute('data-severity') || '';
+          if (sev === 'blocker') analysisBlockers++;
+          else if (sev === 'warning') analysisWarnings++;
+        }
+      });
+
+      document.querySelectorAll('#analysis-content .analysis-script-block').forEach(function(block) {
+        var rows = block.querySelectorAll('.analysis-filter-row');
+        var hasVisible = false;
+        Array.prototype.forEach.call(rows, function(r) {
+          if (r.style.display !== 'none') hasVisible = true;
+        });
+        block.style.display = hasVisible ? '' : 'none';
+      });
+
+      var analysisEmpty = document.getElementById('analysis-browser-empty');
+      var analysisScriptsHeading = document.querySelector('#analysis-content .analysis-scripts-heading');
+      if (analysisEmpty) {
+        analysisEmpty.style.display = visibleAnalysis === 0 && analysisRows.length > 0 ? 'flex' : 'none';
+      }
+      if (analysisScriptsHeading) {
+        analysisScriptsHeading.style.display = visibleAnalysis === 0 && analysisRows.length > 0 ? 'none' : '';
+      }
+
+      var analysisFilterSummary = document.getElementById('analysis-filter-summary');
+      if (analysisFilterSummary) {
+        if (hasBrowserTabs && filterBrowser && analysisRows.length > 0) {
+          var browserLabel = filterBrowser === 'cross' ? '跨浏览器' : filterBrowser;
+          analysisFilterSummary.style.display = '';
+          analysisFilterSummary.textContent =
+            '当前浏览器「' + browserLabel + '」筛选：' + visibleAnalysis + ' 项 · blocker ' + analysisBlockers + ' · warning ' + analysisWarnings + '（上方总览为全量）';
+        } else {
+          analysisFilterSummary.style.display = 'none';
+          analysisFilterSummary.textContent = '';
+        }
+      }
+    }
+
     function switchGlobalBrowser(browser) {
       const tabs = document.querySelectorAll('.global-browser-tab');
       const sections = document.querySelectorAll('.browser-content-section');
       const diffCards = document.querySelectorAll('.diff-card.diff-browser-content');
-      const activeTabNow = document.querySelector('.tab-content.active');
-      const isCrossBrowserTab = activeTabNow && activeTabNow.id === 'cross-browser-content';
       let browserForEmptyState = '';
+      let effectiveBrowser = '';
       
       tabs.forEach(function(tab) {
         tab.classList.remove('active');
@@ -2696,23 +2845,19 @@ function generateHTML(
           targetTab = tabs[0];
         }
         targetTab.classList.add('active');
-        const effectiveBrowser = targetTab.getAttribute('data-browser') || '';
-        browserForEmptyState = effectiveBrowser;
+        effectiveBrowser = targetTab.getAttribute('data-browser') || '';
+        browserForEmptyState = effectiveBrowser === 'cross' ? '' : effectiveBrowser;
 
-        const targetSections = document.querySelectorAll('.browser-content-section[data-browser="' + effectiveBrowser + '"]');
-        targetSections.forEach(function(section) {
-          section.classList.add('active');
-        });
-        if (isCrossBrowserTab) {
-          document.querySelectorAll('.diff-card.diff-browser-content[data-browser="cross"]').forEach(function(card) {
-            card.classList.add('active');
-          });
-        } else {
-          const targetDiffCards = document.querySelectorAll('.diff-card.diff-browser-content[data-browser="' + effectiveBrowser + '"]');
-          targetDiffCards.forEach(function(card) {
-            card.classList.add('active');
+        if (effectiveBrowser !== 'cross') {
+          const targetSections = document.querySelectorAll('.browser-content-section[data-browser="' + effectiveBrowser + '"]');
+          targetSections.forEach(function(section) {
+            section.classList.add('active');
           });
         }
+        const targetDiffCards = document.querySelectorAll('.diff-card.diff-browser-content[data-browser="' + effectiveBrowser + '"]');
+        targetDiffCards.forEach(function(card) {
+          card.classList.add('active');
+        });
       }
       
       const allSubsections = document.querySelectorAll('.step-subsection');
@@ -2751,9 +2896,7 @@ function generateHTML(
       const activeTab = document.querySelector('.tab-content.active');
       if (
         activeTab &&
-        (activeTab.id === 'diff-only-content' ||
-          activeTab.id === 'optimized-diff-content' ||
-          activeTab.id === 'cross-browser-content')
+        (activeTab.id === 'diff-only-content' || activeTab.id === 'optimized-diff-content')
       ) {
         /* 差异类 Tab 由 updateDiffEmptyStates 控制步骤可见性 */
       } else if (activeTab && activeTab.id === 'optimized-content') {
@@ -2767,7 +2910,9 @@ function generateHTML(
       }
 
       updateOptimizedBrowserEmptyStates(browserForEmptyState);
+      updateReportTabsForBrowser(effectiveBrowser);
       updateDiffEmptyStates();
+      updateIssuesAnalysisBrowserFilter(effectiveBrowser);
     }
     
     document.addEventListener('DOMContentLoaded', function() {

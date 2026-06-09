@@ -35,6 +35,14 @@ export type JobSummaryFile = {
   failCount: number;
   projects: string[];
   specPaths: string[];
+  /** 是否启用了 compare-screenshots --gate */
+  compareGate?: boolean;
+  feishuDocAttempted?: boolean;
+  feishuDocPassed?: boolean;
+  uiIssuesBlocker?: number;
+  uiIssuesWarning?: number;
+  /** 任务 failed/aborted 时的可读原因（Studio 展示） */
+  failReasons?: string[];
 };
 
 function lockPath(jobId: string): string {

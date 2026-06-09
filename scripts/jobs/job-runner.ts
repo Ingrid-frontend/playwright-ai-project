@@ -13,13 +13,14 @@ import {
   type JobRunStatus,
   type JobSummaryFile,
 } from './job-lock.js';
-import { readUiIssuesSummaryLine, sendJobFeishuNotification } from './job-notify.js';
+import { readUiIssuesSummaryLine, sendJobFeishuNotification, readUiIssuesSummaryCounts, buildJobFailReasons } from './job-notify.js';
 import {
   formatRunId,
   isProcessAlive,
   projectToBrowser,
   recordLastGreenForScript,
   resolveSpecEntries,
+  resolveSpecEntriesFromRelatives,
   groupSpecEntriesByProfile,
   summarizeSpecProfileCounts,
   scriptKeyFromOptimizedPath,
@@ -48,6 +49,8 @@ export type DirectRunOptions = {
   notifyOn: NotifyOn[];
   /** 始终创建飞书文档（run-optimized-tests 兼容） */
   alwaysCreateFeishuDoc?: boolean;
+  /** 覆盖 Job specs glob，仅执行指定相对路径用例 */
+  specOverrides?: string[];
 };
 
 export type JobRunContext = {
@@ -226,6 +229,8 @@ export async function runJobById(
     playwrightEnv?: string;
     /** 覆盖 config 中的 accountProfile，仅执行该档案的用例 */
     accountProfile?: AccountProfileFilter;
+    /** 覆盖 config 中的 specs glob，仅执行指定相对路径用例 */
+    specOverrides?: string[];
   },
 ): Promise<JobRunResult> {
   const job = resolveJob(jobId);
@@ -261,6 +266,7 @@ export async function runJobById(
       feishuMode: job.feishuMode,
       notifyOn: job.notifyOn,
       alwaysCreateFeishuDoc: job.steps.createFeishuDoc,
+      specOverrides: ctxPartial.specOverrides,
     },
     ctx,
   );
@@ -304,23 +310,31 @@ export async function runDirect(opts: DirectRunOptions, ctx: JobRunContext): Pro
     throw new Error(`优化测试目录不存在或不是目录: ${absOptimizedDir}`);
   }
 
-  const specEntries = resolveSpecEntries(
-    opts.specs,
-    opts.optimizedDir,
-    opts.playwrightEnv,
-    opts.accountProfile,
-  );
+  const specEntries = opts.specOverrides?.length
+    ? resolveSpecEntriesFromRelatives(
+        opts.specOverrides,
+        opts.optimizedDir,
+        opts.playwrightEnv,
+        opts.accountProfile,
+      )
+    : resolveSpecEntries(opts.specs, opts.optimizedDir, opts.playwrightEnv, opts.accountProfile);
   if (specEntries.length === 0) {
     const envLabel = opts.playwrightEnv || process.env.PLAYWRIGHT_ENV || 'stage';
     const profileLabel =
       opts.accountProfile && opts.accountProfile !== 'all'
         ? ` accountProfile=${JSON.stringify(opts.accountProfile)}`
         : '';
-    const specHint =
-      opts.specs === 'all'
+    const specHint = opts.specOverrides?.length
+      ? `指定用例无效或不存在: ${JSON.stringify(opts.specOverrides)}（环境 ${envLabel}${profileLabel}）`
+      : opts.specs === 'all'
         ? `tests/optimized/${envLabel}/ 下无正式用例（已排除 studio-unsaved-draft）${profileLabel}`
         : `未匹配 specs: ${JSON.stringify(opts.specs)}（环境 ${envLabel}${profileLabel}）`;
     console.error(`❌ ${specHint}`);
+    if (opts.specs !== 'all' && !opts.specOverrides?.length) {
+      console.error(
+        `💡 可在 Studio 定时任务中勾选「选用例」，或 CLI 加 --spec=tests/optimized/${envLabel}/.../*.optimized.spec.ts`,
+      );
+    }
     if (opts.specs !== 'all') {
       const others = listKnownEnvs()
         .filter((e) => e !== envLabel)
@@ -346,6 +360,7 @@ export async function runDirect(opts: DirectRunOptions, ctx: JobRunContext): Pro
       failCount: 0,
       projects: opts.projects,
       specPaths: [],
+      failReasons: ['未匹配到可执行用例'],
     };
     if (persist && ctx.jobId) {
       writeSummary(ctx.jobId, runId, emptySummary);
@@ -424,6 +439,20 @@ export async function runDirect(opts: DirectRunOptions, ctx: JobRunContext): Pro
 
   const flowAllOk = testPassed && (compareSkipped || comparePassed) && (!feishuDocAttempted || feishuDocPassed);
 
+  const uiIssues = readUiIssuesSummaryCounts();
+  const failReasons = buildJobFailReasons({
+    testPassed,
+    comparePassed,
+    compareSkipped,
+    aborted,
+    failCount: totalFailCount,
+    executedCount: totalSuccessCount + totalFailCount,
+    compareGate: opts.steps.compareGate,
+    feishuDocPassed,
+    feishuDocAttempted,
+    uiIssuesBlocker: uiIssues?.blocker,
+  });
+
   const summary: JobSummaryFile = {
     jobId,
     runId,
@@ -438,6 +467,12 @@ export async function runDirect(opts: DirectRunOptions, ctx: JobRunContext): Pro
     failCount: totalFailCount,
     projects: opts.projects,
     specPaths: specEntries.map(e => e.relPath),
+    compareGate: opts.steps.compareGate,
+    feishuDocAttempted,
+    feishuDocPassed,
+    uiIssuesBlocker: uiIssues?.blocker,
+    uiIssuesWarning: uiIssues?.warning,
+    failReasons,
   };
 
   if (opts.steps.feishuNotify && shouldNotify(opts.notifyOn, flowAllOk)) {

@@ -187,6 +187,14 @@ export async function sendJobFeishuNotification(
 }
 
 export function readUiIssuesSummaryLine(): string | undefined {
+  const counts = readUiIssuesSummaryCounts();
+  if (!counts) return undefined;
+  return `**UI 问题**：blocker ${counts.blocker} · warning ${counts.warning} · 共 ${counts.total} 项`;
+}
+
+export function readUiIssuesSummaryCounts():
+  | { blocker: number; warning: number; total: number }
+  | undefined {
   const p = path.join(process.cwd(), 'results/ui-issues.json');
   if (!fs.existsSync(p)) return undefined;
   try {
@@ -194,9 +202,52 @@ export function readUiIssuesSummaryLine(): string | undefined {
       summary?: { blocker: number; warning: number; total: number };
     };
     if (!report.summary) return undefined;
-    const s = report.summary;
-    return `**UI 问题**：blocker ${s.blocker} · warning ${s.warning} · 共 ${s.total} 项`;
+    return {
+      blocker: report.summary.blocker ?? 0,
+      warning: report.summary.warning ?? 0,
+      total: report.summary.total ?? 0,
+    };
   } catch {
     return undefined;
   }
+}
+
+export function buildJobFailReasons(input: {
+  testPassed: boolean;
+  comparePassed: boolean;
+  compareSkipped: boolean;
+  aborted: boolean;
+  failCount: number;
+  executedCount?: number;
+  compareGate?: boolean;
+  feishuDocPassed?: boolean;
+  feishuDocAttempted?: boolean;
+  uiIssuesBlocker?: number;
+}): string[] {
+  const reasons: string[] = [];
+  if (input.aborted) reasons.push('执行已中断');
+  if (input.failCount > 0) {
+    reasons.push(`${input.failCount} 个用例执行失败`);
+  } else if (!input.testPassed && (input.executedCount ?? 0) === 0) {
+    reasons.push('未匹配到可执行用例');
+  } else if (!input.testPassed) {
+    reasons.push('用例执行未通过');
+  }
+
+  if (!input.compareSkipped && !input.comparePassed) {
+    if (input.compareGate) {
+      const b = input.uiIssuesBlocker;
+      reasons.push(
+        b != null && b > 0 ? `截图对比 gate 未通过（blocker ${b}）` : '截图对比 gate 未通过',
+      );
+    } else {
+      reasons.push('截图对比失败');
+    }
+  }
+
+  if (input.feishuDocAttempted && input.feishuDocPassed === false) {
+    reasons.push('飞书文档创建失败');
+  }
+
+  return reasons;
 }

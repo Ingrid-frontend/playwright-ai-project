@@ -215,6 +215,8 @@ export async function compareImagesWithDiff(
       height: prepared.height,
       img1Mtime: t1,
       img2Mtime: t2,
+      pixelmatchThreshold: threshold,
+      includeAA,
     });
 
     return {
@@ -237,6 +239,8 @@ export interface DiffMeta {
   height?: number;
   img1Mtime: number;
   img2Mtime: number;
+  pixelmatchThreshold?: number;
+  includeAA?: boolean;
 }
 
 function diffMetaPath(diffOutputPath: string): string {
@@ -258,12 +262,21 @@ export function readDiffMeta(diffOutputPath: string): DiffMeta | null {
 }
 
 /** 源图未更新且 meta 与 diff 图均有效时跳过 pixelmatch */
-export function isDiffCacheValid(img1Path: string, img2Path: string, diffOutputPath: string): boolean {
+export function isDiffCacheValid(
+  img1Path: string,
+  img2Path: string,
+  diffOutputPath: string,
+  expected?: { threshold: number; includeAA: boolean },
+): boolean {
   try {
     const t1 = fs.statSync(img1Path).mtimeMs;
     const t2 = fs.statSync(img2Path).mtimeMs;
     const meta = readDiffMeta(diffOutputPath);
     if (meta && meta.img1Mtime === t1 && meta.img2Mtime === t2) {
+      if (expected) {
+        if (meta.pixelmatchThreshold !== expected.threshold) return false;
+        if (meta.includeAA !== expected.includeAA) return false;
+      }
       if (meta.difference <= 0) return true;
       return fs.existsSync(diffOutputPath);
     }
@@ -279,8 +292,9 @@ export function loadCachedDiffResult(
   img1Path: string,
   img2Path: string,
   diffOutputPath: string,
+  expected?: { threshold: number; includeAA: boolean },
 ): ImageDiffResult | null {
-  if (!isDiffCacheValid(img1Path, img2Path, diffOutputPath)) return null;
+  if (!isDiffCacheValid(img1Path, img2Path, diffOutputPath, expected)) return null;
   const meta = readDiffMeta(diffOutputPath);
   if (!meta) return null;
   return {

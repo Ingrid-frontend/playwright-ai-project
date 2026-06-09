@@ -167,11 +167,11 @@ function renderScriptTableHtml(script: ScriptAnalysisBlock): string {
   }
   const rows = script.mergedSteps
     .map((row) => {
-      const diff = row.diffImagePath
-        ? `<a href="${row.diffImagePath}" target="_blank" rel="noopener">查看</a>`
-        : '—';
+      const diff = renderInlineDiffThumb(row.diffImagePath);
       const sev = `<span class="severity-badge severity-${row.severity}">${row.severity}</span>`;
-      return `<tr>
+      const browsersAttr = escapeHtml(row.browsers.join(','));
+      const kindsAttr = escapeHtml(row.compareKinds.join(','));
+      return `<tr class="analysis-filter-row" data-browsers="${browsersAttr}" data-compare-kinds="${kindsAttr}" data-severity="${row.severity}">
         <td>${sev}</td>
         <td>${row.stepNumber}</td>
         <td>${escapeHtml(row.stepLabel)}</td>
@@ -186,6 +186,7 @@ function renderScriptTableHtml(script: ScriptAnalysisBlock): string {
     .join('');
 
   return `
+    <div class="analysis-script-block">
     <h4 class="analysis-script-title">${escapeHtml(script.scriptKey)}</h4>
     <p class="analysis-flow">流程：<strong>${escapeHtml(script.flowSummary)}</strong></p>
     <p class="analysis-meta">合并后 ${script.mergedSteps.length} 项 · blocker ${script.blockerCount} · warning ${script.warningCount}</p>
@@ -198,7 +199,8 @@ function renderScriptTableHtml(script: ScriptAnalysisBlock): string {
       </thead>
       <tbody>${rows}</tbody>
     </table>
-    ${script.suggestions.length ? `<ul class="analysis-suggestions">${script.suggestions.map((s) => `<li>${escapeHtml(s)}</li>`).join('')}</ul>` : ''}`;
+    ${script.suggestions.length ? `<ul class="analysis-suggestions">${script.suggestions.map((s) => `<li>${escapeHtml(s)}</li>`).join('')}</ul>` : ''}
+    </div>`;
 }
 
 function escapeHtml(s: string): string {
@@ -207,6 +209,12 @@ function escapeHtml(s: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function renderInlineDiffThumb(diffImagePath?: string): string {
+  if (!diffImagePath) return '—';
+  const src = escapeHtml(diffImagePath).replace(/'/g, '&#39;');
+  return `<img class="issues-diff-thumb" src="${src}" alt="diff" loading="lazy" onclick="openModal('${src}')" title="点击放大">`;
 }
 
 function renderMarkdown(analysis: PlainLanguageAnalysis): string {
@@ -335,7 +343,13 @@ export function generateAnalysisTabHtml(analysis: PlainLanguageAnalysis): string
     <div class="analysis-wrap">
       <h3 class="analysis-heading">总览</h3>
       ${overviewTable}
-      <h3 class="analysis-heading">分脚本（已合并重复）</h3>
+      <p class="analysis-filter-summary issues-hint" id="analysis-filter-summary" style="display: none;"></p>
+      <div class="empty-state analysis-browser-empty" id="analysis-browser-empty" style="display: none;">
+        <div class="empty-state-icon">📋</div>
+        <div class="empty-state-title">当前浏览器筛选下暂无问题</div>
+        <div class="empty-state-description">可切换 chrome、webkit 或「跨浏览器」查看其他对比类型。</div>
+      </div>
+      <h3 class="analysis-heading analysis-scripts-heading">分脚本（已合并重复）</h3>
       ${scriptsHtml}
     </div>`;
 }
