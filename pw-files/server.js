@@ -2941,7 +2941,14 @@ async function startRecording(ws, session, url) {
   const repoReady = fs.existsSync(path.join(repoRoot, 'playwright.config.ts'));
   const envId = getSessionPlaywrightEnv(session);
   const profile = repoReady ? getSessionAccountProfile(session, repoRoot) : 'default';
-  const envEntry = repoReady ? getEnvEntryResolved(repoRoot, envId, profile) : null;
+  let envEntry = repoReady ? getEnvEntryResolved(repoRoot, envId, profile) : null;
+
+  if (repoReady && envEntry?.storageState && !envEntry?.hasStorage) {
+    logLine(ws, `[env] storageState 无效，自动执行 login.setup…`, 'info');
+    await runAccountLogin(ws, session);
+    envEntry = getEnvEntryResolved(repoRoot, envId, profile);
+  }
+
   const recordUrl = (url && String(url).trim()) || envEntry?.baseURL || url;
   session.lastUrl = recordUrl;
 

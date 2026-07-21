@@ -640,18 +640,24 @@ npm run rename-recordings
 
 ### 推荐：一键全流程（本地）
 
+主命令别名：`npm run test:flow`（同 `auto-test`）
+
 ```bash
-# 录制 → 优化 → 执行（optimized + webkit）→ 截图对比
+# 录制 → pipeline（预处理+优化）→ 执行 → 截图对比
 npm run auto-test
 
-# 指定某条 raw 录制（不只用「最新一条」）
-npm run auto-test -- --spec tests/raw-recordings/2026-05-18/我的用例.spec.ts
+# Studio original 路径
+npm run auto-test -- --spec tests/raw-recordings/original/stage/260612/xxx.spec.ts
 
-# 批量：raw-recordings 下全部用例
-npm run auto-test -- --batch
+# 批量 + 并行 workers
+npm run auto-test -- --batch --workers=2
+
+# 质检 / 门禁
+npm run auto-test -- --analyze-gate --gate
 
 # 对比存在 blocker 时整个流程失败（与 CI 一致）
 npm run auto-test -- --gate
+```
 ```
 
 **产出**：

@@ -14,6 +14,7 @@ import {
   type JobSummaryFile,
 } from './job-lock.js';
 import { readUiIssuesSummaryLine, sendJobFeishuNotification, readUiIssuesSummaryCounts, buildJobFailReasons } from './job-notify.js';
+import { getAnalyzeErrorsSummary, runAnalyzeErrorsOnFailure } from '../flow/flow-shared.js';
 import {
   formatRunId,
   isProcessAlive,
@@ -51,6 +52,8 @@ export type DirectRunOptions = {
   alwaysCreateFeishuDoc?: boolean;
   /** 覆盖 Job specs glob，仅执行指定相对路径用例 */
   specOverrides?: string[];
+  /** flake 失败重跑次数（默认 0） */
+  retryOnFail?: number;
 };
 
 export type JobRunContext = {
@@ -192,15 +195,27 @@ async function executeTests(
         if (env.PLAYWRIGHT_ACCOUNT) {
           console.log(`   PLAYWRIGHT_ACCOUNT=${env.PLAYWRIGHT_ACCOUNT}`);
         }
-        try {
-          execSync(`npx playwright test "${relPath}" --project=${project} --workers=1 ${reporter}`.trim(), {
-            stdio: 'inherit',
-            env,
-          });
+        const maxRetry = opts.retryOnFail ?? 0;
+        let passed = false;
+        for (let attempt = 0; attempt <= maxRetry; attempt++) {
+          if (attempt > 0) console.log(`   🔁 重试 ${attempt}/${maxRetry}…`);
+          try {
+            execSync(`npx playwright test "${relPath}" --project=${project} --workers=1 ${reporter}`.trim(), {
+              stdio: 'inherit',
+              env,
+            });
+            passed = true;
+            break;
+          } catch {
+            if (attempt >= maxRetry) {
+              console.error(`❌ ${relPath} 测试失败 (${project})`);
+            }
+          }
+        }
+        if (passed) {
           console.log(`✅ ${relPath} 测试通过 (${project})`);
           totalSuccessCount++;
-        } catch {
-          console.error(`❌ ${relPath} 测试失败 (${project})`);
+        } else {
           totalFailCount++;
           if (opts.stopOnTestFailure) {
             aborted = true;
@@ -267,6 +282,7 @@ export async function runJobById(
       notifyOn: job.notifyOn,
       alwaysCreateFeishuDoc: job.steps.createFeishuDoc,
       specOverrides: ctxPartial.specOverrides,
+      retryOnFail: Number(process.env.RETRY_ON_FAIL || '0') || 0,
     },
     ctx,
   );
@@ -402,6 +418,9 @@ export async function runDirect(opts: DirectRunOptions, ctx: JobRunContext): Pro
   );
 
   const testPassed = totalFailCount === 0 && !aborted;
+  if (!testPassed) {
+    runAnalyzeErrorsOnFailure();
+  }
   let comparePassed = true;
   let compareSkipped = false;
   let feishuDocPassed = true;
@@ -487,6 +506,7 @@ export async function runDirect(opts: DirectRunOptions, ctx: JobRunContext): Pro
       feishuDocPassed,
       aborted,
       uiIssuesSummary: readUiIssuesSummaryLine(),
+      errorSummary: testPassed ? undefined : getAnalyzeErrorsSummary(),
     });
   }
 

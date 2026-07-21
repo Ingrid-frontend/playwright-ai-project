@@ -2,7 +2,9 @@
  * 统一优化入口：根据路径类型转发到对应实现。
  * - 无参数：等同 `optimize-raw-recordings`（默认处理 tests/raw-recordings）
  * - 目录：递归批量 → optimize-raw-recordings.ts
- * - 单文件：→ optimize-recorded-test.ts（**deprecated**，请优先 raw-recordings + optimize-raw-recordings）
+ * - 单文件：→ optimize-recorded-test.ts（**deprecated**，请优先 pipeline-raw-to-optimized）
+ *
+ * 推荐：`npm run test:pipeline` 或 `npm run pipeline-raw-to-optimized`
  */
 import { spawnSync } from 'child_process';
 import fs from 'fs';
@@ -47,3 +49,4 @@ if (stat.isDirectory()) {
 }
 
 runTsx('scripts/optimize/optimize-recorded-test.ts', [resolved]);
+console.warn('⚠️  单文件 optimize 路径已 deprecated，请使用: npm run pipeline-raw-to-optimized -- <path>');

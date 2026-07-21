@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   test:
@@ -37,6 +38,18 @@ jobs:
 
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps
+
+      - name: Verify spec-meta
+        run: node scripts/verify/verify-spec-meta-flow.cjs --env=stage
+
+      - name: Pipeline raw recordings (PR only)
+        if: github.event_name == 'pull_request'
+        run: |
+          if git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -q '^tests/raw-recordings/'; then
+            npm run pipeline-raw-to-optimized
+          else
+            echo "No raw-recordings changes, skip pipeline"
+          fi
 
       - name: Login (storage state)
         run: npm run login
@@ -104,8 +117,9 @@ jobs:
 
       - name: Feishu notify on failure
         if: failure() && secrets.FEISHU_WEBHOOK_URL != ''
-        run: npx tsx scripts/flow/auto-test-flow.ts --feishu-mode=interactive
+        run: npx tsx scripts/flow/notify-failure.ts
         env:
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
           FEISHU_WEBHOOK_SECRET: ${{ secrets.FEISHU_WEBHOOK_SECRET }}
+          FEISHU_MODE: interactive
         continue-on-error: true

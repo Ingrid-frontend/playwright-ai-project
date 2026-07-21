@@ -1,4 +1,26 @@
+import { createRequire } from 'module';
 import { runDirect } from '../jobs/job-runner.js';
+
+const requireCjs = createRequire(import.meta.url);
+const { cleanSpecScreenshots } = requireCjs('../../src/utils/clean-spec-screenshots.cjs') as {
+  cleanSpecScreenshots: (
+    repoRoot: string,
+    specRel: string,
+    opts?: { mode?: 'all' | 'latest'; cleanDiffs?: boolean },
+  ) => { removed: string[]; message?: string };
+};
+
+function cleanFailedSpecs(specRels: string[]): void {
+  const repoRoot = process.cwd();
+  for (const rel of specRels) {
+    const r = cleanSpecScreenshots(repoRoot, rel, { mode: 'latest', cleanDiffs: true });
+    if (r.removed.length) {
+      console.log(`🧹 已清理 ${rel}: ${r.removed.join(', ')}`);
+    } else if (r.message) {
+      console.log(`ℹ️  ${rel}: ${r.message}`);
+    }
+  }
+}
 
 function printHelp(): void {
   console.log(`用法: tsx scripts/flow/run-optimized-tests.ts [选项]
@@ -10,7 +32,7 @@ function printHelp(): void {
   --optimized-dir=<path>    扫描根目录（默认 tests/optimized；可用环境变量 OPTIMIZED_TESTS_DIR）
   --stop, -s                某一用例失败后不再执行后续用例（仍会继续对比/飞书步骤）
   --verbose, -v             playwright 附加 --reporter=list
-  --clean                   预留：文档中的清理失败截图；当前版本仅打印提示后跳过
+  --clean                   失败用例清理最新 run 截图与 diffs
   -h, --help                显示帮助
 `);
 }
@@ -72,7 +94,7 @@ async function main(): Promise<void> {
   const { verbose, stopOnError, clean, projects, optimizedDir } = parseCli(process.argv.slice(2));
 
   if (clean) {
-    console.log('ℹ️  --clean（按文档清理失败用例截图）当前版本未实现，已跳过；可手动清理 screenshots / test-results。\n');
+    console.log('ℹ️  --clean 将在失败时清理最新 run 截图\n');
   }
 
   console.log(
@@ -89,6 +111,7 @@ async function main(): Promise<void> {
       runCompareAfterAbort: true,
       verbose,
       playwrightEnv: process.env.PLAYWRIGHT_ENV?.trim() || 'stage',
+      retryOnFail: Number(process.env.RETRY_ON_FAIL || '0') || 0,
       steps: {
         login: false,
         compare: true,
@@ -108,6 +131,11 @@ async function main(): Promise<void> {
       persistState: false,
     },
   );
+
+  if (clean && !result.testPassed && result.summary.specPaths?.length) {
+    console.log('\n🧹 --clean：清理失败用例最新 run 截图…');
+    cleanFailedSpecs(result.summary.specPaths);
+  }
 
   if (result.exitCode === 0) {
     console.log('\n🎉 所有步骤执行成功！');

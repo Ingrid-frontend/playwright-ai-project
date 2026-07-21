@@ -43,7 +43,7 @@ npm run test-job:daemon
 | `jobs[].stopOnTestFailure` | 用例失败即停 |
 | `jobs[].stopOnCompareGate` | UI gate blocker 时任务失败 |
 | `jobs[].runCompareAfterAbort` | 中断后是否仍跑对比 |
-| `jobs[].steps.*` | login / compare / compareGate / feishuNotify 等 |
+| `jobs[].steps.compareGate` | UI gate blocker 时任务失败（**defaults 默认 true**；smoke 等可显式 `false`） |
 
 ## 运行状态
 

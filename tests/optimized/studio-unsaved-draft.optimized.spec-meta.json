@@ -5,8 +5,8 @@
   "loginAccount": "183***@e-elitech.com",
   "loginUserId": "17437047",
   "storageStateRel": "storage/loginState/stage.json",
-  "recordedAt": "2026-06-09T08:48:16.072Z",
+  "recordedAt": "2026-07-21T08:50:05.741Z",
   "recordSource": "studio",
-  "rawOriginalRel": "tests/raw-recordings/original/stage/260612/studio-unsaved-draft.spec.ts",
+  "rawOriginalRel": "tests/raw-recordings/original/stage/260717/studio-unsaved-draft.spec.ts",
   "optimizedRel": "tests/optimized/studio-unsaved-draft.optimized.spec.ts"
 }

@@ -13,6 +13,7 @@ export type JobNotifySummary = {
   feishuDocPassed: boolean;
   aborted?: boolean;
   uiIssuesSummary?: string;
+  errorSummary?: string;
 };
 
 function buildResultMarkdown(summary: JobNotifySummary): string {
@@ -33,6 +34,9 @@ function buildResultMarkdown(summary: JobNotifySummary): string {
   if (summary.uiIssuesSummary) {
     lines.push(summary.uiIssuesSummary);
     lines.push('报告：`results/screenshot-comparison.html` · `results/ui-issues.json`');
+  }
+  if (summary.errorSummary) {
+    lines.push(summary.errorSummary);
   }
   return lines.join('\n');
 }

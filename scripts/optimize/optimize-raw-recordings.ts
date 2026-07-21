@@ -60,18 +60,35 @@ interface TestBlock {
   bodyStart: number;
 }
 
-/** 生成用例时注入的等待/超时（偏短，依赖 Playwright auto-wait + waitForPostInteractionPaint） */
-const GEN_WAIT = {
-  testTimeoutMs: 90_000,
-  networkIdleGotoMs: 5_000,
-  networkIdleAfterMs: 5_000,
-  skipGuardVisibleMs: 4_000,
-  iframeAttachedMs: 12_000,
-  expectVisibleIframeMs: 12_000,
-  expectVisibleMs: 8_000,
-  locatorVisibleIframeMs: 12_000,
-  locatorVisibleMs: 6_000,
-} as const;
+function numEnv(key: string, fallback: number): number {
+  const v = process.env[key]?.trim();
+  if (!v) return fallback;
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+/** 生成用例时注入的等待/超时（可通过 GEN_WAIT_* 环境变量覆盖） */
+function loadGenWait() {
+  return {
+    testTimeoutMs: numEnv('GEN_WAIT_TEST_TIMEOUT_MS', 90_000),
+    networkIdleGotoMs: numEnv('GEN_WAIT_NETWORK_IDLE_GOTO_MS', 5_000),
+    networkIdleAfterMs: numEnv('GEN_WAIT_NETWORK_IDLE_AFTER_MS', 5_000),
+    skipGuardVisibleMs: numEnv('GEN_WAIT_SKIP_GUARD_VISIBLE_MS', 4_000),
+    iframeAttachedMs: numEnv('GEN_WAIT_IFRAME_ATTACHED_MS', 12_000),
+    expectVisibleIframeMs: numEnv('GEN_WAIT_EXPECT_VISIBLE_IFRAME_MS', 12_000),
+    expectVisibleMs: numEnv('GEN_WAIT_EXPECT_VISIBLE_MS', 8_000),
+    locatorVisibleIframeMs: numEnv('GEN_WAIT_LOCATOR_VISIBLE_IFRAME_MS', 12_000),
+    locatorVisibleMs: numEnv('GEN_WAIT_LOCATOR_VISIBLE_MS', 6_000),
+  };
+}
+
+let GEN_WAIT = loadGenWait();
+
+/** after-only：仅 after 截图；both：before+after（默认） */
+export function getScreenshotMode(): 'after-only' | 'both' {
+  const v = (process.env.OPTIMIZE_SCREENSHOT || process.argv.find((a) => a.startsWith('--screenshot='))?.slice('--screenshot='.length) || 'both').toLowerCase();
+  return v === 'after-only' ? 'after-only' : 'both';
+}
 
 // 优化选项
 interface OptimizeOptions {
@@ -714,6 +731,12 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
     return criticalKeywords.some((kw) => label.includes(kw));
   }
 
+  private beforeScreenshotLine(stepIndex: number, fileLabel: string, runDirVariable: string): string {
+    if (getScreenshotMode() === 'after-only') return '';
+    return `    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`));
+`;
+  }
+
   private generateActionCode(action: Action, stepIndex: number, runDirVariable: string): string {
     const label = this.getActionLabel(action);
     const fileLabel = this.cleanLabel(label) || `step-${stepIndex}`;
@@ -741,8 +764,7 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
     switch (action.type) {
       case 'click':
         return `  await step('${label}', async () => {
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`));
-    ${this.buildLocatorDeclaration(action, locatorCode)}
+${this.beforeScreenshotLine(stepIndex, fileLabel, runDirVariable)}    ${this.buildLocatorDeclaration(action, locatorCode)}
 ${skipGuard}${visibleLine}    await smartClick(locator, '${label}');
     await page.waitForLoadState('networkidle', { timeout: ${GEN_WAIT.networkIdleAfterMs} }).catch(() => {});
     await waitForPostInteractionPaint(page);
@@ -754,8 +776,7 @@ ${skipGuard}${visibleLine}    await smartClick(locator, '${label}');
       case 'type':
         const text = action.text || '';
         return `  await step('${label}', async () => {
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`));
-    ${this.buildLocatorDeclaration(action, locatorCode)}
+${this.beforeScreenshotLine(stepIndex, fileLabel, runDirVariable)}    ${this.buildLocatorDeclaration(action, locatorCode)}
 ${skipGuard}${visibleLine}    await smartFill(locator, "${text}", '${label}');
     await page.waitForLoadState('networkidle', { timeout: ${GEN_WAIT.networkIdleAfterMs} }).catch(() => {});
     await waitForPostInteractionPaint(page);
@@ -765,8 +786,7 @@ ${skipGuard}${visibleLine}    await smartFill(locator, "${text}", '${label}');
 `;
       case 'check':
         return `  await step('${label}', async () => {
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`));
-    ${this.buildLocatorDeclaration(action, locatorCode)}
+${this.beforeScreenshotLine(stepIndex, fileLabel, runDirVariable)}    ${this.buildLocatorDeclaration(action, locatorCode)}
 ${skipGuard}${visibleLine}    try {
       await locator.waitFor({ state: 'visible', timeout: ${locatorVisibleTimeout} });
     } catch (e) {
@@ -787,8 +807,7 @@ ${skipGuard}${visibleLine}    try {
 `;
       case 'selectOption':
         return `  await step('${label}', async () => {
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`));
-    ${this.buildLocatorDeclaration(action, locatorCode)}
+${this.beforeScreenshotLine(stepIndex, fileLabel, runDirVariable)}    ${this.buildLocatorDeclaration(action, locatorCode)}
 ${skipGuard}${visibleLine}    try {
       await locator.waitFor({ state: 'visible', timeout: ${locatorVisibleTimeout} });
     } catch (e) {
@@ -809,8 +828,7 @@ ${skipGuard}${visibleLine}    try {
 `;
       case 'press':
         return `  await step('${label}', async () => {
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`));
-    ${this.buildLocatorDeclaration(action, locatorCode)}
+${this.beforeScreenshotLine(stepIndex, fileLabel, runDirVariable)}    ${this.buildLocatorDeclaration(action, locatorCode)}
 ${skipGuard}${visibleLine}    try {
       await locator.waitFor({ state: 'visible', timeout: ${locatorVisibleTimeout} });
     } catch (e) {
@@ -1081,6 +1099,7 @@ function findSpecFiles(dir: string): string[] {
 }
 
 async function main() {
+  GEN_WAIT = loadGenWait();
   const stats = fs.statSync(targetPath);
   
   if (stats.isDirectory()) {

@@ -12,7 +12,7 @@
     "steps": {
       "login": true,
       "compare": true,
-      "compareGate": false,
+      "compareGate": true,
       "recordLastGreen": true,
       "feishuNotify": true,
       "createFeishuDoc": false,

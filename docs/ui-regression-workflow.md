@@ -31,13 +31,16 @@ flowchart LR
 
 | 命令 | 作用 |
 |------|------|
-| `npm run auto-test` | 录制 → 优化 → 执行 → 对比（本地） |
-| `npm run auto-test -- --spec tests/raw-recordings/.../x.spec.ts` | 指定 raw 录制 |
-| `npm run auto-test -- --batch` | 批量处理 raw-recordings 下全部用例 |
-| `npm run auto-test -- --gate` | 对比存在 blocker 时流程失败 |
+| `npm run test:flow` / `npm run auto-test` | 录制 → pipeline → 执行 → 对比 |
+| `npm run test:pipeline` | 预处理 + 优化（同 Studio「生成用例」） |
+| `npm run test:regression -- --id=...` | 配置化 Job 回归 |
+| `npm run auto-test -- --spec tests/raw-recordings/.../x.spec.ts` | 指定 raw（含 `original/`） |
+| `npm run auto-test -- --from-original` | 扫描含 original 备份 |
+| `npm run auto-test -- --batch --workers=2` | 批量并行执行 |
+| `npm run auto-test -- --analyze-gate --gate` | 脚本质检 + UI 门禁 |
 | `npm run compare-screenshots` | 生成 HTML + `ui-issues.json` |
 | `npm run compare-screenshots -- --gate` | 存在 blocker 时 exit 1 |
-| `npm run promote-baseline -- --script 260612/xxx --run <timestamp>` | 提升 Golden |
+| `npm run promote-baseline -- --script 260612/xxx --latest` | 提升最新 run 为 Golden |
 | `npm run promote-baseline -- --script 260612/xxx --revert` | 撤销 Golden |
 | `npm run screenshot-report` | 对比并打开报告 |
 | `npm run studio` | Studio：问题列表、Promote Golden |

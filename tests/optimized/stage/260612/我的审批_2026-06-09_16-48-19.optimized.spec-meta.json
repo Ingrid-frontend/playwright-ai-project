@@ -2,11 +2,11 @@
   "version": 1,
   "playwrightEnv": "stage",
   "accountProfile": "default",
-  "loginAccount": "183***@e-elitech.com",
+  "loginAccount": null,
   "loginUserId": "17437047",
   "storageStateRel": "storage/loginState/stage.json",
-  "recordedAt": "2026-06-09T08:48:19.873Z",
+  "recordedAt": "2026-06-09T12:11:40.986Z",
   "recordSource": "studio",
-  "rawOriginalRel": "tests/raw-recordings/original/stage/260612/我的审批_2026-06-09_16-48-19.spec.ts",
+  "rawOriginalRel": "tests/raw-recordings/original/stage/260612/我的审批_2026-06-09_20-11-40.spec.ts",
   "optimizedRel": "tests/optimized/stage/260612/我的审批_2026-06-09_16-48-19.optimized.spec.ts"
 }

@@ -23,7 +23,7 @@ interface AnalysisResult {
   };
 }
 
-class TestAnalyzer {
+export class TestAnalyzer {
   private filePath: string;
   private content: string;
   private lines: string[];
@@ -418,29 +418,61 @@ class TestAnalyzer {
   }
 }
 
-function main() {
-  const args = process.argv.slice(2);
-  
-  if (args.length === 0) {
-    console.log('使用方法: npm run analyze-test <测试文件路径>');
-    console.log('示例: npm run analyze-test tests/raw-recordings/2026-03-02T10-20-26.spec.ts');
+export function analyzeTestFile(
+  filePath: string,
+  opts?: { outputPath?: string; gate?: boolean; quiet?: boolean },
+): { errorCount: number; warningCount: number; reportPath: string } {
+  const analyzer = new TestAnalyzer(filePath);
+  const result = analyzer.analyze();
+  const errorCount = result.issues.filter((i) => i.type === 'error').length;
+  const warningCount = result.issues.filter((i) => i.type === 'warning').length;
+  const reportPath =
+    opts?.outputPath ||
+    path.join('results/analysis', path.basename(filePath, path.extname(filePath)) + '.json');
+  analyzer.saveReport(reportPath);
+  if (!opts?.quiet) {
+    analyzer.printReport();
+  }
+  if (opts?.gate && errorCount > 0) {
+    console.error(`❌ analyze-test gate 失败：${errorCount} 个 error 级问题`);
     process.exit(1);
   }
+  return { errorCount, warningCount, reportPath };
+}
 
-  const filePath = args[0];
-  
-  if (!fs.existsSync(filePath)) {
-    console.error(`❌ 文件不存在: ${filePath}`);
+function main() {
+  const args = process.argv.slice(2).filter((a) => a !== '--');
+
+  if (args.length === 0 || args.includes('-h') || args.includes('--help')) {
+    console.log('使用方法: npm run analyze-test <测试文件路径> [--output=path] [--gate]');
+    console.log('示例: npm run analyze-test tests/raw-recordings/2026-03-02T10-20-26.spec.ts');
+    process.exit(args.length === 0 ? 1 : 0);
+  }
+
+  let filePath = '';
+  let outputPath: string | undefined;
+  let gate = false;
+  for (const arg of args) {
+    if (arg.startsWith('--output=')) {
+      outputPath = arg.slice('--output='.length).trim();
+    } else if (arg === '--gate') {
+      gate = true;
+    } else if (!arg.startsWith('--')) {
+      filePath = arg;
+    }
+  }
+
+  if (!filePath || !fs.existsSync(filePath)) {
+    console.error(`❌ 文件不存在: ${filePath || '(未指定)'}`);
     process.exit(1);
   }
 
   console.log(`🔍 正在分析测试脚本: ${filePath}`);
-  
-  const analyzer = new TestAnalyzer(filePath);
-  analyzer.printReport();
-  analyzer.saveReport();
-  
+  analyzeTestFile(filePath, { outputPath, gate });
   console.log('\n✨ 分析完成！');
 }
 
-main();
+const isMain =
+  process.argv[1]?.includes('analyze-test.ts') ||
+  process.argv[1]?.includes('analyze-test.js');
+if (isMain) main();

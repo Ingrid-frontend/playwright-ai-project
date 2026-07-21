@@ -79,6 +79,8 @@ function main(): void {
   if (prep.status !== 0) process.exit(prep.status === null ? 1 : prep.status);
 
   const dirs = uniqueProcessedDirs(inputFiles);
+  const useAi = process.argv.includes('--ai') || process.env.PIPELINE_AI === '1';
+
   console.log('\n━━ 2/2 optimize-raw-recordings ━━\n');
   for (const d of dirs) {
     if (!fs.existsSync(d)) continue;
@@ -86,7 +88,38 @@ function main(): void {
     runOptimize(d);
   }
 
+  if (useAi) {
+    console.log('\n━━ 3/3 AI 精修（optimize:ai）━━\n');
+    for (const f of inputFiles) {
+      const stem = path.basename(f, '.spec.ts');
+      const optimizedCandidates = collectOptimizedCandidates(stem);
+      for (const opt of optimizedCandidates) {
+        runCommand(`npx tsx scripts/optimize/optimize-with-ai.ts "${opt}" --out="${opt}"`, true);
+      }
+    }
+  }
+
   console.log('\n🎉 pipeline 完成');
+}
+
+function collectOptimizedCandidates(stem: string): string[] {
+  const base = path.join(projectRoot, 'tests/optimized');
+  const out: string[] = [];
+  function walk(dir: string) {
+    if (!fs.existsSync(dir)) return;
+    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, ent.name);
+      if (ent.isDirectory()) walk(full);
+      else if (ent.name === `${stem}.optimized.spec.ts`) out.push(full);
+    }
+  }
+  walk(base);
+  return out.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs).slice(0, 1);
+}
+
+function runCommand(cmd: string, optional = false): void {
+  const r = spawnSync(cmd, { cwd: projectRoot, stdio: 'inherit', shell: true });
+  if (r.status !== 0 && !optional) process.exit(r.status === null ? 1 : r.status);
 }
 
 main();

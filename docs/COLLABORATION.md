@@ -65,6 +65,26 @@ git commit -m "feat: 新增 XXX 场景用例"
 git push
 ```
 
+## 维护 Runbook
+
+| 场景 | 命令 |
+|------|------|
+| raw 备份 → optimized | `npm run test:pipeline -- tests/raw-recordings/original/...` |
+| 补全 spec-meta | `npm run migrate:backfill-spec-meta` |
+| 路径加 env 段 | `npm run migrate:test-env-paths` |
+| 按日期整理录制 | `npm run organize-files-by-date` |
+| 重命名录制文件 | `npm run rename-recordings` |
+| 校验 meta 一致性 | `node scripts/verify/verify-spec-meta-flow.cjs` |
+| 追加 UI mask 区域 | `npm run ui-regression:add-mask -- --script=... --region=x,y,w,h` |
+| POM（可选，稳定核心页） | `ENABLE_POM=1 npm run generate-pom -- <raw.spec.ts>` |
+
+目录约定：
+
+- CLI 录制：`tests/raw-recordings/<dateCategory>/` + 备份 `original/`
+- Studio 入库：`tests/raw-recordings/original/<env>/<dateCategory>/`
+- 预处理产物：`.../processed/*.spec.ts`
+- 可执行用例：`tests/optimized/<env>/<dateCategory>/*.optimized.spec.ts`
+
 ## 👥 团队协作流程
 
 ### 1. 分工协作
