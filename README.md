@@ -497,7 +497,18 @@ npm run test:debug
 
 # 查看测试报告
 npm run report
+
+# CI 同款 headless 回归（optimized + webkit + 截图 gate）
+npm run test:ci
+
+# 打包可分享静态报告（Playwright HTML + UI 对比）
+npm run report:bundle
+
+# 打开最新失败 trace
+npm run trace:show
 ```
+
+Headless 执行与报告分享详见 [docs/headless-report-sharing.md](docs/headless-report-sharing.md)。
 
 ## 🎥 录制流程：`npm run record` 会做什么？
 

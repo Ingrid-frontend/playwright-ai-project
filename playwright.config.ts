@@ -56,7 +56,13 @@ export default defineConfig({
     // 注意：storageState 在各个项目中单独配置，setup 项目除外
     
     /* 稳定性与调试配置 */
-    trace: 'on-first-retry',
+    trace: (process.env.PLAYWRIGHT_TRACE ||
+      (process.env.CI ? 'retain-on-failure' : 'on-first-retry')) as
+      | 'on'
+      | 'off'
+      | 'retain-on-failure'
+      | 'on-first-retry'
+      | 'on-all-retries',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     

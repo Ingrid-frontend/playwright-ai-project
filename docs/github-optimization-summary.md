@@ -37,16 +37,9 @@
 
 ## 📈 可选的进一步优化
 
-### 1. 添加GitHub Pages部署测试报告
+### 1. GitHub Pages 部署测试报告（已实现，可选启用）
 
-```yaml
-- name: Deploy to GitHub Pages
-  if: success()
-  uses: peaceiris/actions-gh-pages@v3
-  with:
-    github_token: ${{ secrets.GITHUB_TOKEN }}
-    publish_dir: playwright-report
-```
+`playwright.yml` 已支持 `workflow_dispatch` + **Publish reports to GitHub Pages**，产物为 `public-reports/`（Playwright HTML + UI 对比入口）。详见 [headless-report-sharing.md](./headless-report-sharing.md)。
 
 ### 2. 添加Slack/Email通知
 
@@ -98,7 +91,7 @@
 ### 推荐项
 - [ ] 设置仓库为Private
 - [ ] 启用Branch Protection
-- [ ] 添加GitHub Pages部署
+- [x] 添加 GitHub Pages 部署（workflow_dispatch 可选发布）
 - [ ] 添加Slack/Email通知
 - [ ] 添加依赖安全扫描
 - [ ] 添加代码覆盖率

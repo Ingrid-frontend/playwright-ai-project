@@ -4,7 +4,12 @@ import { sendJobFeishuNotification } from '../jobs/job-notify.js';
 import { getAnalyzeErrorsSummary } from './flow-shared.js';
 
 async function main(): Promise<void> {
-  const mode = (process.env.FEISHU_MODE || 'interactive') as 'interactive' | 'text' | 'links' | 'none';
+  const mode = (process.env.FEISHU_MODE ||
+    (process.env.ENABLE_GITHUB === '1' ? 'links' : 'interactive')) as
+    | 'interactive'
+    | 'text'
+    | 'links'
+    | 'none';
   await sendJobFeishuNotification(mode, {
     trigger: 'ci',
     testPassed: false,

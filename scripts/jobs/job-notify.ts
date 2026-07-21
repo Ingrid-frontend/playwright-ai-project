@@ -38,6 +38,9 @@ function buildResultMarkdown(summary: JobNotifySummary): string {
   if (summary.errorSummary) {
     lines.push(summary.errorSummary);
   }
+  if (process.env.GITHUB_RUN_ID) {
+    lines.push('**报告**：Actions 下载 Artifact `public-reports`，解压 `index.html` 用浏览器打开');
+  }
   return lines.join('\n');
 }
 
@@ -105,19 +108,20 @@ export async function sendJobFeishuNotification(
       const githubRunId = process.env.GITHUB_RUN_ID || '';
       const githubRunUrl = `https://github.com/${githubRepository}/actions/runs/${githubRunId}`;
       const [owner, repo] = githubRepository.split('/');
-      const githubPagesUrl = `https://${owner}.github.io/${repo}/screenshot-comparison.html`;
+      const publicBase =
+        process.env.PUBLIC_REPORT_URL?.replace(/\/$/, '') || `https://${owner}.github.io/${repo}`;
       elements.push({
         tag: 'action',
         actions: [
           {
             tag: 'button',
-            text: { tag: 'plain_text', content: '🌐 在线预览' },
+            text: { tag: 'plain_text', content: '📊 在线报告' },
             type: 'primary',
-            url: githubPagesUrl,
+            url: `${publicBase}/`,
           },
           {
             tag: 'button',
-            text: { tag: 'plain_text', content: '📥 下载报告' },
+            text: { tag: 'plain_text', content: '📥 CI Artifacts' },
             type: 'default',
             url: githubRunUrl,
           },
