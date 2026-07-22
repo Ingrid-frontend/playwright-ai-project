@@ -1,11 +1,14 @@
 import fs from 'fs';
 import path from 'path';
+import { isFlakeError } from './flake-patterns.js';
 
 class ErrorReporter {
   constructor() {
     this.errors = [];
     this.startTime = Date.now();
     this.testStartTimes = new Map();
+    this.passed = 0;
+    this.failed = 0;
   }
 
   onBegin() {
@@ -22,9 +25,16 @@ class ErrorReporter {
   onTestEnd(test, result) {
     const testDuration = Date.now() - (this.testStartTimes.get(test.title) || this.startTime);
 
+    if (result.status === 'passed') {
+      this.passed++;
+      return;
+    }
+
     if (result.status === 'failed' || result.status === 'timedOut') {
+      this.failed++;
       const errorMessage = this.cleanErrorMessage(result.error?.message || 'Unknown error');
       const errorStack = this.cleanErrorMessage(result.error?.stack);
+      const isFlake = isFlakeError(`${errorMessage}\n${errorStack}`);
       
       const errorLocation = this.extractErrorLocation(errorStack);
       
@@ -33,6 +43,7 @@ class ErrorReporter {
         testName: test.title,
         error: errorMessage,
         stack: errorStack,
+        isFlake,
         errorLine: errorLocation.line,
         errorColumn: errorLocation.column,
         errorFile: errorLocation.file,
@@ -41,7 +52,7 @@ class ErrorReporter {
       };
 
       this.errors.push(errorInfo);
-      console.log(`❌ 测试失败: ${test.title}`);
+      console.log(`${isFlake ? '⚡' : '❌'} 测试失败${isFlake ? '（flake）' : ''}: ${test.title}`);
       console.log(`   错误: ${errorMessage}`);
       console.log(`   文件: ${errorInfo.testFile}`);
       if (errorLocation.file) {
@@ -52,15 +63,69 @@ class ErrorReporter {
 
   onEnd() {
     const totalDuration = Date.now() - this.startTime;
+    const flakeFailed = this.errors.filter((e) => e.isFlake).length;
     console.log(`\n📊 测试执行完成`);
     console.log(`   总耗时: ${Math.round(totalDuration / 1000)}s`);
-    console.log(`   失败数: ${this.errors.length}`);
+    console.log(`   通过: ${this.passed} · 失败: ${this.failed}（flake ${flakeFailed}）`);
+
+    this.saveTestHistory(totalDuration, flakeFailed);
 
     if (this.errors.length > 0) {
       this.saveErrors();
     } else {
       console.log(`✅ 所有测试通过，无错误需要记录`);
     }
+  }
+
+  saveTestHistory(totalDuration, flakeFailed) {
+    const historyDir = path.join('results', 'history');
+    if (!fs.existsSync(historyDir)) fs.mkdirSync(historyDir, { recursive: true });
+
+    const day = new Date().toISOString().slice(0, 10);
+    const historyFile = path.join(historyDir, `${day}.json`);
+    let file = { schemaVersion: 1, entries: [] };
+    if (fs.existsSync(historyFile)) {
+      try {
+        file = JSON.parse(fs.readFileSync(historyFile, 'utf-8'));
+      } catch {
+        file = { schemaVersion: 1, entries: [] };
+      }
+    }
+
+    let uiMetrics;
+    const uiPath = path.join('results', 'ui-issues.json');
+    if (fs.existsSync(uiPath)) {
+      try {
+        const ui = JSON.parse(fs.readFileSync(uiPath, 'utf-8'));
+        uiMetrics = ui.summary
+          ? { blocker: ui.summary.blocker, warning: ui.summary.warning, total: ui.summary.total }
+          : undefined;
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const entry = {
+      id: `${Date.now()}`,
+      runAt: new Date().toISOString(),
+      gitSha: process.env.GITHUB_SHA || process.env.GIT_COMMIT,
+      env: process.env.PLAYWRIGHT_ENV || process.env.NODE_ENV || 'stage',
+      passed: this.failed === 0,
+      failed: this.failed,
+      flakeFailed,
+      durationMs: totalDuration,
+      errors: this.errors.map((e) => ({
+        testFile: e.testFile,
+        testName: e.testName,
+        error: e.error,
+        isFlake: Boolean(e.isFlake),
+      })),
+      uiMetrics,
+    };
+
+    file.entries.push(entry);
+    fs.writeFileSync(historyFile, JSON.stringify(file, null, 2), 'utf-8');
+    console.log(`📈 测试历史已追加: ${historyFile}`);
   }
 
   cleanErrorMessage(message) {

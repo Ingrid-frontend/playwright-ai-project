@@ -39,6 +39,18 @@ const {
 } = require(path.join(__dirname, '../src/utils/test-env-path.cjs'));
 const { cleanSpecScreenshots } = require(path.join(__dirname, '../src/utils/clean-spec-screenshots.cjs'));
 const specMeta = require(path.join(__dirname, '../src/utils/spec-meta.cjs'));
+const {
+  DEFAULT_PLAYWRIGHT_ENV,
+  resolveRepoRoot,
+  loadRepoEnvironments,
+  getSessionPlaywrightEnv,
+  getEnvEntry,
+  getSessionAccountProfile,
+  getEnvEntryResolved,
+  buildRepoSpawnEnv,
+  buildStudioRunEnv,
+} = require('./lib/repo-context');
+const { send, logLine, now, stripAnsi, errText } = require('./lib/ws-safe');
 
 const PORT = process.env.PORT || 3001;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
@@ -48,110 +60,7 @@ const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
 /** 直接执行 CLI，避免 spawn(..., { shell: true }) + 参数数组触发 Node DEP0190 */
 const PLAYWRIGHT_CLI = path.join(__dirname, 'node_modules', '@playwright', 'test', 'cli.js');
 
-// ── 与主仓库融合：落盘 / pipeline / 在项目根执行 optimized ───────────────
-
-function resolveRepoRoot() {
-  if (process.env.PLAYWRIGHT_REPO_ROOT) {
-    const r = path.resolve(process.env.PLAYWRIGHT_REPO_ROOT);
-    if (fs.existsSync(path.join(r, 'playwright.config.ts'))) return r;
-  }
-  let dir = path.resolve(__dirname, '..');
-  for (let i = 0; i < 8; i++) {
-    if (fs.existsSync(path.join(dir, 'playwright.config.ts'))) return dir;
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return path.resolve(__dirname, '..');
-}
-
-const DEFAULT_PLAYWRIGHT_ENV = 'stage';
-
-/** 与 playwright.config / npm run record 一致：datasource/base-config.json */
-function loadRepoEnvironments(repoRoot) {
-  const configPath = path.join(repoRoot, 'datasource', 'base-config.json');
-  if (!fs.existsSync(configPath)) {
-    return { defaultEnv: DEFAULT_PLAYWRIGHT_ENV, environments: [] };
-  }
-  let raw;
-  try {
-    raw = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-  } catch (e) {
-    console.warn('[studio] 无法解析 base-config.json', e);
-    return { defaultEnv: DEFAULT_PLAYWRIGHT_ENV, environments: [] };
-  }
-  const environments = Object.keys(raw).map((id) => {
-    const c = raw[id] || {};
-    const storageRel = typeof c.storageState === 'string' ? c.storageState : '';
-    const storageAbs = storageRel ? path.resolve(repoRoot, storageRel) : '';
-    return {
-      id,
-      baseURL: typeof c.baseURL === 'string' ? c.baseURL : '',
-      storageState: storageRel,
-      hasStorage: Boolean(storageAbs && fs.existsSync(storageAbs)),
-    };
-  });
-  const defaultEnv =
-    (process.env.PLAYWRIGHT_ENV && environments.some((e) => e.id === process.env.PLAYWRIGHT_ENV)
-      ? process.env.PLAYWRIGHT_ENV
-      : null) ||
-    (environments.some((e) => e.id === DEFAULT_PLAYWRIGHT_ENV) ? DEFAULT_PLAYWRIGHT_ENV : null) ||
-    environments[0]?.id ||
-    DEFAULT_PLAYWRIGHT_ENV;
-  return { defaultEnv, environments };
-}
-
-function getSessionPlaywrightEnv(session) {
-  return session.playwrightEnv || process.env.PLAYWRIGHT_ENV || DEFAULT_PLAYWRIGHT_ENV;
-}
-
-function getEnvEntry(repoRoot, envId) {
-  const { environments } = loadRepoEnvironments(repoRoot);
-  return environments.find((e) => e.id === envId) || null;
-}
-
-function getSessionAccountProfile(session, repoRoot) {
-  const envId = getSessionPlaywrightEnv(session);
-  return repoEnv.resolveAccountProfile(repoRoot, envId, session.accountProfile);
-}
-
-function getEnvEntryResolved(repoRoot, envId, profileId) {
-  const entry = getEnvEntry(repoRoot, envId);
-  if (!entry) return null;
-  const storageRel = repoEnv.resolveStorageStateRel(repoRoot, envId, profileId);
-  return {
-    ...entry,
-    storageState: storageRel,
-    hasStorage: repoEnv.storageExists(repoRoot, storageRel),
-    accountProfile: repoEnv.resolveAccountProfile(repoRoot, envId, profileId),
-  };
-}
-
-function buildRepoSpawnEnv(session, profileOverride) {
-  const env = { ...process.env };
-  const id = getSessionPlaywrightEnv(session);
-  if (id) env.PLAYWRIGHT_ENV = id;
-  const repoRoot = resolveRepoRoot();
-  const prof = profileOverride || getSessionAccountProfile(session, repoRoot);
-  if (prof) env.PLAYWRIGHT_ACCOUNT = prof;
-  return env;
-}
-
-/** Studio 临时目录执行脚本：storageState / baseURL 须用仓库根绝对路径 */
-function buildStudioRunEnv(session) {
-  const env = buildRepoSpawnEnv(session);
-  const repoRoot = resolveRepoRoot();
-  const envId = getSessionPlaywrightEnv(session);
-  const profile = getSessionAccountProfile(session, repoRoot);
-  const resolved = getEnvEntryResolved(repoRoot, envId, profile);
-  if (resolved?.storageState) {
-    env.STORAGE_STATE_PATH = path.resolve(repoRoot, resolved.storageState);
-  }
-  if (resolved?.baseURL) {
-    env.PLAYWRIGHT_BASE_URL = resolved.baseURL;
-  }
-  return { env, resolved, repoRoot };
-}
+// repo-context / ws-safe 见 ./lib/
 
 function sendAccountInfo(ws, session, repoRoot, repoReady) {
   if (!repoReady) {
@@ -2733,28 +2642,7 @@ function cancelRun(session) {
   }
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────────
-function send(ws, type, data = {}) {
-  if (ws.readyState === 1) {
-    ws.send(JSON.stringify({ type, ...data }));
-  }
-}
-
-function logLine(ws, text, level = 'dim') {
-  send(ws, 'run:log', { text, level });
-}
-
-function now() { return new Date().toLocaleTimeString('zh-CN'); }
-
-function stripAnsi(text) {
-  return String(text).replace(/\x1b\[[0-9;]*m/g, '');
-}
-
-function errText(err) {
-  if (err == null) return '';
-  if (typeof err === 'string') return stripAnsi(err);
-  return stripAnsi(err.message || err.value || err.stack || String(err));
-}
+// ── Helpers（send/logLine/now/stripAnsi/errText 见 ./lib/ws-safe.js）────
 
 function findLastFailedStep(steps) {
   if (!Array.isArray(steps)) return null;
@@ -3818,10 +3706,15 @@ wss.on('connection', (ws) => {
 
   ws.on('message', async (raw) => {
     let msg;
-    try { msg = JSON.parse(raw); } catch { return; }
+    try {
+      msg = JSON.parse(raw);
+    } catch {
+      return;
+    }
 
     console.log(`[${now()}] MSG ${msg.type}`);
 
+    try {
     switch (msg.type) {
       case 'record:start':
         if (msg.env) session.playwrightEnv = String(msg.env);
@@ -4003,6 +3896,10 @@ wss.on('connection', (ws) => {
       case 'jobs:stop':
         await handleJobsStop(ws, msg);
         break;
+    }
+    } catch (err) {
+      console.error(`[${now()}] WS handler error:`, errText(err));
+      send(ws, 'error', { message: errText(err) || '服务器处理消息失败' });
     }
   });
 

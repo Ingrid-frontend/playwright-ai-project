@@ -425,10 +425,14 @@ function executeOptimizedBatch(
 }
 
 function readUiIssuesSummary(): UiIssuesReport['summary'] | undefined {
+  return readUiIssuesReport()?.summary;
+}
+
+function readUiIssuesReport(): UiIssuesReport | undefined {
   const p = path.join(process.cwd(), 'results/ui-issues.json');
   if (!fs.existsSync(p)) return undefined;
   try {
-    return (JSON.parse(fs.readFileSync(p, 'utf-8')) as UiIssuesReport).summary;
+    return JSON.parse(fs.readFileSync(p, 'utf-8')) as UiIssuesReport;
   } catch {
     return undefined;
   }
@@ -503,9 +507,14 @@ async function main(): Promise<void> {
       !opts.compareGate,
     );
 
-    const uiIssues = readUiIssuesSummary();
+    const uiReport = readUiIssuesReport();
+    const uiIssues = uiReport?.summary;
     if (testPassed && comparePassed && uiIssues) {
-      tryAutoPromoteBaseline(scriptKeyFromOptimizedPath(lastOptimized), uiIssues.blocker || 0);
+      tryAutoPromoteBaseline(
+        scriptKeyFromOptimizedPath(lastOptimized),
+        uiIssues.blocker || 0,
+        uiReport?.issues,
+      );
     }
 
     let feishuDocPassed = true;

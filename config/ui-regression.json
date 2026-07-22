@@ -11,6 +11,9 @@
     "freezeAnimations": true,
     "deviceScaleFactor": 1
   },
+  "autoPromote": {
+    "maxDiffRatio": 0.005
+  },
   "crossBrowser": {
     "blockerRatio": 0.03,
     "warningRatio": 0.003,

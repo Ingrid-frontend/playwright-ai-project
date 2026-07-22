@@ -68,12 +68,14 @@ jobs:
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
           FEISHU_WEBHOOK_SECRET: ${{ secrets.FEISHU_WEBHOOK_SECRET }}
 
-      - name: Bundle public reports
+      - name: Bundle CI artifacts
         if: always()
-        run: npm run report:bundle
+        run: npm run report:bundle-ci
         env:
           GITHUB_RUN_ID: ${{ github.run_id }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          CI_BUNDLE_TEST_RESULTS: ${{ job.status == 'failure' && '1' || '0' }}
 
       - name: Upload job results
         if: always()
@@ -84,58 +86,11 @@ jobs:
           retention-days: 30
           if-no-files-found: ignore
 
-      - name: Upload public reports bundle
+      - name: Upload full report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: public-reports-scheduled
-          path: public-reports/
+          name: full-report-scheduled-${{ github.run_id }}
+          path: ci-artifacts/
           retention-days: 30
-          if-no-files-found: ignore
-
-      - name: Upload playwright report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report-scheduled
-          path: playwright-report/
-          retention-days: 30
-          if-no-files-found: ignore
-
-      - name: Upload screenshots
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: screenshots-scheduled
-          path: screenshots/
-          retention-days: 7
-          if-no-files-found: ignore
-
-      - name: Upload screenshot comparison report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: screenshot-comparison-scheduled
-          path: |
-            results/screenshot-comparison.html
-            results/ui-issues.json
-          retention-days: 30
-          if-no-files-found: ignore
-
-      - name: Upload diffs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: diffs-scheduled
-          path: results/diffs/
-          retention-days: 30
-          if-no-files-found: ignore
-
-      - name: Upload test-results (traces/videos on failure)
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results-traces-scheduled
-          path: test-results/
-          retention-days: 14
           if-no-files-found: ignore

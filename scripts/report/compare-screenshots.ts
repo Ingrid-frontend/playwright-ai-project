@@ -260,20 +260,19 @@ async function generateComparisons(screenshots: ScreenshotInfo[], diffOutputDir:
 
   const outputDir = path.dirname(outputPath);
   const relativeDiffDir = path.relative(outputDir, diffOutputDir);
-  const baseline = sorted[0];
+  const baseline = sorted[sorted.length - 2]!;
+  const compareScreenshot = sorted[sorted.length - 1]!;
 
-  const tasks = sorted.slice(1).map((compareScreenshot) => {
-    const diffFileName = `diff-${compareScreenshot.timestamp}.png`;
-    const diffOutputPath = path.join(diffOutputDir, diffFileName);
-    const relativeDiffPath = path.join(relativeDiffDir, diffFileName).replaceAll(path.sep, '/');
-    return () =>
-      comparePair(baseline, compareScreenshot, diffOutputPath, relativeDiffPath, {
-        browser: compareScreenshot.browser,
-        compareKind: 'run-drift',
-      });
+  const diffFileName = `diff-${compareScreenshot.timestamp}.png`;
+  const diffOutputPath = path.join(diffOutputDir, diffFileName);
+  const relativeDiffPath = path.join(relativeDiffDir, diffFileName).replaceAll(path.sep, '/');
+
+  const result = await comparePair(baseline, compareScreenshot, diffOutputPath, relativeDiffPath, {
+    browser: compareScreenshot.browser,
+    compareKind: 'run-drift',
   });
 
-  return runWithConcurrency(tasks, COMPARE_CONCURRENCY);
+  return [result];
 }
 
 async function generateComparisonsByStepName(stepScreenshots: ScreenshotInfo[], stepNumber: number, diffOutputDir: string, outputPath: string): Promise<ImageComparison[]> {

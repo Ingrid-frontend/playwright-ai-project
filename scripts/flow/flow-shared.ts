@@ -2,6 +2,7 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { browserToRunSegment, recordLastGreenRun } from '../report/baseline-manager.js';
+import { loadUiRegressionConfig } from '../report/ui-regression-config.js';
 import {
   getLegacyEnvDefault,
   parseEnvAndDateCategoryFromRawOrProcessed,
@@ -177,26 +178,46 @@ export function runAnalyzeErrorsOnFailure(): void {
   runCommand('npm run analyze-errors', '失败分析（analyze-errors）', true);
 }
 
-const FLAKE_PATTERNS = [
-  /timeout/i,
-  /timed out/i,
-  /detached/i,
-  /Target closed/i,
-  /Execution context was destroyed/i,
-  /net::ERR_/i,
-  /Navigation failed/i,
-];
 
-export function isFlakeError(output: string): boolean {
-  return FLAKE_PATTERNS.some((re) => re.test(output));
-}
+export { isFlakeError } from '../../custom-reporters/flake-patterns.js';
 
-export function tryAutoPromoteBaseline(scriptKey: string, uiBlockerCount: number): void {
-  if (process.env.AUTO_PROMOTE_BASELINE !== '1') return;
-  if (uiBlockerCount > 0) {
-    console.log('ℹ️  存在 UI blocker，跳过 auto-promote');
+type PromoteUiIssue = {
+  scriptKey: string;
+  compareKind: string;
+  severity: string;
+  difference: number;
+};
+
+export function tryAutoPromoteBaseline(
+  scriptKey: string,
+  uiBlockerCount: number,
+  uiIssues?: PromoteUiIssue[],
+): void {
+  if (process.env.AUTO_PROMOTE_BASELINE === '0') return;
+
+  const cfg = loadUiRegressionConfig();
+  const maxDiff = Number(
+    process.env.AUTO_PROMOTE_MAX_DIFF ?? cfg.autoPromote?.maxDiffRatio ?? 0.005,
+  );
+  const goldenLike = (uiIssues || []).filter(
+    (i) =>
+      i.scriptKey === scriptKey &&
+      (i.compareKind === 'golden' || i.compareKind === 'last-green'),
+  );
+  const goldenBlockers = goldenLike.filter((i) => i.severity === 'blocker');
+  const maxGoldenDiff = goldenLike.reduce((m, i) => Math.max(m, i.difference), 0);
+
+  if (goldenBlockers.length > 0 && maxGoldenDiff > maxDiff) {
+    console.log(
+      `ℹ️  golden/last-green blocker ${goldenBlockers.length} 项、max diff ${(maxGoldenDiff * 100).toFixed(3)}% > ${(maxDiff * 100).toFixed(3)}%，跳过 auto-promote`,
+    );
     return;
   }
+  if (uiBlockerCount > 0 && goldenBlockers.length === 0) {
+    console.log('ℹ️  存在非 golden UI blocker，跳过 auto-promote');
+    return;
+  }
+
   for (const browser of ['chrome', 'webkit']) {
     const ts = findLatestRunTimestamp(scriptKey, browser);
     if (!ts) continue;

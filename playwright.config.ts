@@ -38,6 +38,7 @@ export default defineConfig({
   testIgnore: [
     '**/raw-recordings/**',
     '**/chrome-recorder/**',
+    '**/deprecated/**',
   ],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,

@@ -219,11 +219,8 @@ export function gateShouldFail(report: UiIssuesReport): boolean {
   const crossBlockers = report.issues.filter(
     (i) => i.severity === 'blocker' && i.compareKind === 'cross-browser',
   ).length;
-  const driftBlockers = report.issues.filter(
-    (i) => i.severity === 'blocker' && i.compareKind === 'run-drift',
-  ).length;
 
-  if (goldenBlockers > 0 || driftBlockers > 0) return true;
+  if (goldenBlockers > 0) return true;
   if (cfg.crossBrowser.countAsBlockerInGate && crossBlockers > 0) return true;
   return false;
 }

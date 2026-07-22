@@ -25,6 +25,9 @@ export interface UiRegressionConfig {
     /** 跨浏览器是否将抗锯齿像素计为差异，默认 false 以降低引擎渲染噪声 */
     includeAA: boolean;
   };
+  autoPromote?: {
+    maxDiffRatio: number;
+  };
 }
 
 export interface PixelmatchOptions {
@@ -52,6 +55,9 @@ const DEFAULT_CONFIG: UiRegressionConfig = {
     pixelmatchThreshold: 0.1,
     includeAA: false,
   },
+  autoPromote: {
+    maxDiffRatio: 0.005,
+  },
 };
 
 const CONFIG_PATH = path.join(process.cwd(), 'config/ui-regression.json');
@@ -70,6 +76,7 @@ export function loadUiRegressionConfig(): UiRegressionConfig {
         ...raw,
         screenshot: { ...DEFAULT_CONFIG.screenshot, ...raw.screenshot },
         crossBrowser: { ...DEFAULT_CONFIG.crossBrowser, ...raw.crossBrowser },
+        autoPromote: { ...DEFAULT_CONFIG.autoPromote, ...raw.autoPromote },
       };
     } catch (e) {
       console.warn(`⚠️  无法解析 ${CONFIG_PATH}，使用默认配置`, e);

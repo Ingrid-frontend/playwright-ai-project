@@ -510,6 +510,8 @@ npm run trace:show
 
 Headless 执行与报告分享详见 [docs/headless-report-sharing.md](docs/headless-report-sharing.md)。
 
+首次使用建议：`npm run setup` · 命令分组：`npm run cli -- --help` · 优化路线：[docs/OPTIMIZATION-ROADMAP.md](docs/OPTIMIZATION-ROADMAP.md)
+
 ## 🎥 录制流程：`npm run record` 会做什么？
 
 `npm run record` 实际执行的是 `tsx scripts/recording/record.ts`，流程如下：

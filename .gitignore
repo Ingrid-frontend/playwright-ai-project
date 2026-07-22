@@ -8,6 +8,7 @@ pnpm-lock.yaml
 test-results/
 playwright-report/
 public-reports/
+ci-artifacts/
 playwright/.cache/
 
 # Results

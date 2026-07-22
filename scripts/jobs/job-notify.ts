@@ -39,7 +39,7 @@ function buildResultMarkdown(summary: JobNotifySummary): string {
     lines.push(summary.errorSummary);
   }
   if (process.env.GITHUB_RUN_ID) {
-    lines.push('**报告**：Actions 下载 Artifact `public-reports`，解压 `index.html` 用浏览器打开');
+    lines.push('**报告**：Actions 下载 Artifact `full-report-*`，解压后打开 `public-reports/index.html`');
   }
   return lines.join('\n');
 }

@@ -37,13 +37,9 @@
 
 | Artifact | 内容 |
 |----------|------|
-| `public-reports` | 入口 index + Playwright 报告 + UI 对比页 |
-| `playwright-report` | 原始 Playwright HTML |
-| `screenshot-comparison-report` | UI 对比 HTML + ui-issues.json |
-| `test-results-traces` | **仅失败时** trace / 视频 |
-| `screenshots` | 步骤截图 |
+| `full-report-<run_id>` | 合并产物：public-reports + screenshots + diffs + ui-issues（失败含 test-results） |
 
-Actions 页 → 某次 Run → **Artifacts** 下载 → 解压 `public-reports/index.html` 用浏览器打开。
+Actions 页 → Run → **Artifacts** → 解压 `ci-artifacts/public-reports/index.html`。
 
 ## 发布到 GitHub Pages（可选）
 
