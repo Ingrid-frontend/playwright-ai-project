@@ -7,6 +7,7 @@ import { loadUiRegressionConfig } from './ui-regression-config.js';
 export interface ImageDiffResult {
   difference: number;
   diffImagePath?: string;
+  overlayImagePath?: string;
   width?: number;
   height?: number;
   sizeMismatch?: boolean;
@@ -24,6 +25,7 @@ export interface ImageComparison {
   image2Path: string;
   difference: number;
   diffImagePath?: string;
+  overlayImagePath?: string;
   /** 同浏览器多次运行对比时为目标浏览器；跨浏览器时为 secondary（如 webkit） */
   browser?: string;
   sizeMismatch?: boolean;
@@ -147,6 +149,23 @@ function runPixelmatch(
   );
 }
 
+async function writeOverlayPng(prepared: PreparedPair, outputPath: string): Promise<void> {
+  const { width, height, croppedImg2, diff } = prepared;
+  const out = new PNG({ width, height });
+  for (let i = 0; i < croppedImg2.data.length; i += 4) {
+    out.data[i] = croppedImg2.data[i]!;
+    out.data[i + 1] = croppedImg2.data[i + 1]!;
+    out.data[i + 2] = croppedImg2.data[i + 2]!;
+    out.data[i + 3] = 255;
+    if (diff.data[i]! > 128) {
+      out.data[i] = 255;
+      out.data[i + 1] = Math.floor(out.data[i + 1]! * 0.35);
+      out.data[i + 2] = Math.floor(out.data[i + 2]! * 0.35);
+    }
+  }
+  await writePNG(out, outputPath);
+}
+
 export async function compareImages(
   img1Path: string,
   img2Path: string,
@@ -192,12 +211,15 @@ export async function compareImagesWithDiff(
 
     const shouldWrite = writeDiffImage && difference > 0;
     const outDir = path.dirname(diffOutputPath);
+    let overlayPath: string | undefined;
     if (!fs.existsSync(outDir)) {
       fs.mkdirSync(outDir, { recursive: true });
     }
 
     if (shouldWrite) {
       await writePNG(prepared.diff, diffOutputPath);
+      overlayPath = diffOutputPath.replace(/\.png$/i, '-overlay.png');
+      await writeOverlayPng(prepared, overlayPath);
     } else if (fs.existsSync(diffOutputPath)) {
       try {
         fs.unlinkSync(diffOutputPath);
@@ -222,6 +244,7 @@ export async function compareImagesWithDiff(
     return {
       difference,
       diffImagePath: shouldWrite ? diffOutputPath : undefined,
+      overlayImagePath: shouldWrite ? overlayPath : undefined,
       width: prepared.width,
       height: prepared.height,
       sizeMismatch: prepared.sizeMismatch,

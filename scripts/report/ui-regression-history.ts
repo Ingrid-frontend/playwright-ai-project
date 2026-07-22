@@ -3,6 +3,67 @@ import path from 'path';
 import type { UiIssuesReport } from './ui-issues.js';
 
 const HISTORY_DIR = path.join('results', 'history');
+const STEP_TRENDS_FILE = path.join(HISTORY_DIR, 'step-trends.json');
+const MAX_STEP_POINTS = 14;
+
+export interface StepTrendPoint {
+  date: string;
+  v: number;
+}
+
+export interface StepTrendsFile {
+  version: 1;
+  steps: Record<string, StepTrendPoint[]>;
+}
+
+function stepTrendKey(scriptKey: string, stepNumber: number, stepName: string): string {
+  const label = stepName.replace(/-before$/i, '').replace(/-after$/i, '').trim();
+  return `${scriptKey}|${stepNumber}|${label}`;
+}
+
+export function appendStepTrendPoints(report: UiIssuesReport): void {
+  if (!fs.existsSync(HISTORY_DIR)) fs.mkdirSync(HISTORY_DIR, { recursive: true });
+
+  let file: StepTrendsFile = { version: 1, steps: {} };
+  if (fs.existsSync(STEP_TRENDS_FILE)) {
+    try {
+      file = JSON.parse(fs.readFileSync(STEP_TRENDS_FILE, 'utf-8')) as StepTrendsFile;
+    } catch {
+      file = { version: 1, steps: {} };
+    }
+  }
+
+  const date = new Date().toISOString().slice(0, 10);
+  const buckets = new Map<string, number>();
+
+  for (const issue of report.issues) {
+    if (issue.compareKind !== 'golden' && issue.compareKind !== 'last-green') continue;
+    const key = stepTrendKey(issue.scriptKey, issue.stepNumber, issue.stepName);
+    buckets.set(key, Math.max(buckets.get(key) || 0, issue.difference));
+  }
+
+  for (const [key, v] of buckets) {
+    const arr = file.steps[key] ? [...file.steps[key]!] : [];
+    const last = arr[arr.length - 1];
+    if (last?.date === date) {
+      last.v = Math.max(last.v, v);
+    } else {
+      arr.push({ date, v });
+    }
+    file.steps[key] = arr.slice(-MAX_STEP_POINTS);
+  }
+
+  fs.writeFileSync(STEP_TRENDS_FILE, JSON.stringify(file, null, 2), 'utf-8');
+}
+
+export function loadStepTrends(): StepTrendsFile['steps'] {
+  if (!fs.existsSync(STEP_TRENDS_FILE)) return {};
+  try {
+    return (JSON.parse(fs.readFileSync(STEP_TRENDS_FILE, 'utf-8')) as StepTrendsFile).steps || {};
+  } catch {
+    return {};
+  }
+}
 
 export interface HistorySnapshot {
   date: string;
@@ -63,5 +124,6 @@ export function appendHistorySnapshot(report: UiIssuesReport): string {
 
   if (!fs.existsSync(HISTORY_DIR)) fs.mkdirSync(HISTORY_DIR, { recursive: true });
   fs.writeFileSync(filePath, JSON.stringify(snapshot, null, 2), 'utf-8');
+  appendStepTrendPoints(report);
   return filePath;
 }

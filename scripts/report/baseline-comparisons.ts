@@ -161,6 +161,9 @@ export async function generateBaselineComparisons(
               image2Path: latest.relativePath,
               difference: cached.difference,
               diffImagePath: cached.diffImagePath ? relativeDiffPath : undefined,
+              overlayImagePath: cached.diffImagePath
+                ? relativeDiffPath.replace(/\.png$/i, '-overlay.png')
+                : undefined,
               browser,
               sizeMismatch: cached.sizeMismatch,
               compareKind,
@@ -181,6 +184,9 @@ export async function generateBaselineComparisons(
           image2Path: latest.relativePath,
           difference: result.difference,
           diffImagePath: result.diffImagePath ? relativeDiffPath : undefined,
+          overlayImagePath: result.overlayImagePath
+            ? relativeDiffPath.replace(/\.png$/i, '-overlay.png')
+            : undefined,
           browser,
           sizeMismatch: result.sizeMismatch,
           compareKind,

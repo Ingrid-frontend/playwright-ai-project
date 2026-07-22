@@ -42,7 +42,7 @@ flowchart LR
 | `npm run compare-screenshots -- --gate` | 存在 blocker 时 exit 1 |
 | `npm run promote-baseline -- --script 260612/xxx --latest` | 提升最新 run 为 Golden |
 | `npm run promote-baseline -- --script 260612/xxx --revert` | 撤销 Golden |
-| `npm run screenshot-report` | 对比并打开报告 |
+| `npm run screenshot-report` | 对比并打开报告（含滑块/闪烁/热力图/趋势） |
 | `npm run studio` | Studio：问题列表、Promote Golden |
 
 ## 分析摘要（方案 A）

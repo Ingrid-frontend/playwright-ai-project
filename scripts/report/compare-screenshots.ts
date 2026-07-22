@@ -20,8 +20,17 @@ import {
   writeUiIssuesReport,
   type UiIssue,
 } from './ui-issues.js';
-import { appendHistorySnapshot } from './ui-regression-history.js';
+import { appendHistorySnapshot, loadStepTrends, type StepTrendPoint } from './ui-regression-history.js';
 import { buildPlainLanguageAnalysis } from './ui-issues-analysis.js';
+import {
+  buildDiffCardHtml,
+  compareReportVizCss,
+  compareReportVizJs,
+  generateDashboardHtml,
+  generateHeatmapTabHtml,
+} from './compare-report-viz.js';
+
+let currentStepTrends: Record<string, StepTrendPoint[]> = {};
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -220,6 +229,9 @@ async function comparePair(
         image2Path: compareScreenshot.relativePath,
         difference: cached.difference,
         diffImagePath: cached.diffImagePath ? relativeDiffPath : undefined,
+        overlayImagePath: cached.diffImagePath
+          ? relativeDiffPath.replace(/\.png$/i, '-overlay.png')
+          : undefined,
         browser: meta.browser ?? compareScreenshot.browser,
         sizeMismatch: cached.sizeMismatch,
         compareKind: meta.compareKind,
@@ -243,6 +255,9 @@ async function comparePair(
     image2Path: compareScreenshot.relativePath,
     difference: result.difference,
     diffImagePath: result.diffImagePath ? relativeDiffPath : undefined,
+    overlayImagePath: result.overlayImagePath
+      ? relativeDiffPath.replace(/\.png$/i, '-overlay.png')
+      : undefined,
     browser: meta.browser ?? compareScreenshot.browser,
     sizeMismatch: result.sizeMismatch,
     compareKind: meta.compareKind,
@@ -907,7 +922,10 @@ function generateDiffStepFromComparisons(
           <div class="date-group">
             <div class="date-title">${formatDateGroupTitle(dateKey)}</div>
             <div class="diff-grid">
-              ${comps.map((c) => generateDiffCard(c, cardType)).join('')}
+              ${comps.map((c) => {
+                const trendKey = `${comp.testDir}|${comp.stepNumber}|${stepName}`;
+                return generateDiffCard(c, cardType, currentStepTrends[trendKey]);
+              }).join('')}
             </div>
           </div>`
             )
@@ -1013,9 +1031,7 @@ function renderInlineDiffThumb(diffImagePath?: string): string {
   return `<img class="issues-diff-thumb" src="${src}" alt="diff" loading="lazy" onclick="openModal('${src}')" title="点击放大">`;
 }
 
-function generateDiffCard(comparison: ImageComparison, type: string): string {
-  const diffColor = getDifferenceColor(comparison.difference);
-  const diffLabel = getDifferenceLabel(comparison.difference);
+function generateDiffCard(comparison: ImageComparison, _type: string, trendPoints?: StepTrendPoint[]): string {
   const isCross = comparison.compareKind === 'cross-browser';
   const browser = isCross ? 'cross' : comparison.browser || 'unknown';
   const sizeHint = comparison.sizeMismatch
@@ -1035,34 +1051,16 @@ function generateDiffCard(comparison: ImageComparison, type: string): string {
     ? `WebKit · ${extractImageLabelWithRoute(comparison.image2Path, 2)}`
     : extractImageLabelWithRoute(comparison.image2Path, 2);
 
-  const diffVisual = comparison.diffImagePath
-    ? `<img src="${comparison.diffImagePath}" alt="差异" onclick="openModal('${comparison.diffImagePath}')">`
-    : `<div class="diff-no-visual">无像素差异</div>`;
-
-  return `
-  <div class="diff-card diff-browser-content" data-browser="${browser}" data-compare-kind="${isCross ? 'cross-browser' : 'same-browser'}">
-    <div class="diff-header">
-      <span class="diff-badge" style="background-color: ${diffColor};">${diffLabel}</span>
-      <span class="diff-percentage">${formatDifference(comparison.difference)}</span>
-      ${browserPairHint}
-      ${sizeHint}
-    </div>
-    ${pairLabelHint ? `<div class="diff-pair-row">${pairLabelHint}</div>` : ''}
-    <div class="diff-images">
-      <div class="diff-image-container">
-        <div class="diff-image-label">${image1Label}</div>
-        <img src="${comparison.image1Path}" alt="${image1Label}" onclick="openModal('${comparison.image1Path}')">
-      </div>
-      <div class="diff-image-container">
-        <div class="diff-image-label">${image2Label}</div>
-        <img src="${comparison.image2Path}" alt="${image2Label}" onclick="openModal('${comparison.image2Path}')">
-      </div>
-      <div class="diff-image-container">
-        <div class="diff-image-label">差异</div>
-        ${diffVisual}
-      </div>
-    </div>
-  </div>`;
+  return buildDiffCardHtml(comparison, {
+    image1Label,
+    image2Label,
+    browser,
+    isCross,
+    pairLabelHint,
+    browserPairHint,
+    sizeHint,
+    ctx: { trendPoints },
+  });
 }
 
 /**
@@ -1171,6 +1169,23 @@ function generateHTML(
   uiIssues: UiIssue[] = [],
   analysisHtml: string = '',
 ): string {
+  currentStepTrends = loadStepTrends();
+  let issueBlocker = 0;
+  let issueWarning = 0;
+  let issueNoise = 0;
+  for (const i of uiIssues) {
+    if (i.severity === 'blocker') issueBlocker++;
+    else if (i.severity === 'warning') issueWarning++;
+    else issueNoise++;
+  }
+  const dashboardHtml = generateDashboardHtml({
+    blocker: issueBlocker,
+    warning: issueWarning,
+    noise: issueNoise,
+    total: uiIssues.length,
+  });
+  const heatmapHtml = generateHeatmapTabHtml(uiIssues);
+
   const allComparisons = testDirComparisons.flatMap(tdc => tdc.comparisons);
   const optimizedSteps = hasOptimizedData ? allComparisons.map(comp => generateOptimizedStep(comp, optDirName)).join('') : '';
   
@@ -2304,6 +2319,7 @@ function generateHTML(
     .empty-state-description .empty-state-hint li + li {
       margin-top: 0.45em;
     }
+    ${compareReportVizCss()}
   </style>
 </head>
 <body>
@@ -2325,6 +2341,15 @@ function generateHTML(
       <h3>执行次数</h3>
       <div class="value">${getTotalExecutions(allComparisons)}</div>
     </div>
+  </div>
+  
+  ${dashboardHtml}
+  
+  <div class="viz-filter-row">
+    <label>级别 <select id="vizFilterSeverity"><option value="all">全部</option><option value="blocker">Blocker</option><option value="warning">Warning</option><option value="noise">Noise</option></select></label>
+    <label>对比类型 <select id="vizFilterKind"><option value="all">全部</option><option value="same-browser">同浏览器</option><option value="cross-browser">跨浏览器</option></select></label>
+    <label>搜索 <input type="search" id="vizFilterSearch" placeholder="步骤名…" /></label>
+    <span style="font-size:12px;color:#86909c">方向键切换 diff 卡片 · 卡片默认滑块对比</span>
   </div>
   
   <div class="controls-row">
@@ -2373,6 +2398,7 @@ function generateHTML(
     <button class="tab active" data-report-tab="optimized" onclick="switchTab('optimized')">Optimized 版本</button>
     <button class="tab" data-report-tab="optimized-diff" onclick="switchTab('optimized-diff')">Optimized 差异</button>
     <button class="tab" data-report-tab="diff-only" onclick="switchTab('diff-only')">有差异</button>
+    <button class="tab" data-report-tab="heatmap" onclick="switchTab('heatmap')">热力图</button>
     <button class="tab" data-report-tab="analysis" onclick="switchTab('analysis')">分析摘要</button>
     <button class="tab" data-report-tab="issues" onclick="switchTab('issues')">问题明细</button>
   </div>
@@ -2411,6 +2437,10 @@ function generateHTML(
     ${diffOnlyByIteration}
   </div>
 
+  <div id="heatmap-content" class="tab-content">
+    ${heatmapHtml}
+  </div>
+
   <div id="analysis-content" class="tab-content">
     ${analysisHtml || '<div class="empty-state"><div class="empty-state-title">暂无分析</div></div>'}
   </div>
@@ -2423,6 +2453,17 @@ function generateHTML(
     <button class="modal-close" onclick="closeModal()">&times;</button>
     <div class="modal-content">
       <img class="modal-image" id="modalImage" src="" alt="截图预览">
+    </div>
+  </div>
+
+  <div class="compare-modal" id="compareModal">
+    <div class="compare-modal-bar">
+      <span>完整对比（同步滚动）</span>
+      <button type="button" class="control-button" onclick="closeCompareModal()">关闭 Esc</button>
+    </div>
+    <div class="compare-modal-body">
+      <div class="compare-modal-pane" onscroll="syncModalScroll(this)"><div class="diff-image-label">基线</div><img class="cm-before" src="" alt="基线"></div>
+      <div class="compare-modal-pane" onscroll="syncModalScroll(this)"><div class="diff-image-label">当前</div><img class="cm-after" src="" alt="当前"></div>
     </div>
   </div>
   
@@ -2456,6 +2497,8 @@ function generateHTML(
       if (targetTab) targetTab.classList.add('active');
       const targetContent = document.getElementById(tabName + '-content');
       if (targetContent) targetContent.classList.add('active');
+      
+      initDiffCards(targetContent || document);
       
       const activeBrowserTab = document.querySelector('.global-browser-tab.active');
       const gbTabs = document.querySelectorAll('.global-browser-tab');
@@ -2936,8 +2979,10 @@ function generateHTML(
     document.addEventListener('keydown', function(e) {
       if (e.key === 'Escape') {
         closeModal();
+        closeCompareModal();
       }
     });
+    ${compareReportVizJs()}
   </script>
 </body>
 </html>`;
