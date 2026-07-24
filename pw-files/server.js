@@ -2580,6 +2580,8 @@ app.use((req, res, next) => {
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
+app.use("/results", express.static(path.join(__dirname, "..", "results")));
+app.use("/screenshots", express.static(path.join(__dirname, "..", "screenshots")));
 app.use(express.json());
 
 // ── State per connection ────────────────────────────────────────────────
@@ -3645,6 +3647,101 @@ app.get('/download/report', (req, res) => {
   res.sendFile(file);
 });
 
+
+// ── 飞书卡片回调 ────────────────────────────────────────────────────────────
+const FEISHU_VERIFICATION_TOKEN = process.env.FEISHU_VERIFICATION_TOKEN || '';
+
+app.post('/feishu/callback', express.json(), (req, res) => {
+  const body = req.body || {};
+
+  // URL 验证握手
+  if (body.type === 'url_verification') {
+    console.log('[feishu-callback] URL 验证');
+    return res.json({ challenge: body.challenge || '' });
+  }
+
+  // 验证令牌
+  const requestToken = req.headers['x-lark-request-token'];
+  if (FEISHU_VERIFICATION_TOKEN && requestToken !== FEISHU_VERIFICATION_TOKEN) {
+    console.log('[feishu-callback] 令牌验证失败');
+    return res.status(403).json({ error: 'Invalid token' });
+  }
+
+  const action = body.action || {};
+  const openId = body.open_id || '';
+  const userName = body.user ? (body.user.name || '') : '';
+  let value = {};
+  try {
+    value = typeof action.value === 'string' ? JSON.parse(action.value) : (action.value || {});
+  } catch { value = { raw: action.value }; }
+
+  const actionType = value.action || 'unknown';
+  console.log(`[feishu-callback] action=${actionType}, user=${userName || openId}`);
+
+  let responseMsg = '';
+  let responseTemplate = 'green';
+
+  switch (actionType) {
+    case 'rerun_failed': {
+      responseMsg = `已接受请求，正在重跑失败用例（由 ${userName || openId} 触发）`;
+      console.log(`[feishu-callback] → 触发重跑: ${responseMsg}`);
+      // 在后台异步触发重跑（不阻塞回调响应）
+      setTimeout(() => {
+        const { spawn } = require('child_process');
+        const repoRoot = resolveRepoRoot();
+        const child = spawn('npm', ['run', 'test-job', '--', 'run', '--id=rerun-failed', '--trigger=manual'], {
+          cwd: repoRoot,
+          stdio: 'ignore',
+          detached: true,
+          env: { ...process.env, PLAYWRIGHT_ENV: process.env.PLAYWRIGHT_ENV || 'stage' },
+        });
+        child.unref();
+      }, 100);
+      break;
+    }
+    case 'approve_baseline': {
+      responseMsg = `已接受请求，正在晋升基线（由 ${userName || openId} 批准）`;
+      console.log(`[feishu-callback] → 晋升基线: ${responseMsg}`);
+      setTimeout(() => {
+        const { execSync } = require('child_process');
+        try {
+          execSync('npm run promote-baseline', { cwd: resolveRepoRoot(), stdio: 'pipe' });
+        } catch (e) {
+          console.error('[feishu-callback] 晋升失败:', e.message);
+        }
+      }, 100);
+      break;
+    }
+    default:
+      responseMsg = `未知操作: ${actionType}`;
+      responseTemplate = 'red';
+  }
+
+  // 返回卡片更新
+  res.json({
+    code: 0,
+    msg: 'ok',
+    data: {
+      card: {
+        header: {
+          title: { tag: 'plain_text', content: actionType === 'unknown' ? '⚠️ 未知操作' : '✅ 操作已触发' },
+          template: responseTemplate,
+        },
+        elements: [
+          { tag: 'div', text: { tag: 'lark_md', content: responseMsg } },
+          ...(actionType === 'approve_baseline' ? [{
+            tag: 'div',
+            text: { tag: 'lark_md', content: '基线晋升将在后台执行，请稍后在报告中查看结果。' },
+          }] : []),
+          ...(actionType === 'rerun_failed' ? [{
+            tag: 'div',
+            text: { tag: 'lark_md', content: '重跑将在后台执行，完成后会再次推送通知。' },
+          }] : []),
+        ],
+      },
+    },
+  });
+});
 // ── WebSocket handler ─────────────────────────────────────────────────────
 wss.on('connection', (ws) => {
   const sessionId = Math.random().toString(36).slice(2);

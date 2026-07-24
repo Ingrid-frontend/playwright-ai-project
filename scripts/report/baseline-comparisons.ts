@@ -23,7 +23,7 @@ export interface ScreenshotInfoLite {
   route?: string;
 }
 
-function runTimestampSortKey(timestamp: string): number {
+export function runTimestampSortKey(timestamp: string): number {
   const iso = timestamp.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})/);
   if (iso) {
     const t = Date.parse(`${iso[1]}-${iso[2]}-${iso[3]}T${iso[4]}:${iso[5]}:${iso[6]}Z`);

@@ -111,25 +111,23 @@ async function prepareImagePair(img1Path: string, img2Path: string): Promise<Pre
   return { croppedImg1, croppedImg2, diff, width, height, sizeMismatch };
 }
 
-/** 将 ignoreRegions 涂黑，降低动态区误报 */
+/** 将 ignoreRegions 涂黑，降低动态区误报（按行批量 fill 替代逐像素循环） */
 function applyIgnoreRegionsToPair(prepared: PreparedPair): void {
   const regions = loadUiRegressionConfig().ignoreRegions;
   if (!regions.length) return;
+  const { width, croppedImg1, croppedImg2 } = prepared;
+  const rowBytes = width * 4;
+  const zeroRow = Buffer.alloc(rowBytes, 0);
   for (const region of regions) {
     const x0 = Math.max(0, Math.floor(region.x));
     const y0 = Math.max(0, Math.floor(region.y));
-    const x1 = Math.min(prepared.width, x0 + Math.floor(region.width));
+    const x1 = Math.min(width, x0 + Math.floor(region.width));
     const y1 = Math.min(prepared.height, y0 + Math.floor(region.height));
+    const segmentBytes = (x1 - x0) * 4;
     for (let y = y0; y < y1; y++) {
-      for (let x = x0; x < x1; x++) {
-        const idx = (y * prepared.width + x) * 4;
-        prepared.croppedImg1.data[idx] = 0;
-        prepared.croppedImg1.data[idx + 1] = 0;
-        prepared.croppedImg1.data[idx + 2] = 0;
-        prepared.croppedImg2.data[idx] = 0;
-        prepared.croppedImg2.data[idx + 2] = 0;
-        prepared.croppedImg2.data[idx + 1] = 0;
-      }
+      const rowOffset = y * rowBytes + x0 * 4;
+      zeroRow.copy(croppedImg1.data, rowOffset, 0, segmentBytes);
+      zeroRow.copy(croppedImg2.data, rowOffset, 0, segmentBytes);
     }
   }
 }

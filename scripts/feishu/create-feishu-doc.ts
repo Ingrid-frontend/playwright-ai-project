@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
+import { fetchWithRetry } from './feishu-utils.js';
 
 dotenv.config();
 
@@ -82,7 +83,7 @@ interface FeishuDocCell {
 async function getAccessToken(config: FeishuDocConfig): Promise<string> {
   console.log('🔑 获取飞书访问令牌...');
   
-  const response = await fetch('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
+  const response = await fetchWithRetry('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
@@ -143,7 +144,7 @@ async function uploadImageToFeishu(imagePath: string, accessToken: string): Prom
   formData.append('file', new Blob([imageBuffer], { type: mimeType }), fileName);
   formData.append('file_type', 'image');
 
-  const response = await fetch(`https://open.feishu.cn/open-apis/drive/v1/medias/upload_all?size=${fileSize}`, {
+  const response = await fetchWithRetry(`https://open.feishu.cn/open-apis/drive/v1/medias/upload_all?size=${fileSize}`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${accessToken}`
@@ -186,7 +187,7 @@ async function getDocumentIdFromUrl(url: string): Promise<string | null> {
 async function getDocumentInfo(documentId: string, accessToken: string): Promise<any> {
   console.log(`🔍 检查文档是否存在: ${documentId}`);
   
-  const response = await fetch(`https://open.feishu.cn/open-apis/docx/v1/documents/${documentId}`, {
+  const response = await fetchWithRetry(`https://open.feishu.cn/open-apis/docx/v1/documents/${documentId}`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${accessToken}`
@@ -229,7 +230,7 @@ async function getDocumentInfo(documentId: string, accessToken: string): Promise
 async function getDocumentBlocks(documentId: string, accessToken: string): Promise<string[]> {
   console.log('🔍 获取文档内容块...');
   
-  const response = await fetch(`https://open.feishu.cn/open-apis/docx/v1/documents/${documentId}/blocks`, {
+  const response = await fetchWithRetry(`https://open.feishu.cn/open-apis/docx/v1/documents/${documentId}/blocks`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${accessToken}`
@@ -280,7 +281,7 @@ async function clearDocumentBlocks(documentId: string, accessToken: string): Pro
     return;
   }
 
-  const response = await fetch(`https://open.feishu.cn/open-apis/docx/v1/documents/${documentId}/blocks/batch_delete`, {
+  const response = await fetchWithRetry(`https://open.feishu.cn/open-apis/docx/v1/documents/${documentId}/blocks/batch_delete`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -326,7 +327,7 @@ async function clearDocumentBlocks(documentId: string, accessToken: string): Pro
 async function createFeishuDocument(accessToken: string): Promise<string> {
   console.log('📄 创建飞书文档...');
   
-  const response = await fetch('https://open.feishu.cn/open-apis/docx/v1/documents', {
+  const response = await fetchWithRetry('https://open.feishu.cn/open-apis/docx/v1/documents', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -375,7 +376,7 @@ async function addBlocksToDocument(documentId: string, blocks: FeishuDocBlock[],
   
   // 首先获取文档的根 block ID
   console.log('🔍 获取文档根 block ID...');
-  const docResponse = await fetch(`https://open.feishu.cn/open-apis/docx/v1/documents/${documentId}`, {
+  const docResponse = await fetchWithRetry(`https://open.feishu.cn/open-apis/docx/v1/documents/${documentId}`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${accessToken}`
@@ -455,7 +456,7 @@ async function addBlocksToDocument(documentId: string, blocks: FeishuDocBlock[],
     console.log('📤 请求体: (已隐藏，设置 ENABLE_SENSITIVE_LOGS=1 查看)');
   }
     
-    const response = await fetch(`https://open.feishu.cn/open-apis/docx/v1/documents/${documentId}/blocks/${rootBlockId}/descendant`, {
+    const response = await fetchWithRetry(`https://open.feishu.cn/open-apis/docx/v1/documents/${documentId}/blocks/${rootBlockId}/descendant`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -514,7 +515,7 @@ async function addBlocksToDocument(documentId: string, blocks: FeishuDocBlock[],
 async function shareDocument(documentId: string, accessToken: string): Promise<string> {
   console.log('🔗 分享文档...');
   
-  const response = await fetch(`https://open.feishu.cn/open-apis/drive/v1/files/${documentId}/share`, {
+  const response = await fetchWithRetry(`https://open.feishu.cn/open-apis/drive/v1/files/${documentId}/share`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

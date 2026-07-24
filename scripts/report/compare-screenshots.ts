@@ -10,7 +10,7 @@ import {
   loadCachedDiffResult,
   runWithConcurrency,
 } from './image-diff.js';
-import { generateBaselineComparisons } from './baseline-comparisons.js';
+import { generateBaselineComparisons, runTimestampSortKey } from './baseline-comparisons.js';
 import { loadUiRegressionConfig, resolveCrossBrowserPixelmatch, resolveSameBrowserPixelmatch } from './ui-regression-config.js';
 import {
   buildUiIssuesReport,
@@ -28,6 +28,10 @@ import {
   compareReportVizJs,
   generateDashboardHtml,
   generateHeatmapTabHtml,
+  generateOverviewPanel,
+  generateSummaryTableHtml,
+  type OverviewData,
+  type SummaryRow,
 } from './compare-report-viz.js';
 
 let currentStepTrends: Record<string, StepTrendPoint[]> = {};
@@ -190,19 +194,6 @@ function sortScreenshotsByRunTime(screenshots: ScreenshotInfo[]): ScreenshotInfo
   });
 }
 
-function runTimestampSortKey(timestamp: string): number {
-  const iso = timestamp.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})/);
-  if (iso) {
-    const t = Date.parse(`${iso[1]}-${iso[2]}-${iso[3]}T${iso[4]}:${iso[5]}:${iso[6]}Z`);
-    if (!Number.isNaN(t)) return t;
-  }
-  const legacy = timestamp.match(/(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})-(\d{2})/);
-  if (legacy) {
-    const t = Date.parse(`${legacy[1]}T${legacy[2]}:${legacy[3]}:${legacy[4]}`);
-    if (!Number.isNaN(t)) return t;
-  }
-  return 0;
-}
 
 interface ComparePairMeta {
   browser?: string;
@@ -831,7 +822,7 @@ function generateScreenshotCard(screenshot: ScreenshotInfo): string {
   return `
   <div class="screenshot-card">
     <div class="screenshot-time">${screenshot.displayTimestamp}</div>
-    <img class="screenshot-image" src="${screenshot.relativePath}" alt="${screenshot.stepName}" onclick="openModal('${screenshot.relativePath}')">
+    <img class="screenshot-image" src="${screenshot.relativePath}" alt="${screenshot.stepName}" loading="lazy" onclick="openModal('${screenshot.relativePath}')">
   </div>`;
 }
 
@@ -1097,7 +1088,15 @@ function generateIssuesTabHtml(issues: UiIssue[]): string {
         issue.rawCount > 1
           ? `<span class="issues-raw-count" title="同日多次运行产生的重复对比已合并">${issue.rawCount}</span>`
           : '1';
-      return `<tr class="issues-filter-row" data-severity="${issue.severity}" data-kind="${issue.compareKind}" data-browser="${issue.browser}">
+      return `<tr class="issues-filter-row" data-severity="${issue.severity}" data-kind="${issue.compareKind}" data-browser="${issue.browser}"
+        data-sort-severity="${issue.severity === 'blocker' ? '3' : issue.severity === 'warning' ? '2' : '1'}"
+        data-sort-kind="${issue.compareKind}"
+        data-sort-script="${issue.scriptKey}"
+        data-sort-step="${issue.stepNumber}"
+        data-sort-stepName="${issue.stepName}"
+        data-sort-browser="${issue.browser}"
+        data-sort-diff="${issue.difference}"
+        data-sort-count="${issue.rawCount}">
         <td><span class="severity-badge severity-${issue.severity}">${issue.severity}</span></td>
         <td>${issue.compareKind}</td>
         <td>${issue.scriptKey}</td>
@@ -1130,7 +1129,15 @@ function generateIssuesTabHtml(issues: UiIssue[]): string {
     <table class="issues-table" id="issues-table">
       <thead>
         <tr>
-          <th>严重度</th><th>类型</th><th>脚本</th><th>步骤</th><th>步骤名</th><th>浏览器</th><th>差异</th><th>条数</th><th>Diff</th>
+          <th data-sort="severity" onclick="sortIssues('severity')">严重度<span class="sort-arrow active">↓</span></th>
+          <th data-sort="kind" onclick="sortIssues('kind')">类型<span class="sort-arrow">↕</span></th>
+          <th data-sort="script" onclick="sortIssues('script')">脚本<span class="sort-arrow">↕</span></th>
+          <th data-sort="step" onclick="sortIssues('step')">步骤<span class="sort-arrow">↕</span></th>
+          <th data-sort="stepName" onclick="sortIssues('stepName')">步骤名<span class="sort-arrow">↕</span></th>
+          <th data-sort="browser" onclick="sortIssues('browser')">浏览器<span class="sort-arrow">↕</span></th>
+          <th data-sort="diff" onclick="sortIssues('diff')">差异<span class="sort-arrow">↕</span></th>
+          <th data-sort="count" onclick="sortIssues('count')">条数<span class="sort-arrow">↕</span></th>
+          <th>Diff</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
@@ -1178,16 +1185,74 @@ function generateHTML(
     else if (i.severity === 'warning') issueWarning++;
     else issueNoise++;
   }
-  const dashboardHtml = generateDashboardHtml({
-    blocker: issueBlocker,
-    warning: issueWarning,
-    noise: issueNoise,
-    total: uiIssues.length,
-  });
   const heatmapHtml = generateHeatmapTabHtml(uiIssues);
 
   const allComparisons = testDirComparisons.flatMap(tdc => tdc.comparisons);
-  const optimizedSteps = hasOptimizedData ? allComparisons.map(comp => generateOptimizedStep(comp, optDirName)).join('') : '';
+  const totalScreenshotCount = allComparisons.reduce((sum, c) => sum + c.optimizedScreenshots.length, 0);
+  const totalExecCount = getTotalExecutions(allComparisons);
+
+  // Build OverviewData (Plan 1)
+  const allDiffs: number[] = [];
+  let maxDiffIssue: UiIssue | null = null;
+  for (const issue of uiIssues) {
+    allDiffs.push(issue.difference);
+    if (!maxDiffIssue || issue.difference > maxDiffIssue.difference) maxDiffIssue = issue;
+  }
+  const avgDiff = allDiffs.length > 0 ? ((allDiffs.reduce((s, v) => s + v, 0) / allDiffs.length) * 100).toFixed(3) + '%' : '0%';
+  const distBuckets = [
+    { range: '0-0.1%', count: 0 },
+    { range: '0.1-0.5%', count: 0 },
+    { range: '0.5-1%', count: 0 },
+    { range: '>1%', count: 0 },
+  ];
+  for (const d of allDiffs) {
+    const pct = d * 100;
+    if (pct < 0.1) distBuckets[0]!.count++;
+    else if (pct < 0.5) distBuckets[1]!.count++;
+    else if (pct < 1) distBuckets[2]!.count++;
+    else distBuckets[3]!.count++;
+  }
+  const maxBucketCount = Math.max(...distBuckets.map(b => b.count), 1);
+  const distribution = distBuckets.map(b => ({ range: b.range, count: b.count, pct: (b.count / maxBucketCount) * 100 }));
+
+  const overviewData: OverviewData = {
+    total: uiIssues.length,
+    blocker: issueBlocker,
+    warning: issueWarning,
+    noise: issueNoise,
+    totalSteps: allComparisons.length,
+    totalScreenshots: totalScreenshotCount,
+    totalExecutions: totalExecCount,
+    maxDiff: maxDiffIssue
+      ? { pct: (maxDiffIssue.difference * 100).toFixed(3) + '%', location: `${maxDiffIssue.scriptKey}/步骤${maxDiffIssue.stepNumber}` }
+      : null,
+    avgDiff,
+    distribution,
+    generatedAt: new Date().toLocaleString('zh-CN', { hour12: false }),
+  };
+  const overviewHtml = generateOverviewPanel(overviewData);
+
+  // Build SummaryRow[] for summary tab (Plan 5)
+  const summaryRows: SummaryRow[] = [];
+  for (const tdc of testDirComparisons) {
+    for (const comp of tdc.comparisons) {
+      const stepName = comp.optimizedScreenshots[0]?.stepName || comp.stepName || `step-${comp.stepNumber}`;
+      for (const c of [...comp.optimizedComparisons, ...comp.crossBrowserComparisons]) {
+        const diff = c.difference;
+        const severity = diff >= 0.005 ? 'blocker' : diff >= 0.001 ? 'warning' : 'noise';
+        summaryRows.push({
+          script: tdc.testDir,
+          step: comp.stepNumber,
+          stepName,
+          browser: c.browser || c.browser2 || 'chrome',
+          compareKind: c.compareKind || 'same-browser',
+          difference: diff,
+          severity,
+        });
+      }
+    }
+  }
+  const summaryHtml = generateSummaryTableHtml(summaryRows);
   
   // 约定：testDir = "<iteration>/<script>"
   const iterationMap = new Map<string, TestDirComparisons[]>();
@@ -2230,8 +2295,8 @@ function generateHTML(
     }
     .issues-diff-thumb {
       display: block;
-      max-width: 128px;
-      max-height: 80px;
+      max-width: 200px;
+      max-height: 120px;
       width: auto;
       height: auto;
       object-fit: contain;
@@ -2244,6 +2309,12 @@ function generateHTML(
       border-color: #1677ff;
       box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.12);
     }
+    .issues-table th[data-sort] { cursor: pointer; user-select: none; }
+    .issues-table th[data-sort]:hover { background: #e6f4ff; }
+    .issues-table th[data-sort] .sort-arrow { font-size: 10px; margin-left: 3px; color: #adb5bd; }
+    .issues-table th[data-sort] .sort-arrow.active { color: #1677ff; }
+    .issues-table .issues-filter-row { transition: background 0.15s ease; }
+    .issues-table .issues-filter-row:hover { background: #f0f7ff; }
     .analysis-wrap { padding: 16px 20px 24px; max-width: 1200px; }
     .analysis-heading { margin: 20px 0 10px; font-size: 16px; color: #111827; }
     .analysis-heading:first-child { margin-top: 0; }
@@ -2326,32 +2397,9 @@ function generateHTML(
   <div class="header">
     <h1>📸 截图对比报告</h1>
   </div>
-  
-  <div class="stats">
-    <div class="stat-card">
-      <h3>总步骤数</h3>
-      <div class="value">${allComparisons.length}</div>
-    </div>
-    ${hasOptimizedData ? `
-    <div class="stat-card">
-      <h3>Optimized 截图数</h3>
-      <div class="value">${allComparisons.reduce((sum, c) => sum + c.optimizedScreenshots.length, 0)}</div>
-    </div>` : ''}
-    <div class="stat-card">
-      <h3>执行次数</h3>
-      <div class="value">${getTotalExecutions(allComparisons)}</div>
-    </div>
-  </div>
-  
-  ${dashboardHtml}
-  
-  <div class="viz-filter-row">
-    <label>级别 <select id="vizFilterSeverity"><option value="all">全部</option><option value="blocker">Blocker</option><option value="warning">Warning</option><option value="noise">Noise</option></select></label>
-    <label>对比类型 <select id="vizFilterKind"><option value="all">全部</option><option value="same-browser">同浏览器</option><option value="cross-browser">跨浏览器</option></select></label>
-    <label>搜索 <input type="search" id="vizFilterSearch" placeholder="步骤名…" /></label>
-    <span style="font-size:12px;color:#86909c">方向键切换 diff 卡片 · 卡片默认滑块对比</span>
-  </div>
-  
+
+  ${overviewHtml}
+
   <div class="controls-row">
     <div class="controls-right">
       <div class="controls-right-tools">
@@ -2363,6 +2411,13 @@ function generateHTML(
     </div>
 
     <div class="filter-panel" role="region" aria-label="筛选">
+      <div class="filter-row filter-row-tools">
+        <span class="filter-label">Diff 筛选：</span>
+        <select id="vizFilterSeverity" style="padding:5px 10px;border:1px solid #d6d8db;border-radius:4px;font-size:13px"><option value="all">全部级别</option><option value="blocker">Blocker</option><option value="warning">Warning</option><option value="noise">Noise</option></select>
+        <select id="vizFilterKind" style="padding:5px 10px;border:1px solid #d6d8db;border-radius:4px;font-size:13px"><option value="all">全部类型</option><option value="same-browser">同浏览器</option><option value="cross-browser">跨浏览器</option></select>
+        <input type="search" id="vizFilterSearch" placeholder="步骤名…" style="padding:5px 10px;border:1px solid #d6d8db;border-radius:4px;font-size:13px;min-width:160px" />
+        <span style="font-size:12px;color:#86909c">方向键切换 diff 卡片 · 卡片默认滑块对比</span>
+      </div>
       <div class="filter-row">
         <span class="filter-label">迭代：</span>
         <div class="iteration-tabs-container">
@@ -2399,6 +2454,7 @@ function generateHTML(
     <button class="tab" data-report-tab="optimized-diff" onclick="switchTab('optimized-diff')">Optimized 差异</button>
     <button class="tab" data-report-tab="diff-only" onclick="switchTab('diff-only')">有差异</button>
     <button class="tab" data-report-tab="heatmap" onclick="switchTab('heatmap')">热力图</button>
+    <button class="tab" data-report-tab="summary" onclick="switchTab('summary')">对比一览</button>
     <button class="tab" data-report-tab="analysis" onclick="switchTab('analysis')">分析摘要</button>
     <button class="tab" data-report-tab="issues" onclick="switchTab('issues')">问题明细</button>
   </div>
@@ -2439,6 +2495,10 @@ function generateHTML(
 
   <div id="heatmap-content" class="tab-content">
     ${heatmapHtml}
+  </div>
+
+  <div id="summary-content" class="tab-content">
+    ${summaryHtml}
   </div>
 
   <div id="analysis-content" class="tab-content">
@@ -3049,8 +3109,9 @@ async function main() {
   const startedAt = Date.now();
   let compareTaskCount = 0;
 
-  for (const { testDir, scriptPath } of scanTargets) {
-    console.log(`\n🔍 处理脚本: ${testDir}`);
+  for (let scriptIdx = 0; scriptIdx < scanTargets.length; scriptIdx++) {
+    const { testDir, scriptPath } = scanTargets[scriptIdx]!;
+    console.log(`\n🔍 [${scriptIdx + 1}/${scanTargets.length}] 处理脚本: ${testDir}`);
 
     const screenshots = getAllScreenshots(scriptPath, 'optimized', outputPath);
 

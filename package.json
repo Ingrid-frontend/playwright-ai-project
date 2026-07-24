@@ -80,7 +80,10 @@
     "lint": "eslint . --ext .ts,.tsx",
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "typecheck": "tsc --noEmit",
-    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "feishu:callback-server": "tsx scripts/feishu/callback-server.ts",
+    "feishu:test-webhook": "tsx scripts/feishu/test-feishu-webhook.ts",
+    "feishu:update-report": "tsx scripts/feishu/update-feishu-report.ts"
   },
   "keywords": [
     "playwright",

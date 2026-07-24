@@ -5,6 +5,8 @@ import type { UiIssuesReport } from './ui-issues.js';
 const HISTORY_DIR = path.join('results', 'history');
 const STEP_TRENDS_FILE = path.join(HISTORY_DIR, 'step-trends.json');
 const MAX_STEP_POINTS = 14;
+/** 历史快照保留天数（可通过 HISTORY_RETENTION_DAYS 环境变量覆盖） */
+const RETENTION_DAYS = Number.parseInt(process.env.HISTORY_RETENTION_DAYS || '90', 10);
 
 export interface StepTrendPoint {
   date: string;
@@ -125,5 +127,32 @@ export function appendHistorySnapshot(report: UiIssuesReport): string {
   if (!fs.existsSync(HISTORY_DIR)) fs.mkdirSync(HISTORY_DIR, { recursive: true });
   fs.writeFileSync(filePath, JSON.stringify(snapshot, null, 2), 'utf-8');
   appendStepTrendPoints(report);
+  cleanupOldSnapshots();
   return filePath;
+}
+
+/** 删除超过保留期的历史快照文件 */
+function cleanupOldSnapshots(): void {
+  if (!fs.existsSync(HISTORY_DIR)) return;
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - RETENTION_DAYS);
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
+  try {
+    const files = fs.readdirSync(HISTORY_DIR);
+    let removed = 0;
+    for (const file of files) {
+      // 只处理日期快照文件（YYYY-MM-DD.json）
+      if (!/^\d{4}-\d{2}-\d{2}\.json$/.test(file)) continue;
+      const fileDate = file.replace('.json', '');
+      if (fileDate < cutoffStr) {
+        try {
+          fs.unlinkSync(path.join(HISTORY_DIR, file));
+          removed++;
+        } catch { /* 忽略单个删除失败 */ }
+      }
+    }
+    if (removed > 0) {
+      console.log(`🗑️  已清理 ${removed} 个过期历史快照（保留 ${RETENTION_DAYS} 天）`);
+    }
+  } catch { /* 目录读取失败时静默跳过 */ }
 }

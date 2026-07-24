@@ -64,6 +64,12 @@ const CONFIG_PATH = path.join(process.cwd(), 'config/ui-regression.json');
 
 let cached: UiRegressionConfig | null = null;
 
+/** 清除缓存并重新加载配置（用于配置变更后热更新） */
+export function reloadUiRegressionConfig(): UiRegressionConfig {
+  cached = null;
+  return loadUiRegressionConfig();
+}
+
 export function loadUiRegressionConfig(): UiRegressionConfig {
   if (cached) return cached;
 

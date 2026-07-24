@@ -126,30 +126,51 @@ export function promoteRunToGolden(opts: {
   }
 
   const goldenDir = goldenDirForScript(opts.scriptKey, runSegment);
-  ensureDir(goldenDir);
-
   const pngs = fs.readdirSync(sourceDir).filter((f) => f.endsWith('.png') && f.startsWith('step-'));
-  let copied = 0;
-  for (const file of pngs) {
-    fs.copyFileSync(path.join(sourceDir, file), path.join(goldenDir, file));
-    copied++;
+
+  // 原子操作：先复制到临时目录，再 rename 替换旧基线
+  const tmpDir = `${goldenDir}.tmp-${Date.now()}`;
+  const bakDir = fs.existsSync(goldenDir) ? `${goldenDir}.bak-${Date.now()}` : null;
+  try {
+    ensureDir(tmpDir);
+    let copied = 0;
+    for (const file of pngs) {
+      fs.copyFileSync(path.join(sourceDir, file), path.join(tmpDir, file));
+      copied++;
+    }
+    // 旧基线重命名为备份（原子），临时目录 rename 为正式基线
+    if (bakDir) fs.renameSync(goldenDir, bakDir);
+    fs.renameSync(tmpDir, goldenDir);
+    // 成功后清理备份
+    if (bakDir) {
+      try { fs.rmSync(bakDir, { recursive: true, force: true }); } catch { /* 忽略清理失败 */ }
+    }
+
+    const manifest = loadManifest();
+    manifest.entries = manifest.entries.filter(
+      (e) => !(e.scriptKey === opts.scriptKey && e.browser === browser),
+    );
+    manifest.entries.push({
+      scriptKey: opts.scriptKey,
+      browser,
+      runSegment,
+      sourceRunTimestamp: opts.sourceRunTimestamp,
+      promotedAt: new Date().toISOString(),
+      sourceScreenshotDir: sourceDir,
+    });
+    saveManifest(manifest);
+
+    return { copied, goldenDir };
+  } catch (err) {
+    // 失败时回滚：恢复备份、清理临时目录
+    if (bakDir && fs.existsSync(bakDir) && !fs.existsSync(goldenDir)) {
+      try { fs.renameSync(bakDir, goldenDir); } catch { /* 回滚失败则跳过 */ }
+    }
+    if (fs.existsSync(tmpDir)) {
+      try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* 忽略 */ }
+    }
+    throw err;
   }
-
-  const manifest = loadManifest();
-  manifest.entries = manifest.entries.filter(
-    (e) => !(e.scriptKey === opts.scriptKey && e.browser === browser),
-  );
-  manifest.entries.push({
-    scriptKey: opts.scriptKey,
-    browser,
-    runSegment,
-    sourceRunTimestamp: opts.sourceRunTimestamp,
-    promotedAt: new Date().toISOString(),
-    sourceScreenshotDir: sourceDir,
-  });
-  saveManifest(manifest);
-
-  return { copied, goldenDir };
 }
 
 export function revertGolden(scriptKey: string, browser?: string): number {

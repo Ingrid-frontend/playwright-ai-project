@@ -16,7 +16,20 @@ class ScreenshotsFixer {
   }
   
   private createMissingCategoryFolders(): void {
-    const categories = ['20260313', '20260410', '260515'];
+    // 从 date-categories.json 读取分类目录，而非硬编码
+    const configPath = path.join(process.cwd(), 'config', 'date-categories.json');
+    let categories: string[] = [];
+    if (fs.existsSync(configPath)) {
+      try {
+        const cfg = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        categories = cfg.dateCategories || [];
+      } catch {
+        console.warn('⚠️  无法解析 date-categories.json，使用默认分类');
+        categories = ['260116', '260313', '260410', '260515', '260612', '260717'];
+      }
+    } else {
+      categories = ['260116', '260313', '260410', '260515', '260612', '260717'];
+    }
     
     for (const category of categories) {
       const categoryDir = path.join(this.screenshotsDir, category);
@@ -157,7 +170,19 @@ class ScreenshotsFixer {
     console.log('🔍 模拟运行 - 不实际修改文件');
     console.log('='.repeat(50));
     
-    const categories = ['20260313', '20260410', '260515'];
+    // 从 date-categories.json 读取分类目录
+    const configPath = path.join(process.cwd(), 'config', 'date-categories.json');
+    let categories: string[] = [];
+    if (fs.existsSync(configPath)) {
+      try {
+        const cfg = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        categories = cfg.dateCategories || [];
+      } catch {
+        categories = ['260116', '260313', '260410', '260515', '260612', '260717'];
+      }
+    } else {
+      categories = ['260116', '260313', '260410', '260515', '260612', '260717'];
+    }
     
     console.log('\n📁 需要创建的分类目录:');
     for (const category of categories) {

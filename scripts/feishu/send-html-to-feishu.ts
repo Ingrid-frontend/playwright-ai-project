@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
+import { fetchWithRetry } from './feishu-utils.js';
 
 dotenv.config();
 
@@ -132,7 +133,7 @@ async function sendToFeishu(htmlFilePath: string, config: FeishuConfig): Promise
     console.log('  - 内容长度: ' + truncatedContent.length);
     console.log('  - 是否截断: ' + isTruncated);
 
-    const response = await fetch(config.webhookUrl, {
+    const response = await fetchWithRetry(config.webhookUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
