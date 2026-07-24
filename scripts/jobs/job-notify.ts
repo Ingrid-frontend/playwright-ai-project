@@ -2,6 +2,12 @@ import fs from 'fs';
 import path from 'path';
 import type { FeishuMode } from './test-jobs-config.js';
 import { fetchWithRetry } from '../feishu/feishu-utils.js';
+import { BITABLE_RESULT_FILE } from '../feishu/bitable-schema.js';
+
+type BitableRecordFile = {
+  runRecordUrl?: string;
+  dashboardUrl?: string;
+};
 
 export type JobNotifySummary = {
   jobId?: string;
@@ -46,9 +52,16 @@ function buildResultMarkdown(summary: JobNotifySummary): string {
   }
   if (summary.uiIssuesSummary) {
     lines.push(summary.uiIssuesSummary);
-      const hasButtons = process.env.ENABLE_GITHUB === '1' || process.env.FEISHU_CALLBACK_URL || process.env.FEISHU_REPORT_URL || fs.existsSync('results/feishu-doc-url.txt');
-  const reportHint = hasButtons ? '📎 完整差异报告已生成，可通过下方按钮查看' : '📎 完整差异报告已生成，请联系测试团队获取详情';
-  lines.push(reportHint);
+    const hasButtons =
+      process.env.ENABLE_GITHUB === '1' ||
+      process.env.FEISHU_CALLBACK_URL ||
+      process.env.FEISHU_REPORT_URL ||
+      fs.existsSync('results/feishu-doc-url.txt') ||
+      fs.existsSync(BITABLE_RESULT_FILE);
+    const reportHint = hasButtons
+      ? '📎 完整报告与看板数据已生成，可通过下方按钮查看'
+      : '📎 完整差异报告已生成，请联系测试团队获取详情';
+    lines.push(reportHint);
   }
   if (summary.errorSummary) {
     lines.push(summary.errorSummary);
@@ -278,6 +291,33 @@ function buildFeishuDocButton(): Array<Record<string, unknown>> {
   return [];
 }
 
+function buildBitableButtons(): Array<Record<string, unknown>> {
+  if (!fs.existsSync(BITABLE_RESULT_FILE)) return [];
+  try {
+    const record = JSON.parse(fs.readFileSync(BITABLE_RESULT_FILE, 'utf-8')) as BitableRecordFile;
+    const buttons: Array<Record<string, unknown>> = [];
+    if (record.runRecordUrl) {
+      buttons.push({
+        tag: 'button',
+        text: { tag: 'plain_text', content: '📋 多维表记录' },
+        type: 'primary',
+        url: record.runRecordUrl,
+      });
+    }
+    if (record.dashboardUrl) {
+      buttons.push({
+        tag: 'button',
+        text: { tag: 'plain_text', content: '📈 质量看板' },
+        type: 'default',
+        url: record.dashboardUrl,
+      });
+    }
+    return buttons;
+  } catch {
+    return [];
+  }
+}
+
 
 function buildFallbackReportButton(reportUrl?: string | null): Array<Record<string, unknown>> {
   const url = reportUrl || process.env.FEISHU_REPORT_URL?.trim();
@@ -351,6 +391,7 @@ function buildCardElements(
 
   const reportButtons = [
     ...buildGithubActionsButtons(githubEnabled),
+    ...buildBitableButtons(),
     ...buildFeishuDocButton(),
     ...buildFallbackReportButton(reportUrl),
   ];

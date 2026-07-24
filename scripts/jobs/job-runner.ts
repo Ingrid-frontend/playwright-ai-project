@@ -15,6 +15,7 @@ import {
 } from './job-lock.js';
 import { readUiIssuesSummaryLine, sendJobFeishuNotification, readUiIssuesSummaryCounts, buildJobFailReasons } from './job-notify.js';
 import { getAnalyzeErrorsSummary, runAnalyzeErrorsOnFailure } from '../flow/flow-shared.js';
+import { writeBitableReport } from '../feishu/write-bitable-report.js';
 import {
   formatRunId,
   isProcessAlive,
@@ -353,12 +354,12 @@ export async function runDirect(opts: DirectRunOptions, ctx: JobRunContext): Pro
     }
     if (opts.specs !== 'all') {
       const others = listKnownEnvs()
-        .filter((e) => e !== envLabel)
-        .map((e) => ({ env: e, count: countResolvedSpecs(opts.specs, opts.optimizedDir, e) }))
-        .filter((x) => x.count > 0);
+        .filter((e: string) => e !== envLabel)
+        .map((e: string) => ({ env: e, count: countResolvedSpecs(opts.specs, opts.optimizedDir, e) }))
+        .filter((x: { env: string; count: number }) => x.count > 0);
       if (others.length) {
         console.error(
-          `💡 其它环境有匹配: ${others.map((o) => `${o.env}(${o.count})`).join(', ')}，可执行 npm run test-job -- run --id=${jobId} --env=<env>`,
+          `💡 其它环境有匹配: ${others.map((o: { env: string; count: number }) => `${o.env}(${o.count})`).join(', ')}，可执行 npm run test-job -- run --id=${jobId} --env=<env>`,
         );
       }
     }
@@ -493,6 +494,15 @@ export async function runDirect(opts: DirectRunOptions, ctx: JobRunContext): Pro
     uiIssuesWarning: uiIssues?.warning,
     failReasons,
   };
+
+  if (opts.steps.writeFeishuBitable) {
+    try {
+      const finalStatus: JobRunStatus = aborted ? 'aborted' : flowAllOk ? 'success' : 'failed';
+      await writeBitableReport({ summary, env: runtimeEnv, status: finalStatus });
+    } catch (error) {
+      console.log('⚠️  飞书多维表写入失败（不影响任务流程）:', error instanceof Error ? error.message : String(error));
+    }
+  }
 
   if (opts.steps.feishuNotify && shouldNotify(opts.notifyOn, flowAllOk)) {
     await sendJobFeishuNotification(opts.feishuMode, {

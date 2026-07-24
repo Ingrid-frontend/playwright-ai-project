@@ -16,6 +16,7 @@
       "recordLastGreen": true,
       "feishuNotify": true,
       "createFeishuDoc": false,
+      "writeFeishuBitable": false,
       "refreshLogin": false
     }
   },
@@ -34,7 +35,8 @@
         "compareGate": true,
         "recordLastGreen": true,
         "feishuNotify": true,
-        "createFeishuDoc": false
+        "createFeishuDoc": false,
+        "writeFeishuBitable": false
       },
       "notifyOn": ["failure", "success"]
     },
@@ -50,7 +52,8 @@
         "login": true,
         "compare": true,
         "compareGate": false,
-        "feishuNotify": true
+        "feishuNotify": true,
+        "writeFeishuBitable": false
       }
     }
   ]

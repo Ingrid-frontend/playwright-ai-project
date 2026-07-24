@@ -59,6 +59,7 @@
     "screenshot-report": "npm run compare-screenshots && npm run open-screenshot-report:only",
     "send-html-to-feishu": "tsx scripts/feishu/send-html-to-feishu.ts",
     "create-feishu-doc": "tsx scripts/feishu/create-feishu-doc.ts",
+    "feishu:bitable": "tsx scripts/feishu/write-bitable-report.ts",
     "upload-to-feishu": "tsx scripts/feishu/upload-to-feishu.ts",
     "test-feishu-webhook": "tsx scripts/feishu/test-feishu-webhook.ts",
     "run-optimized-tests": "tsx scripts/flow/run-optimized-tests.ts",

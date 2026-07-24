@@ -16,6 +16,7 @@ export type JobSteps = {
   recordLastGreen: boolean;
   feishuNotify: boolean;
   createFeishuDoc: boolean;
+  writeFeishuBitable: boolean;
   refreshLogin: boolean;
 };
 
@@ -76,6 +77,7 @@ const DEFAULT_STEPS: JobSteps = {
   recordLastGreen: true,
   feishuNotify: true,
   createFeishuDoc: false,
+  writeFeishuBitable: false,
   refreshLogin: false,
 };
 

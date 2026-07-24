@@ -3,6 +3,13 @@
   "appId": "",
   "appSecret": "",
   "tenantKey": "",
+  "bitable": {
+    "appToken": "",
+    "runTableId": "",
+    "issueTableId": "",
+    "dailySummaryTableId": "",
+    "dashboardUrl": ""
+  },
   "settings": {
     "enableHtmlUpload": true,
     "enableCloudDocUpload": false,
