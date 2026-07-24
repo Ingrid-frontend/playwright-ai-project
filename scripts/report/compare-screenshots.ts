@@ -33,6 +33,7 @@ import {
   type OverviewData,
   type SummaryRow,
 } from './compare-report-viz.js';
+import { isLoginLikeRoute } from '../../src/utils/login-detection.js';
 
 let currentStepTrends: Record<string, StepTrendPoint[]> = {};
 
@@ -182,6 +183,12 @@ function getRouteDisplayName(route: string): string {
   }
   
   return route;
+}
+
+function isLoginScreenshotCandidate(fileName: string, route?: string): boolean {
+  if (route && isLoginLikeRoute(route)) return true;
+  const normalized = fileName.replace(/\\/g, '/').toLowerCase();
+  return /(^|[_/.-])login([_/.-]|$)/i.test(normalized) || /__.*login.*\.png$/i.test(normalized);
 }
 
 /** 按运行时间戳升序，最早一次作为基线 */
@@ -479,6 +486,11 @@ function getAllScreenshots(dir: string, type: 'pom' | 'optimized', outputPath: s
           const routeMatch = stepName.match(/^(.+)__(.+)$/);
           if (routeMatch) {
             route = routeMatch[2];
+          }
+          
+          if (isLoginScreenshotCandidate(entry.name, route)) {
+            console.log(`    ⚠️  跳过登录页截图，避免污染对比数据: ${entry.name}`);
+            return;
           }
           
           if (!result.has(stepNumber)) {

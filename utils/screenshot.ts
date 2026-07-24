@@ -2,6 +2,7 @@ import { Page, expect } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { assertNotLoginLikePage } from '../src/utils/login-detection.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -119,6 +120,7 @@ export async function screenshotWhenStable(page: Page, path: string, options: { 
 
   await waitForContentReady(page);
 
+  await assertNotLoginLikePage(page, `stable screenshot: ${path}`);
   await page.waitForTimeout(200);
 
   const route = await getCurrentRoute(page);
@@ -172,6 +174,7 @@ export async function takeStepScreenshot(
     return await screenshotWhenStable(page, filePath, { fullPage });
   }
 
+  await assertNotLoginLikePage(page, `fast screenshot: ${filePath}`);
   await lockViewportForSnapshot(page);
   await page.screenshot({ path: filePath, fullPage, scale: SCREENSHOT_SCALE });
   return { path: filePath, route: page.url() };

@@ -5,6 +5,7 @@ import { env, curConfig } from '../../playwright.config';
 import { createRequire } from 'node:module';
 import { getLoginCredentials } from '../utils/credentials';
 import { resolveStorageState, shouldRefreshStorageState } from '../utils/env-config';
+import { isLoginLikePage, validateStorageStateFile } from '../utils/login-detection';
 
 const require = createRequire(import.meta.url);
 const { annotateStorageStateMeta } = require('../utils/storage-state-meta.cjs') as {
@@ -21,16 +22,35 @@ const { annotateStorageStateMeta } = require('../utils/storage-state-meta.cjs') 
 const STORAGE_PATH = resolveStorageState(env, process.env.PLAYWRIGHT_ACCOUNT);
 const forceRefresh = shouldRefreshStorageState();
 
-setup('🔐 全局登录并持久化状态', { timeout: 120_000 }, async ({ page }) => {
+setup('🔐 全局登录并持久化状态', async ({ page, browser }) => {
+  setup.setTimeout(120_000);
   const dir = path.dirname(STORAGE_PATH);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
 
-  if (!forceRefresh && fs.existsSync(STORAGE_PATH) && fs.statSync(STORAGE_PATH).size > 10) {
-    console.log(`💡 检测到 loginState 已存在，跳过登录（${STORAGE_PATH}）`);
-    console.log('💡 换账号请设置 PLAYWRIGHT_REFRESH_STORAGE=1 或执行 npm run login:force');
-    return;
+  if (!forceRefresh && fs.existsSync(STORAGE_PATH)) {
+    const validity = validateStorageStateFile(STORAGE_PATH);
+    if (validity.valid) {
+      const context = await browser.newContext({ storageState: STORAGE_PATH, baseURL: curConfig.baseURL });
+      const probePage = await context.newPage();
+      try {
+        await probePage.goto('/', { waitUntil: 'load', timeout: 30_000 });
+        if (!(await isLoginLikePage(probePage))) {
+          console.log(`💡 检测到有效 loginState，跳过登录（${STORAGE_PATH}）`);
+          console.log('💡 换账号请设置 PLAYWRIGHT_REFRESH_STORAGE=1 或执行 npm run login:force');
+          return;
+        }
+        console.log(`⚠️  loginState 已失效（仍进入登录页），将重新登录: ${STORAGE_PATH}`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.log(`⚠️  loginState 探测失败，将重新登录: ${message}`);
+      } finally {
+        await context.close().catch(() => {});
+      }
+    } else {
+      console.log(`⚠️  loginState 无效，将重新登录：${validity.reason}`);
+    }
   }
 
   const ACCOUNT = getLoginCredentials(env);
@@ -62,6 +82,10 @@ setup('🔐 全局登录并持久化状态', { timeout: 120_000 }, async ({ page
   await expect(page).not.toHaveURL(/.*login.*/, { timeout: 60_000 });
 
   await page.context().storageState({ path: STORAGE_PATH });
+  const savedStateValidity = validateStorageStateFile(STORAGE_PATH);
+  if (!savedStateValidity.valid) {
+    throw new Error(`登录后保存的 storageState 无效：${savedStateValidity.reason}`);
+  }
   annotateStorageStateMeta(STORAGE_PATH, {
     loginAccount: ACCOUNT.username,
     env,
