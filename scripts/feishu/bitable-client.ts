@@ -1,7 +1,9 @@
 import type { BitableRuntimeConfig } from './bitable-schema.js';
 import { fetchWithRetry } from './feishu-utils.js';
 
-export type BitableRecordFields = Record<string, string | number | boolean | null | undefined>;
+export type BitableFieldValue = string | number | boolean | { link: string; text?: string };
+
+export type BitableRecordFields = Record<string, BitableFieldValue | null | undefined>;
 
 export type BitableUpsertResult = {
   recordId: string;
@@ -81,6 +83,38 @@ export class BitableClient {
     return `https://open.feishu.cn/open-apis/bitable/v1/apps/${this.config.appToken}/tables/${tableId}${suffix}`;
   }
 
+  private appUrl(suffix: string): string {
+    return `https://open.feishu.cn/open-apis/bitable/v1/apps/${this.config.appToken}${suffix}`;
+  }
+
+  async listFields(tableId: string): Promise<Array<{ field_id: string; field_name: string; type: number }>> {
+    const data = await this.request<{ items?: Array<{ field_id: string; field_name: string; type: number }> }>(
+      this.tableUrl(tableId, '/fields?page_size=500'),
+    );
+    return data.items ?? [];
+  }
+
+  async createField(
+    tableId: string,
+    spec: { name: string; type: number; property?: Record<string, unknown> },
+  ): Promise<void> {
+    await this.request<unknown>(this.tableUrl(tableId, '/fields'), {
+      method: 'POST',
+      body: JSON.stringify({
+        field_name: spec.name,
+        type: spec.type,
+        property: spec.property ?? {},
+      }),
+    });
+  }
+
+  async listDashboards(): Promise<Array<{ block_id: string; name: string }>> {
+    const data = await this.request<{ dashboards?: Array<{ block_id: string; name: string }> }>(
+      this.appUrl('/dashboards?page_size=50'),
+    );
+    return data.dashboards ?? [];
+  }
+
   private async findRecordId(tableId: string, uniqueField: string, uniqueValue: string): Promise<string | null> {
     const data = await this.request<SearchRecordsData>(this.tableUrl(tableId, '/records/search?page_size=1'), {
       method: 'POST',
@@ -118,8 +152,8 @@ export class BitableClient {
   }
 }
 
-function cleanFields(fields: BitableRecordFields): Record<string, string | number | boolean> {
-  const cleaned: Record<string, string | number | boolean> = {};
+function cleanFields(fields: BitableRecordFields): Record<string, BitableFieldValue> {
+  const cleaned: Record<string, BitableFieldValue> = {};
   for (const [key, value] of Object.entries(fields)) {
     if (value === null || value === undefined) continue;
     cleaned[key] = value;

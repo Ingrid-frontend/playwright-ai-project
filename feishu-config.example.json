@@ -8,7 +8,7 @@
     "runTableId": "",
     "issueTableId": "",
     "dailySummaryTableId": "",
-    "dashboardUrl": ""
+    "dashboardUrl": "https://xxx.feishu.cn/base/{appToken}?block={blockId}"
   },
   "settings": {
     "enableHtmlUpload": true,

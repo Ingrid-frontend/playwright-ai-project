@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
-import { BitableClient } from './bitable-client.js';
+import { BitableClient, type BitableFieldValue } from './bitable-client.js';
 import {
   BITABLE_RESULT_FILE,
   DAILY_FIELDS,
@@ -190,8 +190,8 @@ function buildRunFields(input: {
     [RUN_FIELDS.runDriftCount]: compareKind['run-drift'] ?? 0,
     [RUN_FIELDS.topRoutes]: formatTopEntries(issueSummary?.byRoute),
     [RUN_FIELDS.topScripts]: formatTopScripts(issuesReport?.issues ?? []),
-    [RUN_FIELDS.reportUrl]: resolveReportUrl(),
-    [RUN_FIELDS.feishuDocUrl]: readTextFile(DOC_URL_FILE),
+    [RUN_FIELDS.reportUrl]: toUrlField(resolveReportUrl()),
+    [RUN_FIELDS.feishuDocUrl]: toUrlField(readTextFile(DOC_URL_FILE)),
     [RUN_FIELDS.failureReasons]: (summary.failReasons ?? []).join('\n'),
   };
 }
@@ -317,6 +317,11 @@ function readPreviousHistorySnapshot(currentDate: string): HistorySnapshot | nul
     .sort()
     .pop();
   return file ? readHistorySnapshot(file) : null;
+}
+
+function toUrlField(url: string): BitableFieldValue | null {
+  if (!url) return null;
+  return { link: url, text: url };
 }
 
 function resolveReportUrl(): string {

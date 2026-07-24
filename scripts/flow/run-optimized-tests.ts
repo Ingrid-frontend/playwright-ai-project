@@ -119,6 +119,7 @@ async function main(): Promise<void> {
         recordLastGreen: false,
         feishuNotify: true,
         createFeishuDoc: false,
+        writeFeishuBitable: false,
         refreshLogin: false,
       },
       feishuMode: 'interactive',

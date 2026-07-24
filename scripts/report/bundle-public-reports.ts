@@ -5,6 +5,7 @@
  */
 import fs from 'fs';
 import path from 'path';
+import { writeQualityDashboard } from './generate-quality-dashboard.js';
 
 const root = process.cwd();
 const outDir = path.join(root, 'public-reports');
@@ -39,6 +40,9 @@ function main(): void {
     }
   }
 
+  const dashboardPath = writeQualityDashboard(path.join(outDir, 'dashboard', 'index.html'));
+  const hasDashboard = fs.existsSync(dashboardPath);
+
   const ts = new Date().toISOString();
   const runId = process.env.GITHUB_RUN_ID || '';
   const repo = process.env.GITHUB_REPOSITORY || '';
@@ -53,6 +57,11 @@ function main(): void {
     ? pagesBase
       ? `${pagesBase}/ui-regression/index.html`
       : './ui-regression/index.html'
+    : '';
+  const dashboardLink = hasDashboard
+    ? pagesBase
+      ? `${pagesBase}/dashboard/index.html`
+      : './dashboard/index.html'
     : '';
 
   const indexHtml = `<!DOCTYPE html>
@@ -73,6 +82,7 @@ function main(): void {
 <body>
   <h1>Playwright 测试报告</h1>
   <p>Headless 执行产物，可在浏览器直接查看（无需安装 Playwright）。</p>
+  ${hasDashboard ? `<a href="${dashboardLink}">UI 质量仪表盘（趋势 / 脚本排行 / 路由分布）</a>` : ''}
   ${hasPw ? `<a href="${pwLink}">Playwright HTML 报告（用例步骤 / 失败截图 / trace）</a>` : '<p>暂无 Playwright HTML 报告</p>'}
   ${hasUi ? `<a href="${uiLink}">UI 截图对比报告</a>` : '<p>暂无 UI 回归报告（需先 compare-screenshots）</p>'}
   <p class="warn">UI 对比报告中的截图路径依赖 CI Artifact「screenshots」，离线打开可能缺图；Playwright 报告自包含失败附件。</p>
@@ -85,6 +95,7 @@ function main(): void {
   console.log(`✅ 已打包: ${path.relative(root, outDir)}/`);
   if (hasPw) console.log('  - playwright-report/');
   if (hasUi) console.log('  - ui-regression/index.html');
+  if (hasDashboard) console.log('  - dashboard/index.html');
   console.log('  - index.html（入口页）');
 }
 
