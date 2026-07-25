@@ -115,6 +115,43 @@ export class BitableClient {
     return data.dashboards ?? [];
   }
 
+  async listAllRecordIds(tableId: string): Promise<string[]> {
+    const ids: string[] = [];
+    let pageToken = '';
+    for (;;) {
+      const query = new URLSearchParams({ page_size: '500' });
+      if (pageToken) query.set('page_token', pageToken);
+      const data = await this.request<SearchRecordsData & { has_more?: boolean; page_token?: string }>(
+        `${this.tableUrl(tableId, '/records')}?${query.toString()}`,
+      );
+      for (const item of data.items ?? []) {
+        if (item.record_id) ids.push(item.record_id);
+      }
+      if (!data.has_more || !data.page_token) break;
+      pageToken = data.page_token;
+    }
+    return ids;
+  }
+
+  async deleteRecords(tableId: string, recordIds: string[]): Promise<number> {
+    let deleted = 0;
+    for (let i = 0; i < recordIds.length; i += 500) {
+      const batch = recordIds.slice(i, i + 500);
+      await this.request<unknown>(this.tableUrl(tableId, '/records/batch_delete'), {
+        method: 'POST',
+        body: JSON.stringify({ records: batch }),
+      });
+      deleted += batch.length;
+    }
+    return deleted;
+  }
+
+  async clearTable(tableId: string): Promise<number> {
+    const ids = await this.listAllRecordIds(tableId);
+    if (!ids.length) return 0;
+    return this.deleteRecords(tableId, ids);
+  }
+
   private async findRecordId(tableId: string, uniqueField: string, uniqueValue: string): Promise<string | null> {
     const data = await this.request<SearchRecordsData>(this.tableUrl(tableId, '/records/search?page_size=1'), {
       method: 'POST',

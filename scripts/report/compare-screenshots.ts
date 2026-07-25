@@ -3060,36 +3060,40 @@ function generateHTML(
 </html>`;
 }
 
+function hasDirectRunSegment(dir: string): boolean {
+  if (!fs.existsSync(dir)) return false;
+  return fs
+    .readdirSync(dir)
+    .filter((f) => !f.startsWith('.'))
+    .some((f) => fs.statSync(path.join(dir, f)).isDirectory() && RUN_SEGMENT_DIR.test(f));
+}
+
 function discoverScriptScanTargets(screenshotsDir: string): ScriptScanTarget[] {
   const skipTop = new Set(['results', 'diffs', 'pom']);
   const targets: ScriptScanTarget[] = [];
 
-  const topEntries = fs
+  function walk(relativeDir: string, absDir: string): void {
+    if (hasDirectRunSegment(absDir)) {
+      targets.push({
+        testDir: relativeDir.replaceAll(path.sep, '/'),
+        scriptPath: absDir,
+      });
+      return;
+    }
+
+    for (const entry of fs.readdirSync(absDir).filter((f) => !f.startsWith('.'))) {
+      const childAbs = path.join(absDir, entry);
+      if (!fs.statSync(childAbs).isDirectory() || RUN_SEGMENT_DIR.test(entry)) continue;
+      const childRel = relativeDir ? path.join(relativeDir, entry) : entry;
+      walk(childRel, childAbs);
+    }
+  }
+
+  for (const top of fs
     .readdirSync(screenshotsDir)
     .filter((f) => !f.startsWith('.') && !skipTop.has(f))
-    .filter((f) => fs.statSync(path.join(screenshotsDir, f)).isDirectory());
-
-  for (const top of topEntries) {
-    const topPath = path.join(screenshotsDir, top);
-    const children = fs
-      .readdirSync(topPath)
-      .filter((f) => !f.startsWith('.'))
-      .filter((f) => fs.statSync(path.join(topPath, f)).isDirectory());
-
-    const directRunSegment = children.some((c) => RUN_SEGMENT_DIR.test(c));
-
-    if (directRunSegment) {
-      // screenshots/<script>/run-chromium-optimized/<timestamp>/...
-      targets.push({ testDir: top, scriptPath: topPath });
-      continue;
-    }
-
-    for (const scriptDir of children) {
-      targets.push({
-        testDir: `${top}/${scriptDir}`,
-        scriptPath: path.join(topPath, scriptDir),
-      });
-    }
+    .filter((f) => fs.statSync(path.join(screenshotsDir, f)).isDirectory())) {
+    walk(top, path.join(screenshotsDir, top));
   }
 
   return targets.sort((a, b) => a.testDir.localeCompare(b.testDir, 'zh-CN'));

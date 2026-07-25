@@ -66,6 +66,7 @@
     "upload-to-feishu": "tsx scripts/feishu/upload-to-feishu.ts",
     "test-feishu-webhook": "tsx scripts/feishu/test-feishu-webhook.ts",
     "run-optimized-tests": "tsx scripts/flow/run-optimized-tests.ts",
+    "reset:regression-data": "tsx scripts/flow/reset-regression-data.ts",
     "test-job": "tsx scripts/jobs/test-job-cli.ts",
     "test-job:daemon": "tsx scripts/jobs/test-jobs-daemon.ts",
     "generate-raw-recording": "tsx scripts/recording/generate-raw-recording.ts",
@@ -85,7 +86,6 @@
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
-    "feishu:callback-server": "tsx scripts/feishu/callback-server.ts",
     "feishu:test-webhook": "tsx scripts/feishu/test-feishu-webhook.ts",
     "feishu:update-report": "tsx scripts/feishu/update-feishu-report.ts"
   },
