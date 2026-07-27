@@ -198,6 +198,7 @@ async function captureScreenshotAtViewports(
 ): Promise<string> {
   const viewports = resolveSnapshotViewports();
   const fullPage = opts.fullPage ?? useFullPageByDefault();
+  const defaultVp = viewports.find((v) => v.default) || viewports[0]!;
   let primaryPath = filePath;
 
   for (const vp of viewports) {
@@ -209,6 +210,10 @@ async function captureScreenshotAtViewports(
     await page.screenshot({ path: outPath, fullPage, scale: SCREENSHOT_SCALE });
     await writeStepDiagnostics(page, outPath, vp, opts.scriptKey);
     if (isDefault) primaryPath = outPath;
+  }
+
+  if (viewports.length > 1) {
+    await lockViewportForSnapshot(page, defaultVp);
   }
 
   return primaryPath;

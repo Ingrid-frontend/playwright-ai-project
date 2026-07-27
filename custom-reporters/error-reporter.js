@@ -91,6 +91,7 @@ class ErrorReporter {
         file = { schemaVersion: 1, entries: [] };
       }
     }
+    if (!Array.isArray(file.entries)) file.entries = [];
 
     let uiMetrics;
     const uiPath = path.join('results', 'ui-issues.json');

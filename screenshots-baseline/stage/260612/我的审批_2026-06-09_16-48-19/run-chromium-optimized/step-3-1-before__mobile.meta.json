@@ -1,14 +1,14 @@
 {
-  "capturedAt": "2026-07-27T02:13:49.290Z",
+  "capturedAt": "2026-07-27T02:13:32.516Z",
   "viewport": {
-    "name": "desktop",
-    "width": 1280,
-    "height": 720
+    "name": "mobile",
+    "width": 375,
+    "height": 812
   },
   "layout": {
     "horizontalOverflow": false,
-    "scrollWidth": 1280,
-    "innerWidth": 1280
+    "scrollWidth": 375,
+    "innerWidth": 375
   },
   "domHash": "BODY|1||",
   "selectors": {
@@ -17,8 +17,8 @@
       "bbox": {
         "x": 0,
         "y": 0,
-        "width": 1280,
-        "height": 1440
+        "width": 375,
+        "height": 1624
       },
       "domHash": "HTML|2||body{margin: 0;overflow: hidden;height:200vh;width:200vw;transform:scale(0.5);transform-origin: left top}window.addEventListener(\"message\", function(e){ var iframe= document.getElementsByTagName(\"iframe\")[0]; if(!iframe || e.source !== ifra"
     }
