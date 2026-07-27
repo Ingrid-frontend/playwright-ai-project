@@ -188,6 +188,16 @@ export function resolveCrossBrowserPixelmatch(): PixelmatchOptions {
   return { threshold, includeAA };
 }
 
+export function resolveCompareCrossBrowser(): boolean {
+  const env = process.env.PLAYWRIGHT_COMPARE_CROSS_BROWSER?.trim();
+  if (env) {
+    const v = env.toLowerCase();
+    if (v === '0' || v === 'false' || v === 'no') return false;
+    if (v === '1' || v === 'true' || v === 'yes') return true;
+  }
+  return loadUiRegressionConfig().compareCrossBrowser !== false;
+}
+
 export function resolveBaselineStrategy(): BaselineStrategy {
   return loadUiRegressionConfig().baselineStrategy;
 }

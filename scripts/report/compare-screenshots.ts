@@ -12,7 +12,7 @@ import {
   runWithConcurrency,
 } from './image-diff.js';
 import { generateBaselineComparisons, runTimestampSortKey } from './baseline-comparisons.js';
-import { loadUiRegressionConfig, isDisabledViewportScreenshot, resolveCrossBrowserPixelmatch, resolveSameBrowserPixelmatch } from './ui-regression-config.js';
+import { loadUiRegressionConfig, isDisabledViewportScreenshot, resolveCompareCrossBrowser, resolveCrossBrowserPixelmatch, resolveSameBrowserPixelmatch } from './ui-regression-config.js';
 import { readUiIssuesSummaryLine, sendJobFeishuNotification } from '../jobs/job-notify.js';
 import type { FeishuMode } from '../jobs/test-jobs-config.js';
 import {
@@ -111,11 +111,10 @@ const COMPARE_INCREMENTAL = (() => {
 
 const RUN_SEGMENT_DIR = /^run-(chromium|webkit|firefox|safari|edge)-/i;
 
-/** 跨浏览器对比：Chrome(基线) vs WebKit。关闭：PLAYWRIGHT_COMPARE_CROSS_BROWSER=0 */
-const COMPARE_CROSS_BROWSER = (() => {
-  const v = (process.env.PLAYWRIGHT_COMPARE_CROSS_BROWSER ?? '1').toLowerCase();
-  return !(v === '0' || v === 'false' || v === 'no');
-})();
+/** 跨浏览器对比：Chrome(基线) vs WebKit。关闭：config compareCrossBrowser 或 PLAYWRIGHT_COMPARE_CROSS_BROWSER=0 */
+function isCompareCrossBrowserEnabled(): boolean {
+  return resolveCompareCrossBrowser();
+}
 
 const CROSS_BROWSER_BASE = 'chrome';
 const CROSS_BROWSER_TARGET = 'webkit';
@@ -430,7 +429,7 @@ async function generateCrossBrowserComparisonsByStepName(
   outputPath: string,
   scriptKey?: string,
 ): Promise<ImageComparison[]> {
-  if (!COMPARE_CROSS_BROWSER) return [];
+  if (!isCompareCrossBrowserEnabled()) return [];
 
   const groupedByStepName = new Map<string, ScreenshotInfo[]>();
   stepScreenshots.forEach((screenshot) => {
@@ -1149,6 +1148,7 @@ function scriptDirTimestampMs(scriptDir: string): number {
 }
 
 function generateIssuesTabHtml(issues: UiIssue[]): string {
+  const crossBrowserOn = isCompareCrossBrowserEnabled();
   if (issues.length === 0) {
     return `
     <div class="empty-state">
@@ -1198,12 +1198,12 @@ function generateIssuesTabHtml(issues: UiIssue[]): string {
   return `
     <div class="issues-summary">
       <p>共 <strong id="issues-visible-count">${merged.length}</strong> 项<span id="issues-dedupe-note">${dedupeNote}</span><span id="issues-filter-note"></span> · blocker: <strong id="issues-blocker-count">${merged.filter((i) => i.severity === 'blocker').length}</strong> · warning: <strong id="issues-warning-count">${merged.filter((i) => i.severity === 'warning').length}</strong></p>
-      <p class="issues-hint">结构化清单见 <code>results/ui-issues.json</code>（含未合并原始条数）· 随上方「浏览器」筛选联动 · 跨浏览器差异展示最高为 warning</p>
+      <p class="issues-hint">结构化清单见 <code>results/ui-issues.json</code>（含未合并原始条数）· 随上方「浏览器」筛选联动${crossBrowserOn ? ' · 跨浏览器差异展示最高为 warning' : ''}</p>
     </div>
     <div class="empty-state issues-browser-empty" id="issues-browser-empty" style="display: none;">
       <div class="empty-state-icon">📋</div>
       <div class="empty-state-title">当前浏览器筛选下暂无问题</div>
-      <div class="empty-state-description">可切换 chrome、webkit 或「跨浏览器」查看其他对比类型。</div>
+      <div class="empty-state-description">可切换 chrome、webkit${crossBrowserOn ? ' 或「跨浏览器」' : ''}查看其他对比类型。</div>
     </div>
     <table class="issues-table" id="issues-table">
       <thead>
@@ -1278,6 +1278,7 @@ function generateHTML(
   analysisHtml: string = '',
 ): string {
   currentStepTrends = loadStepTrends();
+  const crossBrowserOn = isCompareCrossBrowserEnabled();
   let issueBlocker = 0;
   let issueWarning = 0;
   let issueNoise = 0;
@@ -1412,7 +1413,7 @@ function generateHTML(
     });
   });
   const browserListRaw = Array.from(allBrowsers).sort();
-  const totalCrossBrowser = getTotalCrossBrowserComparisons(testDirComparisons);
+  const totalCrossBrowser = isCompareCrossBrowserEnabled() ? getTotalCrossBrowserComparisons(testDirComparisons) : 0;
   const hasCrossBrowserData = totalCrossBrowser > 0;
   const browserFilterOrder = ['chrome', 'webkit', 'cross'];
   const browserList = browserFilterOrder.filter(
@@ -2515,7 +2516,7 @@ function generateHTML(
       <div class="filter-row filter-row-tools">
         <span class="filter-label">Diff 筛选：</span>
         <select id="vizFilterSeverity" style="padding:5px 10px;border:1px solid #d6d8db;border-radius:4px;font-size:13px"><option value="all">全部级别</option><option value="blocker">Blocker</option><option value="warning">Warning</option><option value="noise">Noise</option></select>
-        <select id="vizFilterKind" style="padding:5px 10px;border:1px solid #d6d8db;border-radius:4px;font-size:13px"><option value="all">全部类型</option><option value="same-browser">同浏览器</option><option value="cross-browser">跨浏览器</option></select>
+        <select id="vizFilterKind" style="padding:5px 10px;border:1px solid #d6d8db;border-radius:4px;font-size:13px"><option value="all">全部类型</option><option value="same-browser">同浏览器</option>${crossBrowserOn ? '<option value="cross-browser">跨浏览器</option>' : ''}</select>
         <input type="search" id="vizFilterSearch" placeholder="步骤名…" style="padding:5px 10px;border:1px solid #d6d8db;border-radius:4px;font-size:13px;min-width:160px" />
         <span style="font-size:12px;color:#86909c">方向键切换 diff 卡片 · 卡片默认滑块对比</span>
       </div>
@@ -2570,9 +2571,9 @@ function generateHTML(
       <div class="empty-state-title">暂无可展示的对比</div>
       <div class="empty-state-description">
         <ul class="empty-state-hint">
-          <li>本 Tab 展示<strong>同浏览器两次运行</strong>的差异，以及<strong>Chrome ↔ WebKit 跨浏览器</strong>对比；不含 Golden 基线对比（见「问题明细」）。</li>
+          <li>本 Tab 展示<strong>同浏览器两次运行</strong>的差异${crossBrowserOn ? '，以及<strong>Chrome ↔ WebKit 跨浏览器</strong>对比' : ''}；不含 Golden 基线对比（见「问题明细」）。</li>
           <li>同一浏览器若只有一次运行，不会出现运行间对比。</li>
-          <li>跨浏览器需同时存在 run-chromium-optimized 与 run-webkit-optimized 下的同步骤截图。</li>
+          ${crossBrowserOn ? '<li>跨浏览器需同时存在 run-chromium-optimized 与 run-webkit-optimized 下的同步骤截图。</li>' : ''}
         </ul>
       </div>
     </div>
@@ -2585,8 +2586,8 @@ function generateHTML(
       <div class="empty-state-title">暂无需要单独关注的差异</div>
       <div class="empty-state-description">
         <ul class="empty-state-hint">
-          <li>本 Tab 展示 Golden / 运行间 / 跨浏览器中<strong>超过阈值</strong>的差异；Golden 明细见「问题明细」。</li>
-          <li>若预期应有项却为空，可切换「浏览器」（含跨浏览器），或确认是否只有单次运行。</li>
+          <li>本 Tab 展示 Golden / 运行间${crossBrowserOn ? ' / 跨浏览器' : ''}中<strong>超过阈值</strong>的差异；Golden 明细见「问题明细」。</li>
+          <li>若预期应有项却为空，可切换「浏览器」${crossBrowserOn ? '（含跨浏览器）' : ''}，或确认是否只有单次运行。</li>
           <li>需要在本 Tab 看到更多项时，可调低生成报告时的「有差异」收录比例。</li>
         </ul>
       </div>
@@ -3234,7 +3235,7 @@ async function main() {
   console.log(`  截图根目录: ${screenshotsDir}`);
   console.log(`  脚本数: ${scanTargets.length}`);
   console.log(`  输出文件: ${outputPath}`);
-  console.log(`  并行对比: ${COMPARE_CONCURRENCY}，增量缓存: ${COMPARE_INCREMENTAL ? '开启' : '关闭'}，跨浏览器: ${COMPARE_CROSS_BROWSER ? '开启' : '关闭'}`);
+  console.log(`  并行对比: ${COMPARE_CONCURRENCY}，增量缓存: ${COMPARE_INCREMENTAL ? '开启' : '关闭'}，跨浏览器: ${isCompareCrossBrowserEnabled() ? '开启' : '关闭'}`);
 
   const testDirComparisons: TestDirComparisons[] = [];
   const startedAt = Date.now();

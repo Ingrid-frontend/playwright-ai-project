@@ -3,7 +3,7 @@
   "warningRatio": 0.001,
   "diffOnlyTabMinRatio": 0.003,
   "defaultBrowsers": ["chrome", "webkit"],
-  "compareCrossBrowser": true,
+  "compareCrossBrowser": false,
   "baselineStrategy": "hybrid",
   "ignoreRegions": [],
   "maskSelectors": [],
