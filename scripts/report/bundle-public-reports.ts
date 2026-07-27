@@ -24,6 +24,20 @@ function copyDir(src: string, dest: string): void {
   }
 }
 
+function copyFile(src: string, dest: string): void {
+  if (!fs.existsSync(src)) return;
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.copyFileSync(src, dest);
+}
+
+/** ui-regression 报告从 results/ 迁到 public-reports/ui-regression/ 时修正 diff 相对路径 */
+function rewriteUiReportHtml(html: string): string {
+  return html
+    .replace(/src="diffs\//g, 'src="../diffs/')
+    .replace(/src='diffs\//g, "src='../diffs/")
+    .replace(/openModal\('diffs\//g, "openModal('../diffs/");
+}
+
 function main(): void {
   if (fs.existsSync(outDir)) fs.rmSync(outDir, { recursive: true, force: true });
   fs.mkdirSync(outDir, { recursive: true });
@@ -34,10 +48,20 @@ function main(): void {
   if (hasPw) copyDir(pwReport, path.join(outDir, 'playwright-report'));
   if (hasUi) {
     fs.mkdirSync(path.join(outDir, 'ui-regression'), { recursive: true });
-    fs.copyFileSync(uiHtml, path.join(outDir, 'ui-regression', 'index.html'));
+    const bundledHtml = rewriteUiReportHtml(fs.readFileSync(uiHtml, 'utf-8'));
+    fs.writeFileSync(path.join(outDir, 'ui-regression', 'index.html'), bundledHtml, 'utf-8');
     if (fs.existsSync(uiIssues)) {
       fs.copyFileSync(uiIssues, path.join(outDir, 'ui-regression', 'ui-issues.json'));
     }
+  }
+
+  const hasScreenshots = fs.existsSync(path.join(root, 'screenshots'));
+  if (hasScreenshots) {
+    copyDir(path.join(root, 'screenshots'), path.join(outDir, 'screenshots'));
+  }
+  const diffsDir = path.join(root, 'results', 'diffs');
+  if (fs.existsSync(diffsDir)) {
+    copyDir(diffsDir, path.join(outDir, 'diffs'));
   }
 
   const dashboardPath = writeQualityDashboard(path.join(outDir, 'dashboard', 'index.html'));
@@ -77,6 +101,7 @@ function main(): void {
     a:hover { background: #f5f5f5; }
     .meta { color: #666; font-size: 14px; margin-top: 24px; }
     .warn { color: #ad6800; font-size: 13px; }
+    .warn.ok { color: #389e0d; }
   </style>
 </head>
 <body>
@@ -85,7 +110,7 @@ function main(): void {
   ${hasDashboard ? `<a href="${dashboardLink}">UI 质量仪表盘（趋势 / 脚本排行 / 路由分布）</a>` : ''}
   ${hasPw ? `<a href="${pwLink}">Playwright HTML 报告（用例步骤 / 失败截图 / trace）</a>` : '<p>暂无 Playwright HTML 报告</p>'}
   ${hasUi ? `<a href="${uiLink}">UI 截图对比报告</a>` : '<p>暂无 UI 回归报告（需先 compare-screenshots）</p>'}
-  <p class="warn">UI 对比报告中的截图路径依赖 CI Artifact「screenshots」，离线打开可能缺图；Playwright 报告自包含失败附件。</p>
+  ${hasUi && hasScreenshots ? '<p class="warn ok">已打包步骤截图与 diff 图，UI 对比报告可离线查看。</p>' : hasUi ? '<p class="warn">UI 对比报告中的截图路径依赖 CI Artifact「screenshots」，离线打开可能缺图；Playwright 报告自包含失败附件。</p>' : ''}
   <p class="meta">生成时间：${ts}${runId ? `<br/>GitHub Run：${repo}/actions/runs/${runId}` : ''}</p>
 </body>
 </html>`;
@@ -95,6 +120,8 @@ function main(): void {
   console.log(`✅ 已打包: ${path.relative(root, outDir)}/`);
   if (hasPw) console.log('  - playwright-report/');
   if (hasUi) console.log('  - ui-regression/index.html');
+  if (hasScreenshots) console.log('  - screenshots/（UI 报告配图）');
+  if (fs.existsSync(diffsDir)) console.log('  - diffs/（像素 diff 图）');
   if (hasDashboard) console.log('  - dashboard/index.html');
   console.log('  - index.html（入口页）');
 }

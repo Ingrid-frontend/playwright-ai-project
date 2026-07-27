@@ -2,7 +2,7 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { browserToRunSegment, recordLastGreenRun } from '../report/baseline-manager.js';
-import { loadUiRegressionConfig } from '../report/ui-regression-config.js';
+import { loadUiRegressionConfig, resolveDefaultBrowsers } from '../report/ui-regression-config.js';
 import {
   getLegacyEnvDefault,
   parseEnvAndDateCategoryFromRawOrProcessed,
@@ -218,7 +218,7 @@ export function tryAutoPromoteBaseline(
     return;
   }
 
-  for (const browser of ['chrome', 'webkit']) {
+  for (const browser of resolveDefaultBrowsers()) {
     const ts = findLatestRunTimestamp(scriptKey, browser);
     if (!ts) continue;
     runCommand(

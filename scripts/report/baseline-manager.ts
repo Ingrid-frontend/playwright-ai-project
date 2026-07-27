@@ -53,11 +53,13 @@ function writeJson(filePath: string, data: unknown): void {
 export function browserToRunSegment(browser: string): string {
   const b = browser.toLowerCase();
   if (b === 'webkit') return 'run-webkit-optimized';
+  if (b === 'firefox') return 'run-firefox-optimized';
   return 'run-chromium-optimized';
 }
 
 export function runSegmentToBrowser(runSegment: string): string {
   if (/webkit/i.test(runSegment)) return 'webkit';
+  if (/firefox/i.test(runSegment)) return 'firefox';
   return 'chrome';
 }
 
@@ -137,6 +139,11 @@ export function promoteRunToGolden(opts: {
     for (const file of pngs) {
       fs.copyFileSync(path.join(sourceDir, file), path.join(tmpDir, file));
       copied++;
+      const meta = file.replace(/\.png$/i, '.meta.json');
+      const metaSrc = path.join(sourceDir, meta);
+      if (fs.existsSync(metaSrc)) {
+        fs.copyFileSync(metaSrc, path.join(tmpDir, meta));
+      }
     }
     // 旧基线重命名为备份（原子），临时目录 rename 为正式基线
     if (bakDir) fs.renameSync(goldenDir, bakDir);
@@ -186,9 +193,9 @@ export function revertGolden(scriptKey: string, browser?: string): number {
     const dir = goldenDirForScript(entry.scriptKey, entry.runSegment);
     if (fs.existsSync(dir)) {
       for (const f of fs.readdirSync(dir)) {
-        if (f.endsWith('.png')) {
+        if (f.endsWith('.png') || f.endsWith('.meta.json')) {
           fs.unlinkSync(path.join(dir, f));
-          removed++;
+          if (f.endsWith('.png')) removed++;
         }
       }
     }

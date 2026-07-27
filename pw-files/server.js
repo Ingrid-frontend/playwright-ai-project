@@ -593,6 +593,7 @@ const DRAFT_OPTIMIZED_RELATIVE = `tests/optimized/${DRAFT_OPTIMIZED_BASENAME}`;
 const REPO_OPTIMIZED_PROJECTS = [
   { id: 'optimized', label: 'Chrome' },
   { id: 'optimized-webkit', label: 'Safari (WebKit)' },
+  { id: 'optimized-firefox', label: 'Firefox' },
 ];
 const DEFAULT_REPO_TEST_PROJECTS = REPO_OPTIMIZED_PROJECTS.map((p) => p.id);
 
@@ -1760,7 +1761,7 @@ function mergeTestJobDef(config, jobDef) {
     schedule: jobDef.schedule ?? null,
     timezone: jobDef.timezone || d.timezone || 'Asia/Shanghai',
     playwrightEnv: jobDef.playwrightEnv ?? d.playwrightEnv ?? 'stage',
-    projects: jobDef.projects?.length ? [...jobDef.projects] : [...(d.projects || ['optimized', 'optimized-webkit'])],
+    projects: jobDef.projects?.length ? [...jobDef.projects] : [...(d.projects || ['optimized', 'optimized-webkit', 'optimized-firefox'])],
     optimizedDir: jobDef.optimizedDir ?? d.optimizedDir ?? 'tests/optimized',
     specs: jobDef.specs ?? d.specs ?? 'all',
     accountProfile: jobDef.accountProfile ?? d.accountProfile ?? null,

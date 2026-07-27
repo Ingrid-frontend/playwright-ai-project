@@ -22,6 +22,7 @@ import {
 } from './ui-issues.js';
 import { appendHistorySnapshot, loadStepTrends, type StepTrendPoint } from './ui-regression-history.js';
 import { buildPlainLanguageAnalysis } from './ui-issues-analysis.js';
+import { collectStructureUiIssues } from './structure-check.js';
 import {
   buildDiffCardHtml,
   compareReportVizCss,
@@ -208,6 +209,7 @@ interface ComparePairMeta {
   browser1?: string;
   browser2?: string;
   pairLabel?: string;
+  scriptKey?: string;
 }
 
 async function comparePair(
@@ -245,7 +247,7 @@ async function comparePair(
     compareScreenshot.path,
     diffOutputPath,
     pixelmatchOpts.threshold,
-    { includeAA: pixelmatchOpts.includeAA },
+    { includeAA: pixelmatchOpts.includeAA, scriptKey: meta.scriptKey },
   );
 
   return {
@@ -265,7 +267,12 @@ async function comparePair(
   };
 }
 
-async function generateComparisons(screenshots: ScreenshotInfo[], diffOutputDir: string, outputPath: string): Promise<ImageComparison[]> {
+async function generateComparisons(
+  screenshots: ScreenshotInfo[],
+  diffOutputDir: string,
+  outputPath: string,
+  scriptKey?: string,
+): Promise<ImageComparison[]> {
   const sorted = sortScreenshotsByRunTime(screenshots);
   if (sorted.length < 2) {
     return [];
@@ -283,12 +290,19 @@ async function generateComparisons(screenshots: ScreenshotInfo[], diffOutputDir:
   const result = await comparePair(baseline, compareScreenshot, diffOutputPath, relativeDiffPath, {
     browser: compareScreenshot.browser,
     compareKind: 'run-drift',
+    scriptKey,
   });
 
   return [result];
 }
 
-async function generateComparisonsByStepName(stepScreenshots: ScreenshotInfo[], stepNumber: number, diffOutputDir: string, outputPath: string): Promise<ImageComparison[]> {
+async function generateComparisonsByStepName(
+  stepScreenshots: ScreenshotInfo[],
+  stepNumber: number,
+  diffOutputDir: string,
+  outputPath: string,
+  scriptKey?: string,
+): Promise<ImageComparison[]> {
   const groupedByStepName = new Map<string, ScreenshotInfo[]>();
   
   stepScreenshots.forEach(screenshot => {
@@ -329,6 +343,7 @@ async function generateComparisonsByStepName(stepScreenshots: ScreenshotInfo[], 
         sortScreenshotsByRunTime(browserScreenshots),
         stepDiffDir,
         outputPath,
+        scriptKey,
       );
       allComparisons.push(...browserComparisons);
     }
@@ -405,6 +420,7 @@ async function generateCrossBrowserComparisonsByStepName(
   stepNumber: number,
   diffOutputDir: string,
   outputPath: string,
+  scriptKey?: string,
 ): Promise<ImageComparison[]> {
   if (!COMPARE_CROSS_BROWSER) return [];
 
@@ -446,6 +462,7 @@ async function generateCrossBrowserComparisonsByStepName(
           browser1: CROSS_BROWSER_BASE,
           browser2: CROSS_BROWSER_TARGET,
           pairLabel,
+          scriptKey,
         });
     });
 
@@ -505,8 +522,6 @@ function getAllScreenshots(dir: string, type: 'pom' | 'optimized', outputPath: s
           if (browser === 'chromium') {
             browser = 'chrome';
           }
-
-          // optimized 项目默认使用 Desktop Chrome；截图目录不带浏览器信息时给出合理默认值
           if (browser === 'unknown' && type === 'optimized') {
             browser = 'chrome';
           }
@@ -555,7 +570,13 @@ async function generateTestComparisons(testDir: string, screenshots: Map<number,
   for (const stepNumber of allSteps) {
     const stepScreenshots = screenshots.get(stepNumber) || [];
 
-    const stepComparisons = await generateComparisonsByStepName(stepScreenshots, stepNumber, diffOutputDir, outputPath);
+    const stepComparisons = await generateComparisonsByStepName(
+      stepScreenshots,
+      stepNumber,
+      diffOutputDir,
+      outputPath,
+      testDir,
+    );
     const baselineComparisons = await generateBaselineComparisons(
       testDir,
       stepScreenshots,
@@ -572,6 +593,7 @@ async function generateTestComparisons(testDir: string, screenshots: Map<number,
       stepNumber,
       diffOutputDir,
       outputPath,
+      testDir,
     );
 
     comparisons.push({
@@ -1159,6 +1181,15 @@ function generateIssuesTabHtml(issues: UiIssue[]): string {
 function collectAllUiIssues(testDirComparisons: TestDirComparisons[]): UiIssue[] {
   const issues: UiIssue[] = [];
   for (const tdc of testDirComparisons) {
+    const structureShots: Array<{
+      path: string;
+      stepNumber: number;
+      stepName: string;
+      browser?: string;
+      route?: string;
+      timestamp: string;
+    }> = [];
+
     for (const comp of tdc.comparisons) {
       const stepName =
         comp.optimizedScreenshots[0]?.stepName || comp.stepName || `step-${comp.stepNumber}`;
@@ -1174,7 +1205,20 @@ function collectAllUiIssues(testDirComparisons: TestDirComparisons[]): UiIssue[]
         });
         if (issue) issues.push(issue);
       }
+
+      for (const s of comp.optimizedScreenshots) {
+        structureShots.push({
+          path: s.path,
+          stepNumber: comp.stepNumber,
+          stepName: s.stepName,
+          browser: s.browser,
+          route: s.route,
+          timestamp: s.timestamp,
+        });
+      }
     }
+
+    issues.push(...collectStructureUiIssues(tdc.testDir, structureShots));
   }
   return issues;
 }

@@ -176,7 +176,7 @@ export async function generateBaselineComparisons(
           latest.path,
           diffOutputPath,
           pixelThreshold,
-          { includeAA },
+          { includeAA, scriptKey: testDir },
         );
 
         return {

@@ -162,6 +162,25 @@ export default defineConfig({
       },
       dependencies: ['setup'],
     },
+
+    /** 与 optimized 相同视口，引擎为 Firefox */
+    {
+      name: 'optimized-firefox',
+      testDir: './tests/optimized',
+      use: {
+        ...devices['Desktop Firefox'],
+        storageState: storageStatePath,
+        viewport: { width: 1280, height: 720 },
+        deviceScaleFactor: 1,
+        launchOptions: {
+          firefoxUserPrefs: {
+            'dom.websockets.enabled': true,
+            'network.http.phishy-userpass-length': 255,
+          },
+        },
+      },
+      dependencies: ['setup'],
+    },
   ],
 
   /* 5. 本地开发服务器配置（按需取消注释） */

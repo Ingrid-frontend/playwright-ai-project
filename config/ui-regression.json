@@ -2,11 +2,24 @@
   "blockerRatio": 0.005,
   "warningRatio": 0.001,
   "diffOnlyTabMinRatio": 0.003,
-  "defaultBrowsers": ["chrome", "webkit"],
+  "defaultBrowsers": ["chrome", "webkit", "firefox"],
   "compareCrossBrowser": true,
   "baselineStrategy": "hybrid",
   "ignoreRegions": [],
   "maskSelectors": [],
+  "viewports": [
+    { "name": "desktop", "width": 1280, "height": 720, "default": true },
+    { "name": "mobile", "width": 375, "height": 812 }
+  ],
+  "structureChecks": {
+    "enabled": true,
+    "bboxTolerancePx": 4,
+    "failOnOverflow": true,
+    "failOnPageError": false,
+    "checkDomHash": true,
+    "domHashRoot": "body",
+    "items": []
+  },
   "screenshot": {
     "freezeAnimations": true,
     "deviceScaleFactor": 1

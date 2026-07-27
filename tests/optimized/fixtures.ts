@@ -3,6 +3,7 @@ import { test as base } from '@playwright/test';
 /** 与 compare-screenshots 扫描规则一致：目录名需含 `-chromium-` / `-webkit-` 等片段。 */
 function screenshotRunSegmentForBrowser(browserName: string): string {
   if (browserName === 'webkit') return 'run-webkit-optimized';
+  if (browserName === 'firefox') return 'run-firefox-optimized';
   if (browserName === 'chromium') return 'run-chromium-optimized';
   return `run-${browserName}-optimized`;
 }

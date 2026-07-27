@@ -13,8 +13,8 @@ function printHelp(): void {
   console.log(`用法: tsx scripts/report/ui-regression-add-mask.ts [选项]
 
 选项:
-  --script=<iteration/script>   脚本键（与 screenshots 目录一致）
-  --region=x,y,w,h              忽略区域（CSS 像素，相对视口）
+  --script=<iteration/script>   脚本键（与 screenshots 目录一致；可省略 env 前缀如 stage/）
+  --region=x,y,w,h              忽略区域（CSS 像素，相对视口 1280×720）
   --label=<text>                可选说明
   -h, --help
 `);

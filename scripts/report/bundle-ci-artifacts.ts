@@ -34,6 +34,7 @@ function main(): void {
 
   copyDir(path.join(root, 'public-reports'), path.join(outDir, 'public-reports'));
   copyDir(path.join(root, 'screenshots'), path.join(outDir, 'screenshots'));
+  copyDir(path.join(root, 'screenshots-baseline'), path.join(outDir, 'screenshots-baseline'));
   copyDir(path.join(root, 'results', 'diffs'), path.join(outDir, 'results', 'diffs'));
   copyFile(
     path.join(root, 'results', 'screenshot-comparison.html'),
@@ -52,8 +53,9 @@ function main(): void {
     sha: process.env.GITHUB_SHA || '',
     entry: 'public-reports/index.html',
     layout: {
-      'public-reports/': 'Playwright + UI 对比入口',
-      'screenshots/': '步骤截图（UI 报告配图）',
+      'public-reports/': 'Playwright + UI 对比入口（含 screenshots/diffs 可离线查看）',
+      'screenshots/': '步骤截图（原始目录，与 public-reports 内副本一致）',
+      'screenshots-baseline/': 'Golden 基线截图',
       'results/diffs/': '像素 diff 图',
       'results/ui-issues.json': '结构化 UI 问题',
       'test-results/': '失败 trace/视频（仅 CI_BUNDLE_TEST_RESULTS=1 时）',

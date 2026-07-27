@@ -25,6 +25,15 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Baseline PR gate
+        if: github.event_name == 'pull_request'
+        run: npm run check-baseline-pr -- --base=origin/${{ github.base_ref }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -65,8 +74,8 @@ jobs:
           TEST_USERNAME: ${{ secrets.TEST_USERNAME }}
           TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
 
-      - name: Run optimized tests (Chromium + WebKit)
-        run: npx playwright test --project=optimized --project=optimized-webkit
+      - name: Run optimized tests (Chromium + WebKit + Firefox)
+        run: npx playwright test --project=optimized --project=optimized-webkit --project=optimized-firefox
         env:
           PLAYWRIGHT_ENV: stage
           TEST_USERNAME: ${{ secrets.TEST_USERNAME }}

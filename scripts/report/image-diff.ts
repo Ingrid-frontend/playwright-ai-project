@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
-import { loadUiRegressionConfig } from './ui-regression-config.js';
+import { loadUiRegressionConfig, resolveIgnoreRegions } from './ui-regression-config.js';
 
 export interface ImageDiffResult {
   difference: number;
@@ -43,6 +43,8 @@ export interface CompareImagesOptions {
   includeAA?: boolean;
   /** 为 false 时不写入 diff PNG（difference 为 0 时默认跳过） */
   writeDiffImage?: boolean;
+  /** 仅应用匹配该 script 的 ignoreRegions */
+  scriptKey?: string;
 }
 
 interface PreparedPair {
@@ -112,8 +114,8 @@ async function prepareImagePair(img1Path: string, img2Path: string): Promise<Pre
 }
 
 /** 将 ignoreRegions 涂黑，降低动态区误报（按行批量 fill 替代逐像素循环） */
-function applyIgnoreRegionsToPair(prepared: PreparedPair): void {
-  const regions = loadUiRegressionConfig().ignoreRegions;
+function applyIgnoreRegionsToPair(prepared: PreparedPair, scriptKey?: string): void {
+  const regions = resolveIgnoreRegions(scriptKey);
   if (!regions.length) return;
   const { width, croppedImg1, croppedImg2 } = prepared;
   const rowBytes = width * 4;
@@ -202,7 +204,7 @@ export async function compareImagesWithDiff(
 
   try {
     const prepared = await prepareImagePair(img1Path, img2Path);
-    applyIgnoreRegionsToPair(prepared);
+    applyIgnoreRegionsToPair(prepared, opts.scriptKey);
     const numDiffPixels = runPixelmatch(prepared, threshold, includeAA);
     const totalPixels = prepared.width * prepared.height;
     const difference = totalPixels > 0 ? numDiffPixels / totalPixels : 0;

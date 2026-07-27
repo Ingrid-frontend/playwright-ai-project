@@ -4,7 +4,7 @@ import type { ImageComparison } from './image-diff.js';
 import { loadUiRegressionConfig } from './ui-regression-config.js';
 import type { PlainLanguageAnalysis } from './ui-issues-analysis.js';
 
-export type UiIssueCompareKind = 'golden' | 'last-green' | 'cross-browser' | 'run-drift';
+export type UiIssueCompareKind = 'golden' | 'last-green' | 'cross-browser' | 'run-drift' | 'structure';
 export type UiIssueSeverity = 'blocker' | 'warning' | 'noise';
 
 const SEVERITY_ORDER: Record<UiIssueSeverity, number> = {
@@ -33,6 +33,8 @@ export interface UiIssue {
   route?: string;
   pairLabel?: string;
   isNewRegression?: boolean;
+  structureType?: string;
+  detail?: string;
 }
 
 export interface UiIssuesReport {
@@ -222,5 +224,16 @@ export function gateShouldFail(report: UiIssuesReport): boolean {
 
   if (goldenBlockers > 0) return true;
   if (cfg.crossBrowser.countAsBlockerInGate && crossBlockers > 0) return true;
+  const structureBlockers = report.issues.filter(
+    (i) => i.severity === 'blocker' && i.compareKind === 'structure',
+  ).length;
+  if (structureBlockers > 0) return true;
+  const goldenStructureBlockers = report.issues.filter(
+    (i) =>
+      i.severity === 'blocker' &&
+      (i.compareKind === 'golden' || i.compareKind === 'last-green') &&
+      i.structureType,
+  ).length;
+  if (goldenStructureBlockers > 0) return true;
   return false;
 }

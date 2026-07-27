@@ -3,6 +3,43 @@ import path from 'path';
 
 export type BaselineStrategy = 'hybrid' | 'golden' | 'last-green' | 'oldest';
 
+export interface IgnoreRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  script?: string;
+  label?: string;
+}
+
+export type MaskSelector = string | { selector: string; script?: string };
+
+export interface SnapshotViewport {
+  name: string;
+  width: number;
+  height: number;
+  default?: boolean;
+}
+
+export interface StructureCheckItem {
+  key: string;
+  selector: string;
+  script?: string;
+  required?: boolean;
+}
+
+export interface StructureChecksConfig {
+  enabled: boolean;
+  bboxTolerancePx: number;
+  failOnOverflow: boolean;
+  failOnPageError: boolean;
+  /** 对比 structureChecks.items 对应节点的 DOM 指纹 */
+  checkDomHash: boolean;
+  /** 可选：页面级 DOM 指纹根节点 */
+  domHashRoot?: string;
+  items: StructureCheckItem[];
+}
+
 export interface UiRegressionConfig {
   blockerRatio: number;
   warningRatio: number;
@@ -10,8 +47,10 @@ export interface UiRegressionConfig {
   defaultBrowsers: string[];
   compareCrossBrowser: boolean;
   baselineStrategy: BaselineStrategy;
-  ignoreRegions: Array<{ x: number; y: number; width: number; height: number }>;
-  maskSelectors: string[];
+  ignoreRegions: IgnoreRegion[];
+  maskSelectors: MaskSelector[];
+  viewports: SnapshotViewport[];
+  structureChecks: StructureChecksConfig;
   screenshot: {
     freezeAnimations: boolean;
     deviceScaleFactor: number;
@@ -39,11 +78,21 @@ const DEFAULT_CONFIG: UiRegressionConfig = {
   blockerRatio: 0.005,
   warningRatio: 0.001,
   diffOnlyTabMinRatio: 0.003,
-  defaultBrowsers: ['chrome', 'webkit'],
+  defaultBrowsers: ['chrome', 'webkit', 'firefox'],
   compareCrossBrowser: true,
   baselineStrategy: 'hybrid',
   ignoreRegions: [],
   maskSelectors: [],
+  viewports: [{ name: 'desktop', width: 1280, height: 720, default: true }],
+  structureChecks: {
+    enabled: true,
+    bboxTolerancePx: 4,
+    failOnOverflow: true,
+    failOnPageError: false,
+    checkDomHash: true,
+    domHashRoot: 'body',
+    items: [],
+  },
   screenshot: {
     freezeAnimations: true,
     deviceScaleFactor: 1,
@@ -83,6 +132,8 @@ export function loadUiRegressionConfig(): UiRegressionConfig {
         screenshot: { ...DEFAULT_CONFIG.screenshot, ...raw.screenshot },
         crossBrowser: { ...DEFAULT_CONFIG.crossBrowser, ...raw.crossBrowser },
         autoPromote: { ...DEFAULT_CONFIG.autoPromote, ...raw.autoPromote },
+        structureChecks: { ...DEFAULT_CONFIG.structureChecks, ...raw.structureChecks },
+        viewports: raw.viewports?.length ? raw.viewports : DEFAULT_CONFIG.viewports,
       };
     } catch (e) {
       console.warn(`⚠️  无法解析 ${CONFIG_PATH}，使用默认配置`, e);
@@ -138,4 +189,62 @@ export function resolveCrossBrowserPixelmatch(): PixelmatchOptions {
 
 export function resolveBaselineStrategy(): BaselineStrategy {
   return loadUiRegressionConfig().baselineStrategy;
+}
+
+/** region/mask 的 script 与 testDir / 截图路径 scriptKey 对齐（支持带 env 前缀） */
+export function scriptKeyMatches(regionScript: string | undefined, scriptKey: string | undefined): boolean {
+  if (!regionScript) return true;
+  if (!scriptKey) return false;
+  if (scriptKey === regionScript) return true;
+  if (scriptKey.endsWith(`/${regionScript}`)) return true;
+  return scriptKey.includes(regionScript);
+}
+
+export function resolveDefaultBrowsers(): string[] {
+  return loadUiRegressionConfig().defaultBrowsers;
+}
+
+export function resolveIgnoreRegions(scriptKey?: string): IgnoreRegion[] {
+  return loadUiRegressionConfig().ignoreRegions.filter((r) => scriptKeyMatches(r.script, scriptKey));
+}
+
+export function resolveMaskSelectors(scriptKey?: string): string[] {
+  const out: string[] = [];
+  for (const item of loadUiRegressionConfig().maskSelectors) {
+    if (typeof item === 'string') {
+      out.push(item);
+      continue;
+    }
+    if (item?.selector && scriptKeyMatches(item.script, scriptKey)) {
+      out.push(item.selector);
+    }
+  }
+  return out;
+}
+
+export function resolveSnapshotViewports(): SnapshotViewport[] {
+  const all = loadUiRegressionConfig().viewports;
+  const env = process.env.SCREENSHOT_VIEWPORTS?.trim();
+  if (!env) {
+    const def = all.find((v) => v.default) || all[0];
+    return def ? [def] : all.slice(0, 1);
+  }
+  if (env === 'all') return all;
+  const names = new Set(env.split(',').map((s) => s.trim()).filter(Boolean));
+  const picked = all.filter((v) => names.has(v.name));
+  return picked.length ? picked : [all.find((v) => v.default) || all[0]!];
+}
+
+export function resolveStructureCheckItems(scriptKey?: string): StructureCheckItem[] {
+  const items = loadUiRegressionConfig().structureChecks?.items || [];
+  return items.filter((item) => scriptKeyMatches(item.script, scriptKey));
+}
+
+/** 从截图路径解析 scriptKey，如 screenshots/stage/260612/foo/run-chromium-optimized/ts/step.png */
+export function scriptKeyFromScreenshotPath(filePath: string): string | undefined {
+  const normalized = filePath.replace(/\\/g, '/');
+  const m = normalized.match(/screenshots\/(.+?)\/run-(?:chromium|webkit|firefox|safari|edge)-/i);
+  if (m?.[1]) return m[1];
+  const legacy = normalized.match(/screenshots\/(.+?)\/[^/]+\/step-/);
+  return legacy?.[1];
 }

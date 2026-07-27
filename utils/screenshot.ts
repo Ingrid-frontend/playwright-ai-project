@@ -3,6 +3,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { assertNotLoginLikePage } from '../src/utils/login-detection.js';
+import {
+  loadUiRegressionConfig,
+  resolveMaskSelectors,
+  resolveSnapshotViewports,
+  resolveStructureCheckItems,
+  scriptKeyFromScreenshotPath,
+  type SnapshotViewport,
+} from '../scripts/report/ui-regression-config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -15,22 +23,196 @@ const MENU_ROUTES = JSON.parse(fs.readFileSync(path.join(__dirname, '../datasour
  */
 const SCREENSHOT_SCALE: 'css' | 'device' = 'css';
 
-/**
- * 与 playwright.config 中 `optimized` project 一致。
- * 菜单/路由切换后，整页文档 scrollWidth、滚动条可能变化；fullPage 截图会按「文档最大宽高」出图，PNG 尺寸会漂移。
- * 出图前强制 setViewportSize，保证视口一致；默认截图用视口（非 fullPage），宽度稳定为 1280。
- */
-const SNAPSHOT_VIEWPORT = { width: 1280, height: 720 } as const;
+function withViewportSuffix(filePath: string, vpName: string, isDefault: boolean): string {
+  if (isDefault) return filePath;
+  const dir = path.dirname(filePath);
+  const base = path.basename(filePath, '.png');
+  return path.join(dir, `${base}__${vpName}.png`);
+}
+
+async function lockViewportForSnapshot(page: Page, viewport: SnapshotViewport): Promise<void> {
+  await page.setViewportSize({ width: viewport.width, height: viewport.height });
+}
+
+let freezeAnimationsApplied = false;
+
+const pageDiag = new WeakMap<Page, { consoleErrors: string[]; pageErrors: string[] }>();
+
+function ensurePageDiag(page: Page): { consoleErrors: string[]; pageErrors: string[] } {
+  let bag = pageDiag.get(page);
+  if (bag) return bag;
+  bag = { consoleErrors: [], pageErrors: [] };
+  page.on('pageerror', err => bag!.pageErrors.push(String(err)));
+  page.on('console', msg => {
+    if (msg.type() === 'error') bag!.consoleErrors.push(msg.text());
+  });
+  pageDiag.set(page, bag);
+  return bag;
+}
+
+function resetPageDiag(page: Page): void {
+  const bag = ensurePageDiag(page);
+  bag.consoleErrors.length = 0;
+  bag.pageErrors.length = 0;
+}
+
+async function applyMaskSelectors(page: Page, scriptKey?: string): Promise<void> {
+  const selectors = resolveMaskSelectors(scriptKey);
+  if (!selectors.length) return;
+  try {
+    await page.evaluate((sels) => {
+      const styleId = 'ui-regression-mask-style';
+      if (!document.getElementById(styleId)) {
+        const style = document.createElement('style');
+        style.id = styleId;
+        style.textContent = `[data-ui-regression-mask]{background:#000!important;color:#000!important;border-color:#000!important;box-shadow:none!important}`;
+        document.head.appendChild(style);
+      }
+      for (const sel of sels) {
+        document.querySelectorAll(sel).forEach(el => {
+          (el as HTMLElement).setAttribute('data-ui-regression-mask', '1');
+        });
+      }
+    }, selectors);
+  } catch {
+    /* frame 可能已销毁 */
+  }
+}
+
+async function writeStepDiagnostics(
+  page: Page,
+  screenshotPath: string,
+  viewport: SnapshotViewport,
+  scriptKey?: string,
+): Promise<void> {
+  if (process.env.SCREENSHOT_DIAGNOSTICS === '0') return;
+  const bag = ensurePageDiag(page);
+  let layout: { horizontalOverflow: boolean; scrollWidth: number; innerWidth: number } | undefined;
+  try {
+    layout = await page.evaluate(() => ({
+      horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth + 1,
+      scrollWidth: document.documentElement.scrollWidth,
+      innerWidth: window.innerWidth,
+    }));
+  } catch {
+    layout = undefined;
+  }
+
+  let selectors: Record<
+    string,
+    { exists: boolean; bbox?: { x: number; y: number; width: number; height: number }; domHash?: string }
+  > | undefined;
+  let domHash: string | undefined;
+  const cfg = loadUiRegressionConfig().structureChecks;
+  const checkItems = resolveStructureCheckItems(scriptKey);
+
+  const domFingerprintFn = `(function(el){
+    var tag=el.tagName;
+    var children=el.children?el.children.length:0;
+    var cls=(el.className&&el.className.toString)?String(el.className).slice(0,120):'';
+    var text=(el.textContent||'').replace(/\\s+/g,' ').trim().slice(0,240);
+    return tag+'|'+children+'|'+cls+'|'+text;
+  })`;
+
+  if (cfg?.domHashRoot) {
+    try {
+      domHash = await page.evaluate(
+        ({ root, fnBody }) => {
+          const el = document.querySelector(root);
+          if (!el) return '';
+          const fn = new Function('el', `return (${fnBody})(el)`);
+          return fn(el) as string;
+        },
+        { root: cfg.domHashRoot, fnBody: domFingerprintFn },
+      );
+    } catch {
+      domHash = undefined;
+    }
+  }
+
+  if (checkItems.length) {
+    try {
+      selectors = await page.evaluate(
+        ({ items, fnBody }) => {
+          const fn = new Function('el', `return (${fnBody})(el)`);
+          const out: Record<
+            string,
+            { exists: boolean; bbox?: { x: number; y: number; width: number; height: number }; domHash?: string }
+          > = {};
+          for (const item of items) {
+            const el = document.querySelector(item.selector);
+            if (!el) {
+              out[item.key] = { exists: false };
+              continue;
+            }
+            const r = el.getBoundingClientRect();
+            out[item.key] = {
+              exists: true,
+              bbox: {
+                x: Math.round(r.x),
+                y: Math.round(r.y),
+                width: Math.round(r.width),
+                height: Math.round(r.height),
+              },
+              domHash: fn(el) as string,
+            };
+          }
+          return out;
+        },
+        { items: checkItems, fnBody: domFingerprintFn },
+      );
+    } catch {
+      selectors = undefined;
+    }
+  }
+
+  const metaPath = screenshotPath.replace(/\.png$/i, '.meta.json');
+  fs.mkdirSync(path.dirname(metaPath), { recursive: true });
+  fs.writeFileSync(
+    metaPath,
+    JSON.stringify(
+      {
+        capturedAt: new Date().toISOString(),
+        viewport: { name: viewport.name, width: viewport.width, height: viewport.height },
+        layout,
+        domHash,
+        selectors,
+        consoleErrors: [...bag.consoleErrors],
+        pageErrors: [...bag.pageErrors],
+      },
+      null,
+      2,
+    ),
+    'utf-8',
+  );
+}
 
 function useFullPageByDefault(): boolean {
   return process.env.SCREENSHOT_FULL_PAGE === '1';
 }
 
-async function lockViewportForSnapshot(page: Page): Promise<void> {
-  await page.setViewportSize(SNAPSHOT_VIEWPORT);
-}
+async function captureScreenshotAtViewports(
+  page: Page,
+  filePath: string,
+  opts: { fullPage?: boolean; scriptKey?: string },
+): Promise<string> {
+  const viewports = resolveSnapshotViewports();
+  const fullPage = opts.fullPage ?? useFullPageByDefault();
+  let primaryPath = filePath;
 
-let freezeAnimationsApplied = false;
+  for (const vp of viewports) {
+    const isDefault = !!vp.default || viewports.length === 1;
+    const outPath = withViewportSuffix(filePath, vp.name, isDefault);
+    resetPageDiag(page);
+    await lockViewportForSnapshot(page, vp);
+    await applyMaskSelectors(page, opts.scriptKey);
+    await page.screenshot({ path: outPath, fullPage, scale: SCREENSHOT_SCALE });
+    await writeStepDiagnostics(page, outPath, vp, opts.scriptKey);
+    if (isDefault) primaryPath = outPath;
+  }
+
+  return primaryPath;
+}
 
 /** 可选：禁用 CSS 动画/过渡，减少截图抖动（config/ui-regression.json → screenshot.freezeAnimations） */
 async function applyScreenshotStabilityStyles(page: Page): Promise<void> {
@@ -88,8 +270,10 @@ function getRouteDisplayName(route: string): string {
 
 export async function screenshotWhenStable(page: Page, path: string, options: { fullPage?: boolean } = {}): Promise<{ path: string; route: string }> {
   const fullPage = options.fullPage ?? useFullPageByDefault();
+  const viewports = resolveSnapshotViewports();
+  const primaryVp = viewports.find((v) => v.default) || viewports[0]!;
 
-  await lockViewportForSnapshot(page);
+  await lockViewportForSnapshot(page, primaryVp);
   await applyScreenshotStabilityStyles(page);
 
   await waitForRouteStable(page, 2000);
@@ -125,10 +309,10 @@ export async function screenshotWhenStable(page: Page, path: string, options: { 
 
   const route = await getCurrentRoute(page);
   const routePath = addRouteToPath(path, route);
-  await lockViewportForSnapshot(page);
-  await page.screenshot({ path: routePath, fullPage, scale: SCREENSHOT_SCALE });
-  
-  return { path: routePath, route };
+  const scriptKey = scriptKeyFromScreenshotPath(routePath);
+  const savedPath = await captureScreenshotAtViewports(page, routePath, { fullPage, scriptKey });
+
+  return { path: savedPath, route };
 }
 
 /**
@@ -175,9 +359,12 @@ export async function takeStepScreenshot(
   }
 
   await assertNotLoginLikePage(page, `fast screenshot: ${filePath}`);
-  await lockViewportForSnapshot(page);
-  await page.screenshot({ path: filePath, fullPage, scale: SCREENSHOT_SCALE });
-  return { path: filePath, route: page.url() };
+  const scriptKey = scriptKeyFromScreenshotPath(filePath);
+  const savedPath = await captureScreenshotAtViewports(page, filePath, {
+    fullPage,
+    scriptKey,
+  });
+  return { path: savedPath, route: page.url() };
 }
 
 function addRouteToPath(originalPath: string, route: string): string {
