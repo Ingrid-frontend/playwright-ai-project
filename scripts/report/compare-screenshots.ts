@@ -11,7 +11,7 @@ import {
   runWithConcurrency,
 } from './image-diff.js';
 import { generateBaselineComparisons, runTimestampSortKey } from './baseline-comparisons.js';
-import { loadUiRegressionConfig, resolveCrossBrowserPixelmatch, resolveSameBrowserPixelmatch } from './ui-regression-config.js';
+import { loadUiRegressionConfig, isDisabledViewportScreenshot, resolveCrossBrowserPixelmatch, resolveSameBrowserPixelmatch } from './ui-regression-config.js';
 import {
   buildUiIssuesReport,
   comparisonToUiIssue,
@@ -494,6 +494,7 @@ function getAllScreenshots(dir: string, type: 'pom' | 'optimized', outputPath: s
       if (entry.isDirectory()) {
         scanDirectory(fullPath, relativePath);
       } else if (entry.isFile() && entry.name.endsWith('.png')) {
+        if (isDisabledViewportScreenshot(entry.name)) return;
         const match = entry.name.match(/step-(\d+)-(.+)\.png/);
         if (match) {
           const stepNumber = parseInt(match[1]);

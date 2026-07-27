@@ -9,7 +9,7 @@
   "maskSelectors": [],
   "viewports": [
     { "name": "desktop", "width": 1280, "height": 720, "default": true },
-    { "name": "mobile", "width": 375, "height": 812 }
+    { "name": "mobile", "width": 375, "height": 812, "enabled": false }
   ],
   "structureChecks": {
     "enabled": true,

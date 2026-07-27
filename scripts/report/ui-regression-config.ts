@@ -19,6 +19,7 @@ export interface SnapshotViewport {
   width: number;
   height: number;
   default?: boolean;
+  enabled?: boolean;
 }
 
 export interface StructureCheckItem {
@@ -222,8 +223,12 @@ export function resolveMaskSelectors(scriptKey?: string): string[] {
   return out;
 }
 
+function activeViewports(all: SnapshotViewport[]): SnapshotViewport[] {
+  return all.filter((v) => v.enabled !== false);
+}
+
 export function resolveSnapshotViewports(): SnapshotViewport[] {
-  const all = loadUiRegressionConfig().viewports;
+  const all = activeViewports(loadUiRegressionConfig().viewports);
   const env = process.env.SCREENSHOT_VIEWPORTS?.trim();
   if (!env) {
     const def = all.find((v) => v.default) || all[0];
@@ -233,6 +238,14 @@ export function resolveSnapshotViewports(): SnapshotViewport[] {
   const names = new Set(env.split(',').map((s) => s.trim()).filter(Boolean));
   const picked = all.filter((v) => names.has(v.name));
   return picked.length ? picked : [all.find((v) => v.default) || all[0]!];
+}
+
+export function isDisabledViewportScreenshot(fileName: string): boolean {
+  const inactive = loadUiRegressionConfig().viewports.filter((v) => v.enabled === false);
+  for (const vp of inactive) {
+    if (fileName.endsWith(`__${vp.name}.png`)) return true;
+  }
+  return false;
 }
 
 export function resolveStructureCheckItems(scriptKey?: string): StructureCheckItem[] {

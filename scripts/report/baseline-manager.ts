@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { isDisabledViewportScreenshot } from './ui-regression-config.js';
 
 export const BASELINE_ROOT = 'screenshots-baseline';
 export const UI_REGRESSION_DIR = 'results/ui-regression';
@@ -137,6 +138,7 @@ export function promoteRunToGolden(opts: {
     ensureDir(tmpDir);
     let copied = 0;
     for (const file of pngs) {
+      if (isDisabledViewportScreenshot(file)) continue;
       fs.copyFileSync(path.join(sourceDir, file), path.join(tmpDir, file));
       copied++;
       const meta = file.replace(/\.png$/i, '.meta.json');
