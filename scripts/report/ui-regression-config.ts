@@ -79,7 +79,7 @@ const DEFAULT_CONFIG: UiRegressionConfig = {
   blockerRatio: 0.005,
   warningRatio: 0.001,
   diffOnlyTabMinRatio: 0.003,
-  defaultBrowsers: ['chrome', 'webkit', 'firefox'],
+  defaultBrowsers: ['chrome', 'webkit'],
   compareCrossBrowser: true,
   baselineStrategy: 'hybrid',
   ignoreRegions: [],

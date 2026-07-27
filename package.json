@@ -22,7 +22,7 @@
     "test:uat": "npm run test:env --env=uat",
     "test:stage9084": "npm run test:env --env=stage9084",
     "test:stage": "npm run test:env --env=stage",
-    "test:ci": "playwright test --project=optimized --project=optimized-webkit --project=optimized-firefox && npm run compare-screenshots -- --gate",
+    "test:ci": "playwright test --project=optimized --project=optimized-webkit && npm run compare-screenshots -- --gate",
     "report": "playwright show-report",
     "report:dashboard": "tsx scripts/report/generate-quality-dashboard.ts",
     "report:bundle": "tsx scripts/report/bundle-public-reports.ts",

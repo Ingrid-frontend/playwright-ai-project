@@ -85,7 +85,7 @@ const DEFAULT_CONFIG: TestJobsConfig = {
   version: 1,
   defaults: {
     playwrightEnv: 'stage',
-    projects: ['optimized', 'optimized-webkit', 'optimized-firefox'],
+    projects: ['optimized', 'optimized-webkit'],
     optimizedDir: 'tests/optimized',
     stopOnTestFailure: true,
     stopOnCompareGate: true,

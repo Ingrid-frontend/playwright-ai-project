@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
 import {
   compareImagesWithDiff,
   formatDifference,
@@ -12,6 +13,8 @@ import {
 } from './image-diff.js';
 import { generateBaselineComparisons, runTimestampSortKey } from './baseline-comparisons.js';
 import { loadUiRegressionConfig, isDisabledViewportScreenshot, resolveCrossBrowserPixelmatch, resolveSameBrowserPixelmatch } from './ui-regression-config.js';
+import { readUiIssuesSummaryLine, sendJobFeishuNotification } from '../jobs/job-notify.js';
+import type { FeishuMode } from '../jobs/test-jobs-config.js';
 import {
   buildUiIssuesReport,
   comparisonToUiIssue,
@@ -40,6 +43,7 @@ let currentStepTrends: Record<string, StepTrendPoint[]> = {};
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.join(process.cwd(), '.env') });
 
 interface ScreenshotInfo {
   path: string;
@@ -3144,6 +3148,32 @@ function discoverScriptScanTargets(screenshotsDir: string): ScriptScanTarget[] {
   return targets.sort((a, b) => a.testDir.localeCompare(b.testDir, 'zh-CN'));
 }
 
+async function maybeNotifyCompareResult(comparePassed: boolean): Promise<void> {
+  if (process.env.FEISHU_NOTIFY_ON_COMPARE === '0') return;
+  if (!process.env.FEISHU_WEBHOOK_URL?.trim()) return;
+
+  let testPassed = true;
+  const lastRunPath = path.join(process.cwd(), 'results', 'last-test-run.json');
+  if (fs.existsSync(lastRunPath)) {
+    try {
+      const last = JSON.parse(fs.readFileSync(lastRunPath, 'utf-8')) as { passed?: boolean };
+      if (typeof last.passed === 'boolean') testPassed = last.passed;
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const mode = (process.env.FEISHU_MODE || 'interactive') as FeishuMode;
+  await sendJobFeishuNotification(mode, {
+    trigger: 'cli',
+    testPassed,
+    comparePassed,
+    feishuDocAttempted: false,
+    feishuDocPassed: true,
+    uiIssuesSummary: readUiIssuesSummaryLine(),
+  });
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const gateMode = args.includes('--gate');
@@ -3231,7 +3261,10 @@ async function main() {
   console.log(`   历史快照: ${historyPath}`);
   console.log(`   对比任务: ${compareTaskCount} 项，耗时 ${elapsed}s`);
 
-  if (gateMode && gateShouldFail(issuesReport)) {
+  const comparePassed = !gateShouldFail(issuesReport);
+  await maybeNotifyCompareResult(comparePassed);
+
+  if (gateMode && !comparePassed) {
     console.error(`\n❌ --gate：存在 blocker 级 UI 问题，退出码 1`);
     process.exit(1);
   }

@@ -69,6 +69,7 @@ class ErrorReporter {
     console.log(`   通过: ${this.passed} · 失败: ${this.failed}（flake ${flakeFailed}）`);
 
     this.saveTestHistory(totalDuration, flakeFailed);
+    this.saveLastTestRunSummary(totalDuration, flakeFailed);
 
     if (this.errors.length > 0) {
       this.saveErrors();
@@ -77,8 +78,30 @@ class ErrorReporter {
     }
   }
 
+  saveLastTestRunSummary(totalDuration, flakeFailed) {
+    const outPath = path.join('results', 'last-test-run.json');
+    const dir = path.dirname(outPath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      outPath,
+      JSON.stringify(
+        {
+          passed: this.failed === 0,
+          passedCount: this.passed,
+          failedCount: this.failed,
+          flakeFailed,
+          durationMs: totalDuration,
+          finishedAt: new Date().toISOString(),
+        },
+        null,
+        2,
+      ),
+      'utf-8',
+    );
+  }
+
   saveTestHistory(totalDuration, flakeFailed) {
-    const historyDir = path.join('results', 'history');
+    const historyDir = path.join('results', 'history', 'test-runs');
     if (!fs.existsSync(historyDir)) fs.mkdirSync(historyDir, { recursive: true });
 
     const day = new Date().toISOString().slice(0, 10);

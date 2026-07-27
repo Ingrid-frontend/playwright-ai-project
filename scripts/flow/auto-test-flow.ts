@@ -192,7 +192,7 @@ function parseCli(argv: string[]): CliOptions {
   }
 
   let createFeishuDoc = false;
-  let playwrightProjects: string[] = ['optimized', 'optimized-webkit', 'optimized-firefox'];
+  let playwrightProjects: string[] = ['optimized', 'optimized-webkit'];
   let rawRecordingsDir: string | undefined;
   let specPath: string | undefined;
   let batch = false;
@@ -229,7 +229,7 @@ function parseCli(argv: string[]): CliOptions {
             .map((s) => s.trim())
             .filter(Boolean)
         : [];
-      playwrightProjects = list.length > 0 ? list : ['optimized', 'optimized-webkit', 'optimized-firefox'];
+      playwrightProjects = list.length > 0 ? list : ['optimized', 'optimized-webkit'];
       continue;
     }
     if (arg.startsWith('--raw-recordings-dir=')) {

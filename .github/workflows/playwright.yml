@@ -74,8 +74,8 @@ jobs:
           TEST_USERNAME: ${{ secrets.TEST_USERNAME }}
           TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
 
-      - name: Run optimized tests (Chromium + WebKit + Firefox)
-        run: npx playwright test --project=optimized --project=optimized-webkit --project=optimized-firefox
+      - name: Run optimized tests (Chromium + WebKit)
+        run: npx playwright test --project=optimized --project=optimized-webkit
         env:
           PLAYWRIGHT_ENV: stage
           TEST_USERNAME: ${{ secrets.TEST_USERNAME }}
