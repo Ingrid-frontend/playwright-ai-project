@@ -96,7 +96,8 @@ function checkSelectorItem(
   tolerance: number,
 ): StructureFinding[] {
   const findings: StructureFinding[] = [];
-  const cur = current.selectors?.[item.key];
+  if (!current.selectors) return findings;
+  const cur = current.selectors[item.key];
   const base = baseline?.selectors?.[item.key];
 
   if (!cur?.exists) {
