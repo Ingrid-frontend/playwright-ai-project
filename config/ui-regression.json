@@ -18,7 +18,14 @@
     "failOnPageError": false,
     "checkDomHash": true,
     "domHashRoot": "body",
-    "items": []
+    "items": [
+      {
+        "key": "html",
+        "selector": "html",
+        "script": "260612/我的审批_2026-06-09_16-48-19",
+        "required": true
+      }
+    ]
   },
   "screenshot": {
     "freezeAnimations": true,
