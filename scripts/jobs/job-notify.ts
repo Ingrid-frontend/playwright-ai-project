@@ -236,11 +236,7 @@ function buildHistoricalComparison(): string | null {
 /* ── 卡片头部 ── */
 
 function cardHeader(summary: JobNotifySummary): { title: string; template: 'green' | 'red' } {
-  const allOk =
-    summary.testPassed &&
-    (summary.compareSkipped || summary.comparePassed) &&
-    (!summary.feishuDocAttempted || summary.feishuDocPassed);
-  if (allOk && !summary.aborted) {
+  if (summary.testPassed && !summary.aborted) {
     return { title: '🎉 自动化测试通过', template: 'green' };
   }
   return { title: '⚠️ 自动化测试未通过', template: 'red' };

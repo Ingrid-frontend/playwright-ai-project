@@ -78,6 +78,10 @@ function passesDiffOnlyTabFilter(difference: number): boolean {
   return difference >= DIFF_ONLY_TAB_MIN_RATIO;
 }
 
+function runDriftComparisons(comparisons: ImageComparison[] | undefined): ImageComparison[] {
+  return (comparisons || []).filter((c) => c.compareKind === 'run-drift');
+}
+
 /**
  * 同浏览器对比 pixelmatch 参数。覆盖：PLAYWRIGHT_PIXELMATCH_THRESHOLD / PLAYWRIGHT_PIXELMATCH_INCLUDE_AA
  */
@@ -883,8 +887,12 @@ function generateDiffStep(comp: StepComparison, type: 'pom' | 'optimized' | 'all
     type === 'pom'
       ? comp.pomComparisons
       : type === 'optimized'
-        ? comp.optimizedComparisons
-        : [...comp.pomComparisons, ...comp.optimizedComparisons];
+        ? runDriftComparisons(comp.optimizedComparisons)
+        : [
+            ...comp.pomComparisons,
+            ...runDriftComparisons(comp.optimizedComparisons),
+            ...(comp.baselineComparisons || []),
+          ];
   return generateDiffStepFromComparisons(comp, comparisons, onlyDiffs, type);
 }
 
@@ -967,13 +975,37 @@ function generateDiffStepFromComparisons(
   </div>`;
 }
 
-function getOptimizedDiffCountsForScript(tdc: TestDirComparisons): { all: number; only: number } {
-  const all = tdc.comparisons.reduce((sum, comp) => sum + (comp.optimizedComparisons?.length || 0), 0);
+function getRunDriftDiffCountsForScript(tdc: TestDirComparisons): { all: number; only: number } {
+  const all = tdc.comparisons.reduce(
+    (sum, comp) => sum + runDriftComparisons(comp.optimizedComparisons).length,
+    0,
+  );
   const only = tdc.comparisons.reduce(
-    (sum, comp) => sum + (comp.optimizedComparisons?.filter((c) => passesDiffOnlyTabFilter(c.difference)).length || 0),
+    (sum, comp) =>
+      sum +
+      runDriftComparisons(comp.optimizedComparisons).filter((c) => passesDiffOnlyTabFilter(c.difference)).length,
     0,
   );
   return { all, only };
+}
+
+function getDiffOnlyTabCountsForScript(tdc: TestDirComparisons): { all: number; only: number } {
+  let all = 0;
+  let only = 0;
+  for (const comp of tdc.comparisons) {
+    const items = [
+      ...runDriftComparisons(comp.optimizedComparisons),
+      ...(comp.baselineComparisons || []),
+    ];
+    all += items.length;
+    only += items.filter((c) => passesDiffOnlyTabFilter(c.difference)).length;
+  }
+  const x = getCrossBrowserDiffCountsForScript(tdc);
+  return { all: all + x.all, only: only + x.only };
+}
+
+function getOptimizedDiffCountsForScript(tdc: TestDirComparisons): { all: number; only: number } {
+  return getRunDriftDiffCountsForScript(tdc);
 }
 
 function getCrossBrowserDiffCountsForScript(tdc: TestDirComparisons): { all: number; only: number } {
@@ -1000,6 +1032,14 @@ function extractStepNameFromPath(imagePath: string): string {
   const rest = m[1];
   const routeMatch = rest.match(/^(.+)__(.+)$/);
   return routeMatch ? routeMatch[1] : rest;
+}
+
+function routeFromScreenshotPath(imagePath: string): string {
+  const base = path.basename(imagePath.replace(/\\/g, '/'));
+  const m = base.match(/^step-\d+-(.+)\.png$/);
+  if (!m) return '';
+  const routeMatch = m[1].match(/^(.+)__(.+)$/);
+  return routeMatch ? routeMatch[2] : '';
 }
 
 function extractImageLabel(path: string, index: number): string {
@@ -1196,11 +1236,11 @@ function collectAllUiIssues(testDirComparisons: TestDirComparisons[]): UiIssue[]
     }> = [];
 
     for (const comp of tdc.comparisons) {
-      const stepName =
-        comp.optimizedScreenshots[0]?.stepName || comp.stepName || `step-${comp.stepNumber}`;
-      const route = comp.optimizedScreenshots[0]?.route;
       const comparisons = [...comp.optimizedComparisons, ...comp.crossBrowserComparisons];
       for (const c of comparisons) {
+        const shotPath = c.image2Path || c.image1Path;
+        const stepName = extractStepNameFromPath(shotPath);
+        const route = routeFromScreenshotPath(shotPath);
         const issue = comparisonToUiIssue(c, {
           scriptKey: tdc.testDir,
           stepNumber: comp.stepNumber,
@@ -1297,8 +1337,9 @@ function generateHTML(
   const summaryRows: SummaryRow[] = [];
   for (const tdc of testDirComparisons) {
     for (const comp of tdc.comparisons) {
-      const stepName = comp.optimizedScreenshots[0]?.stepName || comp.stepName || `step-${comp.stepNumber}`;
       for (const c of [...comp.optimizedComparisons, ...comp.crossBrowserComparisons]) {
+        const shotPath = c.image2Path || c.image1Path;
+        const stepName = extractStepNameFromPath(shotPath);
         const diff = c.difference;
         const severity = diff >= 0.005 ? 'blocker' : diff >= 0.001 ? 'warning' : 'noise';
         summaryRows.push({
@@ -1448,7 +1489,7 @@ function generateHTML(
             .map((comp) => generateDiffStep(comp, 'optimized') + generateCrossBrowserDiffStep(comp))
             .join(''),
         (tdc) => {
-          const c = getOptimizedDiffCountsForScript(tdc);
+          const c = getRunDriftDiffCountsForScript(tdc);
           const x = getCrossBrowserDiffCountsForScript(tdc);
           return `data-diff-all="${c.all + x.all}" data-diff-only="${c.only + x.only}"`;
         },
@@ -1467,9 +1508,8 @@ function generateHTML(
             .map((comp) => generateDiffStep(comp, 'all', true) + generateCrossBrowserDiffStep(comp, true))
             .join(''),
         (tdc) => {
-          const c = getOptimizedDiffCountsForScript(tdc);
-          const x = getCrossBrowserDiffCountsForScript(tdc);
-          return `data-diff-all="${c.all + x.all}" data-diff-only="${c.only + x.only}"`;
+          const c = getDiffOnlyTabCountsForScript(tdc);
+          return `data-diff-all="${c.all}" data-diff-only="${c.only}"`;
         },
       )}
     </div>
@@ -2530,8 +2570,8 @@ function generateHTML(
       <div class="empty-state-title">暂无可展示的对比</div>
       <div class="empty-state-description">
         <ul class="empty-state-hint">
-          <li>同一脚本、同一浏览器下若只有一次运行，无法与另一张图做对比。</li>
-          <li>当前「浏览器」筛选下可能没有可对齐的截图；可选 chrome、webkit，或「跨浏览器」（Chrome 基线 vs WebKit）。</li>
+          <li>本 Tab 展示<strong>同浏览器两次运行</strong>的差异，以及<strong>Chrome ↔ WebKit 跨浏览器</strong>对比；不含 Golden 基线对比（见「问题明细」）。</li>
+          <li>同一浏览器若只有一次运行，不会出现运行间对比。</li>
           <li>跨浏览器需同时存在 run-chromium-optimized 与 run-webkit-optimized 下的同步骤截图。</li>
         </ul>
       </div>
@@ -2545,7 +2585,7 @@ function generateHTML(
       <div class="empty-state-title">暂无需要单独关注的差异</div>
       <div class="empty-state-description">
         <ul class="empty-state-hint">
-          <li>本 Tab 只展示相对更明显的差异；更轻的对比不会列出，但在「Optimized 差异」里仍能看到全部结果。</li>
+          <li>本 Tab 展示 Golden / 运行间 / 跨浏览器中<strong>超过阈值</strong>的差异；Golden 明细见「问题明细」。</li>
           <li>若预期应有项却为空，可切换「浏览器」（含跨浏览器），或确认是否只有单次运行。</li>
           <li>需要在本 Tab 看到更多项时，可调低生成报告时的「有差异」收录比例。</li>
         </ul>

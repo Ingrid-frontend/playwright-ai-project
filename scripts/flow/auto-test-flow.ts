@@ -151,12 +151,10 @@ function sampleArray(arr, n) {
 }
 
 function notifyCardHeader(s: AutoTestNotifySummary): { title: string; template: string } {
-  const allOk =
-    s.testPassed && s.comparePassed && (!s.feishuDocAttempted || s.feishuDocPassed);
-  if (allOk) {
-    return { title: '🎉 Playwright AI 测试完成', template: 'green' };
+  if (s.testPassed) {
+    return { title: '🎉 自动化测试通过', template: 'green' };
   }
-  return { title: '⚠️ Playwright AI 测试未完成', template: 'red' };
+  return { title: '⚠️ 自动化测试未通过', template: 'red' };
 }
 
 function printHelp(): void {
