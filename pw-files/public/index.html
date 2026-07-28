@@ -922,6 +922,7 @@
         <div class="step-action-panel" id="step3PanelRepo">
           <p class="sidebar-hint" style="margin-bottom:8px">运行模式见上方「执行设置」。</p>
           <button type="button" class="btn btn-run btn-full" id="btnRepoTest" onclick="event.stopPropagation(); handleRepoTestClick()" data-default-label="执行（含截图）">执行（含截图）</button>
+          <button type="button" class="btn btn-full" id="btnRepoRerunKeep" onclick="event.stopPropagation(); handleRepoRerunKeepClick()" data-default-label="追加 run（保留截图）" style="border-color:rgba(82,196,26,.35);color:#52c41a">追加 run（保留截图）</button>
           <ul class="compare-checklist" id="compareChecklistNew"></ul>
           <button type="button" class="btn btn-full" id="btnRepoCompare" onclick="openScreenshotCompareHub()" style="border-color:rgba(77,159,255,.35);color:var(--blue)">截图对比报告</button>
           <button type="button" class="btn btn-full" id="btnRepoCompareCancel" style="font-size:var(--fs-sm);padding:6px 10px;margin-top:6px" disabled onclick="send('cancel:repo-compare')">取消对比报告生成</button>
@@ -977,6 +978,7 @@
             </table>
           </div>
           <button type="button" class="btn btn-run btn-full" id="btnRunExecute" onclick="event.stopPropagation(); handleRunExecuteClick()" data-default-label="执行（含截图）">执行（含截图）</button>
+          <button type="button" class="btn btn-full" id="btnRunRerunKeep" onclick="event.stopPropagation(); handleRepoRerunKeepClick()" data-default-label="追加 run（保留截图）" style="border-color:rgba(82,196,26,.35);color:#52c41a">追加 run（保留截图）</button>
         </div>
         <div class="step-item" id="runStep3" data-run-step="3" role="button" tabindex="0">
           <div class="step-bullet">3</div>
@@ -987,6 +989,7 @@
         </div>
         <div class="step-action-panel" id="runStep3Panel">
           <ul class="compare-checklist" id="compareChecklistRun"></ul>
+          <button type="button" class="btn btn-full" id="btnRunRerunKeepReport" onclick="event.stopPropagation(); handleRepoRerunKeepClick()" data-default-label="追加 run（保留截图）" style="border-color:rgba(82,196,26,.35);color:#52c41a;margin-bottom:6px">追加 run（保留截图）</button>
           <button type="button" class="btn btn-full" id="btnRunCompare" onclick="openScreenshotCompareHub()" style="border-color:rgba(77,159,255,.35);color:var(--blue)">截图对比报告</button>
           <button type="button" class="btn btn-full" id="btnRunCompareCancel" style="font-size:var(--fs-sm);padding:6px 10px;margin-top:6px" disabled onclick="send('cancel:repo-compare')">取消对比报告生成</button>
         </div>
@@ -1210,7 +1213,7 @@
 // ── State ──────────────────────────────────────────────────────────────
 let ws = null;
 let state = { recording: false, hasRaw: false, hasOpt: false, hasRun: false };
-const busyState = { optimize: false, run: false, repoPipeline: false, repoCompare: false, repoBatch: false, accountLogin: false };
+const busyState = { optimize: false, run: false, repoPipeline: false, repoCompare: false, repoRerunKeep: false, repoBatch: false, accountLogin: false };
 let recordTimer = null;
 let recordSeconds = 0;
 let lastOptimizeProvider = 'claude';
@@ -1416,6 +1419,10 @@ function updateGlobalTaskBar() {
   }
   if (busyState.repoCompare) {
     el.textContent = '● 对比报告中';
+    return;
+  }
+  if (busyState.repoRerunKeep) {
+    el.textContent = '● 追加 run 中';
     return;
   }
   if (busyState.repoBatch) {
@@ -3449,7 +3456,7 @@ function markRepoArtifactsCommitted() {
 function syncRepoButtons() {
   const raw = document.getElementById('rawCode').value.trim();
   const opt = document.getElementById('optCode').value.trim();
-  const busyRepo = busyState.repoPipeline || busyState.repoCompare || busyState.repoBatch;
+  const busyRepo = busyState.repoPipeline || busyState.repoCompare || busyState.repoRerunKeep || busyState.repoBatch;
   const hasRaw = Boolean(raw);
   const hasOpt = Boolean(opt);
   const artifactsCommitted = isRepoArtifactsCommitted();
@@ -3464,6 +3471,7 @@ function syncRepoButtons() {
     const rp = document.getElementById('btnRepoPipeline');
     const rpc = document.getElementById('btnRepoPipelineCancel');
     const rtx = document.getElementById('btnRepoTest');
+    const rrk = document.getElementById('btnRepoRerunKeep');
     const rc = document.getElementById('btnRepoCompare');
     const rcc = document.getElementById('btnRepoCompareCancel');
     if (rs) rs.disabled = busyRepo || !hasRaw || !hasOpt;
@@ -3483,6 +3491,7 @@ function syncRepoButtons() {
         rtx.textContent = defaultLabel;
       }
     }
+    syncRerunKeepButton(rrk, busyRepo, hasOpt, hasBrowsers);
     if (rc) {
       rc.disabled = busyState.repoCompare;
     }
@@ -3491,6 +3500,7 @@ function syncRepoButtons() {
   }
 
   const btnRun = document.getElementById('btnRunExecute');
+  const btnRunRerunKeep = document.getElementById('btnRunRerunKeep');
   const btnRunCompare = document.getElementById('btnRunCompare');
   const btnRunCompareCancel = document.getElementById('btnRunCompareCancel');
   const runBusy = busyState.run && pendingRunKind === 'repo';
@@ -3515,6 +3525,8 @@ function syncRepoButtons() {
           : defaultLabel;
     }
   }
+  syncRerunKeepButton(btnRunRerunKeep, busyRepo, canExecute, hasBrowsers);
+  syncRerunKeepButton(document.getElementById('btnRunRerunKeepReport'), busyRepo, canExecute, hasBrowsers);
   if (btnRunCompare) {
     btnRunCompare.disabled = busyState.repoCompare;
   }
@@ -3553,6 +3565,80 @@ function runRepoPipelineClick() {
   if (!rawCode) { showToast('请先完成录制', 'err'); return; }
   const slug = getRecordingSlugOptions();
   send('repo:pipeline', { code: rawCode, name: slug.name, description: slug.description });
+}
+
+let rerunKeepAckTimer = null;
+
+function clearRerunKeepAckTimer() {
+  if (rerunKeepAckTimer) {
+    clearTimeout(rerunKeepAckTimer);
+    rerunKeepAckTimer = null;
+  }
+}
+
+function syncRerunKeepButton(btn, busyRepo, canRun, hasBrowsers) {
+  if (!btn) return;
+  const defaultLabel = btn.dataset.defaultLabel || '追加 run（保留截图）';
+  if (busyState.repoRerunKeep) {
+    btn.classList.add('busy');
+    btn.disabled = false;
+    btn.textContent = '取消追加 run';
+    return;
+  }
+  btn.classList.remove('busy');
+  btn.disabled = busyRepo || busyState.run || busyState.repoBatch || !canRun || !hasBrowsers;
+  btn.textContent = defaultLabel;
+}
+
+function collectRerunKeepSpecs() {
+  if (workflowMode === 'run') {
+    if (runSubMode === 'batch') return getSelectedBatchSpecs();
+    const spec = document.getElementById('repoOptimizedPick')?.value?.trim();
+    return spec ? [spec] : [];
+  }
+  const spec = getRepoExecutionSpec();
+  return spec ? [spec] : [];
+}
+
+function handleRepoRerunKeepClick() {
+  if (busyState.repoRerunKeep) {
+    send('cancel:repo-rerun-keep');
+    return;
+  }
+  if (busyState.run || busyState.repoBatch || busyState.repoCompare || busyState.repoPipeline) {
+    showToast('请等待当前任务结束', 'err');
+    return;
+  }
+  const specs = collectRerunKeepSpecs();
+  if (!specs.length) {
+    showToast('请先选择测试用例', 'err');
+    return;
+  }
+  if (!getSelectedBrowserProjects().length) {
+    showToast('请至少选择一个浏览器', 'err');
+    return;
+  }
+  const payload = { specRelatives: specs };
+  if (workflowMode === 'new') {
+    expandPipelineStep(3);
+    const optimizedCode = document.getElementById('optCode')?.value;
+    if (!optimizedCode?.trim()) {
+      showToast('请先生成用例或填写优化脚本', 'err');
+      return;
+    }
+    payload.optimizedCode = optimizedCode;
+  } else {
+    expandRunPipelineStep(3);
+  }
+  if (!send('repo:rerun-keep-screenshots', payload)) return;
+  log('info', '[repo] 已请求追加 run（保留截图）…');
+  clearRerunKeepAckTimer();
+  rerunKeepAckTimer = setTimeout(() => {
+    if (!busyState.repoRerunKeep) {
+      showToast('Studio 服务无响应，请重启 npm run studio', 'err');
+      log('err', '追加 run 无响应：当前 Studio 进程可能过旧，需重启');
+    }
+  }, 3000);
 }
 
 function handleRepoTestClick() {
@@ -3662,6 +3748,7 @@ function connectWS() {
     setBusy('run', false);
     busyState.repoPipeline = false;
     busyState.repoCompare = false;
+    busyState.repoRerunKeep = false;
     syncActionButtons();
     syncCompareHubButtons();
     updateGlobalTaskBar();
@@ -3681,7 +3768,12 @@ function connectWS() {
 }
 
 function send(type, data={}) {
-  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type, ...data }));
+  if (ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({ type, ...data }));
+    return true;
+  }
+  showToast('未连接 Studio 服务，请刷新页面', 'err');
+  return false;
 }
 
 function setBusy(action, busy) {
@@ -3718,6 +3810,7 @@ function finishBusyFromError() {
   setBusy('run', false);
   busyState.repoPipeline = false;
   busyState.repoCompare = false;
+  busyState.repoRerunKeep = false;
   busyState.repoBatch = false;
   resetPipelineRunning();
   if (state.recording) setRecordButtonUi(false);
@@ -4466,6 +4559,31 @@ function handleMessage(msg) {
       syncCompareHubButtons();
       log('info', '[repo] 正在处理截图对比报告…');
       break;
+    case 'repo:rerun-keep:start':
+      clearRerunKeepAckTimer();
+      busyState.repoRerunKeep = true;
+      syncWorkflowUi();
+      log('info', '[repo] 保留截图追加 run…');
+      break;
+    case 'repo:rerun-keep:done': {
+      clearRerunKeepAckTimer();
+      busyState.repoRerunKeep = false;
+      syncWorkflowUi();
+      refreshCompareReportStatus();
+      if (msg.ok) {
+        showToast('追加 run 完成', 'ok');
+        if (msg.openPath) {
+          const url = new URL(msg.openPath, location.origin).href;
+          repoState.lastCompareReportUrl = url;
+          openCompareReportInNewWindow(url);
+        }
+      } else if (msg.cancelled) {
+        showToast('追加 run 已取消', 'err');
+      } else {
+        showToast('追加 run 失败', 'err');
+      }
+      break;
+    }
     case 'repo:compare-report:done': {
       busyState.repoCompare = false;
       syncWorkflowUi();

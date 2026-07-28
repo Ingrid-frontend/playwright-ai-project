@@ -1,8 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 import type { ImageComparison } from './image-diff.js';
-import { loadUiRegressionConfig } from './ui-regression-config.js';
+import { loadUiRegressionConfig, resolveAiReviewConfig } from './ui-regression-config.js';
 import type { PlainLanguageAnalysis } from './ui-issues-analysis.js';
+import type { UiIssueReview, ReviewSummary } from './ui-issue-review.js';
 
 export type UiIssueCompareKind = 'golden' | 'last-green' | 'cross-browser' | 'run-drift' | 'structure';
 export type UiIssueSeverity = 'blocker' | 'warning' | 'noise';
@@ -35,6 +36,7 @@ export interface UiIssue {
   isNewRegression?: boolean;
   structureType?: string;
   detail?: string;
+  review?: UiIssueReview;
 }
 
 export interface UiIssuesReport {
@@ -46,6 +48,12 @@ export interface UiIssuesReport {
     noise: number;
     byCompareKind: Record<string, number>;
     byRoute?: Record<string, number>;
+    review?: ReviewSummary;
+    /** 全部像素对比项数（含无差异），用于通过率分母 */
+    comparisonTotal?: number;
+    comparisonBlocker?: number;
+    comparisonWarning?: number;
+    comparisonNoise?: number;
   };
   issues: UiIssue[];
   /** 规则化中文摘要（合并重复行） */
@@ -235,5 +243,11 @@ export function gateShouldFail(report: UiIssuesReport): boolean {
       i.structureType,
   ).length;
   if (goldenStructureBlockers > 0) return true;
+
+  const aiCfg = resolveAiReviewConfig();
+  if (aiCfg.failOnUiBug) {
+    const uiBugs = report.issues.filter((i) => i.review?.verdict === 'ui_bug').length;
+    if (uiBugs > 0) return true;
+  }
   return false;
 }

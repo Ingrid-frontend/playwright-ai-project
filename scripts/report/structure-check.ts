@@ -98,9 +98,11 @@ function checkSelectorItem(
   const findings: StructureFinding[] = [];
   if (!current.selectors) return findings;
   const cur = current.selectors[item.key];
+  // 旧 meta 未写入该 key（配置后尚未重跑截图）→ 跳过，避免误报 missing
+  if (cur === undefined) return findings;
   const base = baseline?.selectors?.[item.key];
 
-  if (!cur?.exists) {
+  if (!cur.exists) {
     if (item.required !== false) {
       findings.push({
         type: 'missing-selector',

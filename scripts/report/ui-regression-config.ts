@@ -27,6 +27,16 @@ export interface StructureCheckItem {
   selector: string;
   script?: string;
   required?: boolean;
+  /** main=主文档（默认）；first=第一个子 frame（iframe 内页面） */
+  frame?: 'main' | 'first';
+}
+
+export interface AiReviewConfig {
+  enabled: boolean;
+  minSeverity: 'warning' | 'blocker';
+  maxItems: number;
+  /** 规则/AI 判定为 ui_bug 时是否让 --gate 失败（默认 false，兼容旧行为） */
+  failOnUiBug: boolean;
 }
 
 export interface StructureChecksConfig {
@@ -68,6 +78,7 @@ export interface UiRegressionConfig {
   autoPromote?: {
     maxDiffRatio: number;
   };
+  aiReview?: AiReviewConfig;
 }
 
 export interface PixelmatchOptions {
@@ -108,6 +119,12 @@ const DEFAULT_CONFIG: UiRegressionConfig = {
   autoPromote: {
     maxDiffRatio: 0.005,
   },
+  aiReview: {
+    enabled: false,
+    minSeverity: 'warning',
+    maxItems: 20,
+    failOnUiBug: false,
+  },
 };
 
 const CONFIG_PATH = path.join(process.cwd(), 'config/ui-regression.json');
@@ -134,6 +151,7 @@ export function loadUiRegressionConfig(): UiRegressionConfig {
         crossBrowser: { ...DEFAULT_CONFIG.crossBrowser, ...raw.crossBrowser },
         autoPromote: { ...DEFAULT_CONFIG.autoPromote, ...raw.autoPromote },
         structureChecks: { ...DEFAULT_CONFIG.structureChecks, ...raw.structureChecks },
+        aiReview: { ...DEFAULT_CONFIG.aiReview, ...raw.aiReview },
         viewports: raw.viewports?.length ? raw.viewports : DEFAULT_CONFIG.viewports,
       };
     } catch (e) {
@@ -261,6 +279,14 @@ export function isDisabledViewportScreenshot(fileName: string): boolean {
 export function resolveStructureCheckItems(scriptKey?: string): StructureCheckItem[] {
   const items = loadUiRegressionConfig().structureChecks?.items || [];
   return items.filter((item) => scriptKeyMatches(item.script, scriptKey));
+}
+
+export function resolveAiReviewConfig(): AiReviewConfig {
+  const base = { ...(loadUiRegressionConfig().aiReview ?? DEFAULT_CONFIG.aiReview!) };
+  const env = process.env.PLAYWRIGHT_UI_AI_REVIEW?.trim().toLowerCase();
+  if (env === '1' || env === 'true' || env === 'yes') base.enabled = true;
+  if (env === '0' || env === 'false' || env === 'no') base.enabled = false;
+  return base;
 }
 
 /** 从截图路径解析 scriptKey，如 screenshots/stage/260612/foo/run-chromium-optimized/ts/step.png */

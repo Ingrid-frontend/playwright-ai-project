@@ -68,6 +68,7 @@
     "test-feishu-webhook": "tsx scripts/feishu/test-feishu-webhook.ts",
     "run-optimized-tests": "tsx scripts/flow/run-optimized-tests.ts",
     "reset:regression-data": "tsx scripts/flow/reset-regression-data.ts",
+    "rerun-regression-keep": "tsx scripts/flow/rerun-regression-keep-screenshots.ts",
     "test-job": "tsx scripts/jobs/test-job-cli.ts",
     "test-job:daemon": "tsx scripts/jobs/test-jobs-daemon.ts",
     "generate-raw-recording": "tsx scripts/recording/generate-raw-recording.ts",

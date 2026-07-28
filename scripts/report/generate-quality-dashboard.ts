@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import type { HistorySnapshot } from './ui-regression-history.js';
 import type { UiIssuesReport } from './ui-issues.js';
+import { formatIssuePassRate } from './compare-report-viz.js';
 
 const HISTORY_DIR = path.join('results', 'history');
 const ISSUES_FILE = 'results/ui-issues.json';
@@ -72,7 +73,7 @@ function buildPayload(): DashboardPayload {
       }
     : null;
 
-  const current = latest ?? currentFromIssues;
+  const current = currentFromIssues ?? latest;
   const byRoute = current?.summary.byRoute ?? issues?.summary.byRoute ?? {};
   const byCompareKind = current?.summary.byCompareKind ?? issues?.summary.byCompareKind ?? {};
   const byScript = current?.byScript ?? currentFromIssues?.byScript ?? {};
@@ -226,11 +227,16 @@ function renderScriptTable(byScript: HistorySnapshot['byScript']): string {
 
 export function generateQualityDashboardHtml(payload: DashboardPayload): string {
   const summary = payload.current?.summary;
-  const blocker = summary?.blocker ?? 0;
-  const warning = summary?.warning ?? 0;
-  const total = summary?.total ?? 0;
-  const passCount = summary?.noise ?? Math.max(total - blocker - warning, 0);
-  const passPct = total ? ((passCount / total) * 100).toFixed(1) : '0.0';
+  const blocker = summary?.comparisonBlocker ?? summary?.blocker ?? 0;
+  const warning = summary?.comparisonWarning ?? summary?.warning ?? 0;
+  const total = summary?.comparisonTotal ?? summary?.total ?? 0;
+  const passCount = summary?.comparisonNoise ?? summary?.noise ?? Math.max(total - blocker - warning, 0);
+  const passPct = formatIssuePassRate({
+    total,
+    blocker,
+    warning,
+    noise: passCount,
+  }).passPct;
   const prev = payload.previous;
 
   const links = [
@@ -327,7 +333,7 @@ export function generateQualityDashboardHtml(payload: DashboardPayload): string 
       </div>
       <div class="kpi">
         <div class="kpi-num green">${passPct}%</div>
-        <div class="kpi-label">Noise / 通过占比</div>
+        <div class="kpi-label">通过率</div>
         <div class="kpi-delta delta-neutral">${passCount} 条 noise</div>
       </div>
     </div>

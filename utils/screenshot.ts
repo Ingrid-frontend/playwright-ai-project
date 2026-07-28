@@ -1,4 +1,4 @@
-import { Page, expect } from '@playwright/test';
+import { Frame, Page, expect } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -10,6 +10,7 @@ import {
   resolveStructureCheckItems,
   scriptKeyFromScreenshotPath,
   type SnapshotViewport,
+  type StructureCheckItem,
 } from '../scripts/report/ui-regression-config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -59,24 +60,78 @@ function resetPageDiag(page: Page): void {
 async function applyMaskSelectors(page: Page, scriptKey?: string): Promise<void> {
   const selectors = resolveMaskSelectors(scriptKey);
   if (!selectors.length) return;
-  try {
-    await page.evaluate((sels) => {
+
+  const applyIn = async (ctx: Page | Frame) => {
+    await ctx.evaluate((sels) => {
       const styleId = 'ui-regression-mask-style';
       if (!document.getElementById(styleId)) {
         const style = document.createElement('style');
         style.id = styleId;
-        style.textContent = `[data-ui-regression-mask]{background:#000!important;color:#000!important;border-color:#000!important;box-shadow:none!important}`;
+        style.textContent =
+          `[data-ui-regression-mask]{background:#000!important;color:#000!important;border-color:#000!important;box-shadow:none!important}`;
         document.head.appendChild(style);
       }
       for (const sel of sels) {
-        document.querySelectorAll(sel).forEach(el => {
+        document.querySelectorAll(sel).forEach((el) => {
           (el as HTMLElement).setAttribute('data-ui-regression-mask', '1');
         });
       }
     }, selectors);
+  };
+
+  try {
+    await applyIn(page);
   } catch {
     /* frame 可能已销毁 */
   }
+  for (const frame of page.frames()) {
+    if (frame === page.mainFrame()) continue;
+    try {
+      await applyIn(frame);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+type SelectorProbe = {
+  exists: boolean;
+  bbox?: { x: number; y: number; width: number; height: number };
+  domHash?: string;
+};
+
+async function probeSelectorsInContext(
+  ctx: Page | Frame,
+  items: StructureCheckItem[],
+  fnBody: string,
+): Promise<Record<string, SelectorProbe>> {
+  if (!items.length) return {};
+  return ctx.evaluate(
+    ({ list, body }) => {
+      const fn = new Function('el', `return (${body})(el)`);
+      const out: Record<string, SelectorProbe> = {};
+      for (const item of list) {
+        const el = document.querySelector(item.selector);
+        if (!el) {
+          out[item.key] = { exists: false };
+          continue;
+        }
+        const r = el.getBoundingClientRect();
+        out[item.key] = {
+          exists: true,
+          bbox: {
+            x: Math.round(r.x),
+            y: Math.round(r.y),
+            width: Math.round(r.width),
+            height: Math.round(r.height),
+          },
+          domHash: fn(el) as string,
+        };
+      }
+      return out;
+    },
+    { list: items.map((i) => ({ key: i.key, selector: i.selector })), body: fnBody },
+  );
 }
 
 async function writeStepDiagnostics(
@@ -131,38 +186,29 @@ async function writeStepDiagnostics(
   }
 
   if (checkItems.length) {
+    const mainItems = checkItems.filter((i) => (i.frame || 'main') === 'main');
+    const frameItems = checkItems.filter((i) => i.frame === 'first');
+    selectors = {};
     try {
-      selectors = await page.evaluate(
-        ({ items, fnBody }) => {
-          const fn = new Function('el', `return (${fnBody})(el)`);
-          const out: Record<
-            string,
-            { exists: boolean; bbox?: { x: number; y: number; width: number; height: number }; domHash?: string }
-          > = {};
-          for (const item of items) {
-            const el = document.querySelector(item.selector);
-            if (!el) {
-              out[item.key] = { exists: false };
-              continue;
-            }
-            const r = el.getBoundingClientRect();
-            out[item.key] = {
-              exists: true,
-              bbox: {
-                x: Math.round(r.x),
-                y: Math.round(r.y),
-                width: Math.round(r.width),
-                height: Math.round(r.height),
-              },
-              domHash: fn(el) as string,
-            };
-          }
-          return out;
-        },
-        { items: checkItems, fnBody: domFingerprintFn },
-      );
+      Object.assign(selectors, await probeSelectorsInContext(page, mainItems, domFingerprintFn));
     } catch {
-      selectors = undefined;
+      /* ignore */
+    }
+    if (frameItems.length) {
+      const child = page.frames().find((f) => f !== page.mainFrame());
+      if (child) {
+        try {
+          Object.assign(selectors, await probeSelectorsInContext(child, frameItems, domFingerprintFn));
+        } catch {
+          for (const item of frameItems) {
+            selectors[item.key] = { exists: false };
+          }
+        }
+      } else {
+        for (const item of frameItems) {
+          selectors[item.key] = { exists: false };
+        }
+      }
     }
   }
 

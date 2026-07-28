@@ -227,19 +227,35 @@ export interface OverviewData {
   generatedAt: string;
 }
 
+export function formatIssuePassRate(summary: {
+  total: number;
+  blocker: number;
+  warning: number;
+  noise: number;
+}): { passPct: string; passCount: number; blockPct: string; warnPct: string } {
+  const { total, blocker, warning } = summary;
+  if (total <= 0) {
+    return { passPct: '100.0', passCount: 0, blockPct: '0.0', warnPct: '0.0' };
+  }
+  // 通过 = 全部对比中未达 warning/blocker 的项（含无差异与 noise），不用 noise/问题条数
+  const passCount = Math.max(0, total - blocker - warning);
+  return {
+    passPct: ((passCount / total) * 100).toFixed(1),
+    passCount,
+    blockPct: ((blocker / total) * 100).toFixed(1),
+    warnPct: ((warning / total) * 100).toFixed(1),
+  };
+}
+
 export function generateOverviewPanel(data: OverviewData): string {
-  const total = data.total || 1;
-  const passCount = data.noise;
-  const passPct = ((passCount / total) * 100).toFixed(1);
-  const blockPct = ((data.blocker / total) * 100).toFixed(1);
-  const warnPct = ((data.warning / total) * 100).toFixed(1);
+  const { passPct, passCount, blockPct, warnPct } = formatIssuePassRate(data);
+  const total = data.total;
 
   // Ring chart via conic-gradient
-  const blockDeg = (data.blocker / total) * 360;
-  const warnDeg = (data.warning / total) * 360;
-  const passDeg = 360 - blockDeg - warnDeg;
+  const blockDeg = total > 0 ? (data.blocker / total) * 360 : 0;
+  const warnDeg = total > 0 ? (data.warning / total) * 360 : 0;
   const ringBg = data.total === 0
-    ? '#e8e8e8'
+    ? '#28a745'
     : `conic-gradient(#dc3545 0deg ${blockDeg}deg, #ffc107 ${blockDeg}deg ${blockDeg + warnDeg}deg, #28a745 ${blockDeg + warnDeg}deg 360deg)`;
 
   const distRows = data.distribution

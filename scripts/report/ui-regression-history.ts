@@ -85,16 +85,7 @@ export function appendHistorySnapshot(report: UiIssuesReport): string {
   const date = new Date().toISOString().slice(0, 10);
   const filePath = path.join(HISTORY_DIR, `${date}.json`);
 
-  let existing: HistorySnapshot | null = null;
-  if (fs.existsSync(filePath)) {
-    try {
-      existing = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as HistorySnapshot;
-    } catch {
-      existing = null;
-    }
-  }
-
-  const byScript: HistorySnapshot['byScript'] = existing?.byScript ? { ...existing.byScript } : {};
+  const byScript: HistorySnapshot['byScript'] = {};
 
   const scriptBuckets = new Map<string, { diffs: number[]; blocker: number; warning: number }>();
   for (const issue of report.issues) {

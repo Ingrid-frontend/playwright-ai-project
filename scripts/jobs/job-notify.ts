@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import type { FeishuMode } from './test-jobs-config.js';
 import { fetchWithRetry } from '../feishu/feishu-utils.js';
+import { buildChartCardElements, isChartCardEnabled } from '../feishu/feishu-notify-charts.js';
 import { BITABLE_RESULT_FILE } from '../feishu/bitable-schema.js';
 
 type BitableRecordFile = {
@@ -52,14 +53,8 @@ function buildResultMarkdown(summary: JobNotifySummary): string {
   }
   if (summary.uiIssuesSummary) {
     lines.push(summary.uiIssuesSummary);
-    const hasButtons =
-      process.env.ENABLE_GITHUB === '1' ||
-      process.env.FEISHU_CALLBACK_URL ||
-      process.env.FEISHU_REPORT_URL ||
-      fs.existsSync('results/feishu-doc-url.txt') ||
-      fs.existsSync(BITABLE_RESULT_FILE);
-    const reportHint = hasButtons
-      ? '📎 完整报告与看板数据已生成，可通过下方按钮查看'
+    const reportHint = getDashboardUrl()
+      ? '📎 可通过下方「打开仪表盘」查看详情'
       : '📎 完整差异报告已生成，请联系测试团队获取详情';
     lines.push(reportHint);
   }
@@ -244,161 +239,114 @@ function cardHeader(summary: JobNotifySummary): { title: string; template: 'gree
 
 /* ── 按钮构建 ── */
 
-function buildGithubActionsButtons(githubEnabled: boolean): Array<Record<string, unknown>> {
-  if (!githubEnabled) return [];
-  const githubRepository = process.env.GITHUB_REPOSITORY || 'Ingrid-frontend/playwright-ai-project';
-  const githubRunId = process.env.GITHUB_RUN_ID || '';
-  const githubRunUrl = `https://github.com/${githubRepository}/actions/runs/${githubRunId}`;
-  const [owner, repo] = githubRepository.split('/');
-  const publicBase =
-    process.env.PUBLIC_REPORT_URL?.replace(/\/$/, '') || `https://${owner}.github.io/${repo}`;
-  return [
-    {
-      tag: 'button',
-      text: { tag: 'plain_text', content: '📊 完整报告' },
-      type: 'primary',
-      url: `${publicBase}/`,
-    },
-    {
-      tag: 'button',
-      text: { tag: 'plain_text', content: '📥 CI 产物' },
-      type: 'default',
-      url: githubRunUrl,
-    },
-  ];
-}
-
-function buildFeishuDocButton(): Array<Record<string, unknown>> {
-  const feishuDocUrlPath = 'results/feishu-doc-url.txt';
-  if (!fs.existsSync(feishuDocUrlPath)) return [];
-  try {
-    const feishuDocUrl = fs.readFileSync(feishuDocUrlPath, 'utf-8').trim();
-    if (feishuDocUrl) {
-      return [
-        {
-          tag: 'button',
-          text: { tag: 'plain_text', content: '📄 飞书文档' },
-          type: 'primary',
-          url: feishuDocUrl,
-        },
-      ];
+function getDashboardUrl(): string | null {
+  if (fs.existsSync(BITABLE_RESULT_FILE)) {
+    try {
+      const record = JSON.parse(fs.readFileSync(BITABLE_RESULT_FILE, 'utf-8')) as BitableRecordFile;
+      if (record.dashboardUrl) return record.dashboardUrl;
+    } catch {
+      /* ignore */
     }
-  } catch { /* ignore */ }
-  return [];
-}
-
-function buildBitableButtons(): Array<Record<string, unknown>> {
-  if (!fs.existsSync(BITABLE_RESULT_FILE)) return [];
-  try {
-    const record = JSON.parse(fs.readFileSync(BITABLE_RESULT_FILE, 'utf-8')) as BitableRecordFile;
-    const buttons: Array<Record<string, unknown>> = [];
-    if (record.runRecordUrl) {
-      buttons.push({
-        tag: 'button',
-        text: { tag: 'plain_text', content: '📋 多维表记录' },
-        type: 'primary',
-        url: record.runRecordUrl,
-      });
-    }
-    if (record.dashboardUrl) {
-      buttons.push({
-        tag: 'button',
-        text: { tag: 'plain_text', content: '📈 质量看板' },
-        type: 'default',
-        url: record.dashboardUrl,
-      });
-    }
-    return buttons;
-  } catch {
-    return [];
   }
+
+  const publicBase = process.env.PUBLIC_REPORT_URL?.replace(/\/$/, '');
+  if (publicBase) return `${publicBase}/dashboard/`;
+
+  const reportUrl = process.env.FEISHU_REPORT_URL?.trim();
+  if (reportUrl) return reportUrl;
+
+  return null;
 }
 
-
-function buildFallbackReportButton(reportUrl?: string | null): Array<Record<string, unknown>> {
-  const url = reportUrl || process.env.FEISHU_REPORT_URL?.trim();
+function buildDashboardPrimaryButton(): Array<Record<string, unknown>> {
+  const url = getDashboardUrl();
   if (!url) return [];
   return [
     {
       tag: 'button',
-      text: { tag: 'plain_text', content: '📊 查看报告' },
+      text: { tag: 'plain_text', content: '打开仪表盘' },
       type: 'primary',
       url,
     },
   ];
 }
 
-
-async function autoDetectReportUrl(): Promise<string | null> {
-  const explicit = process.env.FEISHU_REPORT_URL?.trim();
-  if (explicit) return explicit;
-
-  // 报告文件必须存在
-  const reportFile = path.join(process.cwd(), 'results', 'screenshot-comparison.html');
-  if (!fs.existsSync(reportFile)) return null;
-
-  // 尝试常见端口
-  const ports = [3001, 8080, 3000, 8000, 3333, 5000, 9000];
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 400);
-
-  for (const port of ports) {
-    try {
-      const url = `http://localhost:${port}/results/screenshot-comparison.html`;
-      const res = await fetch(url, { method: 'HEAD', signal: controller.signal });
-      if (res.ok || res.status === 200) {
-        clearTimeout(timeout);
-        return url;
-      }
-    } catch { /* port not available, try next */ }
+function buildTestStatusLine(summary: JobNotifySummary): string {
+  const parts: string[] = [
+    summary.aborted
+      ? '⏹️ 执行已中断'
+      : `${summary.testPassed ? '✅' : '❌'} 执行${summary.testPassed ? '通过' : '失败'}`,
+  ];
+  if (summary.compareSkipped) {
+    parts.push('⏭️ 对比已跳过');
+  } else {
+    parts.push(`${summary.comparePassed ? '✅' : '❌'} 对比${summary.comparePassed ? '通过' : '失败'}`);
   }
-  clearTimeout(timeout);
-  return null;
+  if (summary.uiIssuesSummary) {
+    parts.push(summary.uiIssuesSummary.replace(/\*\*/g, ''));
+  }
+  return parts.join(' · ');
 }
 
-function buildInteractButtons(_callbackUrl: string): Array<Record<string, unknown>> {
-  return [
-    {
-      tag: 'button',
-      text: { tag: 'plain_text', content: '🔄 重跑失败用例' },
-      type: 'default',
-      value: { action: 'rerun_failed' },
-    },
-    {
-      tag: 'button',
-      text: { tag: 'plain_text', content: '✅ 批准基线' },
-      type: 'primary',
-      value: { action: 'approve_baseline' },
-    },
-  ];
+function buildReportActionButtons(): Array<Record<string, unknown>> {
+  return buildDashboardPrimaryButton();
+}
+
+function buildCardFooterNote(): Record<string, unknown> {
+  return {
+    tag: 'note',
+    elements: [
+      {
+        tag: 'plain_text',
+        content: process.env.FEISHU_CARD_SOURCE || '来自 Playwright UI 回归',
+      },
+    ],
+  };
+}
+
+async function buildCardPayload(
+  summary: JobNotifySummary,
+  effectiveMode: FeishuMode,
+): Promise<{ header: { title: string; template: string }; elements: Array<Record<string, unknown>> }> {
+  const { title: defaultTitle, template: defaultTemplate } = cardHeader(summary);
+  const reportButtons = buildReportActionButtons();
+
+  if (effectiveMode !== 'text' && isChartCardEnabled()) {
+    const chartCard = await buildChartCardElements();
+    if (chartCard) {
+      const elements: Array<Record<string, unknown>> = [
+        ...chartCard.elements,
+        { tag: 'div', text: { tag: 'lark_md', content: buildTestStatusLine(summary) } },
+      ];
+      if (reportButtons.length > 0) {
+        elements.push({ tag: 'action', actions: reportButtons });
+      }
+      elements.push(buildCardFooterNote());
+      return {
+        header: { title: chartCard.header.title, template: chartCard.header.template },
+        elements,
+      };
+    }
+  }
+
+  const elements = buildCardElements(summary, reportButtons);
+  return {
+    header: { title: defaultTitle, template: defaultTemplate },
+    elements,
+  };
 }
 
 function buildCardElements(
   summary: JobNotifySummary,
-  effectiveMode: FeishuMode,
-  githubEnabled: boolean,
-  callbackUrl: string | undefined,
-  reportUrl?: string | null,
+  reportButtons = buildReportActionButtons(),
 ): Array<Record<string, unknown>> {
   const resultMd = buildResultMarkdown(summary);
   const elements: Array<Record<string, unknown>> = [
     { tag: 'div', text: { tag: 'lark_md', content: resultMd } },
   ];
 
-  const reportButtons = [
-    ...buildGithubActionsButtons(githubEnabled),
-    ...buildBitableButtons(),
-    ...buildFeishuDocButton(),
-    ...buildFallbackReportButton(reportUrl),
-  ];
   if (reportButtons.length > 0) {
     elements.push({ tag: 'action', actions: reportButtons });
-  }
-
-  if (callbackUrl) {
-    const interactBtns = buildInteractButtons(callbackUrl);
-    elements.push({ tag: 'div', text: { tag: 'lark_md', content: '**⚡ 快捷操作**：' } });
-    elements.push({ tag: 'action', actions: interactBtns });
   }
 
   return elements;
@@ -424,7 +372,6 @@ export async function sendJobFeishuNotification(
 
   const webhookUrl = process.env.FEISHU_WEBHOOK_URL;
   const webhookSecret = process.env.FEISHU_WEBHOOK_SECRET;
-  const callbackUrl = process.env.FEISHU_CALLBACK_URL?.trim();
   const sensitiveLogsEnabled = process.env.ENABLE_SENSITIVE_LOGS === '1';
 
   console.log('🔍 飞书通知配置检查：');
@@ -435,7 +382,7 @@ export async function sendJobFeishuNotification(
     return true;
   }
 
-  const { title: cardTitle, template: cardTemplate } = cardHeader(summary);
+  const cardHeaderResult = cardHeader(summary);
   
   // 自动更新飞书报告文档
   const feishuAppId = process.env.FEISHU_APP_ID?.trim();
@@ -461,19 +408,18 @@ export async function sendJobFeishuNotification(
     const resultMd = buildResultMarkdown(summary);
     body = {
       msg_type: 'text',
-      content: { text: `${cardTitle}\n\n${resultMd}` },
+      content: { text: `${cardHeaderResult.title}\n\n${resultMd}` },
     };
   } else {
-    const detectedUrl = await autoDetectReportUrl();
-    const elements = buildCardElements(summary, effectiveMode, githubEnabled, callbackUrl, detectedUrl);
+    const cardPayload = await buildCardPayload(summary, effectiveMode);
     body = {
       msg_type: 'interactive',
       card: {
         header: {
-          title: { tag: 'plain_text', content: cardTitle },
-          template: cardTemplate,
+          title: { tag: 'plain_text', content: cardPayload.header.title },
+          template: cardPayload.header.template,
         },
-        elements,
+        elements: cardPayload.elements,
       },
     };
   }
@@ -526,23 +472,36 @@ export async function sendJobFeishuNotification(
 export function readUiIssuesSummaryLine(): string | undefined {
   const counts = readUiIssuesSummaryCounts();
   if (!counts) return undefined;
-  return `**界面差异**：严重 ${counts.blocker} 项 · 轻微 ${counts.warning} 项 · 共 ${counts.total} 项`;
+  const base = `**界面差异**：严重 ${counts.blocker} 项 · 轻微 ${counts.warning} 项 · 共 ${counts.total} 项`;
+  if (!counts.review || counts.review.reviewed <= 0) return base;
+  return `${base}\n**UI 判定**：疑似问题 ${counts.review.uiBug} · 需人工 ${counts.review.needsHuman} · 不稳定 ${counts.review.unstable} · 噪声 ${counts.review.likelyNoise}`;
 }
 
 export function readUiIssuesSummaryCounts():
-  | { blocker: number; warning: number; total: number }
+  | {
+      blocker: number;
+      warning: number;
+      total: number;
+      review?: { uiBug: number; needsHuman: number; unstable: number; likelyNoise: number; reviewed: number };
+    }
   | undefined {
   const p = path.join(process.cwd(), 'results/ui-issues.json');
   if (!fs.existsSync(p)) return undefined;
   try {
     const report = JSON.parse(fs.readFileSync(p, 'utf-8')) as {
-      summary?: { blocker: number; warning: number; total: number };
+      summary?: {
+        blocker: number;
+        warning: number;
+        total: number;
+        review?: { uiBug: number; needsHuman: number; unstable: number; likelyNoise: number; reviewed: number };
+      };
     };
     if (!report.summary) return undefined;
     return {
       blocker: report.summary.blocker ?? 0,
       warning: report.summary.warning ?? 0,
       total: report.summary.total ?? 0,
+      review: report.summary.review,
     };
   } catch {
     return undefined;

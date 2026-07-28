@@ -25,6 +25,7 @@ import {
 } from './ui-issues.js';
 import { appendHistorySnapshot, loadStepTrends, type StepTrendPoint } from './ui-regression-history.js';
 import { buildPlainLanguageAnalysis } from './ui-issues-analysis.js';
+import { attachIssueReviews } from './ui-issue-review.js';
 import { collectStructureUiIssues } from './structure-check.js';
 import {
   buildDiffCardHtml,
@@ -1279,28 +1280,56 @@ function generateHTML(
 ): string {
   currentStepTrends = loadStepTrends();
   const crossBrowserOn = isCompareCrossBrowserEnabled();
-  let issueBlocker = 0;
-  let issueWarning = 0;
-  let issueNoise = 0;
-  for (const i of uiIssues) {
-    if (i.severity === 'blocker') issueBlocker++;
-    else if (i.severity === 'warning') issueWarning++;
-    else issueNoise++;
-  }
   const heatmapHtml = generateHeatmapTabHtml(uiIssues);
 
   const allComparisons = testDirComparisons.flatMap(tdc => tdc.comparisons);
   const totalScreenshotCount = allComparisons.reduce((sum, c) => sum + c.optimizedScreenshots.length, 0);
   const totalExecCount = getTotalExecutions(allComparisons);
 
-  // Build OverviewData (Plan 1)
+  // 通过率分母：全部像素对比项（含无差异），而非仅 ui-issues
+  const cfg = loadUiRegressionConfig();
   const allDiffs: number[] = [];
-  let maxDiffIssue: UiIssue | null = null;
-  for (const issue of uiIssues) {
-    allDiffs.push(issue.difference);
-    if (!maxDiffIssue || issue.difference > maxDiffIssue.difference) maxDiffIssue = issue;
+  let ovBlocker = 0;
+  let ovWarning = 0;
+  let ovNoise = 0;
+  let maxDiff: { pct: string; location: string } | null = null;
+  let maxDiffValue = -1;
+
+  for (const tdc of testDirComparisons) {
+    for (const comp of tdc.comparisons) {
+      for (const c of [...comp.optimizedComparisons, ...comp.crossBrowserComparisons]) {
+        const d = c.difference ?? 0;
+        allDiffs.push(d);
+        const isCross = c.compareKind === 'cross-browser';
+        const blockerR = isCross ? cfg.crossBrowser.blockerRatio : cfg.blockerRatio;
+        const warningR = isCross ? cfg.crossBrowser.warningRatio : cfg.warningRatio;
+        let severity: 'blocker' | 'warning' | 'noise' | 'pass' = 'pass';
+        if (d >= blockerR) severity = isCross ? 'warning' : 'blocker';
+        else if (d >= warningR) severity = 'warning';
+        else if (d > 0) severity = 'noise';
+
+        if (severity === 'blocker') ovBlocker++;
+        else if (severity === 'warning') ovWarning++;
+        else if (severity === 'noise') ovNoise++;
+
+        if (d > maxDiffValue) {
+          maxDiffValue = d;
+          const shotPath = c.image2Path || c.image1Path || '';
+          maxDiff = {
+            pct: (d * 100).toFixed(3) + '%',
+            location: `${tdc.testDir}/步骤${comp.stepNumber}`,
+          };
+          void shotPath;
+        }
+      }
+    }
   }
-  const avgDiff = allDiffs.length > 0 ? ((allDiffs.reduce((s, v) => s + v, 0) / allDiffs.length) * 100).toFixed(3) + '%' : '0%';
+
+  const comparisonTotal = allDiffs.length;
+  const avgDiff =
+    comparisonTotal > 0
+      ? ((allDiffs.reduce((s, v) => s + v, 0) / comparisonTotal) * 100).toFixed(3) + '%'
+      : '0%';
   const distBuckets = [
     { range: '0-0.1%', count: 0 },
     { range: '0.1-0.5%', count: 0 },
@@ -1318,16 +1347,14 @@ function generateHTML(
   const distribution = distBuckets.map(b => ({ range: b.range, count: b.count, pct: (b.count / maxBucketCount) * 100 }));
 
   const overviewData: OverviewData = {
-    total: uiIssues.length,
-    blocker: issueBlocker,
-    warning: issueWarning,
-    noise: issueNoise,
+    total: comparisonTotal,
+    blocker: ovBlocker,
+    warning: ovWarning,
+    noise: ovNoise,
     totalSteps: allComparisons.length,
     totalScreenshots: totalScreenshotCount,
     totalExecutions: totalExecCount,
-    maxDiff: maxDiffIssue
-      ? { pct: (maxDiffIssue.difference * 100).toFixed(3) + '%', location: `${maxDiffIssue.scriptKey}/步骤${maxDiffIssue.stepNumber}` }
-      : null,
+    maxDiff,
     avgDiff,
     distribution,
     generatedAt: new Date().toLocaleString('zh-CN', { hour12: false }),
@@ -3266,6 +3293,34 @@ async function main() {
 
   const uiIssues = collectAllUiIssues(testDirComparisons);
   const issuesReport = buildUiIssuesReport(uiIssues);
+  const reviewSummary = await attachIssueReviews(issuesReport);
+
+  const cfg = loadUiRegressionConfig();
+  let comparisonTotal = 0;
+  let comparisonBlocker = 0;
+  let comparisonWarning = 0;
+  let comparisonNoise = 0;
+  for (const tdc of testDirComparisons) {
+    for (const comp of tdc.comparisons) {
+      for (const c of [...(comp.optimizedComparisons || []), ...(comp.crossBrowserComparisons || [])]) {
+        comparisonTotal++;
+        const d = c.difference ?? 0;
+        const isCross = c.compareKind === 'cross-browser';
+        const blockerR = isCross ? cfg.crossBrowser.blockerRatio : cfg.blockerRatio;
+        const warningR = isCross ? cfg.crossBrowser.warningRatio : cfg.warningRatio;
+        if (d >= blockerR) {
+          if (isCross) comparisonWarning++;
+          else comparisonBlocker++;
+        } else if (d >= warningR) comparisonWarning++;
+        else if (d > 0) comparisonNoise++;
+      }
+    }
+  }
+  issuesReport.summary.comparisonTotal = comparisonTotal;
+  issuesReport.summary.comparisonBlocker = comparisonBlocker;
+  issuesReport.summary.comparisonWarning = comparisonWarning;
+  issuesReport.summary.comparisonNoise = comparisonNoise;
+
   issuesReport.plainLanguageAnalysis = buildPlainLanguageAnalysis(issuesReport);
   writeUiIssuesReport(issuesReport, issuesOut);
 
@@ -3294,6 +3349,12 @@ async function main() {
   console.log(`\n✅ 对比报告已生成: ${outputPath}`);
   const pla = issuesReport.plainLanguageAnalysis;
   console.log(`   UI 问题: ${issuesOut}（blocker ${issuesReport.summary.blocker} / warning ${issuesReport.summary.warning}）`);
+  if (reviewSummary.reviewed > 0) {
+    console.log(
+      `   复审判定: 疑似UI ${reviewSummary.uiBug} · 需人工 ${reviewSummary.needsHuman} · 不稳定 ${reviewSummary.unstable} · 噪声 ${reviewSummary.likelyNoise}` +
+        (reviewSummary.aiUpdated ? `（Vision ${reviewSummary.aiUpdated}）` : ''),
+    );
+  }
   if (pla) {
     console.log(
       `   分析摘要: ${analysisMdPath}（合并后 ${pla.overview.mergedRowCount} 行，原始 ${pla.overview.rawIssueCount} 条）`,

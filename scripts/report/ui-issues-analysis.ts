@@ -1,4 +1,5 @@
 import type { UiIssue, UiIssueCompareKind, UiIssuesReport, UiIssueSeverity } from './ui-issues.js';
+import type { ReviewVerdict } from './ui-issue-review.js';
 
 export interface MergedStepIssue {
   scriptKey: string;
@@ -14,6 +15,8 @@ export interface MergedStepIssue {
   diffImagePath?: string;
   sizeMismatch: boolean;
   hint: string;
+  verdict?: ReviewVerdict;
+  verdictLabel?: string;
 }
 
 export interface ScriptAnalysisBlock {
@@ -36,6 +39,10 @@ export interface PlainLanguageAnalysis {
     warning: number;
     scriptCount: number;
     dedupeNote: string;
+    uiBug?: number;
+    likelyNoise?: number;
+    unstable?: number;
+    needsHuman?: number;
   };
   scripts: ScriptAnalysisBlock[];
 }
@@ -45,6 +52,14 @@ const COMPARE_KIND_ZH: Record<UiIssueCompareKind, string> = {
   'last-green': '上次通过',
   'run-drift': '运行间对比',
   'cross-browser': '跨浏览器',
+  structure: '结构检查',
+};
+
+const VERDICT_ZH: Record<ReviewVerdict, string> = {
+  ui_bug: '疑似 UI 问题',
+  likely_noise: '疑似噪声',
+  unstable: '运行不稳定',
+  needs_human: '需人工确认',
 };
 
 const SEVERITY_ORDER: Record<UiIssueSeverity, number> = {
@@ -69,12 +84,58 @@ function worstSeverity(a: UiIssueSeverity, b: UiIssueSeverity): UiIssueSeverity 
   return SEVERITY_ORDER[a] >= SEVERITY_ORDER[b] ? a : b;
 }
 
-function stepHint(stepNumber: number, label: string): string {
+function pickWorstVerdict(issues: UiIssue[]): { verdict?: ReviewVerdict; reason?: string } {
+  const order: ReviewVerdict[] = ['ui_bug', 'needs_human', 'unstable', 'likely_noise'];
+  let best: UiIssue | undefined;
+  for (const issue of issues) {
+    if (!issue.review) continue;
+    if (!best?.review) {
+      best = issue;
+      continue;
+    }
+    if (order.indexOf(issue.review.verdict) < order.indexOf(best.review.verdict)) {
+      best = issue;
+    }
+  }
+  return best?.review
+    ? { verdict: best.review.verdict, reason: best.review.reason }
+    : {};
+}
+
+function stepHint(
+  stepNumber: number,
+  label: string,
+  compareKinds: UiIssueCompareKind[],
+  structureTypes: string[],
+  reviewReason?: string,
+): string {
+  if (reviewReason) return reviewReason;
+
+  const kinds = new Set(compareKinds);
+  if (structureTypes.includes('missing-selector')) {
+    return '疑似 UI 结构/布局问题：关键选择器缺失';
+  }
+  if (structureTypes.includes('bbox-drift')) {
+    return '疑似 UI 结构/布局问题：关键区域发生偏移';
+  }
+  if (structureTypes.includes('horizontal-overflow')) {
+    return '疑似 UI 布局问题：页面横向溢出';
+  }
+  if (kinds.has('structure') && (kinds.has('golden') || kinds.has('last-green'))) {
+    return '疑似 UI 结构/布局问题：像素差异与结构告警同时出现';
+  }
+  if (kinds.has('run-drift') && !kinds.has('golden') && !kinds.has('last-green')) {
+    return '运行间不稳定，需结合 golden 判断是否为真实回归';
+  }
+  if (kinds.has('cross-browser') && !kinds.has('golden') && !kinds.has('structure')) {
+    return '多为跨浏览器渲染噪声，优先人工确认后再定缺陷';
+  }
+
   const l = label.toLowerCase();
   if (stepNumber === 1 || l.includes('导航') || l.includes('首页')) {
-    return '多为首页动态区（待办、公告、时间等）';
+    return '多为首页动态区（待办、公告、时间等）；若已配置 mask 仍有差异，请看 diff 红区';
   }
-  if (l.includes('申请') || l.includes('列表') || l.includes('表格') || /^\d+$/.test(label)) {
+  if (l.includes('申请') || l.includes('列表') || l.includes('表格') || /^\d+$/.test(label) || l.includes('审批')) {
     return '多为 iframe 内列表/表格数据或选中态';
   }
   if (l.includes('工作台') || l.includes('tab')) {
@@ -98,7 +159,11 @@ function scriptSuggestions(
   const tips: string[] = [];
   const kinds = new Set(script.mergedSteps.flatMap((s) => s.compareKinds));
   const top = script.mergedSteps.filter((s) => s.severity === 'blocker').slice(0, 2);
+  const uiBugs = script.mergedSteps.filter((s) => s.verdict === 'ui_bug');
 
+  if (uiBugs.length) {
+    tips.push(`优先处理「疑似 UI 问题」：${uiBugs.map((t) => `步骤 ${t.stepNumber}`).join('、')}`);
+  }
   if (kinds.has('run-drift') && !kinds.has('golden')) {
     tips.push('未检测到 Golden 对比：blocker 可能来自两次运行差异，建议确认正确界面后 promote Golden。');
   }
@@ -129,6 +194,7 @@ function mergeIssuesForScript(scriptKey: string, issues: UiIssue[]): MergedStepI
     let sizeMismatch = false;
     const browsers = new Set<string>();
     const compareKinds = new Set<UiIssueCompareKind>();
+    const structureTypes: string[] = [];
 
     for (const i of group) {
       if (i.difference > maxDifference) {
@@ -139,8 +205,11 @@ function mergeIssuesForScript(scriptKey: string, issues: UiIssue[]): MergedStepI
       if (i.sizeMismatch) sizeMismatch = true;
       browsers.add(i.browser);
       compareKinds.add(i.compareKind);
+      if (i.structureType) structureTypes.push(i.structureType);
     }
 
+    const picked = pickWorstVerdict(group);
+    const kindsArr = [...compareKinds];
     merged.push({
       scriptKey,
       stepNumber: first.stepNumber,
@@ -149,12 +218,14 @@ function mergeIssuesForScript(scriptKey: string, issues: UiIssue[]): MergedStepI
       maxDifferencePct: (maxDifference * 100).toFixed(2),
       severity,
       browsers: [...browsers].sort(),
-      compareKinds: [...compareKinds],
-      compareKindLabels: [...compareKinds].map((k) => COMPARE_KIND_ZH[k]),
+      compareKinds: kindsArr,
+      compareKindLabels: kindsArr.map((k) => COMPARE_KIND_ZH[k]),
       rawCount: group.length,
       diffImagePath,
       sizeMismatch,
-      hint: stepHint(first.stepNumber, stepLabel),
+      hint: stepHint(first.stepNumber, stepLabel, kindsArr, structureTypes, picked.reason),
+      verdict: picked.verdict,
+      verdictLabel: picked.verdict ? VERDICT_ZH[picked.verdict] : undefined,
     });
   }
 
@@ -169,10 +240,14 @@ function renderScriptTableHtml(script: ScriptAnalysisBlock): string {
     .map((row) => {
       const diff = renderInlineDiffThumb(row.diffImagePath);
       const sev = `<span class="severity-badge severity-${row.severity}">${row.severity}</span>`;
+      const verdict = row.verdictLabel
+        ? `<span class="verdict-badge verdict-${row.verdict}">${escapeHtml(row.verdictLabel)}</span>`
+        : '—';
       const browsersAttr = escapeHtml(row.browsers.join(','));
       const kindsAttr = escapeHtml(row.compareKinds.join(','));
       return `<tr class="analysis-filter-row" data-browsers="${browsersAttr}" data-compare-kinds="${kindsAttr}" data-severity="${row.severity}">
         <td>${sev}</td>
+        <td>${verdict}</td>
         <td>${row.stepNumber}</td>
         <td>${escapeHtml(row.stepLabel)}</td>
         <td><strong>${row.maxDifferencePct}%</strong></td>
@@ -193,7 +268,7 @@ function renderScriptTableHtml(script: ScriptAnalysisBlock): string {
     <table class="issues-table analysis-table">
       <thead>
         <tr>
-          <th>级别</th><th>步</th><th>步骤</th><th>最大差异</th><th>原始条数</th>
+          <th>级别</th><th>判定</th><th>步</th><th>步骤</th><th>最大差异</th><th>原始条数</th>
           <th>浏览器</th><th>对比类型</th><th>可能原因</th><th>Diff</th>
         </tr>
       </thead>
@@ -231,6 +306,10 @@ function renderMarkdown(analysis: PlainLanguageAnalysis): string {
     `| 合并后行数 | ${analysis.overview.mergedRowCount} |`,
     `| blocker | ${analysis.overview.blocker} |`,
     `| warning | ${analysis.overview.warning} |`,
+    `| 疑似 UI 问题 | ${analysis.overview.uiBug ?? 0} |`,
+    `| 需人工确认 | ${analysis.overview.needsHuman ?? 0} |`,
+    `| 运行不稳定 | ${analysis.overview.unstable ?? 0} |`,
+    `| 疑似噪声 | ${analysis.overview.likelyNoise ?? 0} |`,
     `| 涉及脚本 | ${analysis.overview.scriptCount} |`,
     '',
     analysis.overview.dedupeNote,
@@ -244,12 +323,12 @@ function renderMarkdown(analysis: PlainLanguageAnalysis): string {
       continue;
     }
     lines.push(
-      '| 级别 | 步 | 步骤 | 最大差异 | 原始条数 | 浏览器 | 对比类型 |',
-      '|------|-----|------|----------|----------|--------|----------|',
+      '| 级别 | 判定 | 步 | 步骤 | 最大差异 | 原始条数 | 浏览器 | 对比类型 |',
+      '|------|------|-----|------|----------|----------|--------|----------|',
     );
     for (const row of script.mergedSteps) {
       lines.push(
-        `| ${row.severity} | ${row.stepNumber} | ${row.stepLabel} | ${row.maxDifferencePct}% | ${row.rawCount} | ${row.browsers.join('、')} | ${row.compareKindLabels.join('、')} |`,
+        `| ${row.severity} | ${row.verdictLabel || '—'} | ${row.stepNumber} | ${row.stepLabel} | ${row.maxDifferencePct}% | ${row.rawCount} | ${row.browsers.join('、')} | ${row.compareKindLabels.join('、')} |`,
       );
     }
     lines.push('');
@@ -294,6 +373,7 @@ export function buildPlainLanguageAnalysis(report: UiIssuesReport): PlainLanguag
     scripts.push(block);
   }
 
+  const review = report.summary.review;
   const overview = {
     rawIssueCount: focusIssues.length,
     mergedRowCount,
@@ -301,7 +381,11 @@ export function buildPlainLanguageAnalysis(report: UiIssuesReport): PlainLanguag
     warning: mergedWarning,
     scriptCount: scripts.length,
     dedupeNote:
-      '说明：下表按「脚本 + 步骤 + 步骤名」合并；「原始条数」为合并前的对比条数（含多浏览器、多对比类型）。',
+      '说明：下表按「脚本 + 步骤 + 步骤名」合并；「判定」来自规则复审（结构告警 / 对比类型组合），用于区分疑似 UI 问题与噪声。',
+    uiBug: review?.uiBug ?? 0,
+    likelyNoise: review?.likelyNoise ?? 0,
+    unstable: review?.unstable ?? 0,
+    needsHuman: review?.needsHuman ?? 0,
   };
 
   const analysis: PlainLanguageAnalysis = {
@@ -332,6 +416,8 @@ export function generateAnalysisTabHtml(analysis: PlainLanguageAnalysis): string
       <tbody>
         <tr><th>原始条数</th><td>${analysis.overview.rawIssueCount}</td><th>合并后</th><td>${analysis.overview.mergedRowCount}</td></tr>
         <tr><th>blocker（合并）</th><td>${analysis.overview.blocker}</td><th>warning（合并）</th><td>${analysis.overview.warning}</td></tr>
+        <tr><th>疑似 UI 问题</th><td>${analysis.overview.uiBug ?? 0}</td><th>需人工确认</th><td>${analysis.overview.needsHuman ?? 0}</td></tr>
+        <tr><th>运行不稳定</th><td>${analysis.overview.unstable ?? 0}</td><th>疑似噪声</th><td>${analysis.overview.likelyNoise ?? 0}</td></tr>
         <tr><th>脚本数</th><td colspan="3">${analysis.overview.scriptCount}</td></tr>
       </tbody>
     </table>

@@ -6,7 +6,20 @@
   "compareCrossBrowser": false,
   "baselineStrategy": "hybrid",
   "ignoreRegions": [],
-  "maskSelectors": [],
+  "maskSelectors": [
+    {
+      "selector": ".ant-badge-count, .ant-scroll-number, .ant-badge-dot",
+      "script": "260612/我的审批_2026-06-09_16-48-19"
+    },
+    {
+      "selector": ".ant-avatar, [class*='avatar']",
+      "script": "260612/我的审批_2026-06-09_16-48-19"
+    },
+    {
+      "selector": "time, .ant-statistic-content, [class*='datetime'], [class*='DateTime']",
+      "script": "260612/我的审批_2026-06-09_16-48-19"
+    }
+  ],
   "viewports": [
     { "name": "desktop", "width": 1280, "height": 720, "default": true },
     { "name": "mobile", "width": 375, "height": 812, "enabled": false }
@@ -24,8 +37,34 @@
         "selector": "html",
         "script": "260612/我的审批_2026-06-09_16-48-19",
         "required": true
+      },
+      {
+        "key": "main-iframe",
+        "selector": "iframe",
+        "script": "260612/我的审批_2026-06-09_16-48-19",
+        "required": true
+      },
+      {
+        "key": "approve-table",
+        "selector": ".ant-table, table",
+        "script": "260612/我的审批_2026-06-09_16-48-19",
+        "frame": "first",
+        "required": false
+      },
+      {
+        "key": "approve-tabs",
+        "selector": ".ant-tabs, [role='tablist']",
+        "script": "260612/我的审批_2026-06-09_16-48-19",
+        "frame": "first",
+        "required": false
       }
     ]
+  },
+  "aiReview": {
+    "enabled": false,
+    "minSeverity": "warning",
+    "maxItems": 20,
+    "failOnUiBug": false
   },
   "screenshot": {
     "freezeAnimations": true,
