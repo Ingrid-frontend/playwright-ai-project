@@ -1,1 +1,0 @@
-export { screenshotWhenStable, takeStepScreenshot } from '../../utils/screenshot';

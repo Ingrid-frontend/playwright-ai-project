@@ -56,4 +56,4 @@ Studio 的「设计稿对比」页签已接入语义校验：点击「对比」�
 
 ## 与旧版的关系
 
-旧版整图 pixelmatch 保留在 `scripts/figma/figma-compare.ts`，可通过 `npm run figma:compare-legacy` 调用；正式流程使用 `figma:compare`（语义校验）。
+正式流程使用 `figma:compare`（语义校验）；旧版整图 pixelmatch 入口已移除。

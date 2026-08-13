@@ -27,7 +27,7 @@ const groups: Record<string, { desc: string; cmds: Array<{ name: string; hint: s
     desc: '执行',
     cmds: [
       { name: 'test:ci', hint: 'CI 同款 headless 回归' },
-      { name: 'test:flow', hint: '录制→pipeline→执行→对比' },
+      { name: 'auto-test', hint: '录制→pipeline→执行→对比' },
       { name: 'test:regression', hint: '配置化 Job 回归' },
       { name: 'test:optimized', hint: '仅跑 optimized 项目' },
     ],

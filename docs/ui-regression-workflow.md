@@ -31,7 +31,7 @@ flowchart LR
 
 | 命令 | 作用 |
 |------|------|
-| `npm run test:flow` / `npm run auto-test` | 录制 → pipeline → 执行 → 对比 |
+| `npm run auto-test` | 录制 → pipeline → 执行 → 对比 |
 | `npm run test:pipeline` | 预处理 + 优化（同 Studio「生成用例」） |
 | `npm run test:regression -- --id=...` | 配置化 Job 回归 |
 | `npm run auto-test -- --spec tests/raw-recordings/.../x.spec.ts` | 指定 raw（含 `original/`） |
