@@ -344,7 +344,7 @@ export async function runDirect(opts: DirectRunOptions, ctx: JobRunContext): Pro
     const specHint = opts.specOverrides?.length
       ? `指定用例无效或不存在: ${JSON.stringify(opts.specOverrides)}（环境 ${envLabel}${profileLabel}）`
       : opts.specs === 'all'
-        ? `tests/optimized/${envLabel}/ 下无正式用例（已排除 studio-unsaved-draft）${profileLabel}`
+        ? `tests/optimized/${envLabel}/ 下无正式用例（已排除 studio-auto）${profileLabel}`
         : `未匹配 specs: ${JSON.stringify(opts.specs)}（环境 ${envLabel}${profileLabel}）`;
     console.error(`❌ ${specHint}`);
     if (opts.specs !== 'all' && !opts.specOverrides?.length) {

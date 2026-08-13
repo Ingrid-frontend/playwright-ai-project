@@ -20,7 +20,7 @@ function walkOptimized(dir, out) {
   for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, ent.name);
     if (ent.isDirectory()) walkOptimized(full, out);
-    else if (ent.name.endsWith(".optimized.spec.ts") && !/studio-unsaved-draft/.test(ent.name)) {
+    else if (ent.name.endsWith(".optimized.spec.ts") && !/(?:studio-auto(?:_[^/]*)?|studio-unsaved-draft)/.test(ent.name)) {
       out.push(path.relative(repoRoot, full).replace(/\\/g, "/"));
     }
   }
@@ -93,7 +93,7 @@ const filtered = envFilter
 
 console.log("\n=== spec-meta 校验 ===\n");
 if (!filtered.length) {
-  console.log("未找到正式 optimized 用例（已排除 studio-unsaved-draft）");
+  console.log("未找到正式 optimized 用例（已排除 studio-auto / studio-unsaved-draft）");
   console.log("请先在 Studio 完成：录制 → pipeline → 保存到项目");
   process.exit(2);
 }

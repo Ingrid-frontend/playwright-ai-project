@@ -18,7 +18,7 @@ function walkOptimized(dir, out) {
   for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, ent.name);
     if (ent.isDirectory()) walkOptimized(full, out);
-    else if (ent.name.endsWith(".optimized.spec.ts") && !/studio-unsaved-draft/.test(ent.name)) {
+    else if (ent.name.endsWith(".optimized.spec.ts") && !/(?:studio-auto(?:_[^/]*)?|studio-unsaved-draft)/.test(ent.name)) {
       out.push(path.relative(repoRoot, full).replace(/\\/g, "/"));
     }
   }

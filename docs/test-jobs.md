@@ -126,7 +126,7 @@ WebSocket 消息：`jobs:list`、`jobs:preview`、`jobs:run`、`jobs:stop`、`jo
 
 与现有流程一致（路径约定见 [test-env-paths.md](./test-env-paths.md)）：
 
-- `PLAYWRIGHT_ENV` — 由 Job 内 `playwrightEnv` 覆盖；`specs: all` 时仅扫描并执行 `tests/optimized/<env>/` 下用例（排除 `studio-unsaved-draft`）
+- `PLAYWRIGHT_ENV` — 由 Job 内 `playwrightEnv` 覆盖；`specs: all` 时仅扫描并执行 `tests/optimized/<env>/` 下用例（排除 `studio-auto`）
 - `TEST_USERNAME` / `TEST_PASSWORD` — 登录
 - `FEISHU_WEBHOOK_URL` / `FEISHU_WEBHOOK_SECRET` — 飞书通知
 

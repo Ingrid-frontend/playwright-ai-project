@@ -9,7 +9,7 @@
 | 优化用例 | `tests/optimized/<env>/<dateCategory>/xxx.optimized.spec.ts` |
 | 原始录制（Studio 备份） | `tests/raw-recordings/original/<env>/<dateCategory>/xxx.spec.ts` |
 | 截图 | `screenshots/<env>/<dateCategory>/<fileName>/` |
-| 草稿 optimized | `tests/optimized/studio-unsaved-draft.optimized.spec.ts`（固定，不分 env） |
+| 草稿 optimized | `tests/optimized/<env>/<dateCategory>/<feature>_<timestamp>.optimized.spec.ts` |
 
 `<dateCategory>` 来自 `config/date-categories.json`（如 `260612`）。
 

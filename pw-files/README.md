@@ -71,7 +71,7 @@ npm run dev
 - 模式选择写入 `sessionStorage`（`pw_studio_workflow_mode`），运行子模式为 `pw_studio_run_sub_mode`。
 - **运行 · 单个**：下拉选择 optimized，可载入编辑器或**删除所选用例**；执行所选文件。
 - **运行 · 批量**：多选列表，支持搜索筛选、**删除所选**，可选「遇错停止」；顺序执行 `repo:batch-test`；步骤 2 展示进度与结果表。
-- **删除用例**：仅允许删除 `tests/optimized/` 下正式 `*.optimized.spec.ts`（不含草稿 `studio-unsaved-draft`），删除后不可恢复。
+- **删除用例**：仅允许删除 `tests/optimized/` 下正式 `*.optimized.spec.ts`（不含自动生成脚本 `studio-auto`），删除后不可恢复。
 - 编辑器 Tab 选择会记住（`pw_studio_editor_tab`）；切换工作模式前会确认是否保留编辑器内容。
 
 ---
@@ -116,15 +116,15 @@ npm run dev
 
 - **生成用例（草稿 + pipeline）**
   - 点击时发送当前「录制脚本」全文；服务端先写入草稿，再执行 pipeline。
-  - 草稿路径：`tests/raw-recordings/original/<dateCategory>/studio-unsaved-draft.spec.ts`（`<dateCategory>` 与 `npm run record` 相同，来自根目录 `config/date-categories.json`）。
+  - 草稿路径：`tests/raw-recordings/original/<env>/<dateCategory>/<feature>_<timestamp>.spec.ts`（`<dateCategory>` 与 `npm run record` 相同，来自根目录 `config/date-categories.json`）。
   - 命名解析规则与 `resolve-recording-path.ts` 一致（可选侧栏「保存命名」中的功能名/行为描述会参与 slug）。
   - pipeline 成功后自动将首个生成的优化用例载入「优化脚本」Tab，并刷新「测试用例」下拉框。
 - **保存到项目**
   - 将「录制脚本」写入正式路径：`tests/raw-recordings/original/<dateCategory>/<feature>_<YYYY-MM-DD_HH-mm-ss>.spec.ts`（禁止 `..`，仅允许 `original/` 下）。
   - 将「优化脚本」Tab 内容写入当前选中的 `tests/optimized/**/*.optimized.spec.ts`（须已生成用例或手动选择路径）。
-  - 保存成功后删除草稿 `studio-unsaved-draft.spec.ts`（若存在）。
+  - 保存成功后删除本次录制的 `<feature>_<timestamp>.spec.ts`（若存在）。
 - **在项目内执行 optimized（执行流程第 3 步）**
-  - 固定执行 `tests/optimized/studio-unsaved-draft.optimized.spec.ts`；执行前将「优化脚本」Tab 内容同步到该文件。
+  - 固定执行本次生成的 `tests/optimized/<env>/<dateCategory>/<feature>_<timestamp>.optimized.spec.ts`；执行前将「优化脚本」Tab 内容同步到该文件。
   - 使用仓库根 `playwright test`，按「执行设置」所选浏览器追加 `--project`（如 `optimized`、`optimized-webkit`，可多选）；运行模式见同区。
   - 截图由用例内 `takeStepScreenshot` 写入仓库 `screenshots/`；需已在仓库根安装依赖并完成与 `playwright.config` 一致的登录 setup。
 - **测试用例（侧栏独立区域）**
@@ -134,7 +134,7 @@ npm run dev
   - **前置条件**：录制与优化脚本均已「保存到项目」，且中间编辑器内容与磁盘文件一致（修改后需重新保存）。
   - 若浏览器拦截弹窗，请允许本站弹出窗口或按日志中的完整 URL 手动打开。
 
-> **与 CLI 的对应关系**：界面「生成用例」≈ 写草稿后执行 `npm run pipeline-raw-to-optimized -- tests/raw-recordings/original/<dateCategory>/studio-unsaved-draft.spec.ts`；「保存到项目」≈ 分别落盘 original 与 optimized 文件。
+> **与 CLI 的对应关系**：界面「生成用例」≈ 写草稿后执行 `npm run pipeline-raw-to-optimized -- tests/raw-recordings/original/<env>/<dateCategory>/<feature>_<timestamp>.spec.ts`；「保存到项目」≈ 分别落盘 original 与 optimized 文件。
 
 ---
 
@@ -166,9 +166,9 @@ npm run dev
 
 | 步骤 | 操作 | 说明 |
 |------|------|------|
-| ② | **生成用例** | 草稿写入 `original/.../studio-unsaved-draft.spec.ts` 后跑 pipeline；**不要求先保存** |
+| ② | **生成用例** | 草稿写入 `original/.../<feature>_<timestamp>.spec.ts` 后跑 pipeline；**不要求先保存** |
 | ② | **保存到项目** | 正式保存录制 + 优化两份脚本；需已有优化脚本内容 |
-| ③ | **执行（含截图）** | 固定执行 `studio-unsaved-draft.optimized.spec.ts`，与优化脚本 Tab 同步 |
+| ③ | **执行（含截图）** | 固定执行本次生成的 `<feature>_<timestamp>.optimized.spec.ts`，与优化脚本 Tab 同步 |
 | ③ | **生成并打开截图对比报告** | 须已完成「保存到项目」且编辑器未改未存 |
 | — | **测试用例**（侧栏） | 浏览/选择正式用例路径，供「保存到项目」写入；不含草稿 |
 
@@ -241,8 +241,8 @@ playwright-studio/
 | 2026-05-18 | Studio 隐藏「用配置账号登录」与账号档案下拉，仅支持浏览器手动登录 | `public/index.html`, `server.js`, `repo-env.js` |
 | 2026-05-18 | 录制注释「登录账号」从脚本 fill 或 storageState 自动推断（不读 accounts.json） | `src/utils/extract-login-account.cjs`, `recording-meta.ts`, `repo-env.js` |
 | 2026-05-18 | 录制结束自动剥离登录步骤并注入 `test.use({ storageState })`，仅保留登录后操作 | `strip-login-from-recording.cjs`, `server.js`, `record.ts` |
-| 2026-05-18 | **项目流水线**：生成用例先写草稿 `studio-unsaved-draft.spec.ts` 再 pipeline，无需先保存；「保存到项目」一次提交录制+优化；对比报告需双脚本已保存且与编辑器一致 | `public/index.html`, `server.js` |
-| 2026-05-18 | **测试用例**独立侧栏区域；执行流程固定 `studio-unsaved-draft.optimized.spec.ts`；保存时从侧栏选择正式路径或自动命名 | `public/index.html`, `server.js` |
+| 2026-05-18 | **项目流水线**：生成用例先写草稿 `<feature>_<timestamp>.spec.ts` 再 pipeline，无需先保存；「保存到项目」一次提交录制+优化；对比报告需双脚本已保存且与编辑器一致 | `public/index.html`, `server.js` |
+| 2026-05-18 | **测试用例**独立侧栏区域；执行流程固定本次生成的 `<feature>_<timestamp>.optimized.spec.ts`；保存时从侧栏选择正式路径或自动命名 | `public/index.html`, `server.js` |
 | 2026-05-18 | **顶层双模式**：新建用例 / 运行用例；运行域支持单个与批量执行（`repo:batch-test`） | `public/index.html`, `server.js` |
 
 ### 测试环境切换（界面）

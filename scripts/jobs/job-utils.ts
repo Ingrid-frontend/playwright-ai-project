@@ -90,7 +90,11 @@ function matchesAnyPattern(relPath: string, patterns: string[]): boolean {
 
 function isDraftOptimizedSpecAbs(absPath: string): boolean {
   const base = path.basename(absPath);
-  return base === 'studio-unsaved-draft.optimized.spec.ts';
+  return (
+    base === 'studio-auto.optimized.spec.ts' ||
+    base === 'studio-unsaved-draft.optimized.spec.ts' ||
+    base.startsWith('studio-auto_') && base.endsWith('.optimized.spec.ts')
+  );
 }
 
 /** 将 legacy 路径 tests/optimized/<dateCategory>/file 规范为带 env 段，便于 glob 匹配 */
@@ -220,10 +224,16 @@ export function countResolvedSpecs(
   return resolveSpecEntries(specs, optimizedDir, playwrightEnv, accountProfileFilter).length;
 }
 
-const DRAFT_SPEC_BASENAME = 'studio-unsaved-draft.optimized.spec.ts';
+const DRAFT_SPEC_BASENAME = 'studio-auto.optimized.spec.ts';
+const LEGACY_DRAFT_SPEC_BASENAME = 'studio-unsaved-draft.optimized.spec.ts';
 
 function isDraftOptimizedRel(relPath: string): boolean {
-  return path.basename(String(relPath || '')) === DRAFT_SPEC_BASENAME;
+  const base = path.basename(String(relPath || ''));
+  return (
+    base === DRAFT_SPEC_BASENAME ||
+    base === LEGACY_DRAFT_SPEC_BASENAME ||
+    base.startsWith('studio-auto_') && base.endsWith('.optimized.spec.ts')
+  );
 }
 
 /** 按相对路径解析用例（Job / CLI 运行时覆盖 glob 配置） */

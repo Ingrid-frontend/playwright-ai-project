@@ -827,12 +827,12 @@
         </div>
 
         <div class="step-action-panel active" id="step1Panel" data-step-panel="1">
-          <p class="sidebar-hint" style="margin-bottom:8px">在弹出窗口中操作，停止后写入「录制脚本」。</p>
+          <p class="sidebar-hint" style="margin-bottom:8px">在弹出窗口中操作，停止后会自动生成并执行优化脚本。</p>
           <button type="button" class="btn btn-record btn-full" id="btnRecord" onclick="event.stopPropagation(); startRecord()">
             <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
             开始录制
           </button>
-          <div class="sidebar-accordion" id="accordionRecordingNames">
+          <div class="sidebar-accordion studio-hidden" id="accordionRecordingNames" hidden aria-hidden="true">
             <button type="button" class="accordion-trigger" aria-expanded="false">
               保存命名（可选） <span class="acc-chevron">›</span>
             </button>
@@ -847,16 +847,16 @@
         <div class="step-item" id="step2" data-step="2" role="button" tabindex="0">
           <div class="step-bullet">2</div>
           <div class="step-info">
-            <div class="step-name">优化 / 入库</div>
-            <div class="step-sub" id="stepSub2">Claude 或 DeepSeek 重构选择器 / 断言 / 结构</div>
-            <div class="step-branch-row" role="group" aria-label="第二步方式">
+            <div class="step-name">自动生成用例</div>
+            <div class="step-sub" id="stepSub2">录制完成后自动生成优化脚本</div>
+            <div class="step-branch-row studio-hidden" role="group" aria-label="第二步方式" hidden aria-hidden="true">
               <button type="button" class="step-branch-chip active" data-mode="ai" id="step2ModeAi" onclick="event.stopPropagation(); setStep2Mode('ai', this)">AI 优化脚本</button>
               <button type="button" class="step-branch-chip" data-mode="repo" id="step2ModeRepo" onclick="event.stopPropagation(); setStep2Mode('repo', this)">保存并生成用例</button>
             </div>
           </div>
         </div>
 
-        <div class="step-action-panel" id="step2PanelAi" data-mode="ai">
+        <div class="step-action-panel studio-hidden" id="step2PanelAi" data-mode="ai" hidden aria-hidden="true">
           <p class="sidebar-hint" style="margin-bottom:8px">对当前录制脚本做 AI 重构，请先配置模型与优化选项。</p>
           <div class="sidebar-accordion" id="accordionAi">
             <button type="button" class="accordion-trigger" aria-expanded="false">
@@ -905,11 +905,11 @@
         </div>
 
         <div class="step-action-panel" id="step2PanelRepo" data-mode="repo">
-          <p class="sidebar-hint" style="margin-bottom:8px">可直接生成用例（草稿写入项目）；调试完成后再保存到项目。</p>
-          <button type="button" class="btn btn-full" id="btnRepoSave" onclick="commitRepoArtifacts()" style="border-color:rgba(77,159,255,.35);color:var(--blue);margin-bottom:8px">保存到项目</button>
+          <p class="sidebar-hint" style="margin-bottom:8px">录制完成后会自动生成优化脚本并继续执行，无需保存。</p>
+          <button type="button" class="btn btn-full studio-hidden" id="btnRepoSave" onclick="commitRepoArtifacts()" style="border-color:rgba(77,159,255,.35);color:var(--blue);margin-bottom:8px" hidden aria-hidden="true">保存到项目</button>
           <div style="display:flex;gap:6px">
-            <button type="button" class="btn" style="flex:1" id="btnRepoPipeline" onclick="runRepoPipelineClick()">生成用例</button>
-            <button type="button" class="btn" style="flex:1" id="btnRepoPipelineCancel" onclick="send('cancel:repo-pipeline')">取消生成</button>
+            <button type="button" class="btn studio-hidden" style="flex:1" id="btnRepoPipeline" onclick="runRepoPipelineClick()" hidden aria-hidden="true">生成用例</button>
+            <button type="button" class="btn" style="flex:1" id="btnRepoPipelineCancel" onclick="send('cancel:repo-pipeline')">取消自动生成</button>
           </div>
         </div>
         <div class="step-item" id="step3" data-step="3" role="button" tabindex="0">
@@ -1048,16 +1048,16 @@
 
       <div id="centerEditorWrap">
       <div class="tab-bar">
-        <div class="tab active" onclick="switchTab('raw',this)">
+        <div class="tab studio-hidden" onclick="switchTab('raw',this)" hidden aria-hidden="true">
           录制脚本 <span class="tab-badge" id="rawBadge">空</span>
         </div>
-        <div class="tab" onclick="switchTab('opt',this)">
+        <div class="tab studio-hidden" onclick="switchTab('opt',this)" hidden aria-hidden="true">
           优化脚本 <span class="tab-badge" id="optBadge">空</span>
         </div>
-        <div class="tab" onclick="switchTab('diff',this)">
+        <div class="tab studio-hidden" onclick="switchTab('diff',this)" hidden aria-hidden="true">
           Diff 对比
         </div>
-        <div class="tab" onclick="switchTab('figma',this)">
+        <div class="tab active" onclick="switchTab('figma',this)">
           设计稿对比
         </div>
         <div class="tab" onclick="switchTab('ai-validate',this)">
@@ -1077,7 +1077,7 @@
 
       <div class="editor-wrap">
         <!-- Raw -->
-        <div class="editor-pane active" id="pane-raw">
+        <div class="editor-pane studio-hidden" id="pane-raw" hidden aria-hidden="true">
           <div class="raw-empty-overlay" id="rawEmptyOverlay">
             <div class="empty-hint">
               <div class="empty-icon">⌨</div>
@@ -1098,7 +1098,7 @@
         </div>
 
         <!-- Optimized -->
-        <div class="editor-pane" id="pane-opt">
+        <div class="editor-pane studio-hidden" id="pane-opt" hidden aria-hidden="true">
           <textarea class="code-editor" id="optCode" spellcheck="false"
             placeholder="// AI 优化后的脚本将显示在此处
 // 优化包含：语义化选择器、expect 断言、环境变量抽取等"></textarea>
@@ -1114,7 +1114,7 @@
         </div>
 
         <!-- Diff -->
-        <div class="editor-pane" id="pane-diff">
+        <div class="editor-pane studio-hidden" id="pane-diff" hidden aria-hidden="true">
           <div style="flex:1;overflow-y:auto;padding:16px;font-size:var(--fs-sm);line-height:1.8" id="diffView">
             <div class="empty-hint">
               <div class="empty-icon">⇄</div>
@@ -1124,7 +1124,7 @@
         </div>
 
         <!-- Figma design vs live -->
-        <div class="editor-pane" id="pane-figma">
+        <div class="editor-pane active" id="pane-figma">
           <div style="flex:1;overflow-y:auto;padding:16px;font-size:var(--fs-sm);line-height:1.8">
             <div style="display:flex;flex-direction:column;gap:10px;max-width:760px">
               <div>
@@ -1311,7 +1311,7 @@ let aiValidateSeq = 0;
 let recordTimer = null;
 let recordSeconds = 0;
 let lastOptimizeProvider = 'claude';
-const REPO_DRAFT_OPTIMIZED_SPEC = 'tests/optimized/studio-unsaved-draft.optimized.spec.ts';
+const REPO_DRAFT_OPTIMIZED_SPEC = 'tests/optimized/studio-auto.optimized.spec.ts';
 const repoState = {
   lastSavedRelative: '',
   suggestedRelative: '',
@@ -1358,7 +1358,7 @@ const SS_ACCOUNT_PROFILE = 'pw_studio_account_profile';
 
 const STEP_DEFAULTS = {
   1: '在浏览器中录制操作',
-  2: 'Claude 或 DeepSeek 重构选择器 / 断言 / 结构',
+  2: '录制完成后自动生成优化脚本',
   3: '执行用例并自动截取步骤图',
   4: '查看结果并下载脚本',
 };
@@ -1540,8 +1540,8 @@ function getCompareChecklistItems() {
   const items = [];
   if (workflowMode === 'new') {
     items.push({
-      ok: isRepoArtifactsCommitted(),
-      label: '录制与优化脚本已保存到项目，且与编辑器内容一致',
+      ok: Boolean(repoState.draftOptimizedExists || repoState.lastPrimaryOptimizedRelative || state.hasOpt),
+      label: '已自动生成优化脚本（无需保存到项目）',
     });
     items.push({ ok: runState.lastRunComplete || state.hasRun, label: '已完成至少一次「执行（含截图）」' });
   } else {
@@ -2090,8 +2090,8 @@ function syncDirtyTabBadges() {
   }
   if (optBadge && !optBadge.classList.contains('demo')) {
     if (!opt) optBadge.textContent = '空';
-    else if (isRepoArtifactsCommitted()) {
-      optBadge.textContent = '已入库';
+    else if (repoState.lastPrimaryOptimizedRelative) {
+      optBadge.textContent = '已生成';
       optBadge.className = 'tab-badge saved';
     } else if (opt) {
       const lines = opt.split('\n').length;
@@ -2238,9 +2238,10 @@ function loadBatchResultSpecByIndex(i) {
 function restoreEditorTab() {
   try {
     const saved = sessionStorage.getItem(SS_EDITOR_TAB);
-    if (saved === 'raw' || saved === 'opt' || saved === 'diff') {
-      const idx = saved === 'raw' ? 0 : saved === 'opt' ? 1 : 2;
-      switchTab(saved, document.querySelectorAll('.tab')[idx]);
+    if (saved === 'figma' || saved === 'ai-validate') {
+      switchTab(saved, document.querySelectorAll('.tab')[saved === 'figma' ? 3 : 4]);
+    } else {
+      switchTab('figma', document.querySelectorAll('.tab')[3]);
     }
   } catch {
     /* ignore */
@@ -2257,11 +2258,14 @@ function saveEditorTab(name) {
 
 const STEP2_SUB = {
   ai: 'Claude 或 DeepSeek 重构选择器 / 断言 / 结构',
-  repo: '生成用例或保存到项目',
+  repo: '录制完成后自动生成优化脚本',
 };
-let currentStep2Mode = 'ai';
+let currentStep2Mode = 'repo';
 let currentPipelineStep = 1;
 let pendingRunKind = 'studio';
+let recordingAutoFlowActive = false;
+let autoCompareAfterRun = false;
+let autoCompareStatusPending = false;
 const SS_WORKFLOW_MODE = 'pw_studio_workflow_mode';
 const SS_RUN_SUB_MODE = 'pw_studio_run_sub_mode';
 const SS_BROWSER_PROJECTS = 'pw_studio_browser_projects';
@@ -2672,7 +2676,7 @@ function requestRepoSuggestPath(code) {
 const OPTIMIZED_SPEC_PREFIX = 'tests/optimized/';
 
 function isDraftOptimizedSpecPath(relativePath) {
-  return /studio-unsaved-draft\.optimized\.spec\.ts$/i.test(String(relativePath || ''));
+  return /(?:studio-auto(?:_[^/]*)?|studio-unsaved-draft)\.optimized\.spec\.ts$/i.test(String(relativePath || ''));
 }
 
 function getRepoExecutionSpec() {
@@ -3663,6 +3667,33 @@ function runRepoPipelineClick() {
   send('repo:pipeline', { code: rawCode, name: slug.name, description: slug.description });
 }
 
+function maybeStartAutoRepoPipeline(code) {
+  if (!recordingAutoFlowActive || !repoState.repoReady || !String(code || '').trim()) return;
+  if (busyState.repoPipeline || busyState.optimize || busyState.run || busyState.repoBatch) return;
+  log('info', '[repo] 录制完成，自动生成优化脚本…');
+  runRepoPipelineClick();
+}
+
+function maybeStartAutoRepoTest() {
+  if (!recordingAutoFlowActive || busyState.run || busyState.repoPipeline || busyState.repoBatch) return;
+  const optimizedCode = document.getElementById('optCode')?.value?.trim();
+  if (!optimizedCode) return;
+  if (!getSelectedBrowserProjects().length) return;
+  recordingAutoFlowActive = false;
+  autoCompareAfterRun = true;
+  log('info', '[repo] 优化脚本已生成，自动执行用例…');
+  handleRepoTestClick();
+}
+
+function maybeAutoOpenCompareHub(msg) {
+  if (!autoCompareAfterRun || !msg?.repoTest) return;
+  autoCompareAfterRun = false;
+  expandPipelineStep(3);
+  openScreenshotCompareHub();
+  autoCompareStatusPending = true;
+  refreshCompareReportStatus();
+}
+
 let rerunKeepAckTimer = null;
 
 function clearRerunKeepAckTimer() {
@@ -3981,11 +4012,11 @@ function handleMessage(msg) {
       updateRawEmptyOverlay();
       syncActionButtons();
       syncRepoButtons();
-      requestRepoSuggestPath(msg.code);
       repoState.rawFingerprintAtPipeline = '';
       log('ok', `录制完成，共 ${msg.lines} 行`);
       expandPipelineStep(2);
       syncWorkflowUi();
+      maybeStartAutoRepoPipeline(msg.code);
       if (msg.storageSaved && msg.storageState) {
         log('ok', `[env] 登录态已保存（停止录制时写入）: ${msg.storageState}`);
         showToast('录制完成，登录态已保存', 'ok');
@@ -4132,11 +4163,15 @@ function handleMessage(msg) {
           log('dim', `[repo] 截图目录: ${msg.screenshotHint}`);
         }
         if (msg.repoTest) handleRunFailureFromMsg(msg);
+        maybeAutoOpenCompareHub(msg);
       }
       break;
     case 'run:cancelled':
       setBusy('run', false);
       busyState.repoBatch = false;
+      recordingAutoFlowActive = false;
+      autoCompareAfterRun = false;
+      autoCompareStatusPending = false;
       if (pendingRunKind === 'repo') {
         if (workflowMode === 'run') {
           setRunStep(2, '');
@@ -4525,11 +4560,13 @@ function handleMessage(msg) {
       syncWorkflowUi();
       syncActionButtons();
       if (msg.exitCode !== 0) {
+        recordingAutoFlowActive = false;
         setStep(2, '');
         setStepSub(2, STEP2_SUB.repo);
         showToast('生成失败（退出码 ' + msg.exitCode + '）', 'err');
         log('err', '[repo] 生成失败，退出码 ' + msg.exitCode + (msg.hint ? ' · ' + msg.hint : ''));
       } else if (!msg.optimizedCode) {
+        recordingAutoFlowActive = false;
         setStep(2, '');
         setStepSub(2, msg.hint || STEP2_SUB.repo);
         showToast(msg.hint || 'pipeline 已完成但未载入优化脚本', 'err');
@@ -4539,9 +4576,11 @@ function handleMessage(msg) {
         setStepSub(2, STEP2_SUB.repo);
         showToast('用例生成完成', 'ok');
         focusStep3Repo();
+        maybeStartAutoRepoTest();
       }
       break;
     case 'repo:pipeline:cancelled':
+      recordingAutoFlowActive = false;
       busyState.repoPipeline = false;
       syncRepoButtons();
       syncActionButtons();
@@ -4549,6 +4588,14 @@ function handleMessage(msg) {
       break;
     case 'repo:compare-report:status':
       applyCompareReportStatus(msg);
+      if (autoCompareStatusPending) {
+        autoCompareStatusPending = false;
+        if (repoState.compareHasScreenshots) {
+          regenerateCompareReport();
+        } else {
+          showToast('执行完成；screenshots 暂无截图，无法自动生成对比报告', 'err');
+        }
+      }
       break;
     case 'repo:ui-issues':
       if (msg.ok) renderUiIssuesPanel(msg);
@@ -4759,6 +4806,7 @@ function startRecord() {
     const raw = document.getElementById('rawCode').value.trim();
     if (raw && !confirm('开始新录制将清空当前脚本，是否继续？')) return;
     if (!confirmRecordWithExistingStorage()) return;
+    recordingAutoFlowActive = true;
     send('record:start', { url, env: envState.current });
     expandPipelineStep(1);
     setRecordButtonUi(true);
@@ -5061,7 +5109,7 @@ function focusStep3Repo() {
 function restoreStep2Mode() {
   try {
     const saved = sessionStorage.getItem(SS_STEP2_MODE);
-    if (saved === 'repo' || saved === 'ai') setStep2Mode(saved);
+    if (saved === 'repo') setStep2Mode('repo');
   } catch {
     /* ignore */
   }
@@ -5082,10 +5130,12 @@ function syncEditorRunBarVisibility() {
 }
 
 function switchTab(name, el) {
+  const pane = document.getElementById(`pane-${name}`);
+  if (!pane || pane.classList.contains('studio-hidden')) return;
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.editor-pane').forEach(p => p.classList.remove('active'));
   if (el) el.classList.add('active');
-  document.getElementById(`pane-${name}`).classList.add('active');
+  pane.classList.add('active');
   saveEditorTab(name);
   syncEditorRunBarVisibility();
   syncEditorRunHint();

@@ -586,9 +586,9 @@ async function configSaveDateCategories(ws, msg) {
   }
 }
 
-const DRAFT_RECORDING_BASENAME = 'studio-unsaved-draft.spec.ts';
-const DRAFT_OPTIMIZED_BASENAME = 'studio-unsaved-draft.optimized.spec.ts';
-const DRAFT_OPTIMIZED_RELATIVE = `tests/optimized/${DRAFT_OPTIMIZED_BASENAME}`;
+const STUDIO_DRAFT_STEM = 'studio-auto';
+const LEGACY_STUDIO_DRAFT_STEM = 'studio-unsaved-draft';
+const DRAFT_OPTIMIZED_RELATIVE = `tests/optimized/${STUDIO_DRAFT_STEM}.optimized.spec.ts`;
 
 /** 与 playwright.config.ts 中 optimized 相关 project 一致 */
 const REPO_OPTIMIZED_PROJECTS = [
@@ -618,61 +618,68 @@ function formatRepoTestProjectsLog(projects) {
 
 function isDraftRecordingPath(relativePath) {
   const norm = (relativePath || '').trim().replace(/\\/g, '/');
-  return /studio-unsaved-draft\.spec\.ts$/i.test(norm);
+  const base = path.basename(norm);
+  return (
+    base === `${STUDIO_DRAFT_STEM}.spec.ts` ||
+    base === `${LEGACY_STUDIO_DRAFT_STEM}.spec.ts` ||
+    base.startsWith(`${STUDIO_DRAFT_STEM}_`) && base.endsWith('.spec.ts')
+  );
 }
 
 function isDraftOptimizedPath(relativePath) {
   const norm = (relativePath || '').trim().replace(/\\/g, '/');
-  return norm === DRAFT_OPTIMIZED_RELATIVE || /studio-unsaved-draft\.optimized\.spec\.ts$/i.test(norm);
+  const base = path.basename(norm);
+  return (
+    base === `${STUDIO_DRAFT_STEM}.optimized.spec.ts` ||
+    base === `${LEGACY_STUDIO_DRAFT_STEM}.optimized.spec.ts` ||
+    base.startsWith(`${STUDIO_DRAFT_STEM}_`) && base.endsWith('.optimized.spec.ts')
+  );
 }
 
 function hasDraftRecordingInRepo(repoRoot) {
   const base = path.join(repoRoot, 'tests/raw-recordings/original');
   if (!fs.existsSync(base)) return false;
-  try {
-    for (const ent of fs.readdirSync(base, { withFileTypes: true })) {
-      if (!ent.isDirectory()) continue;
-      const p = path.join(base, ent.name, DRAFT_RECORDING_BASENAME);
-      if (fs.existsSync(p)) return true;
+  const walk = (dir) => {
+    let ents;
+    try {
+      ents = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return false;
     }
-  } catch {
-    return false;
-  }
-  return false;
-}
-
-/** pipeline 后将产物归并到固定草稿 optimized 路径，供 Studio 执行流程使用 */
-function ensureDraftOptimizedAtCanonical(repoRoot, sinceMs, targetRelative, env) {
-  const canonicalAbs = assertAllowedOptimizedSpec(repoRoot, DRAFT_OPTIMIZED_RELATIVE);
-  const fromTarget = findOptimizedCandidatesForRawTarget(repoRoot, targetRelative, env);
-  const recent = resolveOptimizedSpecsAfterPipeline(repoRoot, sinceMs, targetRelative, env);
-  const pipelineFresh =
-    fromTarget[0] ||
-    recent.find((s) => s !== DRAFT_OPTIMIZED_RELATIVE) ||
-    recent[0] ||
-    null;
-  const srcRel = pipelineFresh;
-  if (!srcRel) {
-    return fs.existsSync(canonicalAbs) ? DRAFT_OPTIMIZED_RELATIVE : null;
-  }
-  if (srcRel === DRAFT_OPTIMIZED_RELATIVE && fs.existsSync(canonicalAbs)) {
-    return DRAFT_OPTIMIZED_RELATIVE;
-  }
-  try {
-    const srcAbs = assertAllowedOptimizedSpec(repoRoot, srcRel);
-    fs.mkdirSync(path.dirname(canonicalAbs), { recursive: true });
-    fs.copyFileSync(srcAbs, canonicalAbs);
-    if (srcRel !== DRAFT_OPTIMIZED_RELATIVE && isDraftOptimizedPath(srcRel)) {
-      try {
-        fs.unlinkSync(srcAbs);
-      } catch {
-        /* ignore */
+    for (const ent of ents) {
+      const full = path.join(dir, ent.name);
+      if (ent.isDirectory()) {
+        if (walk(full)) return true;
+      } else if (ent.isFile() && isDraftRecordingPath(ent.name)) {
+        return true;
       }
     }
-    return DRAFT_OPTIMIZED_RELATIVE;
-  } catch {
-    return fs.existsSync(canonicalAbs) ? DRAFT_OPTIMIZED_RELATIVE : null;
-  }
+    return false;
+  };
+  return walk(base);
+}
+
+function hasDraftOptimizedInRepo(repoRoot) {
+  const base = path.join(repoRoot, 'tests', 'optimized');
+  if (!fs.existsSync(base)) return false;
+  const walk = (dir) => {
+    let ents;
+    try {
+      ents = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return false;
+    }
+    for (const ent of ents) {
+      const full = path.join(dir, ent.name);
+      if (ent.isDirectory()) {
+        if (walk(full)) return true;
+      } else if (ent.isFile() && isDraftOptimizedPath(ent.name)) {
+        return true;
+      }
+    }
+    return false;
+  };
+  return walk(base);
 }
 
 function readOptimizedCodeAfterPipeline(repoRoot, draftRel, optimizedSpecs) {
@@ -695,10 +702,10 @@ function readOptimizedCodeAfterPipeline(repoRoot, draftRel, optimizedSpecs) {
   return '';
 }
 
-function syncDraftOptimizedFromEditor(repoRoot, optimizedCode) {
+function syncDraftOptimizedFromEditor(repoRoot, optimizedCode, specRel = DRAFT_OPTIMIZED_RELATIVE) {
   const code = String(optimizedCode || '');
   if (!code.trim()) return;
-  const abs = assertAllowedOptimizedSpec(repoRoot, DRAFT_OPTIMIZED_RELATIVE);
+  const abs = assertAllowedOptimizedSpec(repoRoot, specRel);
   fs.mkdirSync(path.dirname(abs), { recursive: true });
   fs.writeFileSync(abs, code, 'utf8');
 }
@@ -715,8 +722,7 @@ function isPlaceholderRecordingPath(relativePath) {
 }
 
 function buildDraftRecordingRelative(resolved) {
-  const dir = path.posix.dirname(resolved.relativePath.replace(/\\/g, '/'));
-  return `${dir}/${DRAFT_RECORDING_BASENAME}`;
+  return resolved.relativePath.replace(/\\/g, '/');
 }
 
 async function ensureDraftRecordingPath(repoRoot, session, { code, name, description }) {
@@ -751,7 +757,7 @@ function removeDraftRecordingIfAny(repoRoot, session) {
   session.draftRelativePath = null;
 }
 
-/** 正式保存后清理所有 studio-unsaved-draft 优化草稿（含 env 子目录） */
+/** 正式保存后清理所有 studio-auto / studio-unsaved-draft 优化草稿（含 env 子目录） */
 function removeDraftOptimizedArtifacts(repoRoot) {
   const base = path.join(repoRoot, 'tests', 'optimized');
   if (!fs.existsSync(base)) return;
@@ -1141,10 +1147,7 @@ async function runRepoPipeline(ws, session, msg) {
       pipelineEnv,
     );
     session.optimizedSpecs = optimizedSpecs;
-    const draftOptimizedRelative =
-      ensureDraftOptimizedAtCanonical(repoRoot, since, targetArg, pipelineEnv) ||
-      optimizedSpecs[0] ||
-      DRAFT_OPTIMIZED_RELATIVE;
+    const draftOptimizedRelative = optimizedSpecs[0] || DRAFT_OPTIMIZED_RELATIVE;
     session.draftOptimizedRelative = draftOptimizedRelative;
     session.lastPrimaryOptimizedRelative = draftOptimizedRelative;
     const optimizedCode = readOptimizedCodeAfterPipeline(
@@ -1246,7 +1249,7 @@ async function runRepoTest(ws, session, msg) {
   }
   if (isDraftOptimizedPath(specRel) && typeof msg.optimizedCode === 'string' && msg.optimizedCode.trim()) {
     try {
-      syncDraftOptimizedFromEditor(repoRoot, msg.optimizedCode);
+      syncDraftOptimizedFromEditor(repoRoot, msg.optimizedCode, specRel);
     } catch (e) {
       send(ws, 'error', { message: `同步草稿用例失败: ${errText(e)}` });
       return;
@@ -1827,7 +1830,12 @@ function normalizeJobSpecPatterns(specs, playwrightEnv) {
 }
 
 function isDraftOptimizedRel(rel) {
-  return path.basename(String(rel || '')) === 'studio-unsaved-draft.optimized.spec.ts';
+  const base = path.basename(String(rel || ''));
+  return (
+    base === `${STUDIO_DRAFT_STEM}.optimized.spec.ts` ||
+    base === `${LEGACY_STUDIO_DRAFT_STEM}.optimized.spec.ts` ||
+    base.startsWith(`${STUDIO_DRAFT_STEM}_`) && base.endsWith('.optimized.spec.ts')
+  );
 }
 
 function relPathForJobSpecMatch(rel, playwrightEnv) {
@@ -2845,7 +2853,7 @@ async function runRepoRerunKeepScreenshots(ws, session, msg) {
   for (const specRel of specRels) {
     if (isDraftOptimizedPath(specRel) && typeof msg.optimizedCode === 'string' && msg.optimizedCode.trim()) {
       try {
-        syncDraftOptimizedFromEditor(repoRoot, msg.optimizedCode);
+        syncDraftOptimizedFromEditor(repoRoot, msg.optimizedCode, specRel);
       } catch (e) {
         send(ws, 'error', { message: `同步草稿用例失败: ${errText(e)}` });
         send(ws, 'repo:rerun-keep:done', { ok: false });
@@ -4309,7 +4317,7 @@ wss.on('connection', (ws) => {
   let dateCategoriesDescription = '';
   if (repoReady) {
     try {
-      draftOptimizedExists = fs.existsSync(path.join(root, DRAFT_OPTIMIZED_RELATIVE));
+      draftOptimizedExists = hasDraftOptimizedInRepo(root);
       draftRecordingExists = hasDraftRecordingInRepo(root);
     } catch {
       /* ignore */
