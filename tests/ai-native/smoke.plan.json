@@ -1,0 +1,33 @@
+{
+  "name": "AI native smoke",
+  "description": "用于验证执行器基础链路的本地冒烟计划",
+  "env": "stage",
+  "entry": "data:text/html,<h1>AI Native Smoke</h1><button>Ready</button>",
+  "steps": [
+    {
+      "id": "step-1",
+      "strategy": "hybrid",
+      "action": {
+        "type": "goto",
+        "url": "data:text/html,<h1>AI Native Smoke</h1><button>Ready</button>"
+      }
+    },
+    {
+      "id": "step-2",
+      "strategy": "hybrid",
+      "action": {
+        "type": "wait",
+        "timeoutMs": 300
+      }
+    },
+    {
+      "id": "step-3",
+      "strategy": "hybrid",
+      "evidence": ["screenshot"],
+      "action": {
+        "type": "screenshot",
+        "label": "ready"
+      }
+    }
+  ]
+}

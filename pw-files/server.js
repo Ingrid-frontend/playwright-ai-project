@@ -49,6 +49,7 @@ const {
   getEnvEntryResolved,
   buildRepoSpawnEnv,
   buildStudioRunEnv,
+  fixPlaywrightBrowsersEnv,
 } = require('./lib/repo-context');
 const { send, logLine, now, stripAnsi, errText } = require('./lib/ws-safe');
 
@@ -826,7 +827,7 @@ function resolveRecordingPathViaRepo(repoRoot, { code, name, description, target
   });
 }
 
-async function suggestRepoSavePath(ws, msg) {
+async function suggestRepoSavePath(ws, session, msg) {
   const repoRoot = resolveRepoRoot();
   if (!fs.existsSync(path.join(repoRoot, 'playwright.config.ts'))) {
     send(ws, 'error', { message: '未找到项目根，无法建议保存路径' });
@@ -2474,6 +2475,113 @@ function sendCompareReportStatus(ws, repoRoot) {
   send(ws, 'repo:compare-report:status', getCompareReportStatus(repoRoot));
 }
 
+
+async function runFigmaCompare(ws, session, msg = {}) {
+  const repoRoot = resolveRepoRoot();
+  if (!fs.existsSync(path.join(repoRoot, 'playwright.config.ts'))) {
+    send(ws, 'error', { message: '未找到项目根，无法执行 Figma 对比' });
+    send(ws, 'figma:compare:done', { ok: false, message: '未找到项目根' });
+    return;
+  }
+  const figmaUrl = String(msg.figmaUrl || '').trim();
+  const targetUrl = String(msg.targetUrl || '').trim();
+  if (!figmaUrl) {
+    send(ws, 'error', { message: '请先粘贴 Figma 链接' });
+    send(ws, 'figma:compare:done', { ok: false, message: '缺少 Figma 链接' });
+    return;
+  }
+
+  const ts = new Date().toISOString().replace(/[:.]/g, '-');
+  const outRel = `results/figma-compare/${ts}`;
+  const outAbs = path.join(repoRoot, outRel);
+  fs.mkdirSync(outAbs, { recursive: true });
+
+  if (session.repoFigmaProc) {
+    try { session.repoFigmaProc.kill('SIGTERM'); } catch { /* ignore */ }
+  }
+  session.repoFigmaProc = null;
+  session.figmaCompareSeq = (session.figmaCompareSeq || 0) + 1;
+  const seq = session.figmaCompareSeq;
+  send(ws, 'figma:compare:start', { outRel, seq });
+  logLine(ws, '[figma] 开始导出设计稿并对比…', 'info');
+
+  const tsxBin = path.join(repoRoot, 'node_modules', '.bin', process.platform === 'win32' ? 'tsx.cmd' : 'tsx');
+  const args = [
+    'scripts/figma/figma-spec-compare.ts',
+    `--figma=${figmaUrl}`,
+    `--out=${outRel}`,
+  ];
+  if (targetUrl) args.push(`--url=${targetUrl}`);
+  const envId = getSessionPlaywrightEnv(session);
+  const profile = getSessionAccountProfile(session, repoRoot);
+  args.push(`--env=${envId}`);
+  args.push(`--profile=${profile}`);
+  if (msg.refreshDesign) args.push('--refresh');
+
+  const proc = require('child_process').spawn(tsxBin, args, {
+    cwd: repoRoot,
+    env: buildRepoSpawnEnv(session),
+    shell: false,
+  });
+  session.repoFigmaProc = proc;
+  let stdout = '';
+  proc.stdout.on('data', (d) => {
+    const t = stripAnsi(d.toString());
+    stdout += t;
+    if (t.trim()) logLine(ws, t.trimEnd(), 'dim');
+  });
+  proc.stderr.on('data', (d) => {
+    const t = stripAnsi(d.toString());
+    if (t.trim()) logLine(ws, t.trimEnd(), 'warn');
+  });
+
+  const exitCode = await new Promise((resolve) => proc.on('close', resolve));
+  session.repoFigmaProc = null;
+  if (session.figmaCompareSeq !== seq) return;
+
+  const designAbs = path.join(outAbs, 'design.png');
+  const liveAbs = path.join(outAbs, 'live.png');
+  const diffAbs = path.join(outAbs, 'diff.png');
+  const hasOutput = fs.existsSync(designAbs) && fs.existsSync(liveAbs);
+
+  if (exitCode !== 0 && !hasOutput) {
+    logLine(ws, '[figma] 对比失败', 'err');
+    const errLine = stdout.split('\n').filter((l) => /对比失败|❌|Error|error|权限|token|Token/i.test(l)).pop();
+    const message = errLine ? errLine.trim().slice(0, 200) : 'Figma 对比执行失败，请查看日志';
+    send(ws, 'figma:compare:done', { ok: false, message, seq });
+    return;
+  }
+
+  let result = null;
+  try {
+    const jsonPath = path.join(outAbs, 'result.json');
+    if (fs.existsSync(jsonPath)) {
+      result = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+    } else {
+      result = JSON.parse(stdout.split('\n').filter((l) => l.trim().startsWith('{')).pop());
+    }
+  } catch { /* ignore */ }
+
+  const base = `/results/figma-compare/${ts}`;
+  const payload = result || { outRel };
+  payload.ok = true;
+  payload.outRel = outRel;
+  payload.seq = seq;
+  payload.designUrl = base + '/design.png';
+  payload.liveUrl = base + '/live.png';
+  if (fs.existsSync(diffAbs)) payload.diffUrl = base + '/diff.png';
+  if (fs.existsSync(path.join(outAbs, 'report.html'))) payload.reportUrl = base + '/report.html';
+  if (fs.existsSync(path.join(outAbs, 'report.md'))) payload.reportMdUrl = base + '/report.md';
+  if (fs.existsSync(path.join(outAbs, 'design-spec.json'))) payload.specJsonUrl = base + '/design-spec.json';
+  if (payload.crops) payload.crops = mapFigmaCropUrls(base, payload.crops);
+  if (exitCode !== 0) {
+    const errLine = stdout.split('\n').filter((l) => /对比失败|❌|Error|error/i.test(l)).pop();
+    payload.warning = errLine ? errLine.trim().slice(0, 120) : `进程退出码 ${exitCode}`;
+  }
+  send(ws, 'figma:compare:done', payload);
+  logLine(ws, '[figma] 对比完成，结果见中间「设计稿对比」面板', 'ok');
+}
+
 async function openRepoCompareReport(ws, session, { regenerate = false } = {}) {
   const repoRoot = resolveRepoRoot();
   if (!fs.existsSync(path.join(repoRoot, 'playwright.config.ts'))) {
@@ -2697,7 +2805,11 @@ app.use((req, res, next) => {
   });
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders(res, filePath) {
+    if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
+  },
+}));
 app.use("/results", express.static(path.join(__dirname, "..", "results")));
 app.use("/screenshots", express.static(path.join(__dirname, "..", "screenshots")));
 app.use(express.json());
@@ -3749,6 +3861,102 @@ pre{background:#151921;border-radius:10px;padding:20px;overflow-x:auto;font-size
 </body></html>`;
 }
 
+function mapFigmaCropUrls(base, crops) {
+  if (!Array.isArray(crops)) return crops;
+  return crops.map((c) => ({
+    ...c,
+    designUrl: c.designUrl || (c.designCrop ? `${base}/${c.designCrop}` : undefined),
+    liveUrl: c.liveUrl || (c.liveCrop ? `${base}/${c.liveCrop}` : undefined),
+    diffUrl: c.diffUrl || (c.diffCrop ? `${base}/${c.diffCrop}` : undefined),
+  }));
+}
+
+function buildFigmaResultPayload(repoRoot, outRel) {
+  const rel = String(outRel || '').replace(/^\/+/, '');
+  if (!rel || rel.includes('..')) return null;
+  const abs = path.join(repoRoot, rel);
+  if (!fs.existsSync(abs)) return null;
+  const base = '/' + rel.split(path.sep).join('/');
+  const metaPath = path.join(abs, 'result.json');
+  let meta = {};
+  if (fs.existsSync(metaPath)) {
+    try { meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8')); } catch { /* ignore */ }
+  }
+  return {
+    ok: true,
+    outRel: rel,
+    ...meta,
+    designUrl: base + '/design.png',
+    liveUrl: base + '/live.png',
+    diffUrl: fs.existsSync(path.join(abs, 'diff.png')) ? base + '/diff.png' : undefined,
+    reportUrl: fs.existsSync(path.join(abs, 'report.html')) ? base + '/report.html' : undefined,
+    reportMdUrl: fs.existsSync(path.join(abs, 'report.md')) ? base + '/report.md' : undefined,
+    specJsonUrl: fs.existsSync(path.join(abs, 'design-spec.json')) ? base + '/design-spec.json' : undefined,
+    crops: mapFigmaCropUrls(base, meta.crops),
+  };
+}
+
+function listFigmaResultDirs(root, requireReport = false) {
+  if (!fs.existsSync(root)) return [];
+  return fs
+    .readdirSync(root)
+    .filter((n) => {
+      try {
+        const abs = path.join(root, n);
+        if (!fs.statSync(abs).isDirectory()) return false;
+        const hasMeta = fs.existsSync(path.join(abs, 'result.json'));
+        const hasReport = fs.existsSync(path.join(abs, 'report.html'));
+        if (requireReport) return hasReport;
+        return hasMeta || hasReport;
+      } catch {
+        return false;
+      }
+    })
+    .map((n) => {
+      const abs = path.join(root, n);
+      let ts = fs.statSync(abs).mtimeMs;
+      try {
+        const metaPath = path.join(abs, 'result.json');
+        if (fs.existsSync(metaPath)) {
+          const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+          if (meta.generatedAt) ts = new Date(meta.generatedAt).getTime();
+        }
+      } catch {
+        /* 无 result.json 时回退目录 mtime */
+      }
+      return { name: n, mtime: ts };
+    })
+    .sort((a, b) => b.mtime - a.mtime);
+}
+
+app.get('/api/figma/result', (req, res) => {
+  const repoRoot = resolveRepoRoot();
+  const rel = String(req.query.rel || '').trim();
+  const payload = buildFigmaResultPayload(repoRoot, rel);
+  if (!payload) return res.status(404).json({ ok: false, message: '未找到对比结果' });
+  return res.json(payload);
+});
+
+app.get('/api/figma/latest', (req, res) => {
+  const repoRoot = resolveRepoRoot();
+  const root = path.join(repoRoot, 'results', 'figma-compare');
+  const dirs = listFigmaResultDirs(root, false);
+  if (!dirs.length) return res.status(404).json({ ok: false, message: '暂无对比记录' });
+  const payload = buildFigmaResultPayload(repoRoot, `results/figma-compare/${dirs[0].name}`);
+  if (!payload) return res.status(404).json({ ok: false, message: '未找到对比结果' });
+  return res.json(payload);
+});
+
+app.get('/api/figma/latest-report', (req, res) => {
+  const repoRoot = resolveRepoRoot();
+  const root = path.join(repoRoot, 'results', 'figma-compare');
+  const dirs = listFigmaResultDirs(root, true);
+  if (!dirs.length) return res.status(404).json({ ok: false, message: '暂无规范对比报告' });
+  const payload = buildFigmaResultPayload(repoRoot, `results/figma-compare/${dirs[0].name}`);
+  if (!payload?.reportUrl) return res.status(404).json({ ok: false, message: '未找到对比报告' });
+  return res.json(payload);
+});
+
 // ── Export ────────────────────────────────────────────────────────────────
 app.get('/download/spec', (req, res) => {
   const sessionId = req.query.sid;
@@ -3767,6 +3975,85 @@ app.get('/download/report', (req, res) => {
   res.sendFile(file);
 });
 
+
+// ── 飞书 Webhook 发送（Studio 界面按钮） ────────────────────────────────────
+function resolveFeishuWebhookUrl() {
+  const fromEnv = (process.env.FEISHU_WEBHOOK_URL || '').trim();
+  if (fromEnv) return fromEnv;
+  const repoRoot = resolveRepoRoot();
+  const configPath = path.join(repoRoot, 'feishu-config.json');
+  try {
+    if (fs.existsSync(configPath)) {
+      const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      if (cfg.webhookUrl) return String(cfg.webhookUrl).trim();
+    }
+  } catch {
+    /* ignore */
+  }
+  const envPath = path.join(repoRoot, '.env');
+  try {
+    if (fs.existsSync(envPath)) {
+      const lines = fs.readFileSync(envPath, 'utf8').split('\n');
+      for (const line of lines) {
+        const m = line.match(/^\s*FEISHU_WEBHOOK_URL\s*=\s*(.*)$/);
+        if (!m) continue;
+        return m[1].trim().replace(/^["']|["']$/g, '');
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return '';
+}
+
+app.post('/api/feishu/send', async (req, res) => {
+  const webhookUrl = resolveFeishuWebhookUrl();
+  if (!webhookUrl) {
+    return res.status(400).json({ ok: false, error: '未配置 FEISHU_WEBHOOK_URL' });
+  }
+  const repoRoot = resolveRepoRoot();
+  const script = path.join(repoRoot, 'scripts/feishu/send-latest-card.ts');
+  if (!fs.existsSync(script)) {
+    return res.status(500).json({ ok: false, error: '未找到 scripts/feishu/send-latest-card.ts' });
+  }
+  const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+  try {
+    await new Promise((resolve, reject) => {
+      const proc = spawn(npx, ['tsx', script], {
+        cwd: repoRoot,
+        env: { ...process.env, FEISHU_WEBHOOK_URL: webhookUrl },
+        shell: false,
+      });
+      let out = '';
+      let err = '';
+      proc.stdout.on('data', (d) => {
+        out += d.toString();
+      });
+      proc.stderr.on('data', (d) => {
+        err += d.toString();
+      });
+      const timer = setTimeout(() => {
+        proc.kill();
+        reject(new Error('发送飞书卡片超时'));
+      }, 90000);
+      proc.on('error', (e) => {
+        clearTimeout(timer);
+        reject(e);
+      });
+      proc.on('close', (code) => {
+        clearTimeout(timer);
+        if (code !== 0) {
+          reject(new Error(stripAnsi(err || out || `退出码 ${code}`).slice(0, 300)));
+          return;
+        }
+        resolve();
+      });
+    });
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
+  }
+});
 
 // ── 飞书卡片回调 ────────────────────────────────────────────────────────────
 const FEISHU_VERIFICATION_TOKEN = process.env.FEISHU_VERIFICATION_TOKEN || '';
@@ -4000,7 +4287,7 @@ wss.on('connection', (ws) => {
         break;
 
       case 'repo:suggest-path':
-        await suggestRepoSavePath(ws, msg);
+        await suggestRepoSavePath(ws, session, msg);
         break;
 
       case 'repo:list-optimized': {
@@ -4068,6 +4355,10 @@ wss.on('connection', (ws) => {
 
       case 'cancel:repo-batch-test':
         cancelRepoBatch(session);
+        break;
+
+      case 'figma:compare':
+        await runFigmaCompare(ws, session, msg);
         break;
 
       case 'repo:compare-report':
@@ -4142,7 +4433,30 @@ wss.on('connection', (ws) => {
   });
 });
 
+
+function loadEnvFile(filePath) {
+  if (!fs.existsSync(filePath)) return;
+  try {
+    const lines = fs.readFileSync(filePath, 'utf8').split(/\r?\n/);
+    for (const line of lines) {
+      const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+      if (!m) continue;
+      const key = m[1];
+      if (process.env[key] !== undefined) continue;
+      let val = m[2];
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      }
+      process.env[key] = val;
+    }
+  } catch { /* ignore */ }
+}
+
 // ── Start ─────────────────────────────────────────────────────────────────
+// Studio 进程读取项目根 .env（如 FIGMA_TOKEN / FEISHU_*），不覆盖已有环境变量
+try { loadEnvFile(path.join(resolveRepoRoot(), '.env')); } catch { /* ignore */ }
+fixPlaywrightBrowsersEnv(process.env);
+
 server.listen(PORT, () => {
   console.log(`\n🎭 Playwright Studio`);
   console.log(`   http://localhost:${PORT}`);

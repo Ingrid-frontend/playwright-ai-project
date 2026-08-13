@@ -680,6 +680,7 @@
     </div>
     <div class="header-right">
       <div class="header-meta">
+        <button type="button" class="btn" id="btnSendFeishu" style="font-size:var(--fs-xs);padding:4px 10px" onclick="sendFeishuMessage()" title="通过 Webhook 发送飞书测试消息">发送飞书</button>
         <span><span class="ws-dot" id="wsDot"></span> <span id="wsStatus">未连接</span></span>
         <span id="headerEnv" style="padding:2px 8px;border-radius:6px;background:var(--bg3);color:var(--teal);font-size:var(--fs-xs)" title="当前环境">env: —</span>
         <span class="global-task-bar" id="globalTaskBar"></span>
@@ -1056,6 +1057,9 @@
         <div class="tab" onclick="switchTab('diff',this)">
           Diff 对比
         </div>
+        <div class="tab" onclick="switchTab('figma',this)">
+          设计稿对比
+        </div>
       </div>
 
       <div class="editor-run-bar" id="editorRunBar">
@@ -1115,6 +1119,61 @@
             </div>
           </div>
         </div>
+
+        <!-- Figma design vs live -->
+        <div class="editor-pane" id="pane-figma">
+          <div style="flex:1;overflow-y:auto;padding:16px;font-size:var(--fs-sm);line-height:1.8">
+            <div style="display:flex;flex-direction:column;gap:10px;max-width:760px">
+              <div>
+                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">Figma 设计稿链接</label>
+                <input type="text" class="url-input" id="figmaUrlInput" spellcheck="false"
+                  placeholder="https://www.figma.com/design/{fileKey}/{name}?node-id={nodeId}"
+                  style="width:100%;color:var(--text)">
+              </div>
+              <div>
+                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">线上页面 URL（留空则打开当前环境首页）</label>
+                <input type="text" class="url-input" id="figmaLiveUrlInput" spellcheck="false"
+                  placeholder="https://stage.huilianyi.com/ 或相对路径 /xxx"
+                  style="width:100%;color:var(--text)">
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <button type="button" class="btn btn-run" id="btnFigmaCompare" onclick="startFigmaCompare()" style="flex-shrink:0">
+                  <span class="btn-label">对比</span>
+                </button>
+                <button type="button" class="btn" id="btnFigmaOpenLatest" onclick="openLatestFigmaReport()" style="flex-shrink:0">
+                  打开最近结果
+                </button>
+                <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);font-size:var(--fs-xs);cursor:pointer">
+                  <input type="checkbox" id="figmaRefreshDesign">
+                  强制重新导出设计稿
+                </label>
+                <span class="editor-run-status" id="figmaCompareStatus"></span>
+              </div>
+              <div id="figmaCompareHint" class="sidebar-hint" style="color:var(--text-tertiary)">
+                默认按设计稿规范做语义校验，不强制像素对比。线上页面使用当前环境的登录态（<code>storage/loginState/</code>）；若截到登录页，请先在左侧录制并登录。对比完成后可点「打开报告」查看规范明细。
+              </div>
+              <div id="figmaCompareError" class="sidebar-hint" style="display:none;color:var(--red)"></div>
+              <div id="figmaCompareResult" style="display:none">
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+                  <div>
+                    <div style="color:var(--text-secondary);margin-bottom:4px">设计稿</div>
+                    <img id="figmaDesignImg" alt="design" style="width:100%;border:1px solid var(--border);border-radius:6px;background:#fff">
+                  </div>
+                  <div>
+                    <div style="color:var(--text-secondary);margin-bottom:4px">线上页面</div>
+                    <img id="figmaLiveImg" alt="live" style="width:100%;border:1px solid var(--border);border-radius:6px;background:#fff">
+                  </div>
+                  <div>
+                    <div style="color:var(--text-secondary);margin-bottom:4px">差异图</div>
+                    <img id="figmaDiffImg" alt="diff" style="width:100%;border:1px solid var(--border);border-radius:6px;background:#fff">
+                  </div>
+                </div>
+                <div style="margin-top:10px;color:var(--text)" id="figmaCompareMeta"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
       </div>
     </div>
@@ -1214,6 +1273,7 @@
 let ws = null;
 let state = { recording: false, hasRaw: false, hasOpt: false, hasRun: false };
 const busyState = { optimize: false, run: false, repoPipeline: false, repoCompare: false, repoRerunKeep: false, repoBatch: false, accountLogin: false };
+let figmaCompareSeq = 0;
 let recordTimer = null;
 let recordSeconds = 0;
 let lastOptimizeProvider = 'claude';
@@ -1283,7 +1343,7 @@ function getActiveScriptCode() {
 }
 
 function syncEditorRunHint() {
-  if (getActiveEditorTab() === 'diff') return;
+  if (getActiveEditorTab() === 'diff' || getActiveEditorTab() === 'figma') return;
   if (busyState.run && pendingRunKind !== 'repo') return;
   setEditorRunStatus('', '');
 }
@@ -4553,6 +4613,18 @@ function handleMessage(msg) {
       else toast('Promote 失败', 'err');
       loadUiIssuesPanel();
       break;
+    case 'figma:compare:start':
+      if (msg.seq) figmaCompareSeq = msg.seq;
+      setFigmaCompareBusy(true);
+      switchToFigmaTab();
+      log('info', '[figma] 正在导出设计稿并截图对比…');
+      break;
+    case 'figma:compare:done':
+      if (msg.seq && msg.seq < figmaCompareSeq) break;
+      setFigmaCompareBusy(false);
+      switchToFigmaTab();
+      void loadAndRenderFigmaResult(msg);
+      break;
     case 'repo:compare-report:start':
       busyState.repoCompare = true;
       syncWorkflowUi();
@@ -4950,8 +5022,8 @@ function setEditorRunStatus(text, status) {
 
 function syncEditorRunBarVisibility() {
   const bar = document.getElementById('editorRunBar');
-  const isDiff = document.getElementById('pane-diff')?.classList.contains('active');
-  if (bar) bar.style.display = isDiff ? 'none' : 'block';
+  const noRun = ['diff','figma'].some((n) => document.getElementById('pane-' + n)?.classList.contains('active'));
+  if (bar) bar.style.display = noRun ? 'none' : 'block';
 }
 
 function switchTab(name, el) {
@@ -4965,6 +5037,215 @@ function switchTab(name, el) {
   syncActionButtons();
 }
 
+
+function setFigmaCompareBusy(busy) {
+  const btn = document.getElementById('btnFigmaCompare');
+  const status = document.getElementById('figmaCompareStatus');
+  if (btn) { btn.disabled = busy; btn.style.opacity = busy ? 0.6 : 1; }
+  if (status) {
+    status.textContent = busy ? '对比中…' : '';
+    status.style.display = busy ? '' : 'none';
+  }
+}
+
+
+function switchToFigmaTab() {
+  const tab = Array.from(document.querySelectorAll('.tab')).find((t) => t.textContent.includes('设计稿对比'));
+  if (tab) switchTab('figma', tab);
+}
+
+function startFigmaCompare() {
+  const figmaUrl = document.getElementById('figmaUrlInput')?.value?.trim();
+  const targetUrl = document.getElementById('figmaLiveUrlInput')?.value?.trim() || '';
+  if (!figmaUrl) { showToast('请先粘贴 Figma 链接', 'err'); return; }
+  const errEl = document.getElementById('figmaCompareError');
+  const resultBox = document.getElementById('figmaCompareResult');
+  const refreshDesign = document.getElementById('figmaRefreshDesign')?.checked;
+  if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+  if (resultBox) resultBox.style.display = 'none';
+  setFigmaCompareBusy(true);
+  send('figma:compare', { figmaUrl, targetUrl, refreshDesign: Boolean(refreshDesign) });
+}
+
+function openFigmaReport(url) {
+  if (!url) { showToast('暂无报告', 'err'); return; }
+  const abs = new URL(url, location.origin).href;
+  if (!openCompareReportInNewWindow(abs)) {
+    log('warn', '浏览器拦截了新窗口，请手动打开: ' + abs);
+    showToast('浏览器拦截了新窗口，请手动打开: ' + abs, 'err');
+  }
+}
+
+async function openLatestFigmaReport() {
+  switchToFigmaTab();
+  try {
+    const res = await fetch('/api/figma/latest-report');
+    if (!res.ok) throw new Error('no result');
+    const data = normalizeFigmaMsg(await res.json());
+    if (!data.ok) throw new Error(data.message || 'no result');
+    openFigmaReport(data.reportUrl);
+  } catch {
+    showToast('暂无规范对比报告，请先点击「对比」', 'err');
+  }
+}
+
+function figmaReportBar(msg) {
+  const url = msg.reportUrl;
+  if (!url) return '';
+  const s = msg.summary || {};
+  const stats = s.total != null
+    ? `通过 ${s.pass || 0} / 警告 ${s.warn || 0} / 失败 ${s.fail || 0}`
+    : '规范对比明细';
+  return '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 12px;margin-bottom:12px;border:1px solid rgba(77,159,255,.35);border-radius:8px;background:rgba(77,159,255,.06)">' +
+    '<strong style="color:var(--text)">规范对比报告</strong>' +
+    '<span style="color:var(--text-secondary);font-size:12px">' + escHtml(stats) + '</span>' +
+    '<button type="button" class="btn" style="margin-left:auto;border-color:rgba(77,159,255,.4);color:var(--blue)" onclick="openFigmaReport(\'' + escHtml(url) + '\')">打开报告</button>' +
+    '</div>';
+}
+
+function normalizeFigmaMsg(msg) {
+  const out = { ...msg };
+  if (!out.outRel && out.outDir) {
+    const m = String(out.outDir).match(/results\/figma-compare\/[^/]+$/);
+    if (m) out.outRel = m[0];
+  }
+  if (!out.designUrl && out.outRel) {
+    const rel = String(out.outRel).replace(/^\/+/, '');
+    const base = '/' + rel;
+    out.designUrl = base + '/design.png';
+    out.liveUrl = base + '/live.png';
+    out.diffUrl = base + '/diff.png';
+  }
+  if (Array.isArray(out.crops) && out.outRel) {
+    const base = '/' + String(out.outRel).replace(/^\/+/, '');
+    out.crops = out.crops.map((c) => ({
+      ...c,
+      designUrl: c.designUrl || (c.designCrop ? base + '/' + c.designCrop : undefined),
+      liveUrl: c.liveUrl || (c.liveCrop ? base + '/' + c.liveCrop : undefined),
+      diffUrl: c.diffUrl || (c.diffCrop ? base + '/' + c.diffCrop : undefined),
+    }));
+  }
+  if (out.designUrl || out.difference != null || out.generatedAt) out.ok = true;
+  return out;
+}
+
+async function loadAndRenderFigmaResult(msg) {
+  let data = normalizeFigmaMsg(msg);
+  if (!data.designUrl) {
+    const rel = data.outRel ? String(data.outRel) : '';
+    const urls = [
+      rel ? '/api/figma/result?rel=' + encodeURIComponent(rel) : '',
+      '/api/figma/latest',
+    ].filter(Boolean);
+    for (const url of urls) {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) continue;
+        data = normalizeFigmaMsg(await res.json());
+        if (data.designUrl) break;
+      } catch { /* ignore */ }
+    }
+  }
+  renderFigmaCompareResult(data);
+  if (data.designUrl) showToast('对比完成，结果已展示', 'ok');
+}
+
+function ensureFigmaResultMarkup() {
+  const box = document.getElementById('figmaCompareResult');
+  if (!box || document.getElementById('figmaDesignImg')) return;
+  box.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+      <div>
+        <div style="color:var(--text-secondary);margin-bottom:4px">设计稿</div>
+        <img id="figmaDesignImg" alt="design" style="width:100%;border:1px solid var(--border);border-radius:6px;background:#fff">
+      </div>
+      <div>
+        <div style="color:var(--text-secondary);margin-bottom:4px">线上页面</div>
+        <img id="figmaLiveImg" alt="live" style="width:100%;border:1px solid var(--border);border-radius:6px;background:#fff">
+      </div>
+      <div>
+        <div style="color:var(--text-secondary);margin-bottom:4px">差异图</div>
+        <img id="figmaDiffImg" alt="diff" style="width:100%;border:1px solid var(--border);border-radius:6px;background:#fff">
+      </div>
+    </div>
+    <div style="margin-top:10px;color:var(--text)" id="figmaCompareMeta"></div>`;
+}
+
+function renderFigmaCompareResult(msg) {
+  setFigmaCompareBusy(false);
+  const box = document.getElementById('figmaCompareResult');
+  const hint = document.getElementById('figmaCompareHint');
+  if (hint) hint.style.display = 'none';
+  if (!box) return;
+  if (!msg.ok) {
+    box.style.display = 'block';
+    box.innerHTML = '<div style="color:var(--red)">❌ 对比失败：' + escHtml(msg.message || '请查看日志') + '</div>';
+    return;
+  }
+  box.style.display = 'block';
+
+  const colorFor = (d) => (d >= 0.005 ? 'var(--red)' : d >= 0.001 ? 'var(--amber,#d97706)' : 'var(--green,#16a34a)');
+  const pct = (d) => (Number(d || 0) * 100).toFixed(2);
+
+  // 区块模式：每个区块并排展示 设计稿 | 线上 | 差异
+  if (Array.isArray(msg.crops) && msg.crops.length > 0) {
+    const reportBar = figmaReportBar(msg);
+    const blocks = msg.crops.map((c) => {
+      const color = colorFor(c.difference);
+      const imgs = [
+        { label: '设计稿', url: c.designUrl },
+        { label: '线上', url: c.liveUrl },
+        { label: '差异', url: c.diffUrl },
+      ].map((it) => '<figure style="margin:0;min-width:0">' +
+        '<figcaption style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">' + it.label + '</figcaption>' +
+        '<img src="' + escHtml(it.url || '') + '" style="width:100%;border:1px solid var(--border);border-radius:4px;cursor:zoom-in" ' +
+        'onclick="window.open(\'' + it.url + '\',\'_blank\')" alt="' + it.label + '">' +
+        '</figure>').join('');
+      return '<div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:14px;background:var(--bg2)">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">' +
+        '<strong>区块 #' + c.index + '</strong>' +
+        '<span style="color:' + color + ';font-weight:600">差异率 ' + pct(c.difference) + '%</span>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">' + imgs + '</div>' +
+        '</div>';
+    }).join('');
+
+    const diffPct = pct(msg.difference);
+    box.innerHTML =
+      reportBar +
+      '<div style="margin-bottom:10px;color:var(--text)">' +
+      '<strong>整体差异率：' + diffPct + '%</strong>' +
+      (msg.sizeMismatch ? ' <span style="color:var(--text-tertiary)">（设计稿与线上尺寸不一致，已缩放对齐）</span>' : '') +
+      '</div>' +
+      '<div style="margin-bottom:10px;color:var(--text-secondary)">按区块对比，差异率从高到低排序；点击图片可放大。</div>' +
+      blocks +
+      '<div style="margin-top:14px;color:var(--text-secondary);font-size:12px">' +
+      '线上地址：' + escHtml(msg.targetUrl || '') + '</div>';
+    return;
+  }
+
+  // 旧三图模式（兼容无区块数据）
+  const reportBar = figmaReportBar(msg);
+  const cols = [
+    { label: '设计稿', url: msg.designUrl },
+    { label: '线上页面', url: msg.liveUrl },
+  ];
+  if (msg.diffUrl) cols.push({ label: '差异图', url: msg.diffUrl });
+  const imgs = cols.map((it) => '<figure style="margin:0;min-width:0">' +
+    '<figcaption style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">' + it.label + '</figcaption>' +
+    '<img src="' + escHtml(it.url || '') + '" alt="' + it.label + '" style="width:100%;border:1px solid var(--border);border-radius:4px;cursor:zoom-in" ' +
+    'onclick="window.open(\'' + escHtml(it.url || '') + '\',\'_blank\')">' +
+    '</figure>').join('');
+  box.innerHTML = reportBar +
+    '<div style="display:grid;grid-template-columns:repeat(' + cols.length + ',1fr);gap:10px">' + imgs + '</div>' +
+    '<div style="margin-top:10px;color:var(--text)" id="figmaCompareMeta"></div>';
+  const meta = document.getElementById('figmaCompareMeta');
+  if (meta) {
+    const diffPct = pct(msg.difference);
+    const sizeNote = msg.sizeMismatch ? '（设计稿与线上尺寸不一致，差异图按重叠区裁剪）' : '';
+    meta.textContent = `差异率：${diffPct}% ${sizeNote} · ${msg.targetUrl || ''}`;
+  }
+}
 function switchPanel(name, el) {
   document.querySelectorAll('.ptab').forEach(t => t.classList.remove('active'));
   if (el) el.classList.add('active');
@@ -5442,6 +5723,28 @@ function showToast(msg, type='') {
   el.textContent = msg;
   el.className = `toast show ${type}`;
   setTimeout(() => el.className = 'toast', 2500);
+}
+
+async function sendFeishuMessage() {
+  const btn = document.getElementById('btnSendFeishu');
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch('/api/feishu/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      showToast(data.error || `发送失败 (${res.status})`, 'err');
+      return;
+    }
+    showToast('飞书卡片已发送', 'ok');
+  } catch (e) {
+    showToast(e && e.message ? e.message : '发送失败', 'err');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 // Opt chips

@@ -5,6 +5,13 @@ const groups: Record<string, { desc: string; cmds: Array<{ name: string; hint: s
     desc: '初始化',
     cmds: [{ name: 'setup', hint: '首次环境检查' }],
   },
+  ai: {
+    desc: 'AI 原生生成与执行',
+    cmds: [
+      { name: 'ai:generate', hint: '自然语言生成语义测试计划' },
+      { name: 'ai:run', hint: '执行语义测试计划' },
+    ],
+  },
   record: {
     desc: '录制与优化',
     cmds: [

@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const repoEnv = require('../repo-env');
 
 const DEFAULT_PLAYWRIGHT_ENV = 'stage';
@@ -78,6 +79,24 @@ function getEnvEntryResolved(repoRoot, envId, profileId) {
   };
 }
 
+function isValidBrowsersDir(dir) {
+  if (!dir || !fs.existsSync(dir)) return false;
+  try {
+    return fs.readdirSync(dir).some((n) => n.startsWith('chromium'));
+  } catch {
+    return false;
+  }
+}
+
+function fixPlaywrightBrowsersEnv(env) {
+  const cur = env.PLAYWRIGHT_BROWSERS_PATH;
+  const mac = path.join(os.homedir(), 'Library/Caches/ms-playwright');
+  if (isValidBrowsersDir(cur)) return env;
+  if (isValidBrowsersDir(mac)) env.PLAYWRIGHT_BROWSERS_PATH = mac;
+  else delete env.PLAYWRIGHT_BROWSERS_PATH;
+  return env;
+}
+
 function buildRepoSpawnEnv(session, profileOverride) {
   const env = { ...process.env };
   const id = getSessionPlaywrightEnv(session);
@@ -85,7 +104,7 @@ function buildRepoSpawnEnv(session, profileOverride) {
   const repoRoot = resolveRepoRoot();
   const prof = profileOverride || getSessionAccountProfile(session, repoRoot);
   if (prof) env.PLAYWRIGHT_ACCOUNT = prof;
-  return env;
+  return fixPlaywrightBrowsersEnv(env);
 }
 
 function buildStudioRunEnv(session) {
@@ -113,4 +132,5 @@ module.exports = {
   getEnvEntryResolved,
   buildRepoSpawnEnv,
   buildStudioRunEnv,
+  fixPlaywrightBrowsersEnv,
 };

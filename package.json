@@ -12,6 +12,8 @@
     "test:debug": "playwright test --debug",
     "test:headed": "playwright test --headed",
     "test:ai": "node -e \"const fs=require('fs'); const p='tests/ai-generated'; const has=fs.existsSync(p)&&fs.readdirSync(p).some(f=>/\\.(spec|test)\\.[jt]s$/.test(f)); if(!has){ console.log('ℹ️  tests/ai-generated 为空，跳过执行（如需运行，请放入 *.spec.ts 并重试）'); process.exit(0);} \" && playwright test tests/ai-generated",
+    "ai:generate": "tsx scripts/ai/generate-ai-test.ts",
+    "ai:run": "tsx scripts/ai/run-ai-test.ts",
     "test:e2e": "playwright test tests/e2e",
     "test:single": "playwright test --workers=1",
     "test:parallel": "playwright test --workers=2",
@@ -66,6 +68,7 @@
     "feishu:grant-bitable-editor": "tsx scripts/feishu/grant-bitable-editor.ts",
     "upload-to-feishu": "tsx scripts/feishu/upload-to-feishu.ts",
     "test-feishu-webhook": "tsx scripts/feishu/test-feishu-webhook.ts",
+    "feishu:send-card": "tsx scripts/feishu/send-latest-card.ts",
     "run-optimized-tests": "tsx scripts/flow/run-optimized-tests.ts",
     "reset:regression-data": "tsx scripts/flow/reset-regression-data.ts",
     "rerun-regression-keep": "tsx scripts/flow/rerun-regression-keep-screenshots.ts",
@@ -89,7 +92,11 @@
     "typecheck": "tsc --noEmit",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "feishu:test-webhook": "tsx scripts/feishu/test-feishu-webhook.ts",
-    "feishu:update-report": "tsx scripts/feishu/update-feishu-report.ts"
+    "feishu:update-report": "tsx scripts/feishu/update-feishu-report.ts",
+    "figma:compare": "tsx scripts/figma/figma-spec-compare.ts",
+    "figma:spec": "tsx scripts/figma/figma-spec-compare.ts --spec-only",
+    "figma:compare-legacy": "tsx scripts/figma/figma-compare.ts",
+    "midscene:run": "tsx scripts/midscene/midscene-run.ts"
   },
   "keywords": [
     "playwright",
@@ -101,11 +108,12 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
+    "@eslint/js": "^9.36.0",
+    "@midscene/web": "^1.10.11",
     "@playwright/test": "^1.58.0",
     "@types/node": "^20.0.0",
     "@types/node-cron": "^3.0.11",
     "@types/pngjs": "^6.0.5",
-    "@eslint/js": "^9.36.0",
     "@typescript-eslint/eslint-plugin": "^8.57.0",
     "@typescript-eslint/parser": "^8.57.0",
     "dotenv": "^17.3.1",

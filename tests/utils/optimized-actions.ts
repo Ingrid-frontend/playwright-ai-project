@@ -1,4 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
+import { isMidsceneFallbackEnabled, midsceneTap, midsceneInput } from '../../src/utils/midscene.js';
 
 const PAUSE_ENABLED = process.env.ENABLE_PAUSE === '1';
 const RETRY_DELAY_MS = 400;
@@ -93,6 +94,14 @@ export async function smartClick(
       await waitForPostClick(page, stepName, locator);
       return;
     }
+    if (isMidsceneFallbackEnabled()) {
+      console.log('🤖 尝试 Midscene AI 点击兜底...');
+      const aiOk = await midsceneTap(page, stepName);
+      if (aiOk) {
+        await waitForPostClick(page, stepName, locator);
+        return;
+      }
+    }
     console.log(`❌ 点击失败: ${stepName}`);
     await maybePause(page, `点击失败: ${stepName}`);
     throw new Error(`smartClick 失败（force+evaluate 均失败）: ${stepName}`);
@@ -119,6 +128,15 @@ export async function smartClick(
   if (evalOk) {
     await waitForPostClick(page, stepName, locator);
     return;
+  }
+
+  if (isMidsceneFallbackEnabled()) {
+    console.log('🤖 尝试 Midscene AI 点击兜底...');
+    const aiOk = await midsceneTap(page, stepName);
+    if (aiOk) {
+      await waitForPostClick(page, stepName, locator);
+      return;
+    }
   }
 
   console.log(`❌ 三级重试均失败: ${stepName}`);
@@ -192,6 +210,12 @@ export async function smartFill(locator: Locator, text: string, stepName: string
     // fall through to final error
   }
 
+  if (isMidsceneFallbackEnabled()) {
+    console.log('🤖 尝试 Midscene AI 输入兜底...');
+    const aiOk = await midsceneInput(page, text, stepName);
+    if (aiOk) return;
+  }
+
   console.log(`❌ 三级重试均失败: ${stepName}`);
   await maybePause(page, `填充失败: ${stepName}`);
   throw new Error(`smartFill 三级重试均失败: ${stepName}`);
@@ -207,4 +231,3 @@ export async function step(name: string, fn: () => Promise<void>): Promise<void>
     throw error;
   }
 }
-

@@ -1,0 +1,67 @@
+{
+  "regions": [
+    {
+      "key": "header",
+      "selectors": [".new-menu-horizontal-tabs", "[role=\"banner\"]", "header", ".ant-layout-header", ".ant-tabs-bar", "[class*=\"header\"]"],
+      "designNamePatterns": ["顶部导航"]
+    },
+    {
+      "key": "sidebar",
+      "selectors": ["aside", ".ant-layout-sider", "[role=\"navigation\"]", "nav"],
+      "designNamePatterns": ["导航", "菜单"]
+    },
+    {
+      "key": "content",
+      "selectors": ["main", ".ant-layout-content", "[role=\"main\"]", "[class*=\"content\"]"],
+      "designNamePatterns": ["筛选", "列表", "内容"]
+    },
+    {
+      "key": "filter",
+      "selectors": [".advanced-search", ".ant-tabs-nav:has(.approve-list-pending-tab-item)", ".approve-business-filter"],
+      "union": true,
+      "designNamePatterns": ["筛选项", "筛选", "搜索"]
+    },
+    {
+      "key": "table",
+      "selectors": [".ant-table", "table", "[role=\"table\"]", "[class*=\"table\"]"],
+      "designNamePatterns": ["审批列表", "表格", "列表"]
+    },
+    {
+      "key": "footer",
+      "selectors": [".ant-pagination", "[class*=\"pagination\"]", "[class*=\"footer\"]"],
+      "designNamePatterns": ["底部操作", "翻页器"]
+    }
+  ],
+  "textIgnore": [
+    "Company`s Name",
+    "Cecily",
+    "汇联易",
+    "上海甄汇信息科技有限公司",
+    "默认效果",
+    "选中效果",
+    "输入框填写说明",
+    "Helper or Validation text",
+    "已禁用"
+  ],
+  "textIgnorePatterns": [
+    "^\\d{4}-\\d{2}-\\d{2}$",
+    "^EA\\d+$",
+    "^[\\d,]+(\\.\\d+)?\\s*(CNY|USD|HKD|JPY|EUR|RMB)$",
+    "^已选\\s+\\d+\\s+条",
+    "^共\\s+\\d+\\s+条$",
+    "^\\d+\\s+条/页$"
+  ],
+  "requiredTextKinds": ["nav", "sidebar", "tab", "filter", "table-header", "footer"],
+  "paletteLimit": 12,
+  "typographyLimit": 10,
+  "textCheckLimit": 60,
+  "tolerance": {
+    "fontSizePx": 1,
+    "lineHeightPx": 2,
+    "colorDelta": 20,
+    "fontWeightDelta": 100,
+    "spacingPx": 0,
+    "layoutPx": 12,
+    "layoutRatio": 0.03
+  }
+}
