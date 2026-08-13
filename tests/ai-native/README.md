@@ -1,6 +1,6 @@
 # AI Native 用例
 
-此目录保存自然语言生成的语义测试计划 JSON。
+此目录保存自然语言生成的 Playwright 脚本和用于验证的历史计划。
 
 ## 生成
 
@@ -21,13 +21,14 @@ npm run ai:generate -- \
 ## 执行
 
 ```bash
-npm run ai:run -- --plan=tests/ai-native/xxx.json --env=stage
+npm run ai:run -- --script=tests/ai-generated/xxx.generated.ts --env=stage
 ```
 
-失败时尝试单步自愈：
+结果输出到 `results/ai-native-script/`。
+
+如果使用旧语义计划链路：
 
 ```bash
-npm run ai:run -- --plan=tests/ai-native/xxx.json --env=stage --heal
+npm run ai:plan:generate -- --case="..." --env=stage
+npm run ai:plan:run -- --plan=tests/ai-native/xxx.json --env=stage
 ```
-
-结果输出到 `results/ai-native/<时间>-<用例名>/`。

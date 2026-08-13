@@ -75,6 +75,20 @@ function waitForPageReady(page: Page): Promise<void> {
     .catch(() => {});
 }
 
+function hasMidsceneModelConfig(): boolean {
+  return Boolean(process.env.MIDSCENE_MODEL_NAME?.trim() && process.env.MIDSCENE_MODEL_API_KEY?.trim());
+}
+
+function extractQuotedText(input: string): string | undefined {
+  const match = input.match(/[“「『"']([^”」』"']+)[”」』"']/);
+  return match?.[1]?.trim() || undefined;
+}
+
+function shortActionText(action: { description: string; instruction?: string }): string {
+  const source = extractQuotedText(action.description) || action.instruction?.trim() || action.description.trim();
+  return source.length <= 24 ? source : '';
+}
+
 async function clickTarget(page: Page, action: Extract<SemanticAction, { type: 'click' }>): Promise<void> {
   const target = resolveTarget(page, action.scope);
   if (action.locatorHint) {
@@ -86,8 +100,44 @@ async function clickTarget(page: Page, action: Extract<SemanticAction, { type: '
     }
   }
 
-  const ok = await midsceneTap(page, action.description);
-  if (!ok) throw new Error(`视觉定位点击失败: ${action.description}`);
+  const text = shortActionText(action);
+  if (text) {
+    const candidates = [
+      target.getByText(text, { exact: true }).first(),
+      target.getByRole('button', { name: text }).first(),
+      target.getByRole('link', { name: text }).first(),
+      target.getByLabel(text).first(),
+    ];
+    for (const locator of candidates) {
+      try {
+        await locator.click({ timeout: 5_000 });
+        return;
+      } catch {
+        /* try next */
+      }
+    }
+  }
+
+  const ordinal = action.description.match(/第\s*(\d+)\s*[条行项个]/);
+  if (ordinal) {
+    const index = Math.max(0, Number(ordinal[1]) - 1);
+    const rowSelectors = ['tr', '.ant-table-row', '[class*="table-row"]'];
+    for (const selector of rowSelectors) {
+      try {
+        await target.locator(selector).nth(index).click({ timeout: 5_000 });
+        return;
+      } catch {
+        /* try next */
+      }
+    }
+  }
+
+  if (hasMidsceneModelConfig()) {
+    const ok = await midsceneTap(page, action.description);
+    if (ok) return;
+  }
+
+  throw new Error(`无法定位点击目标: ${action.description}${hasMidsceneModelConfig() ? '' : '（未配置 Midscene 视觉模型）'}`);
 }
 
 async function fillTarget(page: Page, action: Extract<SemanticAction, { type: 'fill' }>): Promise<void> {
@@ -101,8 +151,29 @@ async function fillTarget(page: Page, action: Extract<SemanticAction, { type: 'f
     }
   }
 
-  const ok = await midsceneInput(page, action.value, action.description);
-  if (!ok) throw new Error(`视觉定位输入失败: ${action.description}`);
+  const text = shortActionText(action);
+  if (text) {
+    const candidates = [
+      target.getByLabel(text).first(),
+      target.getByPlaceholder(text).first(),
+      target.getByRole('textbox', { name: text }).first(),
+    ];
+    for (const locator of candidates) {
+      try {
+        await locator.fill(action.value, { timeout: 5_000 });
+        return;
+      } catch {
+        /* try next */
+      }
+    }
+  }
+
+  if (hasMidsceneModelConfig()) {
+    const ok = await midsceneInput(page, action.value, action.description);
+    if (ok) return;
+  }
+
+  throw new Error(`无法定位输入目标: ${action.description}${hasMidsceneModelConfig() ? '' : '（未配置 Midscene 视觉模型）'}`);
 }
 
 async function selectTarget(page: Page, action: Extract<SemanticAction, { type: 'select' }>): Promise<void> {
@@ -116,16 +187,54 @@ async function selectTarget(page: Page, action: Extract<SemanticAction, { type: 
     }
   }
 
-  const result = await midsceneAct(page, `在“${action.description}”中选择“${action.value}”`);
-  if (!result) throw new Error(`视觉选择失败: ${action.description}`);
+  const text = shortActionText(action);
+  if (text) {
+    const candidates = [
+      target.getByLabel(text).first(),
+      target.getByRole('combobox', { name: text }).first(),
+    ];
+    for (const locator of candidates) {
+      try {
+        await locator.selectOption(action.value, { timeout: 5_000 });
+        return;
+      } catch {
+        /* try next */
+      }
+    }
+  }
+
+  if (hasMidsceneModelConfig()) {
+    const result = await midsceneAct(page, `在“${action.description}”中选择“${action.value}”`);
+    if (result) return;
+  }
+
+  throw new Error(`无法定位选择目标: ${action.description}${hasMidsceneModelConfig() ? '' : '（未配置 Midscene 视觉模型）'}`);
 }
 
 async function assertTarget(page: Page, action: Extract<SemanticAction, { type: 'assert' }>): Promise<void> {
-  const ok = await midsceneAssert(page, action.description);
-  if (!ok) throw new Error(`断言失败: ${action.description}`);
+  const target = resolveTarget(page, action.scope);
+  const text = shortActionText(action);
+  if (text) {
+    try {
+      await target.getByText(text, { exact: false }).first().waitFor({ state: 'visible', timeout: 6_000 });
+      return;
+    } catch {
+      /* try Midscene if configured */
+    }
+  }
+
+  if (hasMidsceneModelConfig()) {
+    const ok = await midsceneAssert(page, action.description);
+    if (ok) return;
+  }
+
+  throw new Error(`断言失败: ${action.description}${hasMidsceneModelConfig() ? '' : '（未配置 Midscene 视觉模型）'}`);
 }
 
 async function actTarget(page: Page, action: Extract<SemanticAction, { type: 'act' }>): Promise<void> {
+  if (!hasMidsceneModelConfig()) {
+    throw new Error(`AI 操作需要 Midscene 视觉模型: ${action.instruction}`);
+  }
   const result = await midsceneAct(page, action.instruction);
   if (!result) throw new Error(`AI 操作未返回结果: ${action.instruction}`);
 }
@@ -280,21 +389,23 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
 
     for (let index = 0; index < plan.steps.length; index++) {
       let step = plan.steps[index];
-      const attempts = Math.max(1, (step.retries ?? 0) + 1 + (options.heal ? 1 : 0));
+      const maxAttempts = Math.max(1, (step.retries ?? 0) + 1 + (options.heal ? 1 : 0));
+      let attemptsUsed = 0;
       let passed = false;
       let healed = false;
       let errorMessage: string | undefined;
 
-      for (let attempt = 0; attempt < attempts; attempt++) {
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        attemptsUsed = attempt + 1;
         try {
           await executeAction(page, step.action);
           passed = true;
           break;
         } catch (error) {
           errorMessage = error instanceof Error ? error.message : String(error);
-          console.log(`❌ ${step.id} 第 ${attempt + 1}/${attempts} 次失败: ${errorMessage}`);
+          console.log(`❌ ${step.id} 第 ${attempt + 1}/${maxAttempts} 次失败: ${errorMessage}`);
 
-          if (options.heal && attempt === attempts - 1 && step.action.type !== 'goto') {
+          if (options.heal && attempt === maxAttempts - 1 && step.action.type !== 'goto') {
             try {
               const heal = await healStep(page, plan, index, errorMessage, outputDir);
               if (heal.shouldSkip && step.optional) {
@@ -319,7 +430,7 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
           passed: false,
           optional: true,
           skipped: true,
-          attempts,
+          attempts: attemptsUsed,
           healed,
           error: errorMessage,
         });
@@ -336,7 +447,7 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
         action: step.action,
         passed,
         optional: step.optional ?? false,
-        attempts,
+        attempts: attemptsUsed,
         healed,
         error: passed ? undefined : errorMessage,
         screenshot: screenshotPath,

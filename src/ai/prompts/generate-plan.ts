@@ -15,6 +15,7 @@ export function buildGeneratePlanSystemPrompt(): string {
 4. 每个步骤都要有稳定、唯一的 id，例如 step-1、step-2。
 5. 复杂步骤要拆成小块，不要在同一个 act 里塞入多个动作。
 6. 关键页面状态必须拆成 assert 步骤。
+7. click/fill/select/assert 的 description 必须包含要操作的可见文字，并优先用中文引号包起来，例如：点击「我的审批」、输入「报销金额」、断言页面包含「提交成功」。
 
 返回结构：
 {

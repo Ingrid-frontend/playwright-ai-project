@@ -75,7 +75,10 @@ function assertString(value: unknown, field: string): string {
 
 function assertOptionalString(value: unknown, field: string): string | undefined {
   if (value === undefined || value === null) return undefined;
-  return assertString(value, field);
+  if (typeof value !== 'string') {
+    throw new Error(`语义计划字段 ${field} 必须是非空字符串`);
+  }
+  return value.trim() === '' ? undefined : value;
 }
 
 function assertAction(value: unknown, stepId: string): SemanticAction {

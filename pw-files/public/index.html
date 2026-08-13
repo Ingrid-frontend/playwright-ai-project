@@ -1060,6 +1060,9 @@
         <div class="tab" onclick="switchTab('figma',this)">
           设计稿对比
         </div>
+        <div class="tab" onclick="switchTab('ai-validate',this)">
+          AI 验证
+        </div>
       </div>
 
       <div class="editor-run-bar" id="editorRunBar">
@@ -1174,6 +1177,36 @@
           </div>
         </div>
 
+        <!-- AI native validation -->
+        <div class="editor-pane" id="pane-ai-validate">
+          <div style="flex:1;overflow-y:auto;padding:16px;font-size:var(--fs-sm);line-height:1.8">
+            <div style="display:flex;flex-direction:column;gap:10px;max-width:760px">
+              <div>
+                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">自然语言测试步骤</label>
+                <textarea id="aiValidateCase" class="url-input" spellcheck="false" rows="5"
+                  placeholder="例如：打开我的审批，选择最新一条记录，查看详情，断言状态为待审批"
+                  style="width:100%;resize:vertical;color:var(--text);line-height:1.6"></textarea>
+              </div>
+              <div>
+                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">入口 URL / 路径（可选）</label>
+                <input type="text" class="url-input" id="aiValidateEntry" spellcheck="false"
+                  placeholder="留空则按语义计划自身入口；也可填写 /main/approve 或完整 URL"
+                  style="width:100%;color:var(--text)">
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <button type="button" class="btn btn-run" id="btnAiValidate" onclick="startAiValidate()" style="flex-shrink:0">
+                  <span class="btn-label">生成脚本并验证</span>
+                </button>
+                <span class="editor-run-status" id="aiValidateStatus"></span>
+              </div>
+              <div id="aiValidateHint" class="sidebar-hint" style="color:var(--text-tertiary)">
+                直接调用 API 生成 Playwright 脚本并执行，不使用 Midscene。生成脚本会复用当前环境和登录态。
+              </div>
+              <div id="aiValidateResult" style="display:none"></div>
+            </div>
+          </div>
+        </div>
+
       </div>
       </div>
     </div>
@@ -1274,6 +1307,7 @@ let ws = null;
 let state = { recording: false, hasRaw: false, hasOpt: false, hasRun: false };
 const busyState = { optimize: false, run: false, repoPipeline: false, repoCompare: false, repoRerunKeep: false, repoBatch: false, accountLogin: false };
 let figmaCompareSeq = 0;
+let aiValidateSeq = 0;
 let recordTimer = null;
 let recordSeconds = 0;
 let lastOptimizeProvider = 'claude';
@@ -1332,6 +1366,7 @@ function getActiveEditorTab() {
   if (document.getElementById('pane-opt')?.classList.contains('active')) return 'opt';
   if (document.getElementById('pane-raw')?.classList.contains('active')) return 'raw';
   if (document.getElementById('pane-diff')?.classList.contains('active')) return 'diff';
+  if (document.getElementById('pane-ai-validate')?.classList.contains('active')) return 'ai-validate';
   return 'raw';
 }
 
@@ -1339,11 +1374,12 @@ function getActiveScriptCode() {
   const tab = getActiveEditorTab();
   if (tab === 'opt') return document.getElementById('optCode')?.value?.trim() || '';
   if (tab === 'raw') return document.getElementById('rawCode')?.value?.trim() || '';
+  if (tab === 'ai-validate') return '';
   return '';
 }
 
 function syncEditorRunHint() {
-  if (getActiveEditorTab() === 'diff' || getActiveEditorTab() === 'figma') return;
+  if (['diff', 'figma', 'ai-validate'].includes(getActiveEditorTab())) return;
   if (busyState.run && pendingRunKind !== 'repo') return;
   setEditorRunStatus('', '');
 }
@@ -3801,6 +3837,7 @@ function connectWS() {
   ws.onopen = () => {
     document.getElementById('wsDot').className = 'ws-dot connected';
     document.getElementById('wsStatus').textContent = '已连接';
+    setAiValidateBusy(false);
     dateCategoryState.loaded = false;
     dateCategoryState.loading = false;
     resetPipelineRunning();
@@ -3819,6 +3856,7 @@ function connectWS() {
   ws.onclose = () => {
     document.getElementById('wsDot').className = 'ws-dot';
     document.getElementById('wsStatus').textContent = '重连中…';
+    setAiValidateBusy(false);
     updateGlobalTaskBar();
     resetPipelineRunning();
     setBusy('optimize', false);
@@ -3897,7 +3935,7 @@ function syncActionButtons() {
   }
   if (!busyState.run) {
     const tab = getActiveEditorTab();
-    btnRun.disabled = tab === 'diff' || !getActiveScriptCode();
+    btnRun.disabled = ['diff', 'figma', 'ai-validate'].includes(tab) || !getActiveScriptCode();
   }
   else if (pendingRunKind === 'repo') btnRun.disabled = true;
   if (btnRecord) btnRecord.disabled = busyState.optimize || busyState.run || busyState.repoPipeline;
@@ -4625,6 +4663,23 @@ function handleMessage(msg) {
       switchToFigmaTab();
       void loadAndRenderFigmaResult(msg);
       break;
+    case 'ai:validate:start':
+      if (msg.seq) aiValidateSeq = msg.seq;
+      setAiValidateBusy(true);
+      switchToAiValidateTab();
+      log('info', `[ai-validate] 开始验证${msg.env ? ` · ${msg.env}` : ''}`);
+      break;
+    case 'ai:validate:done':
+      if (msg.seq && msg.seq < aiValidateSeq) break;
+      renderAiValidateResult(msg);
+      if (msg.ok) {
+        showToast('AI 验证通过', 'ok');
+        log('ok', '[ai-validate] 验证通过');
+      } else {
+        showToast(msg.message || 'AI 验证未通过', 'err');
+        log('err', `[ai-validate] ${msg.message || '验证未通过'}`);
+      }
+      break;
     case 'repo:compare-report:start':
       busyState.repoCompare = true;
       syncWorkflowUi();
@@ -5022,7 +5077,7 @@ function setEditorRunStatus(text, status) {
 
 function syncEditorRunBarVisibility() {
   const bar = document.getElementById('editorRunBar');
-  const noRun = ['diff','figma'].some((n) => document.getElementById('pane-' + n)?.classList.contains('active'));
+  const noRun = ['diff','figma','ai-validate'].some((n) => document.getElementById('pane-' + n)?.classList.contains('active'));
   if (bar) bar.style.display = noRun ? 'none' : 'block';
 }
 
@@ -5052,6 +5107,67 @@ function setFigmaCompareBusy(busy) {
 function switchToFigmaTab() {
   const tab = Array.from(document.querySelectorAll('.tab')).find((t) => t.textContent.includes('设计稿对比'));
   if (tab) switchTab('figma', tab);
+}
+
+function setAiValidateBusy(busy) {
+  const btn = document.getElementById('btnAiValidate');
+  const status = document.getElementById('aiValidateStatus');
+  if (btn) {
+    btn.disabled = busy;
+    btn.style.opacity = busy ? 0.6 : 1;
+    const label = btn.querySelector('.btn-label');
+    if (label) label.textContent = busy ? '验证中…' : '生成脚本并验证';
+  }
+  if (status) {
+    status.textContent = busy ? '验证中…' : '';
+    status.style.display = busy ? '' : 'none';
+  }
+}
+
+function switchToAiValidateTab() {
+  const tab = Array.from(document.querySelectorAll('.tab')).find((t) => t.textContent.includes('AI 验证'));
+  if (tab) switchTab('ai-validate', tab);
+}
+
+function startAiValidate() {
+  const caseDescription = document.getElementById('aiValidateCase')?.value?.trim();
+  const entry = document.getElementById('aiValidateEntry')?.value?.trim() || '';
+  const resultBox = document.getElementById('aiValidateResult');
+  if (!caseDescription) {
+    showToast('请先填写自然语言测试步骤', 'err');
+    return;
+  }
+  if (resultBox) {
+    resultBox.style.display = 'none';
+    resultBox.innerHTML = '';
+  }
+  switchToAiValidateTab();
+  setAiValidateBusy(true);
+  send('ai:validate', { caseDescription, entry });
+}
+
+function renderAiValidateResult(msg) {
+  setAiValidateBusy(false);
+  const box = document.getElementById('aiValidateResult');
+  if (!box) return;
+  box.style.display = 'block';
+  const steps = Array.isArray(msg.steps) ? msg.steps : [];
+  const stepRows = steps
+    .map((step) => {
+      const passed = Boolean(step.passed);
+      const skipped = Boolean(step.skipped);
+      const mark = passed ? '✓' : skipped ? '·' : '✗';
+      const error = step.error ? `：${escHtml(String(step.error))}` : '';
+      return `<div style="padding:5px 0;border-bottom:1px solid var(--border);color:${passed ? 'var(--green)' : skipped ? 'var(--text-tertiary)' : 'var(--red)'}">${mark} ${escHtml(step.id || '')}${error}</div>`;
+    })
+    .join('');
+  const status = msg.ok ? '验证通过' : '验证未通过';
+  const color = msg.ok ? 'var(--green)' : 'var(--red)';
+  box.innerHTML = `
+    <div style="font-weight:700;margin-bottom:8px;color:${color}">${status}</div>
+    <div class="sidebar-hint" style="margin-bottom:8px">结果目录：<code>${escHtml(msg.outRel || '')}</code></div>
+    <div>${stepRows || '<div class="sidebar-hint">无步骤结果</div>'}</div>
+  `;
 }
 
 function startFigmaCompare() {
