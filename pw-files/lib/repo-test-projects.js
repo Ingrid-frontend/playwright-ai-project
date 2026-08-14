@@ -1,8 +1,9 @@
 const REPO_OPTIMIZED_PROJECTS = [
   { id: 'optimized', label: 'Chrome' },
   { id: 'optimized-webkit', label: 'Safari (WebKit)' },
+  { id: 'optimized-firefox', label: 'Firefox' },
 ];
-const DEFAULT_REPO_TEST_PROJECTS = REPO_OPTIMIZED_PROJECTS.map((p) => p.id);
+const DEFAULT_REPO_TEST_PROJECTS = ['optimized', 'optimized-webkit'];
 
 function normalizeRepoTestProjects(projects) {
   const allowed = new Set(REPO_OPTIMIZED_PROJECTS.map((p) => p.id));

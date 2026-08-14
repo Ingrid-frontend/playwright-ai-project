@@ -26,7 +26,8 @@ const groups: Record<string, { desc: string; cmds: Array<{ name: string; hint: s
   test: {
     desc: '执行',
     cmds: [
-      { name: 'test:ci', hint: 'CI 同款 headless 回归' },
+      { name: 'test:ci', hint: 'CI 同款 headless 回归（Chrome+WebKit）' },
+      { name: 'test:ci:firefox', hint: '三引擎回归（含 Firefox）' },
       { name: 'auto-test', hint: '录制→pipeline→执行→对比' },
       { name: 'test:regression', hint: '配置化 Job 回归' },
       { name: 'test:optimized', hint: '仅跑 optimized 项目' },

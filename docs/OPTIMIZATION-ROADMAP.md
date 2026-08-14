@@ -16,7 +16,7 @@
 | 多视口截图 | `viewports` 配置 + `SCREENSHOT_VIEWPORTS=all` |
 | 结构巡检 | selector 存在 / bbox 偏移 / DOM 指纹 / 横向溢出（`structureChecks`） |
 | baseline PR 门禁 | `check-baseline-pr`：变更 golden 需 label `baseline-update` |
-| Firefox 项目 | `optimized-firefox`（Studio / CI / test-jobs 默认可见） |
+| Firefox 项目 | `optimized-firefox` 已启用；Studio 默认可选，默认 CI 仍 Chrome+WebKit |
 | flake 追踪 | error-reporter 标记 flake + `results/history/YYYY-MM-DD.json` |
 | 统一 CLI | `npm run cli -- --help` |
 | 初始化 | `npm run setup` |
@@ -26,12 +26,11 @@
 | flake 仪表盘 | `report:dashboard` 读取 `results/history/test-runs/` 展示 flake 趋势 |
 | Studio jobs 拆分 | `test-jobs-actions`（任务）与 `test-jobs-spec-actions`（用例文件）分域 |
 | 对比引擎扫描拆分 | PNG 扫描在 `compare-screenshots-scan`；pixelmatch 配对仍在 `compare-screenshots-engine` |
+| 大脚本拆分 | optimize / Figma 报告 / 飞书文档 / auto-test 通知 / 报告 viz 资产按域抽出 |
 
 ## 进行中 / 建议下一步
 
-| 优先级 | 项 | 说明 |
-|--------|-----|------|
-| P2 | 三引擎默认 CI | Firefox 已纳入 `test:ci`；若不稳定可再收窄 |
+暂无 P0。三引擎默认 CI 因 Firefox `storageState` 兼容性未并入 `test:ci`；需要时用 `npm run test:ci:firefox`。
 
 ## 环境变量速查
 
