@@ -6,7 +6,7 @@ import {
 import { collectStructureUiIssues } from './structure-check.js';
 import type { ImageComparison } from './image-diff.js';
 import type { StepTrendPoint } from './ui-regression-history.js';
-import { buildDiffCardHtml } from './compare-report-viz.js';
+import { buildDiffCardHtml, type SummaryRow } from './compare-report-viz.js';
 import {
   escapeHtmlAttr,
   extractStepNameFromPath,
@@ -782,4 +782,61 @@ export function buildScriptContents<T extends { testDir: string }>(
       </div>
     `)
     .join('');
+}
+
+export function buildIterationMap<T extends { testDir: string }>(
+  testDirComparisons: T[],
+): Map<string, T[]> {
+  const iterationMap = new Map<string, T[]>();
+  for (const tdc of testDirComparisons) {
+    const [iteration, ...rest] = String(tdc.testDir).split('/');
+    const iter = iteration || 'unknown-iteration';
+    const script = rest.join('/') || tdc.testDir;
+    if (!iterationMap.has(iter)) iterationMap.set(iter, []);
+    iterationMap.get(iter)!.push({ ...tdc, testDir: script });
+  }
+  return iterationMap;
+}
+
+export function sortIterationScripts<T extends { testDir: string }>(
+  iterationMap: Map<string, T[]>,
+  scriptDirTimestampMs: (scriptDir: string) => number,
+): void {
+  for (const scripts of iterationMap.values()) {
+    scripts.sort((a, b) => {
+      const ta = scriptDirTimestampMs(String(a.testDir));
+      const tb = scriptDirTimestampMs(String(b.testDir));
+      const ka = ta > 0 ? ta : Number.POSITIVE_INFINITY;
+      const kb = tb > 0 ? tb : Number.POSITIVE_INFINITY;
+      if (ka !== kb) return ka - kb;
+      return String(a.testDir).localeCompare(String(b.testDir), 'zh-CN');
+    });
+  }
+}
+
+export function buildSummaryRows(
+  testDirComparisons: any[],
+  extractStepNameFromPath: (imagePath: string) => string,
+): SummaryRow[] {
+  const summaryRows: SummaryRow[] = [];
+  for (const tdc of testDirComparisons) {
+    for (const comp of tdc.comparisons) {
+      for (const c of [...comp.optimizedComparisons, ...comp.crossBrowserComparisons]) {
+        const shotPath = c.image2Path || c.image1Path;
+        const stepName = extractStepNameFromPath(shotPath);
+        const diff = c.difference;
+        const severity = diff >= 0.005 ? 'blocker' : diff >= 0.001 ? 'warning' : 'noise';
+        summaryRows.push({
+          script: tdc.testDir,
+          step: comp.stepNumber,
+          stepName,
+          browser: c.browser || c.browser2 || 'chrome',
+          compareKind: c.compareKind || 'same-browser',
+          difference: diff,
+          severity,
+        });
+      }
+    }
+  }
+  return summaryRows;
 }

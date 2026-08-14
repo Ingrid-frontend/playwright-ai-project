@@ -27,7 +27,6 @@ import {
   generateOverviewPanel,
   generateSummaryTableHtml,
   type OverviewData,
-  type SummaryRow,
 } from './compare-report-viz.js';
 import {
   collectAllUiIssues,
@@ -44,6 +43,9 @@ import {
   getTotalExecutions,
   buildScriptTabs,
   buildScriptContents,
+  buildIterationMap,
+  sortIterationScripts,
+  buildSummaryRows,
 } from './compare-screenshots-render.js';
 import {
   extractStepNameFromPath,
@@ -672,49 +674,11 @@ function generateHTML(
   };
   const overviewHtml = generateOverviewPanel(overviewData);
 
-  // Build SummaryRow[] for summary tab (Plan 5)
-  const summaryRows: SummaryRow[] = [];
-  for (const tdc of testDirComparisons) {
-    for (const comp of tdc.comparisons) {
-      for (const c of [...comp.optimizedComparisons, ...comp.crossBrowserComparisons]) {
-        const shotPath = c.image2Path || c.image1Path;
-        const stepName = extractStepNameFromPath(shotPath);
-        const diff = c.difference;
-        const severity = diff >= 0.005 ? 'blocker' : diff >= 0.001 ? 'warning' : 'noise';
-        summaryRows.push({
-          script: tdc.testDir,
-          step: comp.stepNumber,
-          stepName,
-          browser: c.browser || c.browser2 || 'chrome',
-          compareKind: c.compareKind || 'same-browser',
-          difference: diff,
-          severity,
-        });
-      }
-    }
-  }
+  const summaryRows = buildSummaryRows(testDirComparisons, extractStepNameFromPath);
   const summaryHtml = generateSummaryTableHtml(summaryRows);
   
-  // 约定：testDir = "<iteration>/<script>"
-  const iterationMap = new Map<string, TestDirComparisons[]>();
-  for (const tdc of testDirComparisons) {
-    const [iteration, ...rest] = String(tdc.testDir).split('/');
-    const iter = iteration || 'unknown-iteration';
-    const script = rest.join('/') || tdc.testDir;
-    if (!iterationMap.has(iter)) iterationMap.set(iter, []);
-    iterationMap.get(iter)!.push({ ...tdc, testDir: script });
-  }
-  // 同一迭代下脚本 Tab：按目录名时间戳升序（日期早的在前）；解析不到时间戳的排最后
-  for (const scripts of iterationMap.values()) {
-    scripts.sort((a, b) => {
-      const ta = scriptDirTimestampMs(String(a.testDir));
-      const tb = scriptDirTimestampMs(String(b.testDir));
-      const ka = ta > 0 ? ta : Number.POSITIVE_INFINITY;
-      const kb = tb > 0 ? tb : Number.POSITIVE_INFINITY;
-      if (ka !== kb) return ka - kb;
-      return String(a.testDir).localeCompare(String(b.testDir), 'zh-CN');
-    });
-  }
+  const iterationMap = buildIterationMap(testDirComparisons);
+  sortIterationScripts(iterationMap, scriptDirTimestampMs);
   const iterations = Array.from(iterationMap.keys());
   const firstIteration = iterations[0];
 
