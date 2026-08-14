@@ -42,9 +42,8 @@ import {
   generateIssuesTabHtml as renderIssuesTabHtml,
   getBrowserFilterLabel,
   getTotalExecutions,
-  stripScriptTimestamp,
-  scriptTabDisambiguatorSuffix,
-  formatScriptTabDisambiguatorSuffix,
+  buildScriptTabs,
+  buildScriptContents,
 } from './compare-screenshots-render.js';
 import {
   extractStepNameFromPath,
@@ -744,53 +743,10 @@ function generateHTML(
   `)
     .join('');
 
-  function buildScriptTabs(iter: string): string {
-    const scripts = iterationMap.get(iter) || [];
-    const baseCount = new Map<string, number>();
-    for (const tdc of scripts) {
-      const rawName = String(tdc.testDir);
-      const base = stripScriptTimestamp(rawName);
-      baseCount.set(base, (baseCount.get(base) || 0) + 1);
-    }
-    return scripts
-      .map((tdc, index) => {
-        const rawName = String(tdc.testDir);
-        const base = stripScriptTimestamp(rawName);
-        const collide = (baseCount.get(base) || 0) > 1;
-        const rawSuffix = scriptTabDisambiguatorSuffix(rawName, base);
-        const compactSuffix = formatScriptTabDisambiguatorSuffix(rawSuffix);
-        const hasDateTimeSuffix = /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}/.test(rawSuffix);
-        const display =
-          collide || hasDateTimeSuffix ? `${base} · ${compactSuffix}` : base;
-        return `
-      <button class="script-tab ${index === 0 ? 'active' : ''}" data-iteration="${iter}" data-script="${rawName}" onclick="switchScript('${iter}', '${rawName}')" title="${iter}/${rawName}">
-        <span>${display}</span>
-      </button>
-    `;
-      })
-      .join('');
-  }
-
-  function buildScriptContents(
-    iter: string,
-    render: (tdc: TestDirComparisons) => string,
-    extraAttrs?: (tdc: TestDirComparisons) => string
-  ): string {
-    const scripts = iterationMap.get(iter) || [];
-    const firstScript = scripts[0]?.testDir;
-    return scripts
-      .map((tdc) => `
-      <div class="script-content" data-iteration="${iter}" data-script="${tdc.testDir}" ${tdc.testDir === firstScript ? '' : 'style="display: none;"'} ${extraAttrs ? extraAttrs(tdc) : ''}>
-        ${render(tdc)}
-      </div>
-    `)
-      .join('');
-  }
-
   const optimizedByIteration = iterations
     .map((iter, index) => `
     <div class="iteration-content" data-iteration="${iter}" ${index === 0 ? '' : 'style="display: none;"'}>
-      ${buildScriptContents(iter, (tdc) => tdc.comparisons.map((comp) => screenshotRenderer.generateOptimizedStep(comp, optDirName)).join(''))}
+      ${buildScriptContents(iter, (tdc) => tdc.comparisons.map((comp) => screenshotRenderer.generateOptimizedStep(comp, optDirName)).join(''), undefined, iterationMap)}
     </div>
   `)
     .join('');
@@ -809,7 +765,7 @@ function generateHTML(
           const x = countHelpers.getCrossBrowserDiffCountsForScript(tdc);
           return `data-diff-all="${c.all + x.all}" data-diff-only="${c.only + x.only}"`;
         },
-      )}
+        iterationMap)}
     </div>
   `)
     .join('');
@@ -827,7 +783,7 @@ function generateHTML(
           const c = countHelpers.getDiffOnlyTabCountsForScript(tdc);
           return `data-diff-all="${c.all}" data-diff-only="${c.only}"`;
         },
-      )}
+        iterationMap)}
     </div>
   `)
     .join('');

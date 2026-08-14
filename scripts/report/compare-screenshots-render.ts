@@ -736,3 +736,50 @@ export function formatScriptTabDisambiguatorSuffix(suffix: string): string {
   const compact = `${y.slice(2)}${mo}${d}_${h}:${mi}:${s}`;
   return rest ? `${compact}${rest}` : compact;
 }
+
+export function buildScriptTabs<T extends { testDir: string }>(
+  iter: string,
+  iterationMap: Map<string, T[]>,
+): string {
+  const scripts = iterationMap.get(iter) || [];
+  const baseCount = new Map<string, number>();
+  for (const tdc of scripts) {
+    const rawName = String(tdc.testDir);
+    const base = stripScriptTimestamp(rawName);
+    baseCount.set(base, (baseCount.get(base) || 0) + 1);
+  }
+  return scripts
+    .map((tdc, index) => {
+      const rawName = String(tdc.testDir);
+      const base = stripScriptTimestamp(rawName);
+      const collide = (baseCount.get(base) || 0) > 1;
+      const rawSuffix = scriptTabDisambiguatorSuffix(rawName, base);
+      const compactSuffix = formatScriptTabDisambiguatorSuffix(rawSuffix);
+      const hasDateTimeSuffix = /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}/.test(rawSuffix);
+      const display =
+        collide || hasDateTimeSuffix ? `${base} · ${compactSuffix}` : base;
+      return `
+      <button class="script-tab ${index === 0 ? 'active' : ''}" data-iteration="${iter}" data-script="${rawName}" onclick="switchScript('${iter}', '${rawName}')" title="${iter}/${rawName}">
+        <span>${display}</span>
+      </button>
+    `;
+    })
+    .join('');
+}
+
+export function buildScriptContents<T extends { testDir: string }>(
+  iter: string,
+  render: (tdc: T) => string,
+  extraAttrs: ((tdc: T) => string) | undefined,
+  iterationMap: Map<string, T[]>,
+): string {
+  const scripts = iterationMap.get(iter) || [];
+  const firstScript = scripts[0]?.testDir;
+  return scripts
+    .map((tdc) => `
+      <div class="script-content" data-iteration="${iter}" data-script="${tdc.testDir}" ${tdc.testDir === firstScript ? '' : 'style="display: none;"'} ${extraAttrs ? extraAttrs(tdc) : ''}>
+        ${render(tdc)}
+      </div>
+    `)
+    .join('');
+}
