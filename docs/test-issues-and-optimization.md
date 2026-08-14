@@ -12,13 +12,13 @@
 ### 1) 等待策略叠加导致超时
 
 - **症状**：大量 `waitForLoadState/networkidle` + loading mask 等待叠加，单步耗时过长
-- **定位**：`utils/screenshot.ts` 的 `screenshotWhenStable` / `waitForRouteStable`
+- **定位**：`src/utils/screenshot.ts` 的 `screenshotWhenStable` / `waitForRouteStable`
 - **建议**：给每个等待阶段加最大总时长上限；将“稳定性等待”从每步必跑改为关键步骤/失败时跑
 
 ### 2) 路由稳定检测可能卡住
 
 - **症状**：路由持续变化导致稳定计数重置，整体等待拉长
-- **定位**：`utils/screenshot.ts` 的 `waitForRouteStable`
+- **定位**：`src/utils/screenshot.ts` 的 `waitForRouteStable`
 - **建议**：加入硬超时（例如 3-5s），超时后降级继续执行并记录日志
 
 ## 验证方式

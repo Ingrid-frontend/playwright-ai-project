@@ -162,14 +162,14 @@ class RawRecordingOptimizer {
     if (this.optimizedImportLayout === 'flat') {
       return {
         fixtures: './fixtures',
-        screenshot: '../../utils/screenshot',
+        screenshot: '../../src/utils/screenshot',
         optimizedActions: '../utils/optimized-actions',
         fixturesCommentPhrase: './fixtures',
       };
     }
     return {
       fixtures: '../fixtures',
-      screenshot: '../../../utils/screenshot',
+      screenshot: '../../../src/utils/screenshot',
       optimizedActions: '../../utils/optimized-actions',
       fixturesCommentPhrase: '../fixtures',
     };

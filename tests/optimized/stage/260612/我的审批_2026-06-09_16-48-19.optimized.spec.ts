@@ -5,7 +5,7 @@
 import { test, expect } from '../../fixtures';
 import fs from 'fs';
 import path from 'path';
-import { takeStepScreenshot, waitForPostInteractionPaint, withScreenshotRunSegment } from '../../../../utils/screenshot';
+import { takeStepScreenshot, waitForPostInteractionPaint, withScreenshotRunSegment } from '../../../../src/utils/screenshot';
 import { step, maybePause, smartClick } from '../../../utils/optimized-actions';
 
 test('test', async ({ page }) => {

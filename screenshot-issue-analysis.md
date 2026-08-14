@@ -67,7 +67,7 @@
 ```
 
 ### 2. 优化截图时机
-在 `utils/screenshot.ts` 中增加视口稳定检测：
+在 `src/utils/screenshot.ts` 中增加视口稳定检测：
 
 ```typescript
 async function waitForViewportStable(page: Page, timeout: number = 3000): Promise<void> {

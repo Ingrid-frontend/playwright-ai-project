@@ -248,7 +248,7 @@ function optimizedImportPathsForDepth(depth) {
   const fixturesPrefix = depth > 0 ? "../".repeat(depth) : "./";
   return {
     fixtures: `${fixturesPrefix}fixtures`,
-    screenshot: `${toRoot}utils/screenshot`,
+    screenshot: `${toRoot}src/utils/screenshot`,
     optimizedActions: `${toTests}utils/optimized-actions`,
     fixturesCommentPhrase: `${fixturesPrefix}fixtures`,
   };

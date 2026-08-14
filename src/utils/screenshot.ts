@@ -2,7 +2,7 @@ import { Frame, Page, expect } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import { assertNotLoginLikePage } from '../src/utils/login-detection.js';
+import { assertNotLoginLikePage } from './login-detection.js';
 import {
   loadUiRegressionConfig,
   resolveMaskSelectors,
@@ -11,12 +11,12 @@ import {
   scriptKeyFromScreenshotPath,
   type SnapshotViewport,
   type StructureCheckItem,
-} from '../scripts/report/ui-regression-config.js';
+} from '../../scripts/report/ui-regression-config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const MENU_ITEMS = JSON.parse(fs.readFileSync(path.join(__dirname, '../datasource/menu_items.json'), 'utf-8'));
-const MENU_ROUTES = JSON.parse(fs.readFileSync(path.join(__dirname, '../datasource/menu_routes.json'), 'utf-8'));
+const MENU_ITEMS = JSON.parse(fs.readFileSync(path.join(__dirname, '../../datasource/menu_items.json'), 'utf-8'));
+const MENU_ROUTES = JSON.parse(fs.readFileSync(path.join(__dirname, '../../datasource/menu_routes.json'), 'utf-8'));
 
 /**
  * 使用 CSS 像素尺寸出图（与 viewport 宽高一致）。
@@ -270,7 +270,7 @@ async function applyScreenshotStabilityStyles(page: Page): Promise<void> {
   if (freezeAnimationsApplied) return;
   let enabled = process.env.SCREENSHOT_FREEZE_ANIMATIONS !== '0';
   try {
-    const cfgPath = path.join(__dirname, '../config/ui-regression.json');
+    const cfgPath = path.join(__dirname, '../../config/ui-regression.json');
     if (fs.existsSync(cfgPath)) {
       const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf-8')) as {
         screenshot?: { freezeAnimations?: boolean };

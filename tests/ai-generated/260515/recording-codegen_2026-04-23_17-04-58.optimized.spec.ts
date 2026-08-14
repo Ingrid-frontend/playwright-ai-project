@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
-import { takeStepScreenshot } from '../../../utils/screenshot';
+import { takeStepScreenshot } from '../../../src/utils/screenshot';
 import { step, smartClick } from '../../utils/optimized-actions';
 
 test('test', async ({ page }) => {
