@@ -58,6 +58,9 @@ jobs:
       - name: Verify spec-meta
         run: node scripts/verify/verify-spec-meta-flow.cjs --env=stage
 
+      - name: Smoke report modules
+        run: npm run smoke
+
       - name: Pipeline raw recordings (PR only)
         if: github.event_name == 'pull_request'
         run: |

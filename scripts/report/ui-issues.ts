@@ -60,7 +60,7 @@ export interface UiIssuesReport {
   plainLanguageAnalysis?: PlainLanguageAnalysis;
 }
 
-function severityForDifference(
+export function severityForDifference(
   difference: number,
   compareKind: UiIssueCompareKind,
 ): UiIssueSeverity {
@@ -138,11 +138,54 @@ export function mergeIssuesForDisplay(issues: UiIssue[]): MergedDisplayIssue[] {
   return merged.sort((a, b) => b.difference - a.difference);
 }
 
-function mapCompareKind(kind?: ImageComparison['compareKind']): UiIssueCompareKind {
+export function mapCompareKind(kind?: ImageComparison['compareKind'] | string): UiIssueCompareKind {
   if (kind === 'golden') return 'golden';
   if (kind === 'last-green') return 'last-green';
   if (kind === 'cross-browser') return 'cross-browser';
   return 'run-drift';
+}
+
+export function classifyComparisonSeverity(
+  difference: number,
+  compareKind?: ImageComparison['compareKind'] | string,
+): UiIssueSeverity | 'pass' {
+  if (!(difference > 0)) return 'pass';
+  return severityForDifference(difference, mapCompareKind(compareKind));
+}
+
+export interface ComparisonSeverityCounts {
+  total: number;
+  blocker: number;
+  warning: number;
+  noise: number;
+  diffs: number[];
+}
+
+export function countComparisonSeverities(
+  testDirComparisons: Array<{
+    comparisons: Array<{
+      optimizedComparisons?: Array<{ difference?: number; compareKind?: string }>;
+      crossBrowserComparisons?: Array<{ difference?: number; compareKind?: string }>;
+    }>;
+  }>,
+): ComparisonSeverityCounts {
+  const diffs: number[] = [];
+  let blocker = 0;
+  let warning = 0;
+  let noise = 0;
+  for (const tdc of testDirComparisons) {
+    for (const comp of tdc.comparisons) {
+      for (const c of [...(comp.optimizedComparisons || []), ...(comp.crossBrowserComparisons || [])]) {
+        const d = c.difference ?? 0;
+        diffs.push(d);
+        const severity = classifyComparisonSeverity(d, c.compareKind);
+        if (severity === 'blocker') blocker++;
+        else if (severity === 'warning') warning++;
+        else if (severity === 'noise') noise++;
+      }
+    }
+  }
+  return { total: diffs.length, blocker, warning, noise, diffs };
 }
 
 export function comparisonToUiIssue(

@@ -52,7 +52,8 @@ const {
   fixPlaywrightBrowsersEnv,
 } = require('./lib/repo-context');
 const { send, logLine, now, stripAnsi, errText } = require('./lib/ws-safe');
-const { registerHttpRoutes } = require('./lib/http-routes');
+const { registerHttpRoutes, registerStudioStatic } = require('./lib/http-routes');
+const { createSessionStore } = require('./lib/session');
 const { mapFigmaCropUrls } = require('./lib/figma-payload');
 const { buildHtmlReport } = require('./lib/report-html');
 const { runRepoPromoteBaseline } = require('./lib/repo-baseline');
@@ -319,84 +320,18 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-app.use((req, res, next) => {
-  if (req.method !== 'GET' || !req.path.startsWith('/repo-report/')) return next();
-  const repoRoot = resolveRepoRoot();
-  const tail = req.path.slice('/repo-report/'.length);
-  let abs;
-  try {
-    abs = resolveRepoPublicReadFile(repoRoot, tail);
-  } catch {
-    res.status(400).send('Bad path');
-    return;
-  }
-  if (!abs || !fs.existsSync(abs)) {
-    res.status(404).send('Not found');
-    return;
-  }
-  res.sendFile(abs, (err) => {
-    if (err && !res.headersSent) res.status(500).send(String(err.message || err));
-  });
+registerStudioStatic(app, express, {
+  studioDir: __dirname,
+  resolveRepoRoot,
+  resolveRepoPublicReadFile,
 });
 
-app.use(express.static(path.join(__dirname, 'public'), {
-  setHeaders(res, filePath) {
-    if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
-  },
-}));
-app.use("/results", express.static(path.join(__dirname, "..", "results")));
-app.use("/screenshots", express.static(path.join(__dirname, "..", "screenshots")));
-app.use(express.json());
-
-// ── State per connection ────────────────────────────────────────────────
-const sessions = new Map();
+const { sessions, makeSession } = createSessionStore({
+  studioDir: __dirname,
+  draftOptimizedRelative: DRAFT_OPTIMIZED_RELATIVE,
+  defaultPlaywrightEnv: DEFAULT_PLAYWRIGHT_ENV,
+});
 registerHttpRoutes(app, { resolveRepoRoot, sessions });
-/** 会话工作目录放在项目内，便于 Playwright 从测试文件解析 node_modules/@playwright/test */
-const SESSION_WORK_ROOT = path.join(__dirname, '.pw-studio');
-
-function ensureSessionWorkRoot() {
-  fs.mkdirSync(SESSION_WORK_ROOT, { recursive: true });
-}
-
-function makeSession() {
-  ensureSessionWorkRoot();
-  return {
-    recording: false,
-    recordProc: null,
-    runProc: null,
-    optimizeRunning: false,
-    optimizeCancelled: false,
-    runCancelled: false,
-    rawCode: '',
-    optCode: '',
-    runResult: null,
-    tmpDir: fs.mkdtempSync(path.join(SESSION_WORK_ROOT, 'run-')),
-    /** 界面传入的密钥，优先于环境变量；null 表示使用环境变量 */
-    apiKeys: { anthropic: null, deepseek: null },
-    repoPipelineProc: null,
-    repoTestProc: null,
-    repoPipelineCancelled: false,
-    repoTestCancelled: false,
-    repoCompareProc: null,
-    repoCompareCancelled: false,
-    repoRerunProc: null,
-    repoRerunCancelled: false,
-    aiValidateProc: null,
-    aiValidateCancelled: false,
-    aiValidateSeq: 0,
-    repoBatchCancelled: false,
-    repoBatchRunning: false,
-    lastBatchRunComplete: false,
-    lastSavedRelative: null,
-    draftRelativePath: null,
-    draftOptimizedRelative: DRAFT_OPTIMIZED_RELATIVE,
-    suggestedFormalRelative: null,
-    lastPrimaryOptimizedRelative: null,
-    optimizedSpecs: [],
-    playwrightEnv: process.env.PLAYWRIGHT_ENV || DEFAULT_PLAYWRIGHT_ENV,
-    accountProfile: process.env.PLAYWRIGHT_ACCOUNT || 'default',
-  };
-}
 
 // ── Helpers（send/logLine/now/stripAnsi/errText 见 ./lib/ws-safe.js）────
 

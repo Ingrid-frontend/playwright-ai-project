@@ -224,4 +224,37 @@ function registerHttpRoutes(app, deps) {
   });
 }
 
-module.exports = { registerHttpRoutes };
+function registerStudioStatic(app, expressLib, deps) {
+  const { studioDir, resolveRepoRoot, resolveRepoPublicReadFile } = deps;
+
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' || !req.path.startsWith('/repo-report/')) return next();
+    const repoRoot = resolveRepoRoot();
+    const tail = req.path.slice('/repo-report/'.length);
+    let abs;
+    try {
+      abs = resolveRepoPublicReadFile(repoRoot, tail);
+    } catch {
+      res.status(400).send('Bad path');
+      return;
+    }
+    if (!abs || !fs.existsSync(abs)) {
+      res.status(404).send('Not found');
+      return;
+    }
+    res.sendFile(abs, (err) => {
+      if (err && !res.headersSent) res.status(500).send(String(err.message || err));
+    });
+  });
+
+  app.use(expressLib.static(path.join(studioDir, 'public'), {
+    setHeaders(res, filePath) {
+      if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
+    },
+  }));
+  app.use('/results', expressLib.static(path.join(studioDir, '..', 'results')));
+  app.use('/screenshots', expressLib.static(path.join(studioDir, '..', 'screenshots')));
+  app.use(expressLib.json());
+}
+
+module.exports = { registerHttpRoutes, registerStudioStatic };
