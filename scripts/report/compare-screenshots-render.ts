@@ -1,7 +1,16 @@
-import { comparisonToUiIssue, type UiIssue } from './ui-issues.js';
-import { collectStructureUiIssues } from './structure-check.js';
 import {
+  comparisonToUiIssue,
+  mergeIssuesForDisplay,
+  type UiIssue,
+} from './ui-issues.js';
+import { collectStructureUiIssues } from './structure-check.js';
+import type { ImageComparison } from './image-diff.js';
+import type { StepTrendPoint } from './ui-regression-history.js';
+import { buildDiffCardHtml } from './compare-report-viz.js';
+import {
+  escapeHtmlAttr,
   extractStepNameFromPath,
+  extractImageLabelWithRoute,
   routeFromScreenshotPath,
 } from './compare-screenshots-utils.js';
 
@@ -76,4 +85,144 @@ export function collectAllUiIssues(testDirComparisons: TestDirComparisons[]): Ui
     issues.push(...collectStructureUiIssues(tdc.testDir, structureShots));
   }
   return issues;
+}
+
+export function createDiffCardRenderer(deps: {
+  getBrowserIcon: (browser: string) => string;
+}): {
+  renderInlineDiffThumb: (diffImagePath?: string) => string;
+  generateDiffCard: (
+    comparison: ImageComparison,
+    type: string,
+    trendPoints?: StepTrendPoint[],
+  ) => string;
+} {
+  const { getBrowserIcon } = deps;
+
+  function renderInlineDiffThumb(diffImagePath?: string): string {
+    if (!diffImagePath) return '—';
+    const src = escapeHtmlAttr(diffImagePath);
+    return `<img class="issues-diff-thumb" src="${src}" alt="diff" loading="lazy" onclick="openModal('${src}')" title="点击放大">`;
+  }
+
+  function generateDiffCard(
+    comparison: ImageComparison,
+    _type: string,
+    trendPoints?: StepTrendPoint[],
+  ): string {
+    const isCross = comparison.compareKind === 'cross-browser';
+    const browser = isCross ? 'cross' : comparison.browser || 'unknown';
+    const sizeHint = comparison.sizeMismatch
+      ? '<span class="diff-size-hint" title="两张图尺寸不一致，仅对比重叠区域">尺寸不一致</span>'
+      : '';
+    const browserPairHint = isCross
+      ? `<span class="diff-browser-pair" title="Chrome 为基线，对比 WebKit">${getBrowserIcon('chrome')} Chrome ↔ ${getBrowserIcon('webkit')} WebKit</span>`
+      : '';
+    const pairLabelHint = comparison.pairLabel
+      ? `<span class="diff-pair-label" title="配对规则">${comparison.pairLabel}</span>`
+      : '';
+
+    const image1Label = isCross
+      ? `Chrome · ${extractImageLabelWithRoute(comparison.image1Path, 1)}`
+      : extractImageLabelWithRoute(comparison.image1Path, 1);
+    const image2Label = isCross
+      ? `WebKit · ${extractImageLabelWithRoute(comparison.image2Path, 2)}`
+      : extractImageLabelWithRoute(comparison.image2Path, 2);
+
+    return buildDiffCardHtml(comparison, {
+      image1Label,
+      image2Label,
+      browser,
+      isCross,
+      pairLabelHint,
+      browserPairHint,
+      sizeHint,
+      ctx: { trendPoints },
+    });
+  }
+
+  return { renderInlineDiffThumb, generateDiffCard };
+}
+
+export function generateIssuesTabHtml(
+  issues: UiIssue[],
+  deps: {
+    isCompareCrossBrowserEnabled: () => boolean;
+    renderInlineDiffThumb: (diffImagePath?: string) => string;
+  },
+): string {
+  const { isCompareCrossBrowserEnabled, renderInlineDiffThumb } = deps;
+  const crossBrowserOn = isCompareCrossBrowserEnabled();
+  if (issues.length === 0) {
+    return `
+    <div class="empty-state">
+      <div class="empty-state-icon">✅</div>
+      <div class="empty-state-title">未发现需关注的 UI 问题</div>
+      <div class="empty-state-description">当前阈值下无 blocker / warning 项。</div>
+    </div>`;
+  }
+
+  const merged = mergeIssuesForDisplay(issues);
+  const rows = merged
+    .map((issue) => {
+      const diffCell = renderInlineDiffThumb(issue.diffImagePath);
+      const pct = (issue.difference * 100).toFixed(3);
+      const countCell =
+        issue.rawCount > 1
+          ? `<span class="issues-raw-count" title="同日多次运行产生的重复对比已合并">${issue.rawCount}</span>`
+          : '1';
+      return `<tr class="issues-filter-row" data-severity="${issue.severity}" data-kind="${issue.compareKind}" data-browser="${issue.browser}"
+        data-sort-severity="${issue.severity === 'blocker' ? '3' : issue.severity === 'warning' ? '2' : '1'}"
+        data-sort-kind="${issue.compareKind}"
+        data-sort-script="${issue.scriptKey}"
+        data-sort-step="${issue.stepNumber}"
+        data-sort-stepName="${issue.stepName}"
+        data-sort-browser="${issue.browser}"
+        data-sort-diff="${issue.difference}"
+        data-sort-count="${issue.rawCount}">
+        <td><span class="severity-badge severity-${issue.severity}">${issue.severity}</span></td>
+        <td>${issue.compareKind}</td>
+        <td>${issue.scriptKey}</td>
+        <td>${issue.stepNumber}</td>
+        <td>${issue.stepName}</td>
+        <td>${issue.browser}</td>
+        <td>${pct}%</td>
+        <td>${countCell}</td>
+        <td>${diffCell}</td>
+      </tr>`;
+    })
+    .join('');
+
+  const deduped = issues.length - merged.length;
+  const dedupeNote =
+    deduped > 0
+      ? ` · 已合并 <strong>${deduped}</strong> 条重复（原始 ${issues.length} 条）`
+      : '';
+
+  return `
+    <div class="issues-summary">
+      <p>共 <strong id="issues-visible-count">${merged.length}</strong> 项<span id="issues-dedupe-note">${dedupeNote}</span><span id="issues-filter-note"></span> · blocker: <strong id="issues-blocker-count">${merged.filter((i) => i.severity === 'blocker').length}</strong> · warning: <strong id="issues-warning-count">${merged.filter((i) => i.severity === 'warning').length}</strong></p>
+      <p class="issues-hint">结构化清单见 <code>results/ui-issues.json</code>（含未合并原始条数）· 随上方「浏览器」筛选联动${crossBrowserOn ? ' · 跨浏览器差异展示最高为 warning' : ''}</p>
+    </div>
+    <div class="empty-state issues-browser-empty" id="issues-browser-empty" style="display: none;">
+      <div class="empty-state-icon">📋</div>
+      <div class="empty-state-title">当前浏览器筛选下暂无问题</div>
+      <div class="empty-state-description">可切换 chrome、webkit${crossBrowserOn ? ' 或「跨浏览器」' : ''}查看其他对比类型。</div>
+    </div>
+    <table class="issues-table" id="issues-table">
+      <thead>
+        <tr>
+          <th data-sort="severity" onclick="sortIssues('severity')">严重度<span class="sort-arrow active">↓</span></th>
+          <th data-sort="kind" onclick="sortIssues('kind')">类型<span class="sort-arrow">↕</span></th>
+          <th data-sort="script" onclick="sortIssues('script')">脚本<span class="sort-arrow">↕</span></th>
+          <th data-sort="step" onclick="sortIssues('step')">步骤<span class="sort-arrow">↕</span></th>
+          <th data-sort="stepName" onclick="sortIssues('stepName')">步骤名<span class="sort-arrow">↕</span></th>
+          <th data-sort="browser" onclick="sortIssues('browser')">浏览器<span class="sort-arrow">↕</span></th>
+          <th data-sort="diff" onclick="sortIssues('diff')">差异<span class="sort-arrow">↕</span></th>
+          <th data-sort="count" onclick="sortIssues('count')">条数<span class="sort-arrow">↕</span></th>
+          <th>Diff</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
 }
