@@ -8,9 +8,12 @@
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
-import { BitableClient } from '../feishu/bitable-client.js';
-import { explainMissingBitableConfig, loadBitableRuntimeConfig } from '../feishu/bitable-schema.js';
-import { fetchWithRetry } from '../feishu/feishu-utils.js';
+import {
+  BitableClient,
+  explainMissingBitableConfig,
+  fetchWithRetry,
+  loadBitableRuntimeConfig,
+} from '../feishu/index.js';
 
 dotenv.config();
 

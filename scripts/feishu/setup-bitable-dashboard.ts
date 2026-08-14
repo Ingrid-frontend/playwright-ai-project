@@ -7,14 +7,14 @@
  *   npm run feishu:bitable-setup -- --fix-fields   # 自动补缺失字段
  */
 import dotenv from 'dotenv';
-import { BitableClient } from './bitable-client.js';
 import {
+  BitableClient,
   DAILY_FIELDS,
   ISSUE_FIELDS,
   RUN_FIELDS,
   explainMissingBitableConfig,
   loadBitableRuntimeConfig,
-} from './bitable-schema.js';
+} from './index.js';
 
 dotenv.config();
 

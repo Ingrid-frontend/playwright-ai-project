@@ -20,17 +20,18 @@
 | flake 追踪 | error-reporter 标记 flake + `results/history/YYYY-MM-DD.json` |
 | 统一 CLI | `npm run cli -- --help` |
 | 初始化 | `npm run setup` |
-| Studio 模块化 | `pw-files/lib/repo-context.js`、`ws-safe.js` + WS 错误边界 |
+| Studio 模块化 | `pw-files/lib/` 分域 WS handler + session / 静态路由 |
+| CJS → ESM | `src/utils/*.ts` 为实现；Studio 仍 `require('*.cjs')` shim |
+| selector bbox 基线 | `promoteRunToGolden` 同步复制 `.meta.json` |
+| flake 仪表盘 | `report:dashboard` 读取 `results/history/test-runs/` 展示 flake 趋势 |
+| Studio jobs 拆分 | `test-jobs-actions`（任务）与 `test-jobs-spec-actions`（用例文件）分域 |
+| 对比引擎扫描拆分 | PNG 扫描在 `compare-screenshots-scan`；pixelmatch 配对仍在 `compare-screenshots-engine` |
 
 ## 进行中 / 建议下一步
 
 | 优先级 | 项 | 说明 |
 |--------|-----|------|
-| P0 | Studio 继续拆分 | `routes/`、`services/`、`session/` 从 server.js 抽离 |
-| P0 | CJS → ESM | 逐步迁移 `src/utils/*.cjs` 为 `.ts` |
-| P1 | selector bbox 基线 | promote 时同步 `.meta.json`；首次需重跑建立基线 |
 | P2 | 三引擎默认 CI | Firefox 已纳入 `test:ci`；若不稳定可再收窄 |
-| P3 | flake 仪表盘 | 基于 `results/history/` 聚合 trend |
 
 ## 环境变量速查
 

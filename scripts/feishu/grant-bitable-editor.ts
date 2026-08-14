@@ -13,8 +13,11 @@
  * 邮箱/手机号查询需开通 contact:user.id:readonly
  */
 import dotenv from 'dotenv';
-import { fetchWithRetry } from './feishu-utils.js';
-import { explainMissingBitableConfig, loadBitableRuntimeConfig } from './bitable-schema.js';
+import {
+  explainMissingBitableConfig,
+  fetchWithRetry,
+  loadBitableRuntimeConfig,
+} from './index.js';
 
 dotenv.config();
 

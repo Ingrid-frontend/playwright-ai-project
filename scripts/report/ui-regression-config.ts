@@ -149,9 +149,12 @@ export function loadUiRegressionConfig(): UiRegressionConfig {
         ...raw,
         screenshot: { ...DEFAULT_CONFIG.screenshot, ...raw.screenshot },
         crossBrowser: { ...DEFAULT_CONFIG.crossBrowser, ...raw.crossBrowser },
-        autoPromote: { ...DEFAULT_CONFIG.autoPromote, ...raw.autoPromote },
+        autoPromote: {
+          ...DEFAULT_CONFIG.autoPromote,
+          ...raw.autoPromote,
+        } as NonNullable<UiRegressionConfig['autoPromote']>,
         structureChecks: { ...DEFAULT_CONFIG.structureChecks, ...raw.structureChecks },
-        aiReview: { ...DEFAULT_CONFIG.aiReview, ...raw.aiReview },
+        aiReview: { ...DEFAULT_CONFIG.aiReview, ...raw.aiReview } as AiReviewConfig,
         viewports: raw.viewports?.length ? raw.viewports : DEFAULT_CONFIG.viewports,
       };
     } catch (e) {

@@ -18,11 +18,18 @@ import path from 'path';
 import os from 'os';
 import dotenv from 'dotenv';
 import { resolveStorageState, getBaseEnvConfig } from '../../src/utils/env-config.js';
-import { parseFigmaUrl, fetchFigmaNode, extractDesignSpec } from './design-spec.js';
-import { captureLiveSpec } from './live-spec.js';
-import { loadSpecConfig, runSpecChecks, summarizeChecks } from './spec-checks.js';
-import { writeSpecReport, writeDesignSpecOnly } from './spec-report.js';
-import type { DesignSpec } from './figma-spec-types.js';
+import {
+  captureLiveSpec,
+  extractDesignSpec,
+  fetchFigmaNode,
+  loadSpecConfig,
+  parseFigmaUrl,
+  runSpecChecks,
+  summarizeChecks,
+  writeDesignSpecOnly,
+  writeSpecReport,
+  type DesignSpec,
+} from './index.js';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 

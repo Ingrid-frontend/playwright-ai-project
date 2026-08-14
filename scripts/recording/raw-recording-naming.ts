@@ -128,7 +128,7 @@ export function buildRecordingBaseSlug(code: string, options: RecordingSlugOptio
   return (base || 'recording-codegen').substring(0, 32);
 }
 
-import { getDateCategoryForCalendarDay } from '../../src/utils/date-category.cjs';
+import { getDateCategoryForCalendarDay } from '../../src/utils/date-category.js';
 
 export { getDateCategoryForCalendarDay };
 

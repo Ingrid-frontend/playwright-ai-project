@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import type { UiIssuesReport } from '../report/ui-issues.js';
+import type { UiIssuesReport } from '../report/ui-issues-index.js';
 import {
   assertSpecEnvMatch,
   getLegacyEnvDefault,
@@ -92,10 +92,10 @@ function buildTrendSection(): string | null {
     const steps = raw.steps;
     if (!steps || Object.keys(steps).length === 0) return null;
 
-    const scored = [];
-    for (const [key, points] of Object.entries(steps)) {
+    const scored: Array<{ label: string; current: number; prev: number; delta: number; points: number[] }> = [];
+    for (const [key, points] of Object.entries(steps as Record<string, Array<{ v: number }>>)) {
       if (points.length < 2) continue;
-      const vals = points.map(p => p.v);
+      const vals = points.map((p) => p.v);
       scored.push({
         label: key.split('|').slice(1).join('·'),
         current: vals[vals.length - 1],
@@ -126,11 +126,11 @@ function buildTrendSection(): string | null {
   }
 }
 
-function renderMiniBar(points) {
+function renderMiniBar(points: number[]) {
   const MAX_BARS = 10;
   const sampled = points.length <= MAX_BARS ? points : sampleArray(points, MAX_BARS);
   const max = Math.max(...sampled, 0.001);
-  return sampled.map(v => {
+  return sampled.map((v) => {
     const ratio = v / max;
     if (ratio > 0.875) return '█';
     if (ratio > 0.625) return '▆';
@@ -140,7 +140,7 @@ function renderMiniBar(points) {
   }).join('');
 }
 
-function sampleArray(arr, n) {
+function sampleArray(arr: number[], n: number) {
   if (arr.length <= n) return [...arr];
   const step = (arr.length - 1) / (n - 1);
   const result = [];

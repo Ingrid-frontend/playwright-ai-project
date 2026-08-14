@@ -2,18 +2,10 @@ import { test as setup, expect } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
 import { env, curConfig } from '../../playwright.config';
-import { createRequire } from 'node:module';
 import { getLoginCredentials } from '../utils/credentials';
 import { resolveStorageState, shouldRefreshStorageState } from '../utils/env-config';
 import { isLoginLikePage, validateStorageStateFile } from '../utils/login-detection';
-
-const require = createRequire(import.meta.url);
-const { annotateStorageStateMeta } = require('../utils/storage-state-meta.cjs') as {
-  annotateStorageStateMeta: (
-    storagePath: string,
-    opts: { loginAccount?: string; env?: string; source?: string },
-  ) => boolean;
-};
+import { annotateStorageStateMeta } from '../utils/storage-state-meta.js';
 
 /**
  * 使用 Project Setup 模式

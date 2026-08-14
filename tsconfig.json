@@ -26,6 +26,11 @@
   ],
   "exclude": [
     "node_modules",
-    "dist"
+    "dist",
+    "tests/ai-generated",
+    "tests/optimized",
+    "tests/raw-recordings",
+    "tests/deprecated",
+    "tests/chrome-recorder"
   ]
 }

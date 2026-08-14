@@ -6,21 +6,22 @@ import path from 'path';
 
 function findLatestTrace(dir: string): string | null {
   if (!fs.existsSync(dir)) return null;
-  let latest: { path: string; mtime: number } | null = null;
+  const found: { path: string; mtime: number }[] = [];
 
   function walk(d: string) {
     for (const ent of fs.readdirSync(d, { withFileTypes: true })) {
       const full = path.join(d, ent.name);
       if (ent.isDirectory()) walk(full);
       else if (ent.name === 'trace.zip') {
-        const mtime = fs.statSync(full).mtimeMs;
-        if (!latest || mtime > latest.mtime) latest = { path: full, mtime };
+        found.push({ path: full, mtime: fs.statSync(full).mtimeMs });
       }
     }
   }
 
   walk(dir);
-  return latest?.path || null;
+  if (found.length === 0) return null;
+  found.sort((a, b) => b.mtime - a.mtime);
+  return found[0].path;
 }
 
 const trace = findLatestTrace(path.join(process.cwd(), 'test-results'));

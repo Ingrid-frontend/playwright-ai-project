@@ -5,7 +5,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import type { UiIssuesReport } from './ui-issues.js';
+import type { UiIssuesReport } from './ui-issues-index.js';
 
 const ISSUES_PATH = process.env.UI_ISSUES_OUT || 'results/ui-issues.json';
 

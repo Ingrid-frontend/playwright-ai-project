@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import type { UiIssuesReport } from './ui-issues.js';
+import type { UiIssuesReport } from './ui-issues-index.js';
 
 const HISTORY_DIR = path.join('results', 'history');
 const STEP_TRENDS_FILE = path.join(HISTORY_DIR, 'step-trends.json');

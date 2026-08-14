@@ -4,15 +4,7 @@ import path from 'path';
 import { env, curConfig } from '../../playwright.config';
 import { resolveStorageState } from '../../src/utils/env-config.js';
 import { prependRecordingAccountComment } from '../../src/utils/recording-meta.js';
-import { createRequire } from 'node:module';
-
-const require = createRequire(import.meta.url);
-const { postprocessRecordedScript } = require('../../src/utils/strip-login-from-recording.cjs') as {
-  postprocessRecordedScript: (
-    code: string,
-    opts: { storageRel?: string },
-  ) => { code: string; removedLoginLines: number };
-};
+import { postprocessRecordedScript } from '../../src/utils/strip-login-from-recording.js';
 import {
   buildRecordingBaseSlug,
   extractSnippetFromPlaywrightSpec,

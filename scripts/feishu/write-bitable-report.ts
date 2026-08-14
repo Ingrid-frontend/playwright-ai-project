@@ -14,7 +14,7 @@ import {
   type BitableRuntimeConfig,
 } from './bitable-schema.js';
 import type { JobSummaryFile } from '../jobs/job-lock.js';
-import type { UiIssue, UiIssuesReport } from '../report/ui-issues.js';
+import type { UiIssue, UiIssuesReport } from '../report/ui-issues-index.js';
 
 dotenv.config();
 

@@ -1,4 +1,4 @@
-import { countComparisonSeverities } from './ui-issues.js';
+import { countComparisonSeverities } from './ui-issues-index.js';
 import type { OverviewData } from './compare-report-viz.js';
 
 export { countComparisonSeverities };

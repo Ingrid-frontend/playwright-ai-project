@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
-import { fetchWithRetry } from './feishu-utils.js';
+import { fetchWithRetry } from './index.js';
 
 dotenv.config();
 

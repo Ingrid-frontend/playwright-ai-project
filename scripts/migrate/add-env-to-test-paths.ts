@@ -18,7 +18,7 @@ import {
   optimizedImportPathsForDepth,
   buildScreenshotDir,
 } from '../../src/utils/test-env-path.js';
-import { isDateCategoryDirSegment } from '../../src/utils/date-category.cjs';
+import { isDateCategoryDirSegment } from '../../src/utils/date-category.js';
 
 type MovePlan = { from: string; to: string; kind: string };
 

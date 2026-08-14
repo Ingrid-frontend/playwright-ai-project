@@ -2,8 +2,9 @@
 import fs from 'fs';
 import path from 'path';
 import type { HistorySnapshot } from './ui-regression-history.js';
-import type { UiIssuesReport } from './ui-issues.js';
+import type { UiIssuesReport } from './ui-issues-index.js';
 import { formatIssuePassRate } from './compare-report-viz.js';
+import { loadFlakeHistory, type FlakeDashboard } from './flake-history.js';
 
 const HISTORY_DIR = path.join('results', 'history');
 const ISSUES_FILE = 'results/ui-issues.json';
@@ -22,6 +23,7 @@ type DashboardPayload = {
   byRoute: Record<string, number>;
   byCompareKind: Record<string, number>;
   bitable: { runRecordUrl?: string; dashboardUrl?: string };
+  flake: FlakeDashboard;
 };
 
 function esc(s: string): string {
@@ -91,6 +93,7 @@ function buildPayload(): DashboardPayload {
       runRecordUrl: bitable.runRecordUrl,
       dashboardUrl: bitable.dashboardUrl,
     },
+    flake: loadFlakeHistory(),
   };
 }
 
@@ -225,6 +228,45 @@ function renderScriptTable(byScript: HistorySnapshot['byScript']): string {
     </table>`;
 }
 
+function renderFlakePanel(flake: FlakeDashboard): string {
+  if (!flake.trend.length) {
+    return '<p class="empty">暂无 flake 历史（results/history/test-runs）</p>';
+  }
+  const latest = flake.latest!;
+  const prev = flake.previous;
+  const ratePct = (latest.flakeRate * 100).toFixed(0);
+  const rows = flake.trend
+    .slice(-14)
+    .map(
+      (item) => `
+        <tr>
+          <td>${esc(item.date)}</td>
+          <td class="num">${item.runs}</td>
+          <td class="num">${item.failed}</td>
+          <td class="num">${item.flakeFailed}</td>
+          <td class="num">${(item.flakeRate * 100).toFixed(0)}%</td>
+        </tr>`,
+    )
+    .join('');
+  return `
+    <div class="kpi-grid" style="margin-bottom:12px">
+      <div class="kpi">
+        <div class="kpi-num">${latest.flakeFailed}</div>
+        <div class="kpi-label">当日 flake 失败</div>
+        <div class="kpi-delta ${deltaClass(latest.flakeFailed, prev?.flakeFailed)}">较上日 ${deltaText(latest.flakeFailed, prev?.flakeFailed)}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-num">${ratePct}%</div>
+        <div class="kpi-label">flake / 失败</div>
+        <div class="kpi-delta delta-neutral">${latest.failed} 次失败 · ${latest.runs} 轮</div>
+      </div>
+    </div>
+    <table class="data-table">
+      <thead><tr><th>日期</th><th>轮次</th><th>失败</th><th>flake</th><th>占比</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
 export function generateQualityDashboardHtml(payload: DashboardPayload): string {
   const summary = payload.current?.summary;
   const blocker = summary?.comparisonBlocker ?? summary?.blocker ?? 0;
@@ -341,6 +383,11 @@ export function generateQualityDashboardHtml(payload: DashboardPayload): string 
     <div class="panel">
       <h2>历史趋势</h2>
       ${renderTrendChart(payload.trend)}
+    </div>
+
+    <div class="panel">
+      <h2>Flake 趋势</h2>
+      ${renderFlakePanel(payload.flake)}
     </div>
 
     <div class="panel-grid">

@@ -1,8 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-import type { UiIssue } from './ui-issues.js';
+import type { UiIssue } from './ui-issues-index.js';
 import type { ReviewVerdict, UiIssueReview } from './ui-issue-review.js';
-import { fetchWithRetry } from '../feishu/feishu-utils.js';
+import { fetchWithRetry } from '../feishu/index.js';
 
 const VERDICTS = new Set<ReviewVerdict>(['ui_bug', 'likely_noise', 'unstable', 'needs_human']);
 

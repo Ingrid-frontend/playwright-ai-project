@@ -10,12 +10,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { createRequire } from 'node:module';
-
-const require = createRequire(import.meta.url);
-const { isKnownEnv } = require('../../src/utils/test-env-path.cjs') as {
-  isKnownEnv: (envId: string, repoRoot?: string) => boolean;
-};
+import { isKnownEnv } from '../../src/utils/test-env-path.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '../..');

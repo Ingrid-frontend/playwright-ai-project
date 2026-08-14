@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { pathToFileURL } from 'url';
-import type { UiIssuesReport } from '../report/ui-issues.js';
+import type { UiIssuesReport } from '../report/ui-issues-index.js';
 import { writeQualityDashboard } from '../report/generate-quality-dashboard.js';
 import { getFeishuAccessToken, loadFeishuAppConfig, uploadMessageImage } from './feishu-app.js';
 

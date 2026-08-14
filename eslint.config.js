@@ -22,6 +22,15 @@ export default [
   },
   js.configs.recommended,
   {
+    files: ['pw-files/**/*.js', 'src/utils/**/*.cjs', 'scripts/verify/**/*.cjs'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
+  {
     files: ['**/*.{ts,tsx}'],
     languageOptions: {
       parser: tsParser,

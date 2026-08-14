@@ -8,8 +8,10 @@ import {
   collectBrowserFilterList,
   renderCompareReportHtml,
 } from '../report/compare-screenshots-report.js';
-import { discoverScriptScanTargets } from '../report/compare-screenshots-scan.js';
-import { classifyComparisonSeverity } from '../report/ui-issues.js';
+import { discoverScriptScanTargets, getAllScreenshots } from '../report/compare-screenshots-scan.js';
+import { classifyComparisonSeverity } from '../report/ui-issues-index.js';
+import { loadFlakeHistory } from '../report/flake-history.js';
+import { isDateCategoryDirSegment } from '../../src/utils/date-category.js';
 import * as uiIssuesMod from '../report/ui-issues-index.js';
 import * as feishuMod from '../feishu/index.js';
 import * as figmaMod from '../figma/index.js';
@@ -95,10 +97,38 @@ assert.equal(targets[0]?.testDir, '260612/demo');
 fs.rmSync(tmp, { recursive: true, force: true });
 pass('discoverScriptScanTargets');
 
+const shotTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pw-shot-'));
+const runDir = path.join(shotTmp, 'run-chromium-optimized');
+fs.mkdirSync(runDir, { recursive: true });
+fs.writeFileSync(path.join(runDir, 'step-1-home.png'), '');
+const shots = getAllScreenshots(shotTmp, 'optimized', path.join(shotTmp, 'results', 'out.html'));
+assert.equal(shots.get(1)?.length, 1);
+assert.equal(shots.get(1)?.[0]?.browser, 'chrome');
+assert.equal(shots.get(1)?.[0]?.stepName, 'home');
+fs.rmSync(shotTmp, { recursive: true, force: true });
+pass('getAllScreenshots');
+
 assert.equal(typeof uiIssuesMod.buildUiIssuesReport, 'function');
 assert.equal(typeof uiIssuesMod.buildPlainLanguageAnalysis, 'function');
 assert.equal(typeof feishuMod.fetchWithRetry, 'function');
 assert.equal(typeof figmaMod.parseFigmaUrl, 'function');
 pass('module barrels');
+
+assert.equal(isDateCategoryDirSegment('260814'), true);
+assert.equal(isDateCategoryDirSegment('foo'), false);
+pass('date-category ESM');
+
+const flakeTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pw-flake-'));
+const emptyFlake = loadFlakeHistory(flakeTmp);
+assert.equal(emptyFlake.trend.length, 0);
+fs.writeFileSync(
+  path.join(flakeTmp, '2026-08-14.json'),
+  JSON.stringify({ entries: [{ failed: 2, flakeFailed: 1 }] }),
+);
+const flake = loadFlakeHistory(flakeTmp);
+assert.equal(flake.latest?.flakeFailed, 1);
+assert.equal(flake.latest?.failed, 2);
+fs.rmSync(flakeTmp, { recursive: true, force: true });
+pass('flake-history');
 
 console.log('\n✅ smoke-report-modules 通过');

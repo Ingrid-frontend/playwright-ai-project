@@ -24,7 +24,7 @@ function openReportFile(absReport: string): void {
   if (process.platform === 'darwin') {
     execSync(`open ${q(absReport)}`, { stdio: 'inherit' });
   } else if (process.platform === 'win32') {
-    execSync(`start "" ${q(absReport)}`, { stdio: 'inherit', shell: true });
+    execSync(`start "" ${q(absReport)}`, { stdio: 'inherit', shell: 'cmd.exe' });
   } else {
     execSync(`xdg-open ${q(absReport)}`, { stdio: 'inherit' });
   }

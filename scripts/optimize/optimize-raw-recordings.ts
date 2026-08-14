@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { getDateCategoryForCalendarDay } from '../../src/utils/date-category.cjs';
+import { getDateCategoryForCalendarDay } from '../../src/utils/date-category.js';
 import {
   buildScreenshotDir,
   optimizedImportPathsForDepth,
@@ -8,6 +8,8 @@ import {
   parseEnvAndDateCategoryFromRawOrProcessed,
   isEnvSegmentEnabled,
 } from '../../src/utils/test-env-path.js';
+
+const STUDIO_DRAFT_STEM = 'studio-auto';
 
 /**
  * optimize-raw-recordings.ts

@@ -4,7 +4,7 @@ import {
   parseDateCategoryToDate,
   toShortDateCategoryCode,
   normalizeDateCategoryList,
-} from '../../src/utils/date-category.cjs';
+} from '../../src/utils/date-category.js';
 
 interface DateCategoryConfig {
   dateCategories: string[];

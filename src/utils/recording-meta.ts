@@ -1,23 +1,6 @@
-import { createRequire } from "node:module";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
+import { extractLoginAccount, extractFromCode } from "./extract-login-account.js";
+import { readLoginStateMeta, formatLoginAccountLabel } from "./storage-state-meta.js";
 import { resolveAccountProfile, resolveStorageState } from "./env-config.js";
-
-const require = createRequire(import.meta.url);
-const { extractLoginAccount, extractFromCode } = require(path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "extract-login-account.cjs",
-)) as {
-  extractLoginAccount: (opts: { code?: string; storagePath?: string }) => string | null;
-  extractFromCode: (code?: string) => string | null;
-};
-const { readLoginStateMeta, formatLoginAccountLabel } = require(path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "storage-state-meta.cjs",
-)) as {
-  readLoginStateMeta: (storagePath: string) => { loginAccount?: string; userId?: string } | null;
-  formatLoginAccountLabel: (meta: { loginAccount?: string } | null) => string | null;
-};
 
 const META_MARKERS = /录制元信息|录制环境:/;
 

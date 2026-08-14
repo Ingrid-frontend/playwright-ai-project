@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
 import { readUiIssuesSummaryLine, sendJobFeishuNotification } from '../jobs/job-notify.js';
-import { gateShouldFail, type UiIssuesReport } from '../report/ui-issues.js';
+import { gateShouldFail, type UiIssuesReport } from '../report/ui-issues-index.js';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
