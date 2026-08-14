@@ -27,6 +27,9 @@
 | Studio jobs 拆分 | `test-jobs-actions`（任务）与 `test-jobs-spec-actions`（用例文件）分域 |
 | 对比引擎扫描拆分 | PNG 扫描在 `compare-screenshots-scan`；pixelmatch 配对仍在 `compare-screenshots-engine` |
 | 大脚本拆分 | optimize / Figma 报告 / 飞书文档 / auto-test 通知 / 报告 viz 资产按域抽出 |
+| 设计稿收集拆分 | `design-spec-collect` 负责区域/色板收集；`extractDesignSpec` 只做装配 |
+| 报告日期分组 | `compare-screenshots-render-date` 抽出日历日分组 |
+| Job 执行拆分 | `job-runner-execute` 负责按档案跑用例 |
 
 ## 进行中 / 建议下一步
 

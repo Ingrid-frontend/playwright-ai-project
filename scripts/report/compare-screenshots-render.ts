@@ -7,6 +7,10 @@ export {
   createCountHelpers,
   getTotalExecutions,
   getBrowserFilterLabel,
+  createScreenshotSectionRenderer,
+  createDiffStepRenderer,
+} from './compare-screenshots-render-diff.js';
+export {
   extractCalendarDayKey,
   calendarDayKeyForScreenshot,
   formatDateGroupTitle,
@@ -16,9 +20,7 @@ export {
   groupImageComparisonsByCalendarDay,
   compareScreenshotSubsectionNames,
   groupScreenshotsByBrowser,
-  createScreenshotSectionRenderer,
-  createDiffStepRenderer,
-} from './compare-screenshots-render-diff.js';
+} from './compare-screenshots-render-date.js';
 export {
   stripScriptTimestamp,
   scriptTabDisambiguatorSuffix,

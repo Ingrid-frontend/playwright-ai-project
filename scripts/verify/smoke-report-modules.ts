@@ -8,6 +8,7 @@ import {
   collectBrowserFilterList,
   renderCompareReportHtml,
 } from '../report/compare-screenshots-report.js';
+import { extractCalendarDayKey } from '../report/compare-screenshots-render-date.js';
 import { discoverScriptScanTargets, getAllScreenshots } from '../report/compare-screenshots-scan.js';
 import { classifyComparisonSeverity } from '../report/ui-issues-index.js';
 import { loadFlakeHistory } from '../report/flake-history.js';
@@ -107,6 +108,10 @@ assert.equal(shots.get(1)?.[0]?.browser, 'chrome');
 assert.equal(shots.get(1)?.[0]?.stepName, 'home');
 fs.rmSync(shotTmp, { recursive: true, force: true });
 pass('getAllScreenshots');
+
+assert.equal(extractCalendarDayKey('2026-08-14_10-00-00'), '2026-08-14');
+assert.equal(extractCalendarDayKey('foo'), null);
+pass('extractCalendarDayKey');
 
 assert.equal(typeof uiIssuesMod.buildUiIssuesReport, 'function');
 assert.equal(typeof uiIssuesMod.buildPlainLanguageAnalysis, 'function');
