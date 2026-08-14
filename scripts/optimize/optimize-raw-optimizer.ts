@@ -7,80 +7,17 @@ import {
   optimizedImportDepthFromRel,
   parseEnvAndDateCategoryFromRawOrProcessed,
 } from '../../src/utils/test-env-path.js';
+import { generateTemplateCode, type Action } from './optimize-raw-codegen.js';
+import { optimizeScript, type OptimizeOptions } from './optimize-raw-passes.js';
+
+export { reloadGenWait, getScreenshotMode } from './optimize-raw-wait.js';
 
 const STUDIO_DRAFT_STEM = 'studio-auto';
 
-// 动作类型定义
-interface Action {
-  index: number;
-  type: 'click' | 'fill' | 'type' | 'check' | 'selectOption' | 'press' | 'goto';
-  selector: string;
-  text?: string;
-  url?: string;
-  originalLine: number;
-}
-
-// 测试块定义
 interface TestBlock {
   start: number;
   end: number;
   bodyStart: number;
-}
-
-function numEnv(key: string, fallback: number): number {
-  const v = process.env[key]?.trim();
-  if (!v) return fallback;
-  const n = Number(v);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
-}
-
-/** 生成用例时注入的等待/超时（可通过 GEN_WAIT_* 环境变量覆盖） */
-function loadGenWait() {
-  return {
-    testTimeoutMs: numEnv('GEN_WAIT_TEST_TIMEOUT_MS', 90_000),
-    networkIdleGotoMs: numEnv('GEN_WAIT_NETWORK_IDLE_GOTO_MS', 5_000),
-    networkIdleAfterMs: numEnv('GEN_WAIT_NETWORK_IDLE_AFTER_MS', 5_000),
-    skipGuardVisibleMs: numEnv('GEN_WAIT_SKIP_GUARD_VISIBLE_MS', 4_000),
-    iframeAttachedMs: numEnv('GEN_WAIT_IFRAME_ATTACHED_MS', 12_000),
-    expectVisibleIframeMs: numEnv('GEN_WAIT_EXPECT_VISIBLE_IFRAME_MS', 12_000),
-    expectVisibleMs: numEnv('GEN_WAIT_EXPECT_VISIBLE_MS', 8_000),
-    locatorVisibleIframeMs: numEnv('GEN_WAIT_LOCATOR_VISIBLE_IFRAME_MS', 12_000),
-    locatorVisibleMs: numEnv('GEN_WAIT_LOCATOR_VISIBLE_MS', 6_000),
-  };
-}
-
-let GEN_WAIT = loadGenWait();
-
-export function reloadGenWait(): void {
-  GEN_WAIT = loadGenWait();
-}
-
-/** after-only：仅 after 截图；both：before+after（默认） */
-export function getScreenshotMode(): 'after-only' | 'both' {
-  const v = (process.env.OPTIMIZE_SCREENSHOT || process.argv.find((a) => a.startsWith('--screenshot='))?.slice('--screenshot='.length) || 'both').toLowerCase();
-  return v === 'after-only' ? 'after-only' : 'both';
-}
-
-// 优化选项
-interface OptimizeOptions {
-  removeIframe: boolean;
-  deduplicate: boolean;
-  removeNoise: boolean;
-  mergeFill: boolean;
-  waitLoad: boolean;
-  addVisible: boolean;
-  addTimeout: boolean;
-  simplifyCheck: boolean;
-}
-
-// 优化统计
-interface OptimizeMetrics {
-  removedNoise: number;
-  removedDedup: number;
-  removedFillMerge: number;
-  removedUncheck: number;
-  addedAsserts: number;
-  totalRemoved: number;
 }
 
 type OptimizedImportLayout = 'nested' | 'flat';
@@ -160,215 +97,15 @@ export class RawRecordingOptimizer {
   }
 
   optimize(): string {
-    // 首先进行多 pass 优化
-    const optimizedContent = this.optimizeScript(this.content);
-    // 更新内容和行，以便后续分析
+    const optimizedContent = optimizeScript(this.content, this.options);
     this.content = optimizedContent;
     this.lines = this.content.split('\n');
-    // 分析动作和测试块
     this.analyzeActions();
     this.identifyTestBlock();
     return this.generateOptimizedCode();
   }
 
-  /**
-   * 多 pass 优化管道
-   */
-  private optimizeScript(source: string): string {
-    const lines = source.split('\n');
-    const metrics: OptimizeMetrics = {
-      removedNoise: 0,
-      removedDedup: 0,
-      removedFillMerge: 0,
-      removedUncheck: 0,
-      addedAsserts: 0,
-      totalRemoved: 0
-    };
-
-    // --- Pass 1: 保留原始 iframe 结构 ---
-    // 这里不再全局移除 iframe 前缀，避免把位于 iframe 内的元素错误提升到 page 上
-    let workingLines = lines.slice();
-
-    // --- Pass 2: 移除噪声背景点击 ---
-    if (this.options.removeNoise) {
-      workingLines = workingLines.filter(line => {
-        if (this.isNoiseLine(line) && /\.click\(\)/.test(line)) {
-          metrics.removedNoise++;
-          return false;
-        }
-        return true;
-      });
-    }
-
-    // --- Pass 3: 简化 uncheck+check 对 ---
-    if (this.options.simplifyCheck) {
-      const filteredLines = [];
-      for (let i = 0; i < workingLines.length; i++) {
-        const curr = workingLines[i];
-        const next = workingLines[i + 1];
-        if (curr && next) {
-          const cParsed = this.parseLine(curr);
-          const nParsed = this.parseLine(next);
-          if (cParsed && nParsed) {
-            const cA = this.extractAction(cParsed.expr);
-            const nA = this.extractAction(nParsed.expr);
-            if (cA && nA && cA.name === 'uncheck' && nA.name === 'check') {
-              const cL = this.extractLocator(cParsed.expr);
-              const nL = this.extractLocator(nParsed.expr);
-              if (cL === nL) {
-                metrics.removedUncheck++;
-                i++; // 跳过 uncheck，保留 check
-                filteredLines.push(next);
-                continue;
-              }
-            }
-          }
-        }
-        filteredLines.push(curr);
-      }
-      workingLines = filteredLines;
-    }
-
-    // --- Pass 4: 去重连续相同的操作 ---
-    if (this.options.deduplicate) {
-      const filteredLines = [];
-      for (let i = 0; i < workingLines.length; i++) {
-        const curr = workingLines[i].trim();
-        const prev = filteredLines.length > 0 ? filteredLines[filteredLines.length - 1].trim() : '';
-        if (curr === prev && curr.startsWith('await ')) {
-          metrics.removedDedup++;
-          continue;
-        }
-        filteredLines.push(workingLines[i]);
-      }
-      workingLines = filteredLines;
-    }
-
-    // --- Pass 5: 合并 click+fill 操作 ---
-    if (this.options.mergeFill) {
-      const filteredLines = [];
-      for (let i = 0; i < workingLines.length; i++) {
-        if (this.isRedundantClickBeforeFill(workingLines, i)) {
-          metrics.removedFillMerge++;
-          continue; // 跳过 click，保留 fill
-        }
-        filteredLines.push(workingLines[i]);
-      }
-      workingLines = filteredLines;
-    }
-
-    // 计算总移除量
-    metrics.totalRemoved = metrics.removedNoise + metrics.removedDedup + metrics.removedFillMerge + metrics.removedUncheck;
-
-    console.log(`🔍 优化统计: 移除 ${metrics.totalRemoved} 个步骤`);
-    console.log(`   - 噪声点击: ${metrics.removedNoise}`);
-    console.log(`   - 重复操作: ${metrics.removedDedup}`);
-    console.log(`   - 合并填充: ${metrics.removedFillMerge}`);
-    console.log(`   - 简化勾选: ${metrics.removedUncheck}`);
-
-    return workingLines.join('\n');
-  }
-
-  /**
-   * 移除 iframe 前缀
-   */
-  private stripIframePrefix(line: string): string {
-    // 匹配 page.locator('iframe').contentFrame().XXX 模式
-    return line.replace(
-      /page\.locator\(['"]iframe['"]\)\.contentFrame\(\)\./g,
-      'page.'
-    );
-  }
-
-  /**
-   * 解析单行 await 语句
-   */
-  private parseLine(line: string): { indent: string; expr: string } | null {
-    const m = line.match(/^(\s*)(await\s+.+);?\s*$/);
-    if (!m) return null;
-    return { indent: m[1], expr: m[2].trim() };
-  }
-
-  /**
-   * 提取定位器链
-   */
-  private extractLocator(expr: string): string {
-    // 移除前导的 "await "
-    const body = expr.replace(/^await\s+/, '');
-    // 匹配最后的方法调用
-    const m = body.match(/^(.*?)\.(click|fill|check|uncheck|select|type|press|tap|hover|focus|blur|clear|dblclick|dispatchEvent|waitFor|selectOption)\(.*\)$/);
-    if (m) return m[1];
-    return body;
-  }
-
-  /**
-   * 提取动作信息
-   */
-  private extractAction(expr: string): { name: string; args: string } | null {
-    const body = expr.replace(/^await\s+/, '');
-    const m = body.match(/\.([a-zA-Z]+)\(([^)]*)\)$/);
-    if (m) return { name: m[1], args: m[2] };
-    return null;
-  }
-
-  /**
-   * 检查是否是噪声背景点击
-   */
-  private isNoiseLine(line: string): boolean {
-    const hasTextMatch = line.match(/hasText:\s*['"](.+?)['"]/);
-    if (hasTextMatch) {
-      if (hasTextMatch[1].length > 15) return true;
-    }
-
-    const getByTextMatch = line.match(/getByText\(['"]([^'"]+)['"]\)/);
-    if (getByTextMatch) {
-      if (getByTextMatch[1].length > 15) return true;
-    }
-
-    const nthMatch = line.match(/\.nth\((\d+)\)/);
-    if (nthMatch) {
-      const n = parseInt(nthMatch[1], 10);
-      if (n > 5) return true;
-    }
-
-    return false;
-  }
-
-  /**
-   * 检查是否是 fill 前的冗余 click
-   */
-  private isRedundantClickBeforeFill(lines: string[], idx: number): boolean {
-    const curr = lines[idx];
-    const next = lines[idx + 1];
-    if (!curr || !next) return false;
-    const currParsed = this.parseLine(curr);
-    const nextParsed = this.parseLine(next);
-    if (!currParsed || !nextParsed) return false;
-
-    const currAction = this.extractAction(currParsed.expr);
-    const nextAction = this.extractAction(nextParsed.expr);
-
-    if (!currAction || !nextAction) return false;
-    if (currAction.name !== 'click') return false;
-    if (nextAction.name !== 'fill') return false;
-
-    const currLoc = this.extractLocator(currParsed.expr);
-    const nextLoc = this.extractLocator(nextParsed.expr);
-
-    return currLoc === nextLoc;
-  }
-
-  /**
-   * 检查是否是关键动作
-   */
-  private isKeyAction(expr: string): boolean {
-    return /\.(click|fill|check|uncheck|selectOption)\(/.test(expr);
-  }
-
   private detectIframe(): void {
-    // 仅在源文件中出现显式 iframe contentFrame 访问时，才启用 iframe 上下文逻辑。
-    // 之前使用 line.includes('iframe') 会把注释、字符串、CSS 选择器等误判为 iframe 页面，
-    // 从而生成多余的 iframe 初始化代码，并可能引入运行时错误。
     const explicitIframePattern = /(?:locator|frameLocator)\((['"])iframe\1\)(?:\.contentFrame\(\))?/;
     const explicitContentFramePattern = /contentFrame\(\)/;
 
@@ -380,12 +117,10 @@ export class RawRecordingOptimizer {
   }
 
   private isLoginAction(line: string): boolean {
-    // 1) 配置层面的登录态设置，直接跳过
     if (line.includes('storageState') || line.includes('loginState')) {
       return true;
     }
 
-    // 2) 仅跳过明确的登录流程元素，避免把页面中其他“密码/账号”等有效操作误删
     const explicitLoginPatterns = [
       /getByRole\(['"]tab['"],\s*\{\s*name:\s*['"]账号登录['"]\s*\}\)\.(click|tap)\(/,
       /getByRole\(['"]textbox['"],\s*\{\s*name:\s*['"]请输入手机号\/邮箱['"]\s*\}\)\.(click|fill|type)\(/,
@@ -400,14 +135,11 @@ export class RawRecordingOptimizer {
       return true;
     }
 
-    // 3) 登录页里常见的 label 点击，仅在明确命中登录关键词时跳过
     if ((line.includes("page.locator('label')") || line.includes('page.locator("label")') || line.includes("frameLocator('iframe').locator('label')")) &&
         (line.includes('账号登录') || line.includes('手机号') || line.includes('邮箱') || line.includes('用户协议') || line.includes('隐私协议'))) {
       return true;
     }
 
-    // 4) 检查是否在登录流程中的 label 点击（没有明确关键词但在登录相关操作附近）
-    // 简化处理：如果是简单的 label 点击，且在登录操作附近，也跳过
     if (line.includes('.locator("label")') || line.includes(".locator('label')")) {
       return true;
     }
@@ -417,7 +149,6 @@ export class RawRecordingOptimizer {
 
   private analyzeActions(): void {
     this.lines.forEach((line, index) => {
-      // 跳过登录相关的操作
       if (this.isLoginAction(line)) {
         console.log(`⏭️  跳过登录操作: ${line.substring(0, 100)}...`);
         return;
@@ -486,7 +217,6 @@ export class RawRecordingOptimizer {
   private identifyTestBlock(): void {
     const start = this.lines.findIndex(l => l.includes('test('));
     if (start === -1) {
-      // original/ 等备份常为「仅 await page.*」片段，无 test() 包装
       const awaitLineIndices = this.lines
         .map((l, i) => (/await\s+page\./.test(l) ? i : -1))
         .filter((i) => i >= 0);
@@ -548,8 +278,6 @@ export class RawRecordingOptimizer {
   }
 
   private extractTestUseSettings(): string[] {
-    // optimized 用例默认走 playwright.config.ts 的 project 配置（storageState/baseURL 等）
-    // 为避免环境硬编码与重复配置，这里不再从 raw-recordings 透传 test.use 块
     return [];
   }
 
@@ -577,323 +305,17 @@ export class RawRecordingOptimizer {
       fileName,
     });
 
-    // 提取 test.use 设置
     const testUseLines = this.extractTestUseSettings();
 
-    // 生成优化后的代码
-    const optimizedCode = this.generateTemplateCode(testName, screenshotDir, testUseLines, this.actions);
-
-    return optimizedCode;
-  }
-
-  private generateTemplateCode(testName: string, screenshotDir: string, testUseLines: string[], actions: Action[]): string {
-    const needsClick = actions.some((a) => a.type === 'click');
-    const needsFill = actions.some((a) => a.type === 'fill');
-    const actionImports = [
-      'step',
-      'maybePause',
-      ...(needsClick ? ['smartClick'] : []),
-      ...(needsFill ? ['smartFill'] : []),
-    ];
-    const imp = this.getOptimizedImportPaths();
-
-    const template = `import { test, expect } from '${imp.fixtures}';
-import fs from 'fs';
-import path from 'path';
-import { takeStepScreenshot, waitForPostInteractionPaint, withScreenshotRunSegment } from '${imp.screenshot}';
-import { ${actionImports.join(', ')} } from '${imp.optimizedActions}';
-
-${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testName}', async ({ page }) => {
-  ${this.options.addTimeout ? `test.setTimeout(${GEN_WAIT.testTimeoutMs});` : ''}
-
-  // 截图根目录；Chrome/WebKit 子目录由 ${imp.fixturesCommentPhrase} 按引擎自动设置（仍可用 PLAYWRIGHT_SCREENSHOT_RUN_SEGMENT 手动覆盖）
-  const screenshotDir = withScreenshotRunSegment('${screenshotDir}');
-  if (!fs.existsSync(screenshotDir)) {
-    fs.mkdirSync(screenshotDir, { recursive: true });
-  }
-
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const runDir = path.join(screenshotDir, timestamp);
-
-  // 检查是否有页面导航操作
-  const hasGotoAction = ${actions.some(action => action.type === 'goto')};
-  
-  if (!hasGotoAction) {
-    // 如果没有页面导航，添加一个默认的
-    await step('导航到首页', async () => {
-      console.log('🌐 导航到: / (基于 baseURL)');
-      await page.goto('/', { waitUntil: 'load' });
-      await takeStepScreenshot(page, path.join(runDir, \`step-1-导航到首页.png\`));
+    return generateTemplateCode({
+      testName,
+      screenshotDir,
+      testUseLines,
+      actions: this.actions,
+      options: this.options,
+      hasIframe: this.hasIframe,
+      importPaths: this.getOptimizedImportPaths(),
     });
-  }
-
-  ${this.generateActionsCode(actions, 'runDir')}
-
-  // 停止 tracing 由 Playwright 配置自动处理
-
-  console.log('');
-  console.log('🎉 测试完成: ' + '${testName}');
-});
-`;
-
-    return template;
-  }
-
-  private generateActionsCode(actions: Action[], runDirVariable: string): string {
-    let code = '';
-    let stepIndex = 1;
-
-    actions.forEach((action) => {
-      if (action.type === 'goto') {
-        code += `  await step('导航到页面', async () => {
-    console.log('🌐 导航到: ${action.url}');
-    await page.goto('${action.url}', { waitUntil: 'load' });
-    ${this.options.waitLoad ? `await page.waitForLoadState('networkidle', { timeout: ${GEN_WAIT.networkIdleGotoMs} }).catch(() => {});` : ''}
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-导航到页面.png\`));
-  });
-
-`;
-        stepIndex++;
-      } else {
-        const actionCode = this.generateActionCode(action, stepIndex, runDirVariable);
-        code += actionCode;
-        stepIndex++;
-      }
-    });
-
-    return code;
-  }
-
-  /** 该步是否写在录制里的 iframe / contentFrame 链上（与整文件是否含 iframe 无关） */
-  private actionUsesIframeContext(action: Action): boolean {
-    const s = action.selector;
-    return /contentFrame\s*\(\)/.test(s) || /frameLocator\s*\(\s*['"]iframe['"]\s*\)/.test(s);
-  }
-
-  /**
-   * iframe 内操作：用 frameLocator('iframe').first() 取「第一个 iframe」。
-   * 录制器默认使用 page.locator('iframe').contentFrame() 匹配第一个 iframe，
-   * 因此回放时也应使用第一个 iframe 以保持一致。
-   */
-  private buildLocatorDeclaration(action: Action, locatorCode: string): string {
-    if (this.hasIframe && this.actionUsesIframeContext(action)) {
-      return `await page.locator('iframe').first().waitFor({ state: 'attached', timeout: ${GEN_WAIT.iframeAttachedMs} }).catch(() => {});
-    const baseContext = page.frameLocator('iframe').first();
-    const locator = ${locatorCode};`;
-    }
-    return `const locator = ${locatorCode};`;
-  }
-
-  private expectVisibleLine(action: Action, isKeyAction: boolean): string {
-    if (!this.options.addVisible || !isKeyAction) return '';
-    const iframeStep = this.hasIframe && this.actionUsesIframeContext(action);
-    const timeout = iframeStep ? GEN_WAIT.expectVisibleIframeMs : GEN_WAIT.expectVisibleMs;
-    return `await expect(locator).toBeVisible({ timeout: ${timeout} });`;
-  }
-
-  private isCriticalStep(label: string): boolean {
-    const criticalKeywords = [
-      '新建', '提交', '保存', '删除', '审批', '通过', '驳回',
-      '登录', '注册', '支付', '下单', '确认', '发送',
-      '新增', '编辑', '修改', '更新', '导入', '导出',
-      // Close / 关闭类多为弹层关闭，未弹出时不应卡死整用例（与「跳过非关键步骤」策略一致）
-      '取 消', '取消',
-    ];
-    return criticalKeywords.some((kw) => label.includes(kw));
-  }
-
-  private beforeScreenshotLine(stepIndex: number, fileLabel: string, runDirVariable: string): string {
-    if (getScreenshotMode() === 'after-only') return '';
-    return `    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`));
-`;
-  }
-
-  private generateActionCode(action: Action, stepIndex: number, runDirVariable: string): string {
-    const label = this.getActionLabel(action);
-    const fileLabel = this.cleanLabel(label) || `step-${stepIndex}`;
-    const selector = this.optimizeSelector(action.selector);
-    const locatorCode = this.extractAndOptimizeLocator(selector);
-    const isKeyAction = this.isKeyAction(action.selector);
-    const isCritical = this.isCriticalStep(label);
-
-    const skipGuard = isCritical
-      ? ''
-      : `    try {
-      await expect(locator).toBeVisible({ timeout: ${GEN_WAIT.skipGuardVisibleMs} });
-    } catch {
-      console.log('ℹ️  ${label}：元素未出现（非关键步骤），跳过本步');
-      await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-skipped.png\`), { mode: 'stable' });
-      return;
-    }
-`;
-
-    const visibleLine = isCritical ? this.expectVisibleLine(action, isKeyAction) : '';
-    const locatorVisibleTimeout = this.actionUsesIframeContext(action)
-      ? GEN_WAIT.locatorVisibleIframeMs
-      : GEN_WAIT.locatorVisibleMs;
-
-    switch (action.type) {
-      case 'click':
-        return `  await step('${label}', async () => {
-${this.beforeScreenshotLine(stepIndex, fileLabel, runDirVariable)}    ${this.buildLocatorDeclaration(action, locatorCode)}
-${skipGuard}${visibleLine}    await smartClick(locator, '${label}');
-    await page.waitForLoadState('networkidle', { timeout: ${GEN_WAIT.networkIdleAfterMs} }).catch(() => {});
-    await waitForPostInteractionPaint(page);
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { mode: 'stable' });
-  });
-
-`;
-      case 'fill':
-      case 'type': {
-        const text = action.text || '';
-        return `  await step('${label}', async () => {
-${this.beforeScreenshotLine(stepIndex, fileLabel, runDirVariable)}    ${this.buildLocatorDeclaration(action, locatorCode)}
-${skipGuard}${visibleLine}    await smartFill(locator, "${text}", '${label}');
-    await page.waitForLoadState('networkidle', { timeout: ${GEN_WAIT.networkIdleAfterMs} }).catch(() => {});
-    await waitForPostInteractionPaint(page);
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { mode: 'stable' });
-  });
-
-`;
-      }
-      case 'check':
-        return `  await step('${label}', async () => {
-${this.beforeScreenshotLine(stepIndex, fileLabel, runDirVariable)}    ${this.buildLocatorDeclaration(action, locatorCode)}
-${skipGuard}${visibleLine}    try {
-      await locator.waitFor({ state: 'visible', timeout: ${locatorVisibleTimeout} });
-    } catch (e) {
-      console.log('⚠️ 元素不可见，尝试暂停调试');
-      await maybePause(page, '元素不可见');
-    }
-    try {
-      await locator.check();
-    } catch (e) {
-      console.log(\`⚠️ 勾选失败: \${e.message}\`);
-      await maybePause(page, '勾选失败');
-    }
-    await page.waitForLoadState('networkidle', { timeout: ${GEN_WAIT.networkIdleAfterMs} }).catch(() => {});
-    await waitForPostInteractionPaint(page);
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { mode: 'stable' });
-  });
-
-`;
-      case 'selectOption':
-        return `  await step('${label}', async () => {
-${this.beforeScreenshotLine(stepIndex, fileLabel, runDirVariable)}    ${this.buildLocatorDeclaration(action, locatorCode)}
-${skipGuard}${visibleLine}    try {
-      await locator.waitFor({ state: 'visible', timeout: ${locatorVisibleTimeout} });
-    } catch (e) {
-      console.log('⚠️ 元素不可见，尝试暂停调试');
-      await maybePause(page, '元素不可见');
-    }
-    try {
-      await locator.selectOption("${action.text || ''}");
-    } catch (e) {
-      console.log(\`⚠️ 选择失败: \${e.message}\`);
-      await maybePause(page, '选择失败');
-    }
-    await page.waitForLoadState('networkidle', { timeout: ${GEN_WAIT.networkIdleAfterMs} }).catch(() => {});
-    await waitForPostInteractionPaint(page);
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { mode: 'stable' });
-  });
-
-`;
-      case 'press':
-        return `  await step('${label}', async () => {
-${this.beforeScreenshotLine(stepIndex, fileLabel, runDirVariable)}    ${this.buildLocatorDeclaration(action, locatorCode)}
-${skipGuard}${visibleLine}    try {
-      await locator.waitFor({ state: 'visible', timeout: ${locatorVisibleTimeout} });
-    } catch (e) {
-      console.log('⚠️ 元素不可见，尝试暂停调试');
-      await maybePause(page, '元素不可见');
-    }
-    try {
-      await locator.press("${action.text || ''}");
-    } catch (e) {
-      console.log(\`⚠️ 按键失败: \${e.message}\`);
-      await maybePause(page, '按键失败');
-    }
-    await page.waitForLoadState('networkidle', { timeout: ${GEN_WAIT.networkIdleAfterMs} }).catch(() => {});
-    await waitForPostInteractionPaint(page);
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { mode: 'stable' });
-  });
-
-`;
-      default:
-        return '';
-    }
-  }
-
-  private extractAndOptimizeLocator(selector: string): string {
-    // 提取定位器部分，移除 await 和动作尾缀
-    let locator = selector.trim().replace(/^await\s+/, '');
-    locator = locator.replace(/\.(click|fill|type|check|selectOption|press)\(.*\)\s*;?$/, '');
-
-    // 处理 iframe 上下文：保留 iframe 语义，但切换为 iframeContent/baseContext
-    const iframePrefix1 = /^page\.locator\((['"])iframe\1\)\.contentFrame\(\)\./;
-    const iframePrefix2 = /^page\.frameLocator\((['"])iframe\1\)\./;
-    if (iframePrefix1.test(locator)) {
-      locator = locator.replace(iframePrefix1, this.hasIframe ? 'baseContext.' : 'page.');
-    } else if (iframePrefix2.test(locator)) {
-      locator = locator.replace(iframePrefix2, this.hasIframe ? 'baseContext.' : 'page.');
-    }
-
-    // 应用定位器优化规则
-    return this.optimizeLocator(locator);
-  }
-
-  private optimizeLocator(locator: string): string {
-    // 优化定位器，特别是针对 Ant Design 组件
-    let optimized = locator;
-    
-    // 1. 优化 Ant Design 选择器
-    // 处理下拉箭头
-    if (optimized.includes('.ant-select-arrow')) {
-      optimized += '.filter({ visible: true }).first()';
-    }
-    
-    // 2. 保留语义选择器（getByRole, getByText, getByLabel等）
-    if (optimized.includes('getByRole') || optimized.includes('getByText') || optimized.includes('getByLabel') || optimized.includes('getByPlaceholder')) {
-      // 对于语义选择器，添加 .first() 确保唯一
-      if (!optimized.includes('.first()')) {
-        optimized += '.filter({ visible: true }).first()';
-      } else if (!optimized.includes('.filter({ visible: true })')) {
-        optimized = optimized.replace('.first()', '.filter({ visible: true }).first()');
-      }
-      return optimized;
-    }
-    
-    // 3. 对于非语义选择器，添加可见性过滤
-    if (!optimized.includes('.filter') && !optimized.includes('.first()')) {
-      optimized += '.filter({ visible: true }).first()';
-    }
-    
-    return optimized;
-  }
-
-  private optimizeSelector(selector: string): string {
-    let optimized = selector;
-
-    // 1. 移除force: true（Cleaner层只做删除）
-    optimized = optimized.replace(/\{\s*force:\s*true\s*\}/g, '');
-    optimized = optimized.replace(/force:\s*true\s*,/g, '');
-    
-    // 2. 移除waitForTimeout（Cleaner层只做删除）
-    optimized = optimized.replace(/\.waitForTimeout\([^)]+\)/g, '');
-    
-    // 3. 移除重复的click操作（Cleaner层只做删除）
-    // 注意：这里只做简单的重复检测，复杂的重复检测由AI层处理
-    
-    // 4. 优化路径选择器，避免点击被拦截
-    // 如果是点击 path 元素，尝试点击其父元素
-    if (optimized.includes(' > path') && /\.click\(\)/.test(optimized)) {
-      optimized = optimized.replace(/ > path/g, '');
-    }
-    
-    // 5. 不移除复杂的CSS选择器，也不转换语义选择器
-    // 保持原始选择器不变，由AI层进行智能优化
-
-    return optimized;
   }
 
   private extractTestName(line: string): string {
@@ -912,9 +334,9 @@ ${skipGuard}${visibleLine}    try {
 
   public extractDateFromFileName(fileName: string): string | null {
     const datePatterns = [
-      { pattern: /(\d{4})-(\d{2})-(\d{2})/, type: 'dash' }, // 2026-03-16
-      { pattern: /(\d{4})_(\d{1,2})_(\d{1,2})/, type: 'underscore' }, // 2026_3_18
-      { pattern: /(\d{4})(\d{2})(\d{2})/, type: 'compact' }, // 20260313
+      { pattern: /(\d{4})-(\d{2})-(\d{2})/, type: 'dash' },
+      { pattern: /(\d{4})_(\d{1,2})_(\d{1,2})/, type: 'underscore' },
+      { pattern: /(\d{4})(\d{2})(\d{2})/, type: 'compact' },
     ];
     
     for (const { pattern, type } of datePatterns) {
@@ -955,17 +377,5 @@ ${skipGuard}${visibleLine}    try {
     const pressMatch = line.match(/press\((['"])(.*?)\1\)/);
     if (pressMatch?.[2]) return pressMatch[2];
     return undefined;
-  }
-
-  private getActionLabel(action: Action): string {
-    if (action.type === 'goto') return `Go to ${action.url || 'page'}`;
-    if (action.text) return this.cleanLabel(action.text);
-    return "action";
-  }
-
-  private cleanLabel(label: string): string {
-    return label
-      .replace(/\s+/g, "-")
-      .replace(/[^\w\u4e00-\u9fa5-]/g, "");
   }
 }

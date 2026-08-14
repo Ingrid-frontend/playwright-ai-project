@@ -9,6 +9,8 @@ import {
   renderCompareReportHtml,
 } from '../report/compare-screenshots-report.js';
 import { extractCalendarDayKey } from '../report/compare-screenshots-render-date.js';
+import { isNoiseLine } from '../optimize/optimize-raw-passes.js';
+import { buildJobFailReasons } from '../jobs/job-notify.js';
 import { discoverScriptScanTargets, getAllScreenshots } from '../report/compare-screenshots-scan.js';
 import { classifyComparisonSeverity } from '../report/ui-issues-index.js';
 import { loadFlakeHistory } from '../report/flake-history.js';
@@ -112,6 +114,22 @@ pass('getAllScreenshots');
 assert.equal(extractCalendarDayKey('2026-08-14_10-00-00'), '2026-08-14');
 assert.equal(extractCalendarDayKey('foo'), null);
 pass('extractCalendarDayKey');
+
+assert.equal(isNoiseLine(`await page.getByText('ok').click()`), false);
+assert.equal(isNoiseLine(`await page.getByText('${'x'.repeat(16)}').click()`), true);
+pass('optimize-raw-passes isNoiseLine');
+
+assert.deepEqual(
+  buildJobFailReasons({
+    testPassed: true,
+    comparePassed: true,
+    compareSkipped: true,
+    aborted: true,
+    failCount: 0,
+  }),
+  ['执行已中断'],
+);
+pass('buildJobFailReasons');
 
 assert.equal(typeof uiIssuesMod.buildUiIssuesReport, 'function');
 assert.equal(typeof uiIssuesMod.buildPlainLanguageAnalysis, 'function');

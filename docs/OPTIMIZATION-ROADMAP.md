@@ -30,6 +30,10 @@
 | 设计稿收集拆分 | `design-spec-collect` 负责区域/色板收集；`extractDesignSpec` 只做装配 |
 | 报告日期分组 | `compare-screenshots-render-date` 抽出日历日分组 |
 | Job 执行拆分 | `job-runner-execute` 负责按档案跑用例 |
+| 录制优化拆分 | `optimize-raw-passes` / `optimize-raw-codegen` / `optimize-raw-wait` |
+| Job 通知卡片 | `job-notify-card` 负责 Markdown/趋势/卡片；发送仍在 `job-notify` |
+| 截图 helper | mask/诊断在 `screenshot-capture`；等待在 `screenshot-wait` |
+| 线上规范采集 | `live-spec-collect` 负责页面采集；`captureLiveSpec` 只做装配 |
 
 ## 进行中 / 建议下一步
 
