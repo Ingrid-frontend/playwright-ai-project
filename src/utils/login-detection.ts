@@ -9,10 +9,13 @@ export type StorageStateValidity = {
 const LOGIN_URL_PATTERN = /(?:^|[/?#&=._-])login(?:[/?#&=._-]|$)/i;
 const LOGIN_TEXT_PATTERNS = [
   /账号登录/,
+  /二维码登录/,
+  /扫码登录/,
   /请输入手机号\/邮箱/,
   /用户协议/,
   /隐私协议/,
 ];
+const LOGIN_TEXT_HIT_MIN = 2;
 
 export function isLoginLikeUrl(url: string): boolean {
   return LOGIN_URL_PATTERN.test(url);
@@ -35,12 +38,12 @@ export function validateStorageStateFile(storagePath: string): StorageStateValid
       cookies?: unknown[];
       origins?: Array<{ localStorage?: unknown[] }>;
     };
-    const cookieCount = Array.isArray(state.cookies) ? state.cookies.length : 0;
+    const cookieCount = liveCookieCount(state.cookies);
     const localStorageCount = Array.isArray(state.origins)
       ? state.origins.reduce((sum, origin) => sum + (Array.isArray(origin.localStorage) ? origin.localStorage.length : 0), 0)
       : 0;
     if (cookieCount === 0 && localStorageCount === 0) {
-      return { valid: false, reason: `storageState 不含 cookies/localStorage: ${storagePath}` };
+      return { valid: false, reason: `storageState 不含有效 cookies/localStorage: ${storagePath}` };
     }
     return { valid: true };
   } catch (err) {
@@ -49,17 +52,36 @@ export function validateStorageStateFile(storagePath: string): StorageStateValid
   }
 }
 
+function liveCookieCount(cookies: unknown[] | undefined): number {
+  if (!Array.isArray(cookies)) return 0;
+  const now = Date.now() / 1000;
+  return cookies.filter((item) => {
+    if (!item || typeof item !== 'object') return false;
+    const expires = (item as { expires?: number }).expires;
+    if (expires == null || expires < 0) return true;
+    return expires > now;
+  }).length;
+}
+
+export function isLoginLikeText(text: string): boolean {
+  if (!text) return false;
+  return LOGIN_TEXT_PATTERNS.filter((p) => p.test(text)).length >= LOGIN_TEXT_HIT_MIN;
+}
+
 export async function isLoginLikePage(page: Page): Promise<boolean> {
   const url = page.url();
   if (isLoginLikeUrl(url)) return true;
   try {
-    const visibleSignals = await page.evaluate((patterns) => {
-      const text = document.body?.innerText || '';
-      return patterns.filter((p) => new RegExp(p).test(text)).length;
-    }, LOGIN_TEXT_PATTERNS.map((p) => p.source));
-    if (visibleSignals >= 2) return true;
+    for (const frame of page.frames()) {
+      try {
+        const text = await frame.evaluate(() => document.body?.innerText || '');
+        if (isLoginLikeText(text)) return true;
+      } catch {
+        /* frame 可能已销毁 */
+      }
+    }
   } catch {
-    // 页面可能正在跳转或 frame 被销毁，降级为 false
+    /* 页面可能正在跳转 */
   }
   return false;
 }

@@ -15,6 +15,7 @@ import { discoverScriptScanTargets, getAllScreenshots } from '../report/compare-
 import { classifyComparisonSeverity } from '../report/ui-issues-index.js';
 import { loadFlakeHistory } from '../report/flake-history.js';
 import { isDateCategoryDirSegment } from '../../src/utils/date-category.js';
+import { isLoginLikeText, isLoginLikeUrl } from '../../src/utils/login-detection.js';
 import * as uiIssuesMod from '../report/ui-issues-index.js';
 import * as feishuMod from '../feishu/index.js';
 import * as figmaMod from '../figma/index.js';
@@ -140,6 +141,12 @@ pass('module barrels');
 assert.equal(isDateCategoryDirSegment('260814'), true);
 assert.equal(isDateCategoryDirSegment('foo'), false);
 pass('date-category ESM');
+
+assert.equal(isLoginLikeUrl('https://x.example/login'), true);
+assert.equal(isLoginLikeUrl('https://x.example/home'), false);
+assert.equal(isLoginLikeText('二维码登录\n账号登录\n请使用汇联易STAGE APP扫码登录'), true);
+assert.equal(isLoginLikeText('工作台 我的审批'), false);
+pass('login-detection');
 
 const flakeTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pw-flake-'));
 const emptyFlake = loadFlakeHistory(flakeTmp);

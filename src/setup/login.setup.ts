@@ -28,6 +28,7 @@ setup('🔐 全局登录并持久化状态', async ({ page, browser }) => {
       const probePage = await context.newPage();
       try {
         await probePage.goto('/', { waitUntil: 'load', timeout: 30_000 });
+        await probePage.locator('iframe').first().waitFor({ state: 'attached', timeout: 8_000 }).catch(() => {});
         if (!(await isLoginLikePage(probePage))) {
           console.log(`💡 检测到有效 loginState，跳过登录（${STORAGE_PATH}）`);
           console.log('💡 换账号请设置 PLAYWRIGHT_REFRESH_STORAGE=1 或执行 npm run login:force');
@@ -70,8 +71,9 @@ setup('🔐 全局登录并持久化状态', async ({ page, browser }) => {
     .click({ timeout: 30_000 });
 
   await iframeContent.getByRole('button', { name: '登 录' }).click({ timeout: 30_000 });
-  // 避免 networkidle（长连接/轮询页面可能永远达不到），改为 URL 离开登录页
-  await expect(page).not.toHaveURL(/.*login.*/, { timeout: 60_000 });
+  await expect
+    .poll(async () => !(await isLoginLikePage(page)), { timeout: 60_000 })
+    .toBe(true);
 
   await page.context().storageState({ path: STORAGE_PATH });
   const savedStateValidity = validateStorageStateFile(STORAGE_PATH);
