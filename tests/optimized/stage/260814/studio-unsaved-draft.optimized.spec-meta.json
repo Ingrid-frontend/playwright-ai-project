@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "playwrightEnv": "stage",
+  "accountProfile": "default",
+  "loginAccount": null,
+  "loginUserId": "1063269",
+  "storageStateRel": "storage/loginState/stage.json",
+  "recordedAt": "2026-08-13T06:31:51.121Z",
+  "recordSource": "studio",
+  "rawOriginalRel": "tests/raw-recordings/original/stage/260814/账本_2026-08-13_14-31-48.spec.ts",
+  "optimizedRel": "tests/optimized/stage/260814/studio-unsaved-draft.optimized.spec.ts"
+}

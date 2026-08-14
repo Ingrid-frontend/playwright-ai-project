@@ -2,11 +2,11 @@
   "version": 1,
   "playwrightEnv": "stage",
   "accountProfile": "default",
-  "loginAccount": "183***@e-elitech.com",
-  "loginUserId": "17437047",
+  "loginAccount": null,
+  "loginUserId": "1063269",
   "storageStateRel": "storage/loginState/stage.json",
-  "recordedAt": "2026-07-21T08:50:05.741Z",
+  "recordedAt": "2026-08-13T06:29:54.591Z",
   "recordSource": "studio",
-  "rawOriginalRel": "tests/raw-recordings/original/stage/260717/studio-unsaved-draft.spec.ts",
+  "rawOriginalRel": "tests/raw-recordings/original/stage/260814/studio-unsaved-draft.spec.ts",
   "optimizedRel": "tests/optimized/studio-unsaved-draft.optimized.spec.ts"
 }
