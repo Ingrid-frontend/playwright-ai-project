@@ -3,9 +3,6 @@ import path from 'path';
 import dotenv from 'dotenv';
 import {
   compareImagesWithDiff,
-  formatDifference,
-  getDifferenceColor,
-  getDifferenceLabel,
   ImageComparison,
   loadCachedDiffResult,
   runWithConcurrency,
@@ -16,7 +13,6 @@ import { readUiIssuesSummaryLine, sendJobFeishuNotification } from '../jobs/job-
 import type { FeishuMode } from '../jobs/test-jobs-config.js';
 import {
   buildUiIssuesReport,
-  comparisonToUiIssue,
   gateShouldFail,
   writeUiIssuesReport,
   type UiIssue,
@@ -24,11 +20,9 @@ import {
 import { appendHistorySnapshot, loadStepTrends, type StepTrendPoint } from './ui-regression-history.js';
 import { buildPlainLanguageAnalysis } from './ui-issues-analysis.js';
 import { attachIssueReviews } from './ui-issue-review.js';
-import { collectStructureUiIssues } from './structure-check.js';
 import {
   compareReportVizCss,
   compareReportVizJs,
-  generateDashboardHtml,
   generateHeatmapTabHtml,
   generateOverviewPanel,
   generateSummaryTableHtml,
@@ -56,9 +50,7 @@ import {
   extractStepNameFromPath,
   formatDisplayTimestampFromRunDir,
   getMenuNameByRoute,
-  getRouteDisplayName,
   isLoginScreenshotCandidate,
-  routeFromScreenshotPath,
   scriptDirTimestampMs,
   sortScreenshotsByRunTime,
   type ScreenshotInfo,
