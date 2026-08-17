@@ -51,17 +51,6 @@ npm run ego:audit -- tests/optimized/stage/260814/studio-unsaved-draft.optimized
 2. 在 ego lite 里手动登录一次目标环境，登录态会被后续体检复用
 3. 不要在沙箱内运行 —— 沙箱会阻断 `ego_cli` bootstrap
 
-## 与 Midscene 的分工
-
-| 维度 | ego lite | Midscene |
-| --- | --- | --- |
-| 定位方式 | 真实 DOM / CDP | 视觉模型 |
-| 登录态 | 复用用户浏览器 | 依赖 storageState |
-| 成本 | 无 API 费用 | 需视觉模型密钥 |
-| 适合 | 跑之前的静态体检、探查页面结构 | 运行中定位失败的兜底 |
-
-两者不冲突：ego lite 管「跑之前先问清楚」，Midscene 管「跑的时候救一把」。
-
 ## 离线校验
 
 解析与合并逻辑有不依赖浏览器的校验，已挂进 CI：

@@ -11,12 +11,8 @@ import {
   type SemanticTestPlan,
 } from '../types/ai-test-plan.js';
 import { getBaseEnvConfig, resolveStorageState } from '../utils/env-config.js';
-import {
-  midsceneAct,
-  midsceneAssert,
-  midsceneInput,
-  midsceneTap,
-} from '../utils/midscene.js';
+
+export type StepErrorKind = 'AssertionError' | 'LocatorError' | 'Retryable';
 
 export interface AiTestRunOptions {
   env?: string;
@@ -24,6 +20,7 @@ export interface AiTestRunOptions {
   headed?: boolean;
   outputDir?: string;
   heal?: boolean;
+  constraints?: string[];
 }
 
 export interface AiTestStepResult {
@@ -73,10 +70,6 @@ function waitForPageReady(page: Page): Promise<void> {
     .locator('.ant-spin-spinning, .ant-loading')
     .waitFor({ state: 'hidden', timeout: 4_000 })
     .catch(() => {});
-}
-
-function hasMidsceneModelConfig(): boolean {
-  return Boolean(process.env.MIDSCENE_MODEL_NAME?.trim() && process.env.MIDSCENE_MODEL_API_KEY?.trim());
 }
 
 function extractQuotedText(input: string): string | undefined {
@@ -132,12 +125,7 @@ async function clickTarget(page: Page, action: Extract<SemanticAction, { type: '
     }
   }
 
-  if (hasMidsceneModelConfig()) {
-    const ok = await midsceneTap(page, action.description);
-    if (ok) return;
-  }
-
-  throw new Error(`无法定位点击目标: ${action.description}${hasMidsceneModelConfig() ? '' : '（未配置 Midscene 视觉模型）'}`);
+  throw new Error(`无法定位点击目标: ${action.description}`);
 }
 
 async function fillTarget(page: Page, action: Extract<SemanticAction, { type: 'fill' }>): Promise<void> {
@@ -168,12 +156,7 @@ async function fillTarget(page: Page, action: Extract<SemanticAction, { type: 'f
     }
   }
 
-  if (hasMidsceneModelConfig()) {
-    const ok = await midsceneInput(page, action.value, action.description);
-    if (ok) return;
-  }
-
-  throw new Error(`无法定位输入目标: ${action.description}${hasMidsceneModelConfig() ? '' : '（未配置 Midscene 视觉模型）'}`);
+  throw new Error(`无法定位输入目标: ${action.description}`);
 }
 
 async function selectTarget(page: Page, action: Extract<SemanticAction, { type: 'select' }>): Promise<void> {
@@ -203,40 +186,26 @@ async function selectTarget(page: Page, action: Extract<SemanticAction, { type: 
     }
   }
 
-  if (hasMidsceneModelConfig()) {
-    const result = await midsceneAct(page, `在“${action.description}”中选择“${action.value}”`);
-    if (result) return;
-  }
-
-  throw new Error(`无法定位选择目标: ${action.description}${hasMidsceneModelConfig() ? '' : '（未配置 Midscene 视觉模型）'}`);
+  throw new Error(`无法定位选择目标: ${action.description}`);
 }
 
 async function assertTarget(page: Page, action: Extract<SemanticAction, { type: 'assert' }>): Promise<void> {
   const target = resolveTarget(page, action.scope);
-  const text = shortActionText(action);
+  const text = shortActionText(action) || action.description.trim();
   if (text) {
     try {
       await target.getByText(text, { exact: false }).first().waitFor({ state: 'visible', timeout: 6_000 });
       return;
     } catch {
-      /* try Midscene if configured */
+      /* fall through */
     }
   }
 
-  if (hasMidsceneModelConfig()) {
-    const ok = await midsceneAssert(page, action.description);
-    if (ok) return;
-  }
-
-  throw new Error(`断言失败: ${action.description}${hasMidsceneModelConfig() ? '' : '（未配置 Midscene 视觉模型）'}`);
+  throw new Error(`断言失败: ${action.description}`);
 }
 
-async function actTarget(page: Page, action: Extract<SemanticAction, { type: 'act' }>): Promise<void> {
-  if (!hasMidsceneModelConfig()) {
-    throw new Error(`AI 操作需要 Midscene 视觉模型: ${action.instruction}`);
-  }
-  const result = await midsceneAct(page, action.instruction);
-  if (!result) throw new Error(`AI 操作未返回结果: ${action.instruction}`);
+async function actTarget(_page: Page, action: Extract<SemanticAction, { type: 'act' }>): Promise<void> {
+  throw new Error(`act 动作已不支持，请改用 click/fill/select/assert: ${action.instruction}`);
 }
 
 async function gotoTarget(page: Page, action: Extract<SemanticAction, { type: 'goto' }>): Promise<void> {
@@ -318,12 +287,55 @@ interface HealResult {
   shouldSkip?: boolean;
 }
 
+export function classifyStepError(error: string, step: SemanticStep): StepErrorKind {
+  if (step.action.type === 'assert') return 'AssertionError';
+
+  const text = error.toLowerCase();
+  if (
+    text.includes('断言失败') ||
+    text.includes('assertion') ||
+    text.includes('ai assert')
+  ) {
+    return 'AssertionError';
+  }
+
+  if (
+    text.includes('无法定位') ||
+    text.includes('locator') ||
+    text.includes('timeout') ||
+    text.includes('waiting for') ||
+    text.includes('not found') ||
+    text.includes('no element') ||
+    text.includes('strict mode violation')
+  ) {
+    return 'LocatorError';
+  }
+
+  return 'Retryable';
+}
+
+function acceptHealedStep(original: SemanticStep, corrected: SemanticStep): SemanticStep | null {
+  if (original.action.type === 'assert') {
+    if (corrected.action.type !== 'assert') return null;
+    if (corrected.action.description !== original.action.description) return null;
+  }
+
+  return {
+    ...original,
+    ...corrected,
+    id: original.id,
+    action: corrected.action,
+    optional: original.optional,
+  };
+}
+
 async function healStep(
   page: Page,
   plan: SemanticTestPlan,
   stepIndex: number,
   error: string,
   outputDir: string,
+  constraints?: string[],
 ): Promise<HealResult> {
   const screenshotPath = path.join(outputDir, `heal-step-${String(stepIndex + 1).padStart(2, '0')}.png`);
   await page.screenshot({ path: screenshotPath, fullPage: false }).catch(() => {});
@@ -335,6 +347,7 @@ async function healStep(
     error,
     currentUrl,
     dom: dom.slice(0, 20_000),
+    constraints,
   });
   return completeJson<HealResult>(prompt, {
     system: buildHealStepSystemPrompt(),
@@ -389,7 +402,8 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
 
     for (let index = 0; index < plan.steps.length; index++) {
       let step = plan.steps[index];
-      const maxAttempts = Math.max(1, (step.retries ?? 0) + 1 + (options.heal ? 1 : 0));
+      const canHeal = Boolean(options.heal) && step.action.type !== 'goto' && step.action.type !== 'assert';
+      const maxAttempts = Math.max(1, (step.retries ?? 0) + 1 + (canHeal ? 1 : 0));
       let attemptsUsed = 0;
       let passed = false;
       let healed = false;
@@ -405,16 +419,39 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
           errorMessage = error instanceof Error ? error.message : String(error);
           console.log(`❌ ${step.id} 第 ${attempt + 1}/${maxAttempts} 次失败: ${errorMessage}`);
 
-          if (options.heal && attempt === maxAttempts - 1 && step.action.type !== 'goto') {
+          const kind = classifyStepError(errorMessage, step);
+          if (kind === 'AssertionError') {
+            console.log(`🛑 ${step.id} 断言失败，禁止自愈`);
+            break;
+          }
+
+          if (canHeal && attempt === maxAttempts - 1) {
             try {
-              const heal = await healStep(page, plan, index, errorMessage, outputDir);
-              if (heal.shouldSkip && step.optional) {
-                break;
+              const heal = await healStep(page, plan, index, errorMessage, outputDir, options.constraints);
+              if (heal.shouldSkip) {
+                if (step.optional && step.action.type !== 'assert') {
+                  break;
+                }
+                console.log(`⚠️ ${step.id} 模型建议跳过，但步骤不可跳过，已忽略`);
               }
               if (heal.correctedStep) {
-                step = { ...step, ...heal.correctedStep, id: step.id };
-                healed = true;
-                continue;
+                const accepted = acceptHealedStep(step, heal.correctedStep);
+                if (!accepted) {
+                  console.log(`⚠️ ${step.id} 自愈结果被拒绝（禁止弱化断言或改写断言）`);
+                } else {
+                  step = accepted;
+                  healed = true;
+                  try {
+                    await executeAction(page, step.action);
+                    passed = true;
+                    errorMessage = undefined;
+                    break;
+                  } catch (healExecError) {
+                    errorMessage =
+                      healExecError instanceof Error ? healExecError.message : String(healExecError);
+                    console.log(`❌ ${step.id} 自愈后仍失败: ${errorMessage}`);
+                  }
+                }
               }
             } catch (healError) {
               console.log(`⚠️ 自愈失败: ${healError instanceof Error ? healError.message : String(healError)}`);

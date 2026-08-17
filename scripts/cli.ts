@@ -12,6 +12,7 @@ const groups: Record<string, { desc: string; cmds: Array<{ name: string; hint: s
       { name: 'ai:run', hint: '执行生成的 Playwright 脚本' },
       { name: 'ai:plan:generate', hint: '生成语义测试计划（旧链路）' },
       { name: 'ai:plan:run', hint: '执行语义测试计划（旧链路）' },
+      { name: 'intent:run', hint: '执行 YAML 测试意图（编译为语义计划）' },
     ],
   },
   record: {

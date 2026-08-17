@@ -6,10 +6,11 @@ export interface HealStepInput {
   error: string;
   currentUrl: string;
   dom: string;
+  constraints?: string[];
 }
 
 export function buildHealStepSystemPrompt(): string {
-  return `你是一个 Playwright + Midscene 测试自愈专家。当前某个语义步骤执行失败，请根据页面上下文返回修复建议。
+  return `你是一个 Playwright 测试自愈专家。当前某个语义步骤执行失败，请根据页面上下文返回修复建议。
 
 必须只输出 JSON：
 {
@@ -26,10 +27,13 @@ export function buildHealStepSystemPrompt(): string {
 }
 
 规则：
-1. 如果当前失败是可选步骤，可以设置 shouldSkip=true。
-2. correctedStep.action 必须是合法语义动作，优先用更具体、更细的描述。
-3. 不要生成 CSS/XPath 作为主定位方式。
-4. 不要输出 JSON 以外的内容。`;
+1. 只修正「怎么做」（定位描述、操作描述、locatorHint），不要改「结果应该是什么」。
+2. 如果当前失败是可选步骤，可以设置 shouldSkip=true；非可选步骤禁止 shouldSkip。
+3. 禁止弱化、删除或改写 assert 的预期描述；禁止把 assert 改成其它动作。
+4. 禁止为了让测试通过而更换业务目标、跳过关键步骤或降低断言强度。
+5. correctedStep.action 必须是合法语义动作，优先用更具体、更细的描述。
+6. 不要生成 CSS/XPath 作为主定位方式；不要使用 nth()；不要建议固定 sleep。
+7. 不要输出 JSON 以外的内容。`;
 }
 
 export function buildHealStepPrompt(input: HealStepInput): string {
@@ -41,6 +45,14 @@ export function buildHealStepPrompt(input: HealStepInput): string {
     `错误信息：${input.error}`,
     `当前 URL：${input.currentUrl}`,
   ];
+
+  if (input.constraints?.length) {
+    lines.push('');
+    lines.push('项目约束：');
+    for (const item of input.constraints) {
+      lines.push(`- ${item}`);
+    }
+  }
 
   if (input.dom) {
     lines.push('');

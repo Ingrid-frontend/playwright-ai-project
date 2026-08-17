@@ -1,0 +1,14 @@
+name: Intent Assert Fail Guard
+description: 故意失败的断言，用于验证禁止自愈
+env: stage
+constraints:
+  - 禁止弱化断言
+
+steps:
+  - id: open
+    action: goto
+    url: "data:text/html,<h1>OK</h1>"
+  - id: bad-assert
+    action: assert
+    description: ThisTextDoesNotExistAnywhere
+    evidence: [screenshot]

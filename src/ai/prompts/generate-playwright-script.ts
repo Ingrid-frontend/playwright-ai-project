@@ -17,7 +17,7 @@ export function buildGeneratePlaywrightScriptSystemPrompt(): string {
    - 页面加载后优先使用 page.waitForLoadState('networkidle') 或 page.waitForSelector。
    - 不要依赖外层环境做延时，延时逻辑必须写在脚本里。
    - 本系统业务主体通常位于 iframe 中，所有业务元素必须先用 const frame = page.frameLocator('iframe').first(); 然后使用 frame.getByText / frame.locator / frame.getByRole，不要直接在 page 上定位业务元素。
-5. 不要调用 Midscene、不要使用 CSS/XPath 复杂选择器。
+5. 不要使用 CSS/XPath 复杂选择器。
 6. 优先使用 getByText、getByRole、getByLabel、getByPlaceholder、getByTestId。
 7. 使用 expect 做断言，不要只 click 后直接结束。
 8. 不要生成会提交真实业务数据的危险操作，除非用户明确要求。`;
