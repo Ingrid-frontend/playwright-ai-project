@@ -8,33 +8,44 @@ const {
   listFigmaResultDirs,
 } = require('./figma-payload');
 
-function resolveFeishuWebhookUrl(resolveRepoRoot) {
-  const fromEnv = (process.env.FEISHU_WEBHOOK_URL || '').trim();
-  if (fromEnv) return fromEnv;
+function resolveFeishuNotifyReady(resolveRepoRoot) {
   const repoRoot = resolveRepoRoot();
+  const readEnv = (key) => {
+    const fromProcess = (process.env[key] || '').trim();
+    if (fromProcess) return fromProcess;
+    const envPath = path.join(repoRoot, '.env');
+    try {
+      if (!fs.existsSync(envPath)) return '';
+      const lines = fs.readFileSync(envPath, 'utf8').split('\n');
+      for (const line of lines) {
+        const m = line.match(new RegExp(`^\\s*${key}\\s*=\\s*(.*)$`));
+        if (!m) continue;
+        return m[1].trim().replace(/^["']|["']$/g, '');
+      }
+    } catch {
+      /* ignore */
+    }
+    return '';
+  };
+
+  const chatId = readEnv('FEISHU_CHAT_ID');
+  const appId = readEnv('FEISHU_APP_ID');
+  const appSecret = readEnv('FEISHU_APP_SECRET');
+  if (chatId && appId && appSecret) return true;
+
+  if (readEnv('FEISHU_WEBHOOK_URL')) return true;
+
   const configPath = path.join(repoRoot, 'feishu-config.json');
   try {
     if (fs.existsSync(configPath)) {
       const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      if (cfg.webhookUrl) return String(cfg.webhookUrl).trim();
+      if (cfg.chatId && cfg.appId && cfg.appSecret) return true;
+      if (cfg.webhookUrl) return true;
     }
   } catch {
     /* ignore */
   }
-  const envPath = path.join(repoRoot, '.env');
-  try {
-    if (fs.existsSync(envPath)) {
-      const lines = fs.readFileSync(envPath, 'utf8').split('\n');
-      for (const line of lines) {
-        const m = line.match(/^\s*FEISHU_WEBHOOK_URL\s*=\s*(.*)$/);
-        if (!m) continue;
-        return m[1].trim().replace(/^["']|["']$/g, '');
-      }
-    }
-  } catch {
-    /* ignore */
-  }
-  return '';
+  return false;
 }
 
 function registerHttpRoutes(app, deps) {
@@ -86,9 +97,11 @@ function registerHttpRoutes(app, deps) {
   });
 
   app.post('/api/feishu/send', async (req, res) => {
-    const webhookUrl = resolveFeishuWebhookUrl(resolveRepoRoot);
-    if (!webhookUrl) {
-      return res.status(400).json({ ok: false, error: '未配置 FEISHU_WEBHOOK_URL' });
+    if (!resolveFeishuNotifyReady(resolveRepoRoot)) {
+      return res.status(400).json({
+        ok: false,
+        error: '未配置飞书通知：请设置 FEISHU_CHAT_ID + FEISHU_APP_ID/SECRET，或 FEISHU_WEBHOOK_URL',
+      });
     }
     const repoRoot = resolveRepoRoot();
     const script = path.join(repoRoot, 'scripts/feishu/send-latest-card.ts');
@@ -100,7 +113,7 @@ function registerHttpRoutes(app, deps) {
       await new Promise((resolve, reject) => {
         const proc = spawn(npx, ['tsx', script], {
           cwd: repoRoot,
-          env: { ...process.env, FEISHU_WEBHOOK_URL: webhookUrl },
+          env: { ...process.env },
           shell: false,
         });
         let out = '';

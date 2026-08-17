@@ -1,7 +1,15 @@
 export { fetchWithRetry } from './feishu-utils.js';
 export type { FetchWithRetryOptions } from './feishu-utils.js';
-export { loadFeishuAppConfig, getFeishuAccessToken, uploadMessageImage } from './feishu-app.js';
-export type { FeishuAppConfig } from './feishu-app.js';
+export {
+  loadFeishuAppConfig,
+  getFeishuAccessToken,
+  uploadMessageImage,
+  resolveFeishuChatId,
+  resolveFeishuWebhookUrl,
+  canSendFeishuNotify,
+  sendFeishuNotify,
+} from './feishu-app.js';
+export type { FeishuAppConfig, FeishuNotifyPayload } from './feishu-app.js';
 export { BitableClient } from './bitable-client.js';
 export type { BitableFieldValue, BitableRecordFields, BitableUpsertResult } from './bitable-client.js';
 export {

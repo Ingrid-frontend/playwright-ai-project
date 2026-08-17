@@ -1,7 +1,7 @@
-import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import type { UiIssuesReport } from '../report/ui-issues-index.js';
+import { canSendFeishuNotify, sendFeishuNotify } from '../feishu/index.js';
 
 export type FeishuMode = 'interactive' | 'text' | 'links' | 'none';
 
@@ -128,24 +128,22 @@ export async function sendFeishuNotification(mode: FeishuMode, summary: AutoTest
     effectiveMode = 'interactive';
   }
 
-  const webhookUrl = process.env.FEISHU_WEBHOOK_URL;
-  const webhookSecret = process.env.FEISHU_WEBHOOK_SECRET;
-  if (!webhookUrl) {
-    console.log('⚠️  未配置飞书 Webhook URL，跳过通知');
+  if (!canSendFeishuNotify()) {
+    console.log('⚠️  未配置 FEISHU_CHAT_ID+应用凭证，也未配置 FEISHU_WEBHOOK_URL，跳过通知');
     return;
   }
 
   const resultMd = buildNotifyResultMarkdown(summary);
   const { title: cardTitle, template: cardTemplate } = notifyCardHeader(summary);
 
-    const body =
-      effectiveMode === 'text'
-        ? {
-          msg_type: 'text',
+  const body =
+    effectiveMode === 'text'
+      ? {
+          msg_type: 'text' as const,
           content: { text: `${cardTitle}\n\n${resultMd}` },
         }
-        : {
-          msg_type: 'interactive',
+      : {
+          msg_type: 'interactive' as const,
           card: {
             header: {
               title: { tag: 'plain_text', content: cardTitle },
@@ -155,22 +153,8 @@ export async function sendFeishuNotification(mode: FeishuMode, summary: AutoTest
           },
         };
 
-  const timestamp = Math.floor(Date.now() / 1000);
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (webhookSecret) {
-    const bodyString = JSON.stringify(body);
-    const sign = crypto.createHmac('sha256', webhookSecret).update(`${timestamp}\n${bodyString}`).digest('base64');
-    headers['X-Lark-Request-Timestamp'] = String(timestamp);
-    headers['X-Lark-Signature'] = sign;
-  }
-
   try {
-    const response = await fetch(webhookUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    });
-    console.log(response.ok ? '✅ 飞书通知发送成功' : `❌ 飞书通知失败: ${await response.text()}`);
+    await sendFeishuNotify(body);
   } catch (error) {
     console.log('❌ 飞书通知发送异常:', error);
   }

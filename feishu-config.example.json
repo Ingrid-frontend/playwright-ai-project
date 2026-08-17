@@ -2,6 +2,7 @@
   "webhookUrl": "https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxxxxxxxxxx",
   "appId": "",
   "appSecret": "",
+  "chatId": "",
   "tenantKey": "",
   "bitable": {
     "appToken": "",

@@ -1,121 +1,79 @@
 import dotenv from 'dotenv';
-import { readFileSync } from 'fs';
+import { canSendFeishuNotify, resolveFeishuChatId, resolveFeishuWebhookUrl, sendFeishuNotify } from './index.js';
 
 dotenv.config();
 
-let webhookUrl = process.env.FEISHU_WEBHOOK_URL || '';
-
-if (!webhookUrl) {
-  try {
-    const configPath = 'feishu-config.json';
-    const configContent = readFileSync(configPath, 'utf-8');
-    const config = JSON.parse(configContent);
-    webhookUrl = config.webhookUrl || '';
-  } catch (error) {
-    console.log('📝 未找到 feishu-config.json 文件');
-  }
-}
-
-if (!webhookUrl) {
-  console.error('❌ 错误：未配置 FEISHU_WEBHOOK_URL 环境变量');
+if (!canSendFeishuNotify()) {
+  console.error('❌ 错误：未配置飞书通知通道');
   console.log('');
-  console.log('💡 解决方案：');
-  console.log('  1. 在 .env 文件中添加：FEISHU_WEBHOOK_URL=你的WebhookURL');
-  console.log('  2. 或者在命令行中设置：export FEISHU_WEBHOOK_URL=你的WebhookURL');
-  console.log('  3. 或者创建 feishu-config.json 文件');
+  console.log('💡 优先（自建应用）：');
+  console.log('  FEISHU_APP_ID / FEISHU_APP_SECRET / FEISHU_CHAT_ID');
   console.log('');
-  console.log('📚 详细配置指南：docs/feishu-webhook-setup.md');
+  console.log('💡 或（群机器人 Webhook）：');
+  console.log('  FEISHU_WEBHOOK_URL');
   process.exit(1);
 }
 
-console.log('🎬 飞书 Webhook 测试工具');
+const viaApp = Boolean(resolveFeishuChatId());
+console.log('🎬 飞书通知测试');
 console.log('');
-console.log(`🔑 Webhook URL: ${webhookUrl ? '已配置（已脱敏）' : '未配置'}`);
+console.log(`🔑 通道: ${viaApp ? '自建应用 IM' : 'Webhook'}`);
 console.log('');
 
 const testMessage = {
-  msg_type: 'interactive',
+  msg_type: 'interactive' as const,
   card: {
     header: {
       title: {
         tag: 'plain_text',
-        content: '🎉 飞书 Webhook 配置测试'
+        content: viaApp ? '🎉 飞书自建应用发信测试' : '🎉 飞书 Webhook 配置测试',
       },
-      template: 'green'
+      template: 'green',
     },
     elements: [
       {
         tag: 'div',
         text: {
           tag: 'lark_md',
-          content: '✅ **测试成功！**\n\n你的飞书 Webhook URL 配置正确，可以正常接收消息。'
-        }
+          content: viaApp
+            ? `✅ **测试成功！**\n\n消息由自建应用发出。\nchat_id: \`${resolveFeishuChatId()}\``
+            : '✅ **测试成功！**\n\n你的飞书 Webhook URL 配置正确，可以正常接收消息。',
+        },
       },
-      {
-        tag: 'hr'
-      },
+      { tag: 'hr' },
       {
         tag: 'div',
         text: {
           tag: 'lark_md',
-          content: '📋 **测试信息**：\n' +
-            '- 测试时间：' + new Date().toLocaleString('zh-CN') + '\n' +
-            '- 测试类型：Webhook 连接测试\n' +
-            '- 测试状态：成功'
-        }
-      }
-    ]
-  }
+          content:
+            '📋 **测试信息**：\n' +
+            '- 测试时间：' +
+            new Date().toLocaleString('zh-CN') +
+            '\n' +
+            `- 测试类型：${viaApp ? '自建应用 IM' : 'Webhook'}\n` +
+            '- 测试状态：成功' +
+            (viaApp ? '' : `\n- Webhook: ${resolveFeishuWebhookUrl() ? '已配置' : '未配置'}`),
+        },
+      },
+    ],
+  },
 };
 
 console.log('📤 发送测试消息...');
 console.log('');
 
-fetch(webhookUrl, {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify(testMessage)
-})
-  .then(async response => {
-    console.log('📥 飞书响应：');
-    console.log(`  - 状态码: ${response.status}`);
-    console.log(`  - 状态文本: ${response.statusText}`);
-    
-    const responseText = await response.text();
-    console.log(`  - 响应内容: ${responseText}`);
-    console.log('');
-    
-    if (response.ok) {
-      console.log('✅ 测试成功！');
+sendFeishuNotify(testMessage)
+  .then((ok) => {
+    if (ok) {
       console.log('');
-      console.log('💡 提示：');
-      console.log('  1. 检查飞书群聊，应该能看到测试消息');
-      console.log('  2. 如果没有收到消息，请检查：');
-      console.log('     - Webhook URL 是否正确');
-      console.log('     - 机器人是否在群聊中');
-      console.log('     - 机器人是否被禁用');
-      console.log('  3. 配置完成后，可以运行：npm run send-html-to-feishu');
-    } else {
-      console.log('❌ 测试失败');
-      console.log('');
-      console.log('💡 解决方案：');
-      console.log('  1. 检查 Webhook URL 是否正确');
-      console.log('  2. 检查网络连接是否正常');
-      console.log('  3. 检查机器人是否被禁用');
-      console.log('  4. 查看飞书开放平台文档：https://open.feishu.cn');
+      console.log('✅ 测试成功！请到目标群查看消息。');
+      process.exit(0);
     }
-  })
-  .catch(error => {
-    console.error('❌ 请求失败:', error.message);
     console.log('');
-    console.log('💡 解决方案：');
-    console.log('  1. 检查网络连接是否正常');
-    console.log('  2. 检查是否能访问飞书 API');
-    console.log('  3. 检查是否有防火墙或代理限制');
-    console.log('  4. 尝试使用 curl 测试：');
-    console.log('     curl -X POST "$FEISHU_WEBHOOK_URL" \\');
-    console.log('       -H "Content-Type: application/json" \\');
-    console.log('       -d \'{"msg_type":"text","content":{"text":"测试"}}\'');
+    console.log('❌ 测试失败');
+    process.exit(1);
+  })
+  .catch((error: unknown) => {
+    console.error('❌ 请求失败:', error instanceof Error ? error.message : String(error));
+    process.exit(1);
   });

@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import type { FeishuMode } from './test-jobs-config.js';
-import { fetchWithRetry } from '../feishu/index.js';
+import { canSendFeishuNotify, sendFeishuNotify } from '../feishu/index.js';
 import {
   buildCardPayload,
   buildResultMarkdown,
@@ -27,20 +27,17 @@ export async function sendJobFeishuNotification(
     effectiveMode = 'interactive';
   }
 
-  const webhookUrl = process.env.FEISHU_WEBHOOK_URL;
-  const webhookSecret = process.env.FEISHU_WEBHOOK_SECRET;
-  const sensitiveLogsEnabled = process.env.ENABLE_SENSITIVE_LOGS === '1';
-
   console.log('🔍 飞书通知配置检查：');
-  console.log('  - Webhook URL:', webhookUrl ? '已配置' : '未配置');
+  console.log('  - 自建应用发信:', process.env.FEISHU_CHAT_ID?.trim() && process.env.FEISHU_APP_ID?.trim() ? '已配置' : '未配置');
+  console.log('  - Webhook URL:', process.env.FEISHU_WEBHOOK_URL?.trim() ? '已配置' : '未配置');
 
-  if (!webhookUrl) {
-    console.log('⚠️  未配置飞书 Webhook URL，跳过通知');
+  if (!canSendFeishuNotify()) {
+    console.log('⚠️  未配置 FEISHU_CHAT_ID+应用凭证，也未配置 FEISHU_WEBHOOK_URL，跳过通知');
     return true;
   }
 
   const cardHeaderResult = cardHeader(summary);
-  
+
   const feishuAppId = process.env.FEISHU_APP_ID?.trim();
   if (feishuAppId && !process.env.SKIP_FEISHU_DOC) {
     try {
@@ -54,11 +51,8 @@ export async function sendJobFeishuNotification(
       console.log('⚠️  飞书文档更新失败（不影响通知）:', e.message?.slice(0, 100));
     }
   }
-  
-  const timestamp = Math.floor(Date.now() / 1000);
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 
-  let body: object;
+  let body: Parameters<typeof sendFeishuNotify>[0];
 
   if (effectiveMode === 'text') {
     const resultMd = buildResultMarkdown(summary);
@@ -80,31 +74,11 @@ export async function sendJobFeishuNotification(
     };
   }
 
-  if (webhookSecret) {
-    const crypto = await import('crypto');
-    const bodyString = JSON.stringify(body);
-    const signString = `${timestamp}\n${bodyString}`;
-    if (sensitiveLogsEnabled) {
-      console.log('  - 签名字符串:', signString);
-    }
-    headers['X-Lark-Request-Timestamp'] = String(timestamp);
-    headers['X-Lark-Signature'] = crypto.createHmac('sha256', webhookSecret).update(signString).digest('base64');
-  }
-
   const MAX_NOTIFY_ATTEMPTS = 2;
   for (let attempt = 1; attempt <= MAX_NOTIFY_ATTEMPTS; attempt++) {
     try {
-      const response = await fetchWithRetry(webhookUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-      });
-      const responseText = await response.text();
-      if (response.ok) {
-        console.log(`✅ 飞书通知发送成功${attempt > 1 ? `（第 ${attempt} 次尝试）` : ''}`);
-        return true;
-      }
-      console.log(`❌ 飞书通知发送失败 (attempt ${attempt}/${MAX_NOTIFY_ATTEMPTS}):`, response.status, responseText);
+      const ok = await sendFeishuNotify(body);
+      if (ok) return true;
       if (attempt < MAX_NOTIFY_ATTEMPTS) {
         await new Promise((r) => setTimeout(r, 2000));
         continue;

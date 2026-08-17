@@ -196,7 +196,9 @@ function generateHTML(
 
 async function maybeNotifyCompareResult(comparePassed: boolean): Promise<void> {
   if (process.env.FEISHU_NOTIFY_ON_COMPARE === '0') return;
-  if (!process.env.FEISHU_WEBHOOK_URL?.trim()) return;
+  const hasApp =
+    Boolean(process.env.FEISHU_CHAT_ID?.trim()) && Boolean(process.env.FEISHU_APP_ID?.trim());
+  if (!hasApp && !process.env.FEISHU_WEBHOOK_URL?.trim()) return;
 
   let testPassed = true;
   const lastRunPath = path.join(process.cwd(), 'results', 'last-test-run.json');

@@ -1,22 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
+import { canSendFeishuNotify } from './index.js';
 import { readUiIssuesSummaryLine, sendJobFeishuNotification } from '../jobs/job-notify.js';
 import { gateShouldFail, type UiIssuesReport } from '../report/ui-issues-index.js';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
-
-function resolveWebhook(): string {
-  if (process.env.FEISHU_WEBHOOK_URL?.trim()) return process.env.FEISHU_WEBHOOK_URL.trim();
-  try {
-    const cfg = JSON.parse(fs.readFileSync('feishu-config.json', 'utf-8')) as { webhookUrl?: string };
-    const url = cfg.webhookUrl?.trim() || '';
-    if (url) process.env.FEISHU_WEBHOOK_URL = url;
-    return url;
-  } catch {
-    return '';
-  }
-}
 
 function readTestPassed(): boolean {
   const lastRunPath = path.join(process.cwd(), 'results', 'last-test-run.json');
@@ -52,8 +41,8 @@ function readFeishuDoc(): { attempted: boolean; passed: boolean } {
 }
 
 async function main(): Promise<void> {
-  if (!resolveWebhook()) {
-    console.error('未配置 FEISHU_WEBHOOK_URL');
+  if (!canSendFeishuNotify()) {
+    console.error('未配置飞书通知：请设置 FEISHU_CHAT_ID + FEISHU_APP_ID/SECRET，或 FEISHU_WEBHOOK_URL');
     process.exit(1);
   }
 

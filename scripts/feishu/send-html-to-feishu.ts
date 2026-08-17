@@ -1,13 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
-import { fetchWithRetry } from './index.js';
+import { canSendFeishuNotify, sendFeishuNotify } from './index.js';
 
 dotenv.config();
-
-interface FeishuConfig {
-  webhookUrl: string;
-}
 
 interface UploadResult {
   success: boolean;
@@ -41,16 +37,15 @@ function convertHtmlToFeishuMarkdown(htmlContent: string): string {
   return markdown;
 }
 
-async function sendToFeishu(htmlFilePath: string, config: FeishuConfig): Promise<UploadResult> {
+async function sendToFeishu(htmlFilePath: string): Promise<UploadResult> {
   try {
     console.log('📤 发送到飞书...');
     console.log(`📁 文件路径: ${htmlFilePath}`);
-    console.log(`🔑 Webhook URL: ${config.webhookUrl ? '已配置' : '未配置'}`);
 
-    if (!config.webhookUrl) {
+    if (!canSendFeishuNotify()) {
       return {
         success: false,
-        message: '未配置飞书 Webhook URL'
+        message: '未配置 FEISHU_CHAT_ID+应用凭证，也未配置 FEISHU_WEBHOOK_URL',
       };
     }
 
@@ -72,14 +67,13 @@ async function sendToFeishu(htmlFilePath: string, config: FeishuConfig): Promise
       isTruncated = true;
     }
 
-    const timestamp = Math.floor(Date.now() / 1000);
     const githubEnabled = process.env.ENABLE_GITHUB === '1';
     const publicReportUrl = githubEnabled
       ? (process.env.PUBLIC_REPORT_URL || '')
       : '';
 
     const message = {
-      msg_type: 'interactive',
+      msg_type: 'interactive' as const,
       card: {
         header: {
           title: {
@@ -133,36 +127,18 @@ async function sendToFeishu(htmlFilePath: string, config: FeishuConfig): Promise
     console.log('  - 内容长度: ' + truncatedContent.length);
     console.log('  - 是否截断: ' + isTruncated);
 
-    const response = await fetchWithRetry(config.webhookUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(message)
-    });
-
-    console.log('📥 飞书响应：');
-    console.log('  - 状态码:', response.status);
-    console.log('  - 状态文本:', response.statusText);
-
-    if (response.ok) {
-      const responseText = await response.text();
-      console.log('  - 响应内容:', responseText);
-      
+    const ok = await sendFeishuNotify(message);
+    if (ok) {
       return {
         success: true,
         message: '发送成功',
         documentUrl: publicReportUrl || undefined
       };
-    } else {
-      const responseText = await response.text();
-      console.log('  - 响应内容:', responseText);
-      
-      return {
-        success: false,
-        message: `发送失败: ${response.status} ${response.statusText}`
-      };
     }
+    return {
+      success: false,
+      message: '发送失败'
+    };
 
   } catch (error) {
     console.error('❌ 发送失败:', error);
@@ -189,24 +165,7 @@ async function main() {
   console.log('🎬 飞书文档发送工具');
   console.log('');
 
-  let webhookUrl = process.env.FEISHU_WEBHOOK_URL || '';
-
-  if (!webhookUrl) {
-    try {
-      const configPath = 'feishu-config.json';
-      const configContent = fs.readFileSync(configPath, 'utf-8');
-      const config = JSON.parse(configContent);
-      webhookUrl = config.webhookUrl || '';
-    } catch (error) {
-      console.log('📝 未找到 feishu-config.json 文件');
-    }
-  }
-
-  const config: FeishuConfig = {
-    webhookUrl: webhookUrl
-  };
-
-  const result = await sendToFeishu(htmlFilePath, config);
+  const result = await sendToFeishu(htmlFilePath);
 
   if (result.success) {
     console.log('');
@@ -225,7 +184,7 @@ async function main() {
     console.log(`📝 错误信息: ${result.message}`);
     console.log('');
     console.log('💡 解决方案：');
-    console.log('  1. 检查飞书 Webhook URL 配置');
+    console.log('  1. 检查 FEISHU_CHAT_ID + FEISHU_APP_ID/SECRET，或 FEISHU_WEBHOOK_URL');
     console.log('  2. 确认网络连接正常');
     console.log('  3. 检查文件路径是否正确');
   }

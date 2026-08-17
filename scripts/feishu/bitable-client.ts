@@ -98,13 +98,16 @@ export class BitableClient {
     tableId: string,
     spec: { name: string; type: number; property?: Record<string, unknown> },
   ): Promise<void> {
+    const body: Record<string, unknown> = {
+      field_name: spec.name,
+      type: spec.type,
+    };
+    if (spec.property && Object.keys(spec.property).length > 0) {
+      body.property = spec.property;
+    }
     await this.request<unknown>(this.tableUrl(tableId, '/fields'), {
       method: 'POST',
-      body: JSON.stringify({
-        field_name: spec.name,
-        type: spec.type,
-        property: spec.property ?? {},
-      }),
+      body: JSON.stringify(body),
     });
   }
 
