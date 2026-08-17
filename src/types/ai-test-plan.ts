@@ -25,7 +25,14 @@ export type SemanticAction =
       scope?: SemanticScope;
       locatorHint?: string;
     }
-  | { type: 'assert'; description: string; scope?: SemanticScope }
+  | {
+      type: 'assert';
+      description: string;
+      kind?: 'text' | 'visible' | 'url' | 'count';
+      expect?: string;
+      target?: string;
+      scope?: SemanticScope;
+    }
   | { type: 'wait'; description?: string; timeoutMs?: number }
   | { type: 'screenshot'; label?: string };
 
@@ -120,12 +127,26 @@ function assertAction(value: unknown, stepId: string): SemanticAction {
         ? { type: 'fill', ...base, value: actionValue }
         : { type: 'select', ...base, value: actionValue };
     }
-    case 'assert':
+    case 'assert': {
+      const description = assertString(value.description, `${stepId}.action.description`);
+      const kind = assertOptionalString(value.kind, `${stepId}.action.kind`) as
+        | 'text'
+        | 'visible'
+        | 'url'
+        | 'count'
+        | undefined;
+      if (kind && !['text', 'visible', 'url', 'count'].includes(kind)) {
+        throw new Error(`步骤 ${stepId}.action.kind 必须是 text|visible|url|count`);
+      }
       return {
         type: 'assert',
-        description: assertString(value.description, `${stepId}.action.description`),
+        description,
+        kind: kind || 'text',
+        expect: assertOptionalString(value.expect, `${stepId}.action.expect`) || description,
+        target: assertOptionalString(value.target, `${stepId}.action.target`),
         scope: assertOptionalString(value.scope, `${stepId}.action.scope`) as SemanticScope | undefined,
       };
+    }
     case 'wait': {
       const timeoutMs = value.timeoutMs;
       if (timeoutMs !== undefined && (typeof timeoutMs !== 'number' || !Number.isFinite(timeoutMs) || timeoutMs < 0)) {

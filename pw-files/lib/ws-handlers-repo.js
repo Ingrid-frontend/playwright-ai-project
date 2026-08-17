@@ -58,6 +58,16 @@ function createRepoHandlers(ctx) {
     runFigmaCompare,
     runAiNativeValidate,
     cancelAiValidate,
+    runIntent,
+    listIntentDefinitions,
+    getIntentDefinition,
+    saveIntentDefinition,
+    cancelIntentRun,
+    runEgoAudit,
+    runEgoNlFlow,
+    runEgoExplore,
+    cancelEgoAudit,
+    cancelEgoExplore,
     runRepoCompareReport,
     openRepoCompareReport,
     sendCompareReportStatus,
@@ -259,6 +269,86 @@ function createRepoHandlers(ctx) {
 
     'cancel:ai-validate': async (_ws, session) => {
       cancelAiValidate(session);
+    },
+
+    'intent:list': async (ws) => {
+      const repoRoot = resolveRepoRoot();
+      send(ws, 'intent:list:done', { items: listIntentDefinitions(repoRoot) });
+    },
+
+    'intent:get': async (ws, _session, _sessionId, msg) => {
+      const repoRoot = resolveRepoRoot();
+      const result = getIntentDefinition(repoRoot, msg.path || msg.intent);
+      if (result.error) {
+        send(ws, 'error', { message: result.error });
+        send(ws, 'intent:get:done', { ok: false, message: result.error });
+        return;
+      }
+      send(ws, 'intent:get:done', { ok: true, path: result.path, text: result.text });
+    },
+
+    'intent:save': async (ws, _session, _sessionId, msg) => {
+      const repoRoot = resolveRepoRoot();
+      const result = saveIntentDefinition(repoRoot, msg);
+      if (result.error) {
+        send(ws, 'error', { message: result.error });
+        send(ws, 'intent:save:done', { ok: false, message: result.error });
+        return;
+      }
+      send(ws, 'intent:save:done', { ok: true, path: result.path });
+      send(ws, 'intent:list:done', { items: listIntentDefinitions(repoRoot) });
+    },
+
+    'intent:run': async (ws, session, _sessionId, msg) => {
+      await runIntent(ws, session, msg, {
+        resolveRepoRoot,
+        spawn,
+        buildRepoSpawnEnv,
+        getSessionPlaywrightEnv,
+        getSessionAccountProfile,
+        runRepoCompareReport,
+      });
+    },
+
+    'cancel:intent-run': async (_ws, session) => {
+      cancelIntentRun(session);
+    },
+
+    'ego:explore': async (ws, session, _sessionId, msg) => {
+      await runEgoExplore(ws, session, msg, {
+        resolveRepoRoot,
+        spawn,
+        buildRepoSpawnEnv,
+        getSessionPlaywrightEnv,
+      });
+    },
+
+    'cancel:ego-explore': async (_ws, session) => {
+      cancelEgoExplore(session);
+    },
+
+    'ego:audit': async (ws, session, _sessionId, msg) => {
+      await runEgoAudit(ws, session, msg, {
+        resolveRepoRoot,
+        spawn,
+        buildRepoSpawnEnv,
+        getSessionPlaywrightEnv,
+        assertAllowedOptimizedSpec,
+      });
+    },
+
+    'ego:nl-run': async (ws, session, _sessionId, msg) => {
+      await runEgoNlFlow(ws, session, msg, {
+        resolveRepoRoot,
+        spawn,
+        buildRepoSpawnEnv,
+        getSessionPlaywrightEnv,
+        getSessionAccountProfile,
+      });
+    },
+
+    'cancel:ego-audit': async (_ws, session) => {
+      cancelEgoAudit(session);
     },
 
     'repo:compare-report': async (ws, session) => {

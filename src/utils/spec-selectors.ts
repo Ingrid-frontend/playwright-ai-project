@@ -216,28 +216,60 @@ export function scanSpecSelectors(specPath: string): SpecSelectorScan {
     }
 
     const declMatch = line.match(LOCATOR_DECL_RE);
-    if (!declMatch) continue;
+    if (declMatch) {
+      const raw = declMatch[1].trim();
+      const parts = parseLocatorExpression(raw);
+      if (!parts) {
+        unparsed.push({ line: i + 1, raw, stepName: currentStep });
+        continue;
+      }
 
-    const raw = declMatch[1].trim();
-    const parts = parseLocatorExpression(raw);
-    if (!parts) {
-      unparsed.push({ line: i + 1, raw, stepName: currentStep });
+      const lookahead = lines.slice(i + 1, i + 4).join('\n');
+      const optional = /try\s*\{/.test(lookahead);
+
+      index += 1;
+      steps.push({
+        index,
+        stepName: currentStep,
+        line: i + 1,
+        raw,
+        inFrame: /baseContext|frameLocator/.test(raw) || /frameLocator/.test(lines.slice(Math.max(0, i - 5), i).join('\n')),
+        parts,
+        optional,
+      });
       continue;
     }
 
-    // spec 里可跳过的步骤会把可见性断言包在 try 中
-    const lookahead = lines.slice(i + 1, i + 4).join('\n');
-    const optional = /try\s*\{/.test(lookahead);
+    const awaitMatch = line.match(
+      /await\s+((?:page|frame|[\w$]+)\.(?:getByText|getByRole|getByLabel|getByPlaceholder|getByTestId|locator)\([^;]+)/,
+    );
+    if (!awaitMatch) continue;
+
+    let raw = awaitMatch[1].trim().replace(/[,;]\s*$/, '');
+    raw = raw.replace(
+      /\.(?:click|fill|check|uncheck|selectOption|press|hover|focus|blur|type|setInputFiles|waitFor|toBeVisible|toHaveText|toContainText|count|isVisible)\s*\([\s\S]*$/,
+      '',
+    );
+    const exprForParse = raw.replace(/^(?:page|frame|[\w$]+)/, '');
+    const parsed = parseLocatorExpression(exprForParse.startsWith('.') ? exprForParse : `.${exprForParse}`);
+    if (!parsed) {
+      unparsed.push({
+        line: i + 1,
+        raw,
+        stepName: currentStep === '(unknown)' ? `line-${i + 1}` : currentStep,
+      });
+      continue;
+    }
 
     index += 1;
     steps.push({
       index,
-      stepName: currentStep,
+      stepName: currentStep === '(unknown)' ? `action-${index}` : currentStep,
       line: i + 1,
       raw,
-      inFrame: /baseContext|frameLocator/.test(raw) || /frameLocator/.test(lines.slice(Math.max(0, i - 5), i).join('\n')),
-      parts,
-      optional,
+      inFrame: /\bframe\b|frameLocator/.test(raw),
+      parts: parsed,
+      optional: false,
     });
   }
 

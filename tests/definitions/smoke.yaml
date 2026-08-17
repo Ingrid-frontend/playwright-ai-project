@@ -1,10 +1,12 @@
 name: AI Intent Smoke
+goal: 本地冒烟，验证 Intent 编译与执行链路
 description: 本地冒烟，不依赖业务站（等价于 ai-native smoke plan）
 env: stage
 constraints:
   - 禁止 nth()
   - 优先 role / label / text
   - 禁止固定 sleep（除 wait 步骤）
+  - 禁止把 @N 写入定义
 
 steps:
   - id: step-1
@@ -19,5 +21,6 @@ steps:
     evidence: [screenshot]
   - id: step-4
     action: assert
-    description: Ready
+    kind: text
+    expect: Ready
     evidence: [screenshot]

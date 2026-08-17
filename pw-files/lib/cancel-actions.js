@@ -58,6 +58,42 @@ function cancelAiValidate(session) {
   }
 }
 
+function cancelIntentRun(session) {
+  session.intentRunCancelled = true;
+  if (session.intentRunProc) {
+    try {
+      session.intentRunProc.kill('SIGTERM');
+    } catch {
+      /* ignore */
+    }
+    session.intentRunProc = null;
+  }
+}
+
+function cancelEgoAudit(session) {
+  session.egoAuditCancelled = true;
+  if (session.egoAuditProc) {
+    try {
+      session.egoAuditProc.kill('SIGTERM');
+    } catch {
+      /* ignore */
+    }
+    session.egoAuditProc = null;
+  }
+}
+
+function cancelEgoExplore(session) {
+  session.egoExploreCancelled = true;
+  if (session.egoExploreProc) {
+    try {
+      session.egoExploreProc.kill('SIGTERM');
+    } catch {
+      /* ignore */
+    }
+    session.egoExploreProc = null;
+  }
+}
+
 function cancelRepoRerun(session) {
   session.repoRerunCancelled = true;
   if (session.repoRerunProc) {
@@ -92,6 +128,9 @@ module.exports = {
   cancelRepoBatch,
   cancelRepoCompare,
   cancelAiValidate,
+  cancelIntentRun,
+  cancelEgoAudit,
+  cancelEgoExplore,
   cancelRepoRerun,
   cancelOptimize,
   cancelRun,

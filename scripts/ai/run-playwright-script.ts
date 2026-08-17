@@ -54,6 +54,7 @@ import fs from 'fs';
 
 const storageState = process.env.AI_TEST_STORAGE_STATE || '';
 const baseURL = process.env.AI_TEST_BASE_URL || undefined;
+const entry = process.env.AI_TEST_ENTRY || '/';
 const browser = await chromium.launch({ headless: ${headed ? 'false' : 'true'} });
 const context = await browser.newContext({
   viewport: { width: 1280, height: 720 },
@@ -64,6 +65,13 @@ const page = await context.newPage();
 page.setDefaultTimeout(30000);
 
 try {
+  const target = /^https?:\\/\\//i.test(entry) || entry.startsWith('data:')
+    ? entry
+    : entry.startsWith('/')
+      ? entry
+      : \`/\${entry}\`;
+  await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+  await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
 ${indentCode(code, 2)}
 } finally {
   await context.close();
@@ -79,6 +87,7 @@ function printHelp(): void {
   --script=<path>   生成的 Playwright 动作脚本
   --env=<env>       目标环境
   --profile=<id>    账号 profile
+  --entry=<path>    入口路径（默认 /）
   --out=<dir>       输出目录
   --headed          有头浏览器
   -h, --help
@@ -108,6 +117,7 @@ async function main(): Promise<void> {
     }
   })();
   const baseURL = baseConfig?.baseURL || process.env.BASE_URL || '';
+  const entry = getArgValue('entry') || '/';
   const outDir = path.resolve(getArgValue('out') || 'results/ai-native-script');
   fs.mkdirSync(outDir, { recursive: true });
   const wrapperDir = path.join(
@@ -132,6 +142,7 @@ async function main(): Promise<void> {
     ...process.env,
     AI_TEST_STORAGE_STATE: storageState && fs.existsSync(storageState) ? storageState : '',
     AI_TEST_BASE_URL: baseURL,
+    AI_TEST_ENTRY: entry,
   };
   ensureBrowsersPath(spawnEnv);
 

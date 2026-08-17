@@ -190,18 +190,39 @@ async function selectTarget(page: Page, action: Extract<SemanticAction, { type: 
 }
 
 async function assertTarget(page: Page, action: Extract<SemanticAction, { type: 'assert' }>): Promise<void> {
-  const target = resolveTarget(page, action.scope);
-  const text = shortActionText(action) || action.description.trim();
-  if (text) {
-    try {
-      await target.getByText(text, { exact: false }).first().waitFor({ state: 'visible', timeout: 6_000 });
-      return;
-    } catch {
-      /* fall through */
+  const kind = action.kind || 'text';
+  const expectText = (action.expect || action.description || '').trim();
+  if (!expectText) throw new Error('断言失败: expect 为空');
+
+  if (kind === 'url') {
+    const url = page.url();
+    if (!url.toLowerCase().includes(expectText.toLowerCase())) {
+      throw new Error(`断言失败: url 不含 ${expectText}（当前 ${url}）`);
     }
+    return;
   }
 
-  throw new Error(`断言失败: ${action.description}`);
+  if (kind === 'count') {
+    const n = Number(expectText);
+    const target = resolveTarget(page, action.scope);
+    const needle = action.target?.trim();
+    const loc = needle
+      ? target.getByText(needle, { exact: false })
+      : target.locator('body');
+    const count = needle ? await loc.count() : 1;
+    if (count < n) {
+      throw new Error(`断言失败: count=${count} < ${n}${needle ? ` target=${needle}` : ''}`);
+    }
+    return;
+  }
+
+  const target = resolveTarget(page, action.scope);
+  try {
+    await target.getByText(expectText, { exact: false }).first().waitFor({ state: 'visible', timeout: 6_000 });
+    return;
+  } catch {
+    throw new Error(`断言失败: 未找到可见文案 ${expectText}`);
+  }
 }
 
 async function actTarget(_page: Page, action: Extract<SemanticAction, { type: 'act' }>): Promise<void> {

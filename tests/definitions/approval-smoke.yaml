@@ -1,10 +1,11 @@
 name: 审批列表意图样例
+goal: 验证用户可以从审批入口进入列表页
 description: >
   验证用户可以从审批入口进入列表页。
   本文件为 Intent 格式样例；跑真实环境前请确认 entry / 文案与当前产品一致。
 env: stage
 profile: default
-entry: /approval/list
+entry: /main/approve
 
 preconditions:
   - 用户已登录
@@ -15,15 +16,17 @@ constraints:
   - 优先 role / label / text
   - 不允许依赖随机 class
   - 禁止固定 sleep（除 wait 步骤）
+  - 禁止把 @N 写入定义；运行时再从 Snapshot 解析
 
 steps:
   - id: open-list
     action: goto
-    path: /approval/list
+    path: /main/approve
   - id: see-list
     action: assert
-    description: 审批
+    kind: text
+    expect: 审批
     evidence: [screenshot]
 
 assertions:
-  - 页面包含审批相关内容
+  - 审批

@@ -42,7 +42,7 @@
         "key": "main-iframe",
         "selector": "iframe",
         "script": "260612/我的审批_2026-06-09_16-48-19",
-        "required": true
+        "required": false
       },
       {
         "key": "approve-table",

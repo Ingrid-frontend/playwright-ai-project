@@ -54,6 +54,10 @@ const { buildHtmlReport } = require('./lib/report-html');
 const { runRepoPromoteBaseline, runRepoVisualReview } = require('./lib/repo-baseline');
 const { runFigmaCompare } = require('./lib/figma-compare');
 const { runAiNativeValidate } = require('./lib/ai-native-validate');
+const { runIntent, listIntentDefinitions, getIntentDefinition, saveIntentDefinition } = require('./lib/intent-run');
+const { runEgoAudit } = require('./lib/ego-audit');
+const { runEgoNlFlow } = require('./lib/ego-nl-run');
+const { runEgoExplore } = require('./lib/ego-explore');
 const {
   openRepoCompareReport,
   runRepoCompareReport,
@@ -96,6 +100,9 @@ const {
   cancelRepoBatch,
   cancelRepoCompare,
   cancelAiValidate,
+  cancelIntentRun,
+  cancelEgoAudit,
+  cancelEgoExplore,
   cancelRepoRerun,
   cancelOptimize,
   cancelRun,
@@ -356,6 +363,16 @@ const { sendHello, handleMessage } = createWsDispatcher({
     runFigmaCompare,
     runAiNativeValidate,
     cancelAiValidate,
+    runIntent,
+    listIntentDefinitions,
+    getIntentDefinition,
+    saveIntentDefinition,
+    cancelIntentRun,
+    runEgoAudit,
+    runEgoNlFlow,
+    runEgoExplore,
+    cancelEgoAudit,
+    cancelEgoExplore,
     runRepoCompareReport,
     openRepoCompareReport,
     sendCompareReportStatus,

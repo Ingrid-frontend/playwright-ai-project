@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import { parse as parseYaml } from 'yaml';
 import { compileIntentToPlan } from '../../src/runtime/compile-intent.js';
 import { executeAiTest } from '../../src/runtime/execute-ai-test.js';
+import { executeIntentEgo } from '../../src/runtime/execute-intent-ego.js';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
@@ -57,13 +58,15 @@ function printHelp(): void {
   console.log(`用法: npm run intent:run -- --intent=<path> [选项]
 
 选项:
-  --intent=<path>   Test Intent YAML
-  --env=<env>       覆盖意图中的环境
-  --profile=<id>    覆盖账号 profile
-  --out=<dir>       输出目录
-  --headed          有头浏览器
-  --heal            强制开启自愈（默认开启）
-  --no-heal         关闭自愈
+  --intent=<path>     Test Intent YAML
+  --engine=ego|pw     执行引擎（默认 ego）
+  --env=<env>         覆盖意图中的环境
+  --profile=<id>      覆盖账号 profile（仅 pw 引擎）
+  --out=<dir>         输出目录
+  --headed            有头浏览器（仅 pw）
+  --keep-tab          ego 跑完保留 Space
+  --heal              强制开启自愈（默认开启；assert 永不自愈）
+  --no-heal           关闭自愈
   -h, --help
 `);
 }
@@ -81,7 +84,10 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  ensureBrowsersPath();
+  const engineRaw = (getArgValue('engine') || 'ego').toLowerCase();
+  const engine = engineRaw === 'pw' || engineRaw === 'playwright' ? 'pw' : 'ego';
+
+  if (engine === 'pw') ensureBrowsersPath();
 
   const raw = parseYaml(fs.readFileSync(intentPath, 'utf-8'));
   const { intent, plan } = compileIntentToPlan(raw);
@@ -94,15 +100,29 @@ async function main(): Promise<void> {
   fs.writeFileSync(path.join(outputDir, 'intent.json'), `${JSON.stringify(intent, null, 2)}\n`, 'utf-8');
 
   const heal = hasFlag('no-heal') ? false : true;
+  const env = getArgValue('env') || intent.env;
+  const profile = getArgValue('profile') || intent.profile;
 
-  const result = await executeAiTest(plan, {
-    env: getArgValue('env'),
-    profile: getArgValue('profile'),
-    headed: hasFlag('headed'),
-    outputDir,
-    heal,
-    constraints: intent.constraints,
-  });
+  console.log(`🛠  engine=${engine} · heal=${heal ? 'on' : 'off'}`);
+
+  const result =
+    engine === 'ego'
+      ? await executeIntentEgo(plan, {
+          env,
+          profile,
+          outputDir,
+          heal,
+          constraints: intent.constraints,
+          keepTab: hasFlag('keep-tab'),
+        })
+      : await executeAiTest(plan, {
+          env,
+          profile,
+          headed: hasFlag('headed'),
+          outputDir,
+          heal,
+          constraints: intent.constraints,
+        });
 
   console.log('');
   console.log(result.passed ? '✅ Intent 测试通过' : '❌ Intent 测试失败');

@@ -10,5 +10,6 @@ steps:
     url: "data:text/html,<h1>OK</h1>"
   - id: bad-assert
     action: assert
-    description: ThisTextDoesNotExistAnywhere
+    kind: text
+    expect: ThisTextDoesNotExistAnywhere
     evidence: [screenshot]

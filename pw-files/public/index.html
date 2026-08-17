@@ -1063,6 +1063,12 @@
         <div class="tab" onclick="switchTab('ai-validate',this)">
           AI 验证
         </div>
+        <div class="tab" onclick="switchTab('intent-run',this)">
+          Intent 运行
+        </div>
+        <div class="tab" onclick="switchTab('ego-audit',this)">
+          NL 生成运行
+        </div>
       </div>
 
       <div class="editor-run-bar" id="editorRunBar">
@@ -1207,6 +1213,144 @@
           </div>
         </div>
 
+        <!-- Intent run + Explore -->
+        <div class="editor-pane" id="pane-intent-run">
+          <div style="flex:1;overflow-y:auto;padding:16px;font-size:var(--fs-sm);line-height:1.8">
+            <div style="display:flex;flex-direction:column;gap:10px;max-width:760px">
+              <div>
+                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">Intent 定义</label>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                  <select id="intentPreset" class="url-input" style="flex:1;min-width:180px;color:var(--text)" onchange="onIntentPresetChange()">
+                    <option value="">加载中…</option>
+                  </select>
+                  <button type="button" class="btn" style="font-size:var(--fs-sm);padding:4px 10px" onclick="refreshIntentList()">刷新</button>
+                  <button type="button" class="btn" style="font-size:var(--fs-sm);padding:4px 10px" onclick="loadIntentYaml()">加载到编辑器</button>
+                </div>
+              </div>
+              <div>
+                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">YAML 路径</label>
+                <input type="text" class="url-input" id="intentPath" spellcheck="false"
+                  value="tests/definitions/smoke.yaml"
+                  placeholder="tests/definitions/smoke.yaml"
+                  style="width:100%;color:var(--text)">
+              </div>
+              <div>
+                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">YAML 编辑器（可保存到 definitions）</label>
+                <textarea id="intentYamlText" class="url-input" spellcheck="false" rows="10"
+                  placeholder="留空则直接跑上方路径；填写完整 YAML 可临时执行或保存"
+                  style="width:100%;resize:vertical;color:var(--text);line-height:1.5;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px"></textarea>
+              </div>
+              <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+                <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary)">
+                  引擎
+                  <select id="intentEngine" class="url-input" style="width:auto;min-width:100px;color:var(--text)">
+                    <option value="ego" selected>ego</option>
+                    <option value="pw">playwright</option>
+                  </select>
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
+                  <input type="checkbox" id="intentHeal" checked> 定位失败自愈
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
+                  <input type="checkbox" id="intentHeaded"> 有头（仅 pw）
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
+                  <input type="checkbox" id="intentCompareAfter"> 跑完截图对比
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
+                  <input type="checkbox" id="intentKeepTab"> 保留 ego Space
+                </label>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <button type="button" class="btn btn-run" id="btnIntentRun" onclick="startIntentRun()" style="flex-shrink:0">
+                  <span class="btn-label">运行 Intent</span>
+                </button>
+                <button type="button" class="btn" id="btnIntentSave" onclick="saveIntentYaml()">保存定义</button>
+                <button type="button" class="btn" id="btnIntentCancel" onclick="cancelIntentRun()" style="display:none">取消</button>
+                <span class="editor-run-status" id="intentRunStatus"></span>
+              </div>
+              <div id="intentRunHint" class="sidebar-hint" style="color:var(--text-tertiary)">
+                固定 YAML → ego Snapshot 动态执行（默认）。断言失败不会自愈。截图落在 <code>screenshots/intent/</code>。
+              </div>
+              <div id="intentRunResult" style="display:none"></div>
+
+              <hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
+              <div style="font-weight:600;color:var(--text)">Explore → 生成 Intent</div>
+              <div>
+                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">探索目标 goal</label>
+                <input type="text" class="url-input" id="exploreGoal" spellcheck="false"
+                  placeholder="例如：进入审批列表并确认页面有审批文案"
+                  style="width:100%;color:var(--text)">
+              </div>
+              <div>
+                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">入口 entry（可选）</label>
+                <input type="text" class="url-input" id="exploreEntry" spellcheck="false"
+                  placeholder="/main/approve"
+                  style="width:100%;color:var(--text)">
+              </div>
+              <div>
+                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">Space 名（可选）</label>
+                <input type="text" class="url-input" id="exploreSpace" spellcheck="false"
+                  placeholder="explore:approval"
+                  style="width:100%;color:var(--text)">
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <button type="button" class="btn btn-run" id="btnExploreRun" onclick="startEgoExplore()" style="flex-shrink:0">
+                  <span class="btn-label">开始探索</span>
+                </button>
+                <button type="button" class="btn" id="btnExploreCancel" onclick="cancelEgoExploreUi()" style="display:none">取消</button>
+                <span class="editor-run-status" id="exploreStatus"></span>
+              </div>
+              <div class="sidebar-hint" style="color:var(--text-tertiary)">
+                ego Space 代操 → 语义轨迹 → Intent YAML 预览（不生成 Playwright）。确认后点「保存定义」。
+              </div>
+              <div id="exploreResult" style="display:none"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- NL → temp script → run (+ optional ego audit) -->
+        <div class="editor-pane" id="pane-ego-audit">
+          <div style="flex:1;overflow-y:auto;padding:16px;font-size:var(--fs-sm);line-height:1.8">
+            <div style="display:flex;flex-direction:column;gap:10px;max-width:760px">
+              <div>
+                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">自然语言测试步骤</label>
+                <textarea id="egoNlCase" class="url-input" spellcheck="false" rows="6"
+                  placeholder="例如：打开我的审批，进入第一条待审批，断言详情页出现审批相关文案"
+                  style="width:100%;resize:vertical;color:var(--text);line-height:1.6"></textarea>
+              </div>
+              <div>
+                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">入口 URL / 路径（可选）</label>
+                <input type="text" class="url-input" id="egoNlEntry" spellcheck="false"
+                  placeholder="/main/approve 或完整 URL；也可写在自然语言里"
+                  style="width:100%;color:var(--text)">
+              </div>
+              <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+                <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
+                  <input type="checkbox" id="egoNlHeaded"> 有头浏览器
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
+                  <input type="checkbox" id="egoNlAudit"> 执行后再做 ego 选择器体检（仅 optimized.spec）
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
+                  <input type="checkbox" id="egoNlKeepTab"> 体检后保留页面
+                </label>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <button type="button" class="btn btn-run" id="btnEgoAudit" onclick="startEgoNlRun()" style="flex-shrink:0">
+                  <span class="btn-label">生成并运行</span>
+                </button>
+                <button type="button" class="btn" id="btnEgoAuditCancel" onclick="cancelEgoAuditUi()" style="display:none">取消</button>
+                <span class="editor-run-status" id="egoAuditStatus"></span>
+              </div>
+              <div id="egoAuditHint" class="sidebar-hint" style="color:var(--text-tertiary)">
+                遗留路径：自然语言 → 临时 Playwright 脚本 → 执行（将迁移为 YAML Intent，请优先用「Intent 运行 / Explore」）。入口建议填 <code>/</code> 或业务 path；运行器会先 goto 再执行。产物在 <code>results/ego-studio/</code>。
+              </div>
+              <div id="egoAuditResult" style="display:none"></div>
+            </div>
+          </div>
+        </div>
+
       </div>
       </div>
     </div>
@@ -1308,6 +1452,9 @@ let state = { recording: false, hasRaw: false, hasOpt: false, hasRun: false };
 const busyState = { optimize: false, run: false, repoPipeline: false, repoCompare: false, repoRerunKeep: false, repoBatch: false, accountLogin: false };
 let figmaCompareSeq = 0;
 let aiValidateSeq = 0;
+let intentRunSeq = 0;
+let exploreSeq = 0;
+let egoAuditSeq = 0;
 let recordTimer = null;
 let recordSeconds = 0;
 let lastOptimizeProvider = 'claude';
@@ -2238,8 +2385,9 @@ function loadBatchResultSpecByIndex(i) {
 function restoreEditorTab() {
   try {
     const saved = sessionStorage.getItem(SS_EDITOR_TAB);
-    if (saved === 'figma' || saved === 'ai-validate') {
-      switchTab(saved, document.querySelectorAll('.tab')[saved === 'figma' ? 3 : 4]);
+    if (saved === 'figma' || saved === 'ai-validate' || saved === 'intent-run' || saved === 'ego-audit') {
+      const idxMap = { figma: 3, 'ai-validate': 4, 'intent-run': 5, 'ego-audit': 6 };
+      switchTab(saved, document.querySelectorAll('.tab')[idxMap[saved]]);
     } else {
       switchTab('figma', document.querySelectorAll('.tab')[3]);
     }
@@ -2718,6 +2866,7 @@ function applyOptimizedSpecListFromServer(msg) {
   populateRepoProfileFilter(repoState.profileCounts);
   fillRepoOptimizedSelect(entries);
   fillRepoBatchChecklist(entries);
+  fillEgoAuditSpecSelect(entries);
 }
 
 function populateRepoProfileFilter(profileCounts) {
@@ -3869,6 +4018,8 @@ function connectWS() {
     document.getElementById('wsDot').className = 'ws-dot connected';
     document.getElementById('wsStatus').textContent = '已连接';
     setAiValidateBusy(false);
+    setIntentRunBusy(false);
+    setEgoAuditBusy(false);
     dateCategoryState.loaded = false;
     dateCategoryState.loading = false;
     resetPipelineRunning();
@@ -3882,12 +4033,15 @@ function connectWS() {
     updateGlobalTaskBar();
     log('info', '已连接到 Playwright Studio 服务');
     setTimeout(refreshCompareReportStatus, 300);
+    setTimeout(refreshIntentList, 400);
   };
   ws.onmessage = (e) => handleMessage(JSON.parse(e.data));
   ws.onclose = () => {
     document.getElementById('wsDot').className = 'ws-dot';
     document.getElementById('wsStatus').textContent = '重连中…';
     setAiValidateBusy(false);
+    setIntentRunBusy(false);
+    setEgoAuditBusy(false);
     updateGlobalTaskBar();
     resetPipelineRunning();
     setBusy('optimize', false);
@@ -4727,6 +4881,101 @@ function handleMessage(msg) {
         log('err', `[ai-validate] ${msg.message || '验证未通过'}`);
       }
       break;
+    case 'intent:list:done':
+      renderIntentPresetList(msg.items || []);
+      break;
+    case 'intent:get:done':
+      if (msg.ok && msg.text != null) {
+        const box = document.getElementById('intentYamlText');
+        if (box) box.value = msg.text;
+        if (msg.path) {
+          const pathEl = document.getElementById('intentPath');
+          if (pathEl) pathEl.value = msg.path;
+        }
+        showToast('已加载 Intent YAML', 'ok');
+      } else {
+        showToast(msg.message || '加载失败', 'err');
+      }
+      break;
+    case 'intent:save:done':
+      if (msg.ok) {
+        showToast(`已保存 ${msg.path || ''}`, 'ok');
+        if (msg.path) {
+          const pathEl = document.getElementById('intentPath');
+          if (pathEl) pathEl.value = msg.path;
+        }
+      } else {
+        showToast(msg.message || '保存失败', 'err');
+      }
+      break;
+    case 'intent:run:start':
+      if (msg.seq) intentRunSeq = msg.seq;
+      setIntentRunBusy(true);
+      switchToIntentRunTab();
+      log('info', `[intent] 开始运行${msg.intent ? ` · ${msg.intent}` : ''}${msg.env ? ` · ${msg.env}` : ''}`);
+      break;
+    case 'intent:run:done':
+      if (msg.seq && msg.seq < intentRunSeq) break;
+      renderIntentRunResult(msg);
+      if (msg.ok) {
+        showToast('Intent 通过', 'ok');
+        log('ok', '[intent] 通过');
+      } else {
+        showToast(msg.message || 'Intent 未通过', 'err');
+        log('err', `[intent] ${msg.message || '未通过'}`);
+      }
+      break;
+    case 'ego:explore:start':
+      if (msg.seq) exploreSeq = msg.seq;
+      setExploreBusy(true);
+      switchToIntentRunTab();
+      log('info', `[explore] 开始${msg.goal ? ` · ${msg.goal}` : ''}`);
+      break;
+    case 'ego:explore:done':
+      if (msg.seq && msg.seq < exploreSeq) break;
+      renderExploreResult(msg);
+      if (msg.ok) {
+        showToast('探索完成', 'ok');
+        log('ok', '[explore] 完成');
+      } else {
+        showToast(msg.message || '探索失败', 'err');
+        log('err', `[explore] ${msg.message || '失败'}`);
+      }
+      break;
+    case 'ego:audit:start':
+      if (msg.seq) egoAuditSeq = msg.seq;
+      setEgoAuditBusy(true);
+      switchToEgoAuditTab();
+      log('info', `[ego] 开始体检${msg.spec ? ` · ${msg.spec}` : ''}${msg.env ? ` · ${msg.env}` : ''}`);
+      break;
+    case 'ego:audit:done':
+      if (msg.seq && msg.seq < egoAuditSeq) break;
+      renderEgoAuditResult(msg);
+      if (msg.ok) {
+        showToast('ego 体检通过', 'ok');
+        log('ok', '[ego] 体检通过');
+      } else {
+        showToast(msg.message || 'ego 体检未通过', 'err');
+        log('err', `[ego] ${msg.message || '未通过'}`);
+      }
+      break;
+    case 'ego:nl-run:start':
+      if (msg.seq) egoAuditSeq = msg.seq;
+      setEgoAuditBusy(true);
+      switchToEgoAuditTab();
+      log('info', `[ego-nl] 生成并运行${msg.env ? ` · ${msg.env}` : ''}`);
+      break;
+    case 'ego:nl-run:done':
+      if (msg.seq && msg.seq < egoAuditSeq) break;
+      renderEgoNlRunResult(msg);
+      if (msg.ok) {
+        showToast('临时脚本执行通过', 'ok');
+        log('ok', '[ego-nl] 执行通过');
+      } else {
+        showToast(msg.message || '执行未通过', 'err');
+        log('err', `[ego-nl] ${msg.message || '未通过'}`);
+      }
+      break;
     case 'repo:compare-report:start':
       busyState.repoCompare = true;
       syncWorkflowUi();
@@ -5125,7 +5374,7 @@ function setEditorRunStatus(text, status) {
 
 function syncEditorRunBarVisibility() {
   const bar = document.getElementById('editorRunBar');
-  const noRun = ['diff','figma','ai-validate'].some((n) => document.getElementById('pane-' + n)?.classList.contains('active'));
+  const noRun = ['diff','figma','ai-validate','intent-run','ego-audit'].some((n) => document.getElementById('pane-' + n)?.classList.contains('active'));
   if (bar) bar.style.display = noRun ? 'none' : 'block';
 }
 
@@ -5177,6 +5426,317 @@ function setAiValidateBusy(busy) {
 function switchToAiValidateTab() {
   const tab = Array.from(document.querySelectorAll('.tab')).find((t) => t.textContent.includes('AI 验证'));
   if (tab) switchTab('ai-validate', tab);
+}
+
+function setIntentRunBusy(busy) {
+  const btn = document.getElementById('btnIntentRun');
+  const cancelBtn = document.getElementById('btnIntentCancel');
+  const status = document.getElementById('intentRunStatus');
+  if (btn) {
+    btn.disabled = busy;
+    btn.style.opacity = busy ? 0.6 : 1;
+    const label = btn.querySelector('.btn-label');
+    if (label) label.textContent = busy ? '运行中…' : '运行 Intent';
+  }
+  if (cancelBtn) cancelBtn.style.display = busy ? '' : 'none';
+  if (status) {
+    status.textContent = busy ? '运行中…' : '';
+    status.style.display = busy ? '' : 'none';
+  }
+}
+
+function switchToIntentRunTab() {
+  const tab = Array.from(document.querySelectorAll('.tab')).find((t) => t.textContent.includes('Intent 运行'));
+  if (tab) switchTab('intent-run', tab);
+}
+
+function refreshIntentList() {
+  send('intent:list', {});
+}
+
+function renderIntentPresetList(items) {
+  const select = document.getElementById('intentPreset');
+  if (!select) return;
+  const current = document.getElementById('intentPath')?.value?.trim() || '';
+  const opts = items.length
+    ? items.map((item) => `<option value="${escHtml(item.path)}">${escHtml(item.name)}</option>`).join('')
+    : '<option value="">（tests/definitions 为空）</option>';
+  select.innerHTML = opts + '<option value="__custom__">自定义路径…</option>';
+  const match = items.find((item) => item.path === current);
+  select.value = match ? match.path : items[0]?.path || '__custom__';
+  if (match || items[0]) {
+    const pathEl = document.getElementById('intentPath');
+    if (pathEl && !pathEl.value.trim()) pathEl.value = match?.path || items[0].path;
+  }
+}
+
+function onIntentPresetChange() {
+  const select = document.getElementById('intentPreset');
+  const pathEl = document.getElementById('intentPath');
+  if (!select || !pathEl) return;
+  if (select.value && select.value !== '__custom__') {
+    pathEl.value = select.value;
+  }
+}
+
+function loadIntentYaml() {
+  const intent = document.getElementById('intentPath')?.value?.trim() || '';
+  if (!intent) {
+    showToast('请先选择或填写 YAML 路径', 'err');
+    return;
+  }
+  send('intent:get', { path: intent });
+}
+
+function saveIntentYaml() {
+  const pathVal = document.getElementById('intentPath')?.value?.trim() || '';
+  const yamlText = document.getElementById('intentYamlText')?.value || '';
+  if (!yamlText.trim()) {
+    showToast('编辑器为空，无法保存', 'err');
+    return;
+  }
+  send('intent:save', { path: pathVal || 'tests/definitions/untitled.yaml', yamlText });
+}
+
+function startIntentRun() {
+  const intent = document.getElementById('intentPath')?.value?.trim() || '';
+  const yamlText = document.getElementById('intentYamlText')?.value?.trim() || '';
+  const heal = Boolean(document.getElementById('intentHeal')?.checked);
+  const headed = Boolean(document.getElementById('intentHeaded')?.checked);
+  const engine = document.getElementById('intentEngine')?.value || 'ego';
+  const compareAfter = Boolean(document.getElementById('intentCompareAfter')?.checked);
+  const keepTab = Boolean(document.getElementById('intentKeepTab')?.checked);
+  const resultBox = document.getElementById('intentRunResult');
+  if (!yamlText && !intent) {
+    showToast('请选择 Intent YAML 或填写临时 YAML', 'err');
+    return;
+  }
+  if (resultBox) {
+    resultBox.style.display = 'none';
+    resultBox.innerHTML = '';
+  }
+  switchToIntentRunTab();
+  setIntentRunBusy(true);
+  send('intent:run', { intent, yamlText, heal, headed, engine, compareAfter, keepTab });
+}
+
+function cancelIntentRun() {
+  send('cancel:intent-run', {});
+  setIntentRunBusy(false);
+  showToast('已请求取消 Intent', 'err');
+}
+
+function renderIntentRunResult(msg) {
+  setIntentRunBusy(false);
+  const box = document.getElementById('intentRunResult');
+  if (!box) return;
+  box.style.display = 'block';
+  const steps = Array.isArray(msg.steps) ? msg.steps : [];
+  const stepRows = steps
+    .map((step) => {
+      const passed = Boolean(step.passed);
+      const skipped = Boolean(step.skipped);
+      const healed = Boolean(step.healed);
+      const mark = passed ? '✓' : skipped ? '·' : '✗';
+      const healMark = healed ? ' [已自愈]' : '';
+      const error = step.error ? `：${escHtml(String(step.error))}` : '';
+      const id = typeof step.id === 'string' ? step.id : step.action?.type || '';
+      return `<div style="padding:5px 0;border-bottom:1px solid var(--border);color:${passed ? 'var(--green)' : skipped ? 'var(--text-tertiary)' : 'var(--red)'}">${mark} ${escHtml(id)}${healMark}${error}</div>`;
+    })
+    .join('');
+  const status = msg.ok ? 'Intent 通过' : 'Intent 未通过';
+  const color = msg.ok ? 'var(--green)' : 'var(--red)';
+  const compareLine =
+    msg.compareAfter != null
+      ? `<div class="sidebar-hint" style="margin-bottom:8px">截图对比：${msg.compareOk ? '已触发' : '未触发/失败'}</div>`
+      : '';
+  box.innerHTML = `
+    <div style="font-weight:700;margin-bottom:8px;color:${color}">${status}</div>
+    <div class="sidebar-hint" style="margin-bottom:4px">引擎：<code>${escHtml(msg.engine || '')}</code> · 定义：<code>${escHtml(msg.intent || '')}</code></div>
+    <div class="sidebar-hint" style="margin-bottom:8px">结果目录：<code>${escHtml(msg.outRel || '')}</code></div>
+    ${compareLine}
+    <div>${stepRows || '<div class="sidebar-hint">无步骤结果</div>'}</div>
+  `;
+}
+
+function setExploreBusy(busy) {
+  const btn = document.getElementById('btnExploreRun');
+  const cancelBtn = document.getElementById('btnExploreCancel');
+  const status = document.getElementById('exploreStatus');
+  if (btn) {
+    btn.disabled = busy;
+    btn.style.opacity = busy ? 0.6 : 1;
+    const label = btn.querySelector('.btn-label');
+    if (label) label.textContent = busy ? '探索中…' : '开始探索';
+  }
+  if (cancelBtn) cancelBtn.style.display = busy ? '' : 'none';
+  if (status) {
+    status.textContent = busy ? '探索中…' : '';
+    status.style.display = busy ? '' : 'none';
+  }
+}
+
+function startEgoExplore() {
+  const goal = document.getElementById('exploreGoal')?.value?.trim() || '';
+  const entry = document.getElementById('exploreEntry')?.value?.trim() || '';
+  const space = document.getElementById('exploreSpace')?.value?.trim() || '';
+  const box = document.getElementById('exploreResult');
+  if (!goal) {
+    showToast('请填写探索目标', 'err');
+    return;
+  }
+  if (box) {
+    box.style.display = 'none';
+    box.innerHTML = '';
+  }
+  switchToIntentRunTab();
+  setExploreBusy(true);
+  send('ego:explore', { goal, entry, space, maxSteps: 8, keepTab: false });
+}
+
+function cancelEgoExploreUi() {
+  send('cancel:ego-explore', {});
+  setExploreBusy(false);
+  showToast('已请求取消探索', 'err');
+}
+
+function renderExploreResult(msg) {
+  setExploreBusy(false);
+  const box = document.getElementById('exploreResult');
+  if (!box) return;
+  box.style.display = 'block';
+  if (msg.ok && msg.previewYaml) {
+    const editor = document.getElementById('intentYamlText');
+    if (editor) editor.value = msg.previewYaml;
+    box.innerHTML = `
+      <div style="font-weight:700;margin-bottom:8px;color:var(--green)">探索完成 · 预览已填入编辑器</div>
+      <div class="sidebar-hint">目录：<code>${escHtml(msg.outRel || '')}</code></div>
+      <div class="sidebar-hint" style="margin-top:6px">确认后点击「保存定义」写入 tests/definitions/</div>
+    `;
+  } else {
+    box.innerHTML = `
+      <div style="font-weight:700;color:var(--red)">探索失败</div>
+      <div class="sidebar-hint">${escHtml(msg.message || '')}</div>
+    `;
+  }
+}
+
+function setEgoAuditBusy(busy) {
+  const btn = document.getElementById('btnEgoAudit');
+  const cancelBtn = document.getElementById('btnEgoAuditCancel');
+  const status = document.getElementById('egoAuditStatus');
+  if (btn) {
+    btn.disabled = busy;
+    btn.style.opacity = busy ? 0.6 : 1;
+    const label = btn.querySelector('.btn-label');
+    if (label) label.textContent = busy ? '运行中…' : '生成并运行';
+  }
+  if (cancelBtn) cancelBtn.style.display = busy ? '' : 'none';
+  if (status) {
+    status.textContent = busy ? '运行中…' : '';
+    status.style.display = busy ? '' : 'none';
+  }
+}
+
+function switchToEgoAuditTab() {
+  const tab = Array.from(document.querySelectorAll('.tab')).find((t) =>
+    t.textContent.includes('NL 生成运行') || t.textContent.includes('ego'),
+  );
+  if (tab) switchTab('ego-audit', tab);
+}
+
+function startEgoNlRun() {
+  const caseDescription = document.getElementById('egoNlCase')?.value?.trim() || '';
+  const entry = document.getElementById('egoNlEntry')?.value?.trim() || '';
+  const headed = Boolean(document.getElementById('egoNlHeaded')?.checked);
+  const audit = Boolean(document.getElementById('egoNlAudit')?.checked);
+  const keepTab = Boolean(document.getElementById('egoNlKeepTab')?.checked);
+  const resultBox = document.getElementById('egoAuditResult');
+  if (!caseDescription) {
+    showToast('请先填写自然语言测试步骤', 'err');
+    return;
+  }
+  if (resultBox) {
+    resultBox.style.display = 'none';
+    resultBox.innerHTML = '';
+  }
+  switchToEgoAuditTab();
+  setEgoAuditBusy(true);
+  send('ego:nl-run', { caseDescription, entry, headed, audit, keepTab, settle: 3 });
+}
+
+function cancelEgoAuditUi() {
+  send('cancel:ego-audit', {});
+  setEgoAuditBusy(false);
+  showToast('已请求取消', 'err');
+}
+
+function renderEgoNlRunResult(msg) {
+  setEgoAuditBusy(false);
+  const box = document.getElementById('egoAuditResult');
+  if (!box) return;
+  box.style.display = 'block';
+  const audit = msg.audit;
+  const results = Array.isArray(audit?.results) ? audit.results : [];
+  const stepRows = results
+    .map((r) => {
+      const meta = egoVerdictMeta(r.verdict);
+      const broken = r.brokenAtPart ? ` · 断在第 ${escHtml(String(r.brokenAtPart))} 段` : '';
+      return `<div style="padding:6px 0;border-bottom:1px solid var(--border);color:${meta.color}">
+        ${meta.mark} 「${escHtml(r.stepName || '')}」 ${meta.label}${broken}
+        <div class="sidebar-hint" style="margin:2px 0 0;color:var(--text-tertiary)">${escHtml(r.raw || '')}</div>
+      </div>`;
+    })
+    .join('');
+  const status = msg.ok ? '执行通过' : '执行未通过';
+  const color = msg.ok ? 'var(--green)' : 'var(--red)';
+  const summary = audit?.summary;
+  const auditLine = audit?.skipped
+    ? `<div class="sidebar-hint" style="margin-bottom:8px;color:var(--amber)">ego 体检已跳过：${escHtml(audit.skipReason || '不适用')}</div>`
+    : summary
+      ? `<div class="sidebar-hint" style="margin-bottom:8px">ego 体检：健康 ${escHtml(String(summary.healthy ?? 0))} · 断裂 ${escHtml(String(summary.blocking ?? 0))} · 需确认 ${escHtml(String(summary.warnings ?? 0))}</div>`
+      : '';
+  box.innerHTML = `
+    <div style="font-weight:700;margin-bottom:8px;color:${color}">${status}${msg.message ? ` · ${escHtml(msg.message)}` : ''}</div>
+    <div class="sidebar-hint" style="margin-bottom:4px">临时脚本：<code>${escHtml(msg.scriptRel || '')}</code></div>
+    <div class="sidebar-hint" style="margin-bottom:8px">结果目录：<code>${escHtml(msg.outRel || '')}</code></div>
+    ${auditLine}
+    <div>${stepRows || (audit && !audit.skipped ? '<div class="sidebar-hint">无体检步骤（或 ego 不可用）</div>' : '')}</div>
+  `;
+}
+
+function egoVerdictMeta(verdict) {
+  if (verdict === 'ok') return { mark: '✓', color: 'var(--green)', label: '健康' };
+  if (verdict === 'missing') return { mark: '✗', color: 'var(--red)', label: '未匹配' };
+  if (verdict === 'ambiguous') return { mark: '!', color: 'var(--amber, #d97706)', label: '多重匹配' };
+  if (verdict === 'invisible') return { mark: '!', color: 'var(--amber, #d97706)', label: '存在但不可见' };
+  return { mark: '·', color: 'var(--text-tertiary)', label: verdict || '未知' };
+}
+
+function refreshEgoAuditSpecs() {
+  /* 保留空实现，避免旧 onclick 报错 */
+}
+
+function fillEgoAuditSpecSelect() {
+  /* NL 模式不再依赖 optimized 列表 */
+}
+
+function startEgoAudit() {
+  startEgoNlRun();
+}
+
+function renderEgoAuditResult(msg) {
+  renderEgoNlRunResult({
+    ok: msg.ok,
+    message: msg.message,
+    outRel: msg.outRel,
+    scriptRel: msg.spec,
+    audit: {
+      url: msg.url,
+      summary: msg.summary,
+      results: msg.results,
+    },
+  });
 }
 
 function startAiValidate() {

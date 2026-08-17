@@ -13,6 +13,9 @@ const ACTION_TYPES = new Set([
 
 const STRATEGIES = new Set<ExecutionStrategy>(['deterministic', 'hybrid', 'visual']);
 const EVIDENCE = new Set<EvidenceKind>(['screenshot', 'dom', 'console']);
+const ASSERT_KINDS = new Set(['text', 'visible', 'url', 'count']);
+
+export type AssertKind = 'text' | 'visible' | 'url' | 'count';
 
 export interface TestIntentStep {
   id?: string;
@@ -22,6 +25,12 @@ export interface TestIntentStep {
   description?: string;
   instruction?: string;
   value?: string;
+  /** assert: text|visible|url|count */
+  kind?: AssertKind;
+  /** assert 期望值（可见原文 / url 片段 / 数量） */
+  expect?: string;
+  /** count 断言可选目标描述 */
+  target?: string;
   scope?: SemanticScope;
   locatorHint?: string;
   label?: string;
@@ -34,6 +43,7 @@ export interface TestIntentStep {
 
 export interface TestIntent {
   name: string;
+  goal?: string;
   description?: string;
   env?: string;
   profile?: string;
@@ -42,6 +52,18 @@ export interface TestIntent {
   constraints?: string[];
   assertions?: string[];
   steps: TestIntentStep[];
+}
+
+/** 叙述句：不能当可见文案断言 */
+const NARRATIVE_RE =
+  /页面包含|应该|应当|相关内容|出现了|可以看到|验证|确保|成功提示|变为|变成|必须|需要/;
+
+export function isNarrativeAssertText(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  if (NARRATIVE_RE.test(t)) return true;
+  if (t.length > 24 && /[\u4e00-\u9fa5]{2,}.*(包含|出现|显示)/.test(t)) return true;
+  return false;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -69,6 +91,16 @@ function assertStringArray(value: unknown, field: string): string[] | undefined 
     throw new Error(`测试意图字段 ${field} 必须是非空字符串数组`);
   }
   return value.map((item) => (item as string).trim());
+}
+
+function validateAssertExpect(text: string, field: string): string {
+  const v = assertString(text, field);
+  if (isNarrativeAssertText(v)) {
+    throw new Error(
+      `${field} 不能是自然语言叙述（如「页面包含…」），请改用可见原文短文案，并设置 kind: text|visible|url|count`,
+    );
+  }
+  return v;
 }
 
 function validateStep(raw: unknown, index: number): TestIntentStep {
@@ -109,7 +141,33 @@ function validateStep(raw: unknown, index: number): TestIntentStep {
   if (action === 'act') {
     assertString(raw.instruction, `steps[${index}].instruction`);
   }
-  if (action === 'click' || action === 'fill' || action === 'select' || action === 'assert') {
+
+  let kind: AssertKind | undefined;
+  let expectValue: string | undefined;
+  let target: string | undefined;
+  let description = assertOptionalString(raw.description, `steps[${index}].description`);
+
+  if (action === 'assert') {
+    const kindRaw = assertOptionalString(raw.kind, `steps[${index}].kind`);
+    if (kindRaw && !ASSERT_KINDS.has(kindRaw)) {
+      throw new Error(`步骤 ${index + 1}.kind 必须是 text|visible|url|count`);
+    }
+    kind = (kindRaw as AssertKind | undefined) || 'text';
+    const expectRaw =
+      assertOptionalString(raw.expect, `steps[${index}].expect`) ||
+      description;
+    if (!expectRaw) {
+      throw new Error(`步骤 ${index + 1} assert 需要 expect 或 description`);
+    }
+    expectValue = validateAssertExpect(expectRaw, `steps[${index}].expect`);
+    description = expectValue;
+    target = assertOptionalString(raw.target, `steps[${index}].target`);
+    if (kind === 'count') {
+      if (!/^\d+$/.test(expectValue)) {
+        throw new Error(`步骤 ${index + 1} kind=count 时 expect 必须是非负整数`);
+      }
+    }
+  } else if (action === 'click' || action === 'fill' || action === 'select') {
     assertString(raw.description, `steps[${index}].description`);
   }
 
@@ -118,9 +176,12 @@ function validateStep(raw: unknown, index: number): TestIntentStep {
     action,
     path: assertOptionalString(raw.path, `steps[${index}].path`),
     url: assertOptionalString(raw.url, `steps[${index}].url`),
-    description: assertOptionalString(raw.description, `steps[${index}].description`),
+    description,
     instruction: assertOptionalString(raw.instruction, `steps[${index}].instruction`),
     value: assertOptionalString(raw.value, `steps[${index}].value`),
+    kind,
+    expect: expectValue,
+    target,
     scope: assertOptionalString(raw.scope, `steps[${index}].scope`) as SemanticScope | undefined,
     locatorHint: assertOptionalString(raw.locatorHint, `steps[${index}].locatorHint`),
     label: assertOptionalString(raw.label, `steps[${index}].label`),
@@ -143,15 +204,25 @@ export function validateTestIntent(value: unknown): TestIntent {
     throw new Error('测试意图 steps 必须是非空数组');
   }
 
+  const goal = assertOptionalString(value.goal, 'goal');
+  const description = assertOptionalString(value.description, 'description');
+  const assertions = assertStringArray(value.assertions, 'assertions');
+  if (assertions) {
+    for (let i = 0; i < assertions.length; i++) {
+      validateAssertExpect(assertions[i], `assertions[${i}]`);
+    }
+  }
+
   return {
     name,
-    description: assertOptionalString(value.description, 'description'),
+    goal: goal || description,
+    description,
     env: assertOptionalString(value.env, 'env'),
     profile: assertOptionalString(value.profile, 'profile'),
     entry: assertOptionalString(value.entry, 'entry'),
     preconditions: assertStringArray(value.preconditions, 'preconditions'),
     constraints: assertStringArray(value.constraints, 'constraints'),
-    assertions: assertStringArray(value.assertions, 'assertions'),
+    assertions,
     steps: steps.map((step, index) => validateStep(step, index)),
   };
 }

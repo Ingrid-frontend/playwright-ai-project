@@ -47,7 +47,10 @@ function toSemanticAction(step: TestIntentStep): SemanticAction {
     case 'assert':
       return {
         type: 'assert',
-        description: step.description!,
+        description: step.expect || step.description!,
+        kind: step.kind || 'text',
+        expect: step.expect || step.description!,
+        target: step.target,
         scope: step.scope,
       };
     case 'wait':
@@ -85,23 +88,39 @@ export function compileIntentToPlan(input: unknown): {
   const steps: SemanticStep[] = intent.steps.map((step, index) => toSemanticStep(step, index));
 
   const firstIsGoto = steps[0]?.action.type === 'goto';
-  if (intent.entry && !firstIsGoto) {
+  if (intent.entry) {
     const isUrl = /^https?:\/\//i.test(intent.entry) || intent.entry.startsWith('data:');
-    steps.unshift({
-      id: 'entry-goto',
-      action: isUrl ? { type: 'goto', url: intent.entry } : { type: 'goto', path: intent.entry },
-      strategy: 'hybrid',
-      optional: false,
-      retries: 0,
-      evidence: ['screenshot'],
-    });
+    if (!firstIsGoto) {
+      steps.unshift({
+        id: 'entry-goto',
+        action: isUrl ? { type: 'goto', url: intent.entry } : { type: 'goto', path: intent.entry },
+        strategy: 'hybrid',
+        optional: false,
+        retries: 0,
+        evidence: ['screenshot'],
+      });
+    } else {
+      const first = steps[0];
+      steps[0] = {
+        ...first,
+        action: isUrl
+          ? { type: 'goto', url: intent.entry, description: first.action.type === 'goto' ? first.action.description : undefined }
+          : { type: 'goto', path: intent.entry, description: first.action.type === 'goto' ? first.action.description : undefined },
+      };
+    }
   }
 
   if (intent.assertions?.length) {
     for (let i = 0; i < intent.assertions.length; i++) {
+      const expectText = intent.assertions[i];
       steps.push({
         id: `assert-${i + 1}`,
-        action: { type: 'assert', description: intent.assertions[i] },
+        action: {
+          type: 'assert',
+          description: expectText,
+          kind: 'text',
+          expect: expectText,
+        },
         strategy: 'hybrid',
         optional: false,
         retries: 0,
@@ -112,7 +131,7 @@ export function compileIntentToPlan(input: unknown): {
 
   const plan = validateSemanticTestPlan({
     name: intent.name,
-    description: intent.description,
+    description: intent.goal || intent.description,
     env: intent.env,
     profile: intent.profile,
     entry: intent.entry,

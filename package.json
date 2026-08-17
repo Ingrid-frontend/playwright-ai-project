@@ -88,12 +88,13 @@
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
-    "smoke": "tsx scripts/verify/smoke-report-modules.ts && node scripts/verify/smoke-ws-dispatch.cjs",
+    "smoke": "tsx scripts/verify/smoke-report-modules.ts && node scripts/verify/smoke-ws-dispatch.cjs && node scripts/verify/verify-ego-selector-probe.cjs && node scripts/verify/verify-ego-snapshot.cjs && node scripts/verify/verify-baseline-quality.cjs && node scripts/verify/verify-intent-assert.cjs",
     "depcheck": "npx --yes depcheck --ignores=@types/*,@eslint/js,@typescript-eslint/*,eslint,globals,prettier,tsx,typescript,node-cron,pixelmatch,pngjs,dotenv",
     "feishu:update-report": "tsx scripts/feishu/update-feishu-report.ts",
     "figma:compare": "tsx scripts/figma/figma-spec-compare.ts",
     "figma:spec": "tsx scripts/figma/figma-spec-compare.ts --spec-only",
-    "ego:audit": "tsx scripts/ego/audit-selectors.ts"
+    "ego:audit": "tsx scripts/ego/audit-selectors.ts",
+    "ego:explore": "tsx scripts/ego/explore-to-intent.ts"
   },
   "keywords": [
     "playwright",

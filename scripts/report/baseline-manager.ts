@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { isDisabledViewportScreenshot } from './ui-regression-config.js';
+import { assertRunEligibleForGolden } from '../../src/utils/baseline-quality.js';
 
 export const BASELINE_ROOT = 'screenshots-baseline';
 export const UI_REGRESSION_DIR = 'results/ui-regression';
@@ -129,6 +130,8 @@ export function promoteRunToGolden(opts: {
     throw new Error(`源运行目录不存在: ${sourceDir}`);
   }
 
+  assertRunEligibleForGolden(sourceDir);
+
   const goldenDir = goldenDirForScript(opts.scriptKey, runSegment);
   const pngs = fs.readdirSync(sourceDir).filter((f) => f.endsWith('.png') && f.startsWith('step-'));
 
@@ -203,6 +206,8 @@ export function promoteStepsToGolden(opts: {
   if (!fs.existsSync(sourceDir)) {
     throw new Error(`源运行目录不存在: ${sourceDir}`);
   }
+
+  assertRunEligibleForGolden(sourceDir);
 
   const names = [...new Set(opts.stepFileNames.map((n) => path.basename(n)).filter((n) => n.endsWith('.png')))];
   if (!names.length) {
