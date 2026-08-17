@@ -96,6 +96,22 @@ export function extractStepNameFromPath(imagePath: string): string {
   return routeMatch ? routeMatch[1] : rest;
 }
 
+export function parseSnapshotIdentity(stepName: string): { snapshotName?: string; state?: string } {
+  const i = stepName.indexOf('__');
+  if (i < 0) return {};
+  return { snapshotName: stepName.slice(0, i), state: stepName.slice(i + 2) };
+}
+
+export function parseRunMetaFromScreenshotPath(imagePath: string): {
+  runTimestamp?: string;
+  stepFileName?: string;
+} {
+  const norm = imagePath.replace(/\\/g, '/');
+  const stepFileName = path.basename(norm);
+  const m = norm.match(/\/run-(?:chromium|webkit|firefox|safari|edge)-optimized\/([^/]+)\//i);
+  return { runTimestamp: m?.[1], stepFileName };
+}
+
 export function routeFromScreenshotPath(imagePath: string): string {
   const base = path.basename(imagePath.replace(/\\/g, '/'));
   const m = base.match(/^step-\d+-(.+)\.png$/);

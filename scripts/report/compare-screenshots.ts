@@ -25,6 +25,7 @@ import {
   generateHeatmapTabHtml,
   generateOverviewPanel,
   generateSummaryTableHtml,
+  generateVisualReviewTabHtml,
 } from './compare-report-viz.js';
 import {
   collectAllUiIssues,
@@ -189,6 +190,7 @@ function generateHTML(
       isCompareCrossBrowserEnabled,
       renderInlineDiffThumb: diffRenderer.renderInlineDiffThumb,
     }),
+    visualReviewHtml: generateVisualReviewTabHtml(uiIssues),
   });
 }
 

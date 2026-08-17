@@ -130,6 +130,7 @@ async function writeStepDiagnostics(
   screenshotPath: string,
   viewport: SnapshotViewport,
   scriptKey?: string,
+  snapshot?: { snapshotName?: string; state?: string },
 ): Promise<void> {
   if (process.env.SCREENSHOT_DIAGNOSTICS === '0') return;
   const bag = ensurePageDiag(page);
@@ -216,6 +217,8 @@ async function writeStepDiagnostics(
         selectors,
         consoleErrors: [...bag.consoleErrors],
         pageErrors: [...bag.pageErrors],
+        ...(snapshot?.snapshotName ? { snapshotName: snapshot.snapshotName } : {}),
+        ...(snapshot?.state ? { state: snapshot.state } : {}),
       },
       null,
       2,
@@ -231,7 +234,7 @@ export function useFullPageByDefault(): boolean {
 export async function captureScreenshotAtViewports(
   page: Page,
   filePath: string,
-  opts: { fullPage?: boolean; scriptKey?: string },
+  opts: { fullPage?: boolean; scriptKey?: string; snapshotName?: string; state?: string },
 ): Promise<string> {
   const viewports = resolveSnapshotViewports();
   const fullPage = opts.fullPage ?? useFullPageByDefault();
@@ -245,7 +248,10 @@ export async function captureScreenshotAtViewports(
     await lockViewportForSnapshot(page, vp);
     await applyMaskSelectors(page, opts.scriptKey);
     await page.screenshot({ path: outPath, fullPage, scale: SCREENSHOT_SCALE });
-    await writeStepDiagnostics(page, outPath, vp, opts.scriptKey);
+    await writeStepDiagnostics(page, outPath, vp, opts.scriptKey, {
+      snapshotName: opts.snapshotName,
+      state: opts.state,
+    });
     if (isDefault) primaryPath = outPath;
   }
 

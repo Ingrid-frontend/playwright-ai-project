@@ -1,7 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-import type { ImageComparison } from './image-diff.js';
+import type { DiffRegion, ImageComparison } from './image-diff.js';
 import { loadUiRegressionConfig, resolveAiReviewConfig } from './ui-regression-config.js';
+import { parseRunMetaFromScreenshotPath, parseSnapshotIdentity } from './compare-screenshots-utils.js';
 import type { PlainLanguageAnalysis } from './ui-issues-analysis.js';
 import type { UiIssueReview, ReviewSummary } from './ui-issue-review.js';
 
@@ -37,6 +38,14 @@ export interface UiIssue {
   structureType?: string;
   detail?: string;
   review?: UiIssueReview;
+  snapshotName?: string;
+  state?: string;
+  regions?: DiffRegion[];
+  overlayImagePath?: string;
+  runTimestamp?: string;
+  stepFileName?: string;
+  width?: number;
+  height?: number;
 }
 
 export interface UiIssuesReport {
@@ -208,6 +217,9 @@ export function comparisonToUiIssue(
     return null;
   }
 
+  const ident = parseSnapshotIdentity(ctx.stepName);
+  const runMeta = parseRunMetaFromScreenshotPath(comp.image2Path);
+
   return {
     issueId: `${ctx.scriptKey}|${ctx.stepNumber}|${ctx.stepName}|${ctx.browser}|${compareKind}|${comp.image2Path}`,
     scriptKey: ctx.scriptKey,
@@ -220,10 +232,18 @@ export function comparisonToUiIssue(
     baselinePath: comp.image1Path,
     currentPath: comp.image2Path,
     diffImagePath: comp.diffImagePath,
+    overlayImagePath: comp.overlayImagePath,
     sizeMismatch: comp.sizeMismatch,
     route: ctx.route,
     pairLabel: comp.pairLabel,
     isNewRegression: compareKind === 'golden' || compareKind === 'last-green',
+    snapshotName: ident.snapshotName,
+    state: ident.state,
+    regions: comp.regions,
+    runTimestamp: runMeta.runTimestamp,
+    stepFileName: runMeta.stepFileName,
+    width: comp.width,
+    height: comp.height,
   };
 }
 

@@ -75,6 +75,48 @@ export async function getCurrentRoute(page: Page): Promise<string> {
   }
 }
 
+export async function waitForViewportStable(page: Page, timeout: number = 3000): Promise<void> {
+  try {
+    const initialViewport = await page.evaluate(() => ({
+      width: window.innerWidth,
+      height: window.innerHeight,
+    }));
+
+    await page.waitForTimeout(500);
+
+    let stableCount = 0;
+    const maxStableCount = 3;
+    const startTime = Date.now();
+
+    while (stableCount < maxStableCount) {
+      if (Date.now() - startTime > timeout) {
+        console.log(`⚠️  视口稳定检测超时 (${timeout}ms)`);
+        break;
+      }
+
+      const currentViewport = await page.evaluate(() => ({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      }));
+
+      if (
+        currentViewport.width === initialViewport.width &&
+        currentViewport.height === initialViewport.height
+      ) {
+        stableCount++;
+      } else {
+        initialViewport.width = currentViewport.width;
+        initialViewport.height = currentViewport.height;
+        stableCount = 0;
+      }
+
+      await page.waitForTimeout(200);
+    }
+  } catch {
+    console.log('⚠️  视口稳定检测失败，继续执行');
+  }
+}
+
 export async function waitForContentReady(page: Page): Promise<void> {
   try {
     const hasContent = await page.evaluate(() => {

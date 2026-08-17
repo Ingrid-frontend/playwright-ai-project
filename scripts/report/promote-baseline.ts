@@ -4,10 +4,11 @@
  * 用法:
  *   npm run promote-baseline -- --script 260612/xxx --run 2026-05-21T10-46-34-813Z
  *   npm run promote-baseline -- --script 260612/xxx --latest
+ *   npm run promote-baseline -- --script 260612/xxx --latest --step=step-2-approval-list__normal.png
  */
 import fs from 'fs';
 import path from 'path';
-import { browserToRunSegment, promoteRunToGolden, revertGolden } from './baseline-manager.js';
+import { browserToRunSegment, promoteRunToGolden, promoteStepsToGolden, revertGolden } from './baseline-manager.js';
 
 function findLatestRunTimestamp(scriptKey: string, browser: string): string | null {
   const runDir = path.join(process.cwd(), 'screenshots', scriptKey, browserToRunSegment(browser));
@@ -27,6 +28,7 @@ function printHelp(): void {
   --run=<timestamp>             运行目录名
   --latest                      自动取最新 run（可配合 --browser）
   --browser=chrome|webkit       浏览器（默认 chrome）
+  --step=<file.png>             只提升指定 PNG（可重复）；不传则整 run
   --revert                      撤销 Golden
   -h, --help
 `);
@@ -38,12 +40,14 @@ function parseArgs(argv: string[]): {
   browser: string;
   revert: boolean;
   latest: boolean;
+  steps: string[];
 } {
   let script: string | undefined;
   let run: string | undefined;
   let browser = 'chrome';
   let revert = false;
   let latest = false;
+  const steps: string[] = [];
 
   for (const arg of argv) {
     if (arg === '-h' || arg === '--help') {
@@ -70,9 +74,14 @@ function parseArgs(argv: string[]): {
       browser = arg.slice('--browser='.length).trim().toLowerCase();
       continue;
     }
+    if (arg.startsWith('--step=')) {
+      const step = arg.slice('--step='.length).trim();
+      if (step) steps.push(step);
+      continue;
+    }
   }
 
-  return { script, run, browser, revert, latest };
+  return { script, run, browser, revert, latest, steps };
 }
 
 function main(): void {
@@ -98,6 +107,18 @@ function main(): void {
       process.exit(1);
     }
     console.log(`ℹ️  --latest 使用 run: ${runTs}`);
+  }
+
+  if (opts.steps.length) {
+    const { copied, goldenDir } = promoteStepsToGolden({
+      scriptKey: opts.script,
+      sourceRunTimestamp: runTs,
+      browser: opts.browser,
+      stepFileNames: opts.steps,
+    });
+    console.log(`✅ 已提升 Golden：${copied} 张截图（按 step）`);
+    console.log(`   目录: ${goldenDir}`);
+    return;
   }
 
   const { copied, goldenDir } = promoteRunToGolden({

@@ -10,6 +10,41 @@ export type DiffCardCtx = {
   trendPoints?: StepTrendPoint[];
 };
 
+function regionBlock(comparison: ImageComparison): { listHtml: string; boxesHtml: string } {
+  const regions = comparison.regions;
+  if (!regions?.length) return { listHtml: '', boxesHtml: '' };
+  const width = comparison.width;
+  const height = comparison.height;
+  const highMed = regions.filter((r) => r.severity !== 'low');
+  const low = regions.filter((r) => r.severity === 'low');
+  const rows = [...highMed, ...low]
+    .map((r) => {
+      const label = r.severity === 'high' ? 'High' : r.severity === 'medium' ? 'Medium' : 'Low';
+      const hidden = r.severity === 'low' ? ' data-low="1" style="display:none"' : '';
+      return `<li class="vr-region-item vr-${r.severity}" data-severity="${r.severity}"${hidden}>${label} · x:${r.x} y:${r.y} w:${r.w} h:${r.h} · ${(r.ratio * 100).toFixed(3)}%</li>`;
+    })
+    .join('');
+  const boxes =
+    width && height
+      ? highMed
+          .map((r) => {
+            const left = ((r.x / width) * 100).toFixed(2);
+            const top = ((r.y / height) * 100).toFixed(2);
+            const w = ((r.w / width) * 100).toFixed(2);
+            const hPct = ((r.h / height) * 100).toFixed(2);
+            return `<span class="vr-box vr-${r.severity}" style="left:${left}%;top:${top}%;width:${w}%;height:${hPct}%"></span>`;
+          })
+          .join('')
+      : '';
+  const toggle = low.length
+    ? `<button type="button" class="vr-toggle-low">显示 ${low.length} 个 Low</button>`
+    : '';
+  return {
+    listHtml: `<div class="vr-regions"><div class="vr-regions-title">${regions.length} visual changes</div><ul class="vr-region-list">${rows}</ul>${toggle}</div>`,
+    boxesHtml: boxes,
+  };
+}
+
 function esc(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -63,6 +98,8 @@ export function buildDiffCardHtml(
     : comparison.diffImagePath
       ? comparison.diffImagePath.replace(/\.png$/i, '-overlay.png').replace(/\\/g, '/')
       : '';
+
+  const regions = regionBlock(comparison);
 
   const trendHtml =
     opts.ctx?.trendPoints && opts.ctx.trendPoints.length > 1
@@ -122,15 +159,19 @@ export function buildDiffCardHtml(
         <div class="blink-hint">点击切换闪烁对比</div>
       </div>
       <div class="overlay-compare diff-view-panel">
+        <div class="vr-overlay-wrap">
         ${
           overlayRel
             ? `<img class="overlay-img" src="${overlayRel}" alt="标注叠加" loading="lazy" onerror="this.src='${comparison.image2Path}'">`
             : `<img class="overlay-img" src="${comparison.image2Path}" alt="当前" loading="lazy">`
         }
+        ${regions.boxesHtml}
+        </div>
         <div class="overlay-caption">当前页 + 红色高亮差异区</div>
       </div>
       ${sideBySide}
     </div>
+    ${regions.listHtml}
   </div>`;
 }
 
@@ -380,6 +421,76 @@ export function generateSummaryTableHtml(rows: SummaryRow[]): string {
       </table>
     </div>
   </div>`;
+}
+
+export function generateVisualReviewTabHtml(issues: UiIssue[]): string {
+  const src = issues.filter(
+    (i) =>
+      (i.compareKind === 'golden' || i.compareKind === 'last-green') &&
+      i.difference > 0,
+  );
+  if (!src.length) {
+    return `
+    <div class="empty-state">
+      <div class="empty-state-icon">✅</div>
+      <div class="empty-state-title">暂无需要 Visual Review 的变化</div>
+      <div class="empty-state-description">相对 Golden / last-green 无像素差异。</div>
+    </div>`;
+  }
+
+  const items = src
+    .map((issue, idx) => {
+      const title = issue.snapshotName
+        ? `${esc(issue.snapshotName)} · ${esc(issue.state || 'default')}`
+        : esc(issue.stepName);
+      const regionCount = issue.regions?.length || 0;
+      const cli = `npm run visual-review -- --verdict=approved --script=${issue.scriptKey} --run=${issue.runTimestamp || ''} --step=${issue.stepFileName || ''} --browser=${issue.browser}`;
+      const card = buildDiffCardHtml(
+        {
+          image1Path: issue.baselinePath,
+          image2Path: issue.currentPath,
+          difference: issue.difference,
+          diffImagePath: issue.diffImagePath,
+          overlayImagePath: issue.overlayImagePath,
+          browser: issue.browser,
+          compareKind: issue.compareKind === 'last-green' ? 'last-green' : 'golden',
+          regions: issue.regions,
+          width: issue.width,
+          height: issue.height,
+        },
+        {
+          image1Label: 'Baseline',
+          image2Label: 'Current',
+          browser: issue.browser,
+          isCross: false,
+          pairLabelHint: '',
+          browserPairHint: '',
+          sizeHint: issue.sizeMismatch
+            ? '<span class="diff-size-hint">尺寸不一致</span>'
+            : '',
+        },
+      );
+      return `
+      <article class="vr-item" data-vr-idx="${idx}" data-issue-id="${esc(issue.issueId)}" data-script="${esc(issue.scriptKey)}" data-run="${esc(issue.runTimestamp || '')}" data-step="${esc(issue.stepFileName || '')}" data-browser="${esc(issue.browser)}">
+        <header class="vr-item-head">
+          <div>
+            <strong>${title}</strong>
+            <span class="vr-meta">${esc(issue.scriptKey)} · step ${issue.stepNumber} · ${esc(issue.browser)} · ${regionCount} regions · ${issue.severity}</span>
+          </div>
+          <div class="vr-actions">
+            <button type="button" class="vr-btn vr-approve" data-verdict="approved">Approve</button>
+            <button type="button" class="vr-btn vr-reject" data-verdict="rejected">Reject</button>
+          </div>
+        </header>
+        ${card}
+        <p class="vr-cli"><code>${esc(cli)}</code> <button type="button" class="vr-copy-cli">复制 CLI</button></p>
+      </article>`;
+    })
+    .join('');
+
+  return `
+  <div class="vr-banner">静态报告无法直接写入 Golden。在 Studio 打开本页时 Approve 会调用本地接口；否则请复制 CLI。</div>
+  <div class="vr-list">${items}</div>`;
 }
 
 export { compareReportVizCss, compareReportVizJs } from './compare-report-viz-assets.js';

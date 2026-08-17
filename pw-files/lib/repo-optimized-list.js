@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
-const specMeta = require('../src/utils/spec-meta.cjs');
-const { specMatchesEnv } = require('../src/utils/test-env-path.cjs');
+const specMeta = require('../../src/utils/spec-meta.cjs');
+const { specMatchesEnv } = require('../../src/utils/test-env-path.cjs');
 
 /** 列出 tests/optimized 下 *.optimized.spec.ts（按 mtime 倒序） */
 function listOptimizedSpecs(repoRoot, opts = {}) {

@@ -167,6 +167,9 @@ export async function generateBaselineComparisons(
               browser,
               sizeMismatch: cached.sizeMismatch,
               compareKind,
+              width: cached.width,
+              height: cached.height,
+              regions: cached.regions,
             };
           }
         }
@@ -190,6 +193,9 @@ export async function generateBaselineComparisons(
           browser,
           sizeMismatch: result.sizeMismatch,
           compareKind,
+          width: result.width,
+          height: result.height,
+          regions: result.regions,
         };
       });
     }

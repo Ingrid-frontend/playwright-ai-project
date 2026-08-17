@@ -2,7 +2,19 @@ import fs from 'fs';
 import path from 'path';
 import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
-import { loadUiRegressionConfig, resolveIgnoreRegions } from './ui-regression-config.js';
+import { resolveIgnoreRegions, resolveDiffRegionsConfig } from './ui-regression-config.js';
+
+export type DiffRegionSeverity = 'high' | 'medium' | 'low';
+
+export interface DiffRegion {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  pixels: number;
+  ratio: number;
+  severity: DiffRegionSeverity;
+}
 
 export interface ImageDiffResult {
   difference: number;
@@ -11,6 +23,7 @@ export interface ImageDiffResult {
   width?: number;
   height?: number;
   sizeMismatch?: boolean;
+  regions?: DiffRegion[];
 }
 
 export type CompareKind =
@@ -36,6 +49,9 @@ export interface ImageComparison {
   browser2?: string;
   /** 跨浏览器配对说明（同日按运行序或同 timestamp 目录对齐） */
   pairLabel?: string;
+  width?: number;
+  height?: number;
+  regions?: DiffRegion[];
 }
 
 /** pixelmatch 额外选项；includeAA 默认 true。设为 false 时抗锯齿像素不计入差异。 */
@@ -149,6 +165,75 @@ function runPixelmatch(
   );
 }
 
+export function clusterDiffRegions(
+  diff: PNG,
+  opts?: { enabled?: boolean },
+): DiffRegion[] {
+  const cfg = resolveDiffRegionsConfig();
+  if (opts?.enabled === false || !cfg.enabled) return [];
+
+  const { width, height, data } = diff;
+  const totalPixels = width * height;
+  if (totalPixels <= 0) return [];
+
+  const visited = new Uint8Array(totalPixels);
+  const regions: DiffRegion[] = [];
+  const dx = [-1, 0, 1, -1, 1, -1, 0, 1];
+  const dy = [-1, -1, -1, 0, 0, 1, 1, 1];
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = y * width + x;
+      if (visited[idx]) continue;
+      if (data[idx * 4]! <= 128) continue;
+
+      let minX = x;
+      let minY = y;
+      let maxX = x;
+      let maxY = y;
+      let pixels = 0;
+      const qx = [x];
+      const qy = [y];
+      visited[idx] = 1;
+
+      while (qx.length) {
+        const cx = qx.pop()!;
+        const cy = qy.pop()!;
+        pixels++;
+        if (cx < minX) minX = cx;
+        if (cy < minY) minY = cy;
+        if (cx > maxX) maxX = cx;
+        if (cy > maxY) maxY = cy;
+        for (let k = 0; k < 8; k++) {
+          const nx = cx + dx[k]!;
+          const ny = cy + dy[k]!;
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+          const nidx = ny * width + nx;
+          if (visited[nidx]) continue;
+          if (data[nidx * 4]! <= 128) continue;
+          visited[nidx] = 1;
+          qx.push(nx);
+          qy.push(ny);
+        }
+      }
+
+      if (pixels < 8) continue;
+      const w = maxX - minX + 1;
+      const h = maxY - minY + 1;
+      const ratio = totalPixels > 0 ? pixels / totalPixels : 0;
+      let severity: DiffRegionSeverity = 'medium';
+      if (pixels < cfg.lowMaxPixels) severity = 'low';
+      else if (ratio >= cfg.highRatio || (w >= cfg.highMinWidth && h >= cfg.highMinHeight)) {
+        severity = 'high';
+      }
+      regions.push({ x: minX, y: minY, w, h, pixels, ratio, severity });
+    }
+  }
+
+  regions.sort((a, b) => b.pixels - a.pixels);
+  return regions.slice(0, 40);
+}
+
 async function writeOverlayPng(prepared: PreparedPair, outputPath: string): Promise<void> {
   const { width, height, croppedImg2, diff } = prepared;
   const out = new PNG({ width, height });
@@ -210,6 +295,7 @@ export async function compareImagesWithDiff(
     const difference = totalPixels > 0 ? numDiffPixels / totalPixels : 0;
 
     const shouldWrite = writeDiffImage && difference > 0;
+    const regions = difference > 0 ? clusterDiffRegions(prepared.diff) : [];
     const outDir = path.dirname(diffOutputPath);
     let overlayPath: string | undefined;
     if (!fs.existsSync(outDir)) {
@@ -239,6 +325,7 @@ export async function compareImagesWithDiff(
       img2Mtime: t2,
       pixelmatchThreshold: threshold,
       includeAA,
+      regions,
     });
 
     return {
@@ -248,6 +335,7 @@ export async function compareImagesWithDiff(
       width: prepared.width,
       height: prepared.height,
       sizeMismatch: prepared.sizeMismatch,
+      regions,
     };
   } catch (error) {
     console.error('Error comparing images with diff:', error);
@@ -264,6 +352,7 @@ export interface DiffMeta {
   img2Mtime: number;
   pixelmatchThreshold?: number;
   includeAA?: boolean;
+  regions?: DiffRegion[];
 }
 
 function diffMetaPath(diffOutputPath: string): string {
@@ -301,6 +390,7 @@ export function isDiffCacheValid(
         if (meta.includeAA !== expected.includeAA) return false;
       }
       if (meta.difference <= 0) return true;
+      if (resolveDiffRegionsConfig().enabled && !meta.regions) return false;
       return fs.existsSync(diffOutputPath);
     }
     if (!fs.existsSync(diffOutputPath)) return false;
@@ -323,9 +413,14 @@ export function loadCachedDiffResult(
   return {
     difference: meta.difference,
     diffImagePath: meta.difference > 0 && fs.existsSync(diffOutputPath) ? diffOutputPath : undefined,
+    overlayImagePath:
+      meta.difference > 0 && fs.existsSync(diffOutputPath.replace(/\.png$/i, '-overlay.png'))
+        ? diffOutputPath.replace(/\.png$/i, '-overlay.png')
+        : undefined,
     width: meta.width,
     height: meta.height,
     sizeMismatch: meta.sizeMismatch,
+    regions: meta.regions,
   };
 }
 

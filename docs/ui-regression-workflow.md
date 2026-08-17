@@ -1,5 +1,7 @@
 # UI 回归工作流
 
+Visual Review Lite（UI State、Diff Region、人审 Approve）见 [visual-review-lite.md](./visual-review-lite.md)。
+
 ## 主路径（推荐）
 
 ```mermaid

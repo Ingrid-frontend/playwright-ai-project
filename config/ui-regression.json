@@ -79,5 +79,12 @@
     "countAsBlockerInGate": false,
     "pixelmatchThreshold": 0.1,
     "includeAA": false
+  },
+  "diffRegions": {
+    "enabled": true,
+    "highRatio": 0.002,
+    "highMinWidth": 80,
+    "highMinHeight": 40,
+    "lowMaxPixels": 40
   }
 }

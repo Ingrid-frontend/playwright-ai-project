@@ -17,6 +17,7 @@ import {
   getCurrentRoute,
   waitForContentReady,
   waitForRouteStable,
+  waitForViewportStable,
 } from './screenshot-wait.js';
 
 export {
@@ -48,7 +49,17 @@ function getRouteDisplayName(route: string): string {
   return route;
 }
 
-export async function screenshotWhenStable(page: Page, path: string, options: { fullPage?: boolean } = {}): Promise<{ path: string; route: string }> {
+export type ScreenshotCaptureOpts = {
+  fullPage?: boolean;
+  snapshotName?: string;
+  state?: string;
+};
+
+export async function screenshotWhenStable(
+  page: Page,
+  path: string,
+  options: ScreenshotCaptureOpts = {},
+): Promise<{ path: string; route: string }> {
   const fullPage = options.fullPage ?? useFullPageByDefault();
   const viewports = resolveSnapshotViewports();
   const primaryVp = viewports.find((v) => v.default) || viewports[0]!;
@@ -83,6 +94,7 @@ export async function screenshotWhenStable(page: Page, path: string, options: { 
   }
 
   await waitForContentReady(page);
+  await waitForViewportStable(page);
 
   await assertNotLoginLikePage(page, `stable screenshot: ${path}`);
   await page.waitForTimeout(200);
@@ -90,7 +102,12 @@ export async function screenshotWhenStable(page: Page, path: string, options: { 
   const route = await getCurrentRoute(page);
   const routePath = addRouteToPath(path, route);
   const scriptKey = scriptKeyFromScreenshotPath(routePath);
-  const savedPath = await captureScreenshotAtViewports(page, routePath, { fullPage, scriptKey });
+  const savedPath = await captureScreenshotAtViewports(page, routePath, {
+    fullPage,
+    scriptKey,
+    snapshotName: options.snapshotName,
+    state: options.state,
+  });
 
   return { path: savedPath, route };
 }
@@ -98,14 +115,18 @@ export async function screenshotWhenStable(page: Page, path: string, options: { 
 export async function takeStepScreenshot(
   page: Page,
   filePath: string,
-  options: { fullPage?: boolean; mode?: 'fast' | 'stable' } = {},
+  options: ScreenshotCaptureOpts & { mode?: 'fast' | 'stable' } = {},
 ): Promise<{ path: string; route: string }> {
   const envMode = process.env.SCREENSHOT_MODE === 'stable' ? 'stable' : 'fast';
   const mode = options.mode ?? envMode;
   const fullPage = options.fullPage ?? useFullPageByDefault();
 
   if (mode === 'stable') {
-    return await screenshotWhenStable(page, filePath, { fullPage });
+    return await screenshotWhenStable(page, filePath, {
+      fullPage,
+      snapshotName: options.snapshotName,
+      state: options.state,
+    });
   }
 
   await assertNotLoginLikePage(page, `fast screenshot: ${filePath}`);
@@ -113,8 +134,40 @@ export async function takeStepScreenshot(
   const savedPath = await captureScreenshotAtViewports(page, filePath, {
     fullPage,
     scriptKey,
+    snapshotName: options.snapshotName,
+    state: options.state,
   });
   return { path: savedPath, route: page.url() };
+}
+
+function sanitizeVisualToken(raw: string, fallback: string): string {
+  const s = raw.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
+  return s || fallback;
+}
+
+export async function visualTest(
+  page: Page,
+  opts: {
+    dir: string;
+    name: string;
+    state?: string;
+    step?: number;
+    fullPage?: boolean;
+  },
+): Promise<{ path: string; route: string }> {
+  const name = sanitizeVisualToken(opts.name || '', '');
+  if (!name) {
+    throw new Error('visualTest 需要 name');
+  }
+  const state = sanitizeVisualToken(opts.state || 'default', 'default');
+  const step = opts.step ?? 90;
+  const filePath = path.join(opts.dir, `step-${step}-${name}__${state}.png`);
+  return takeStepScreenshot(page, filePath, {
+    mode: 'stable',
+    fullPage: opts.fullPage,
+    snapshotName: name,
+    state,
+  });
 }
 
 function addRouteToPath(originalPath: string, route: string): string {

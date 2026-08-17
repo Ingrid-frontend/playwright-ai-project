@@ -58,6 +58,9 @@ jobs:
       - name: Verify spec-meta
         run: node scripts/verify/verify-spec-meta-flow.cjs --env=stage
 
+      - name: Verify ego selector probe logic
+        run: node scripts/verify/verify-ego-selector-probe.cjs
+
       - name: Smoke report modules
         run: npm run smoke
 

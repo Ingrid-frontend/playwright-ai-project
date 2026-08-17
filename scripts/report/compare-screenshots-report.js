@@ -29,6 +29,7 @@ function switchTab(tabName) {
   if (targetContent) targetContent.classList.add('active');
   
   initDiffCards(targetContent || document);
+  if (typeof initVisualReview === 'function') initVisualReview();
   
   const activeBrowserTab = document.querySelector('.global-browser-tab.active');
   const gbTabs = document.querySelectorAll('.global-browser-tab');

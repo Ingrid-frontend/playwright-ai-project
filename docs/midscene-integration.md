@@ -53,3 +53,5 @@ npm run midscene:run -- \
 
 - Midscene 需要视觉模型 API 密钥，未配置或未开启时不影响现有测试。
 - AI 兜底只会在普通定位失败后触发，默认关闭以避免额外耗时与费用。
+- 「跑之前」的静态选择器体检见 [ego lite 集成](./ego-lite-integration.md)：
+  它复用浏览器登录态、不需要视觉模型，与 Midscene 的运行时兜底互补。

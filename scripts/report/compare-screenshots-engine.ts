@@ -105,6 +105,9 @@ async function comparePair(
         browser1: meta.browser1,
         browser2: meta.browser2,
         pairLabel: meta.pairLabel,
+        width: cached.width,
+        height: cached.height,
+        regions: cached.regions,
       };
     }
   }
@@ -131,6 +134,9 @@ async function comparePair(
     browser1: meta.browser1,
     browser2: meta.browser2,
     pairLabel: meta.pairLabel,
+    width: result.width,
+    height: result.height,
+    regions: result.regions,
   };
 }
 

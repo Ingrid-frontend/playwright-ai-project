@@ -48,4 +48,58 @@ async function runRepoPromoteBaseline(ws, session, msg, deps) {
   logLine(ws, '[repo] Golden 基线已更新', 'ok');
 }
 
-module.exports = { runRepoPromoteBaseline };
+async function runRepoVisualReview(ws, session, msg, deps) {
+  const { resolveRepoRoot, buildRepoSpawnEnv, spawn } = deps;
+  const repoRoot = resolveRepoRoot();
+  const verdict = String(msg.verdict || '').trim();
+  const scriptKey = String(msg.scriptKey || msg.script || '').trim();
+  const runTs = String(msg.runTimestamp || msg.run || '').trim();
+  const step = String(msg.stepFileName || msg.step || '').trim();
+  const browser = String(msg.browser || 'chrome').trim().toLowerCase();
+  const issueId = String(msg.issueId || '').trim();
+
+  if (!verdict || !scriptKey || !runTs || !step) {
+    send(ws, 'error', { message: 'visual-review 需要 verdict、scriptKey、runTimestamp、step' });
+    send(ws, 'repo:visual-review:done', { ok: false });
+    return;
+  }
+
+  const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const args = [
+    'run',
+    'visual-review',
+    '--',
+    `--verdict=${verdict}`,
+    `--script=${scriptKey}`,
+    `--run=${runTs}`,
+    `--step=${step}`,
+    `--browser=${browser}`,
+  ];
+  if (issueId) args.push(`--issueId=${issueId}`);
+  logLine(ws, `[repo] visual-review ${verdict} ${scriptKey} ${step}`, 'info');
+  const proc = spawn(npmCmd, args, {
+    cwd: repoRoot,
+    env: buildRepoSpawnEnv(session),
+    shell: false,
+  });
+  proc.stdout.on('data', (d) => {
+    const t = stripAnsi(d.toString());
+    if (t.trim()) logLine(ws, t.trimEnd(), 'dim');
+  });
+  proc.stderr.on('data', (d) => {
+    const t = stripAnsi(d.toString());
+    if (t.trim()) logLine(ws, t.trimEnd(), 'warn');
+  });
+  const exitCode = await new Promise((resolve) => {
+    proc.on('close', resolve);
+  });
+  if (exitCode !== 0) {
+    send(ws, 'error', { message: `visual-review 退出码 ${exitCode}` });
+    send(ws, 'repo:visual-review:done', { ok: false });
+    return;
+  }
+  send(ws, 'repo:visual-review:done', { ok: true, verdict, scriptKey, step });
+  logLine(ws, '[repo] Visual Review 已记录', 'ok');
+}
+
+module.exports = { runRepoPromoteBaseline, runRepoVisualReview };

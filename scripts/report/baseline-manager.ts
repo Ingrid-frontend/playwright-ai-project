@@ -16,6 +16,7 @@ export interface BaselineManifestEntry {
   sourceRunTimestamp: string;
   promotedAt: string;
   sourceScreenshotDir: string;
+  promotedSteps?: string[];
 }
 
 export interface BaselineManifest {
@@ -180,6 +181,77 @@ export function promoteRunToGolden(opts: {
     }
     throw err;
   }
+}
+
+export function promoteStepsToGolden(opts: {
+  scriptKey: string;
+  sourceRunTimestamp: string;
+  browser?: string;
+  stepFileNames: string[];
+  screenshotsRoot?: string;
+}): { copied: number; goldenDir: string } {
+  const screenshotsRoot = opts.screenshotsRoot || 'screenshots';
+  const browser = opts.browser || 'chrome';
+  const runSegment = browserToRunSegment(browser);
+  const sourceDir = path.join(
+    screenshotsRoot,
+    opts.scriptKey,
+    runSegment,
+    opts.sourceRunTimestamp,
+  );
+
+  if (!fs.existsSync(sourceDir)) {
+    throw new Error(`源运行目录不存在: ${sourceDir}`);
+  }
+
+  const names = [...new Set(opts.stepFileNames.map((n) => path.basename(n)).filter((n) => n.endsWith('.png')))];
+  if (!names.length) {
+    throw new Error('promoteStepsToGolden 需要至少一个 step PNG 文件名');
+  }
+
+  const goldenDir = goldenDirForScript(opts.scriptKey, runSegment);
+  ensureDir(goldenDir);
+
+  let copied = 0;
+  for (const file of names) {
+    if (isDisabledViewportScreenshot(file)) continue;
+    const src = path.join(sourceDir, file);
+    if (!fs.existsSync(src)) {
+      throw new Error(`源截图不存在: ${src}`);
+    }
+    const dest = path.join(goldenDir, file);
+    const tmp = `${dest}.tmp-${Date.now()}`;
+    fs.copyFileSync(src, tmp);
+    fs.renameSync(tmp, dest);
+    copied++;
+    const meta = file.replace(/\.png$/i, '.meta.json');
+    const metaSrc = path.join(sourceDir, meta);
+    if (fs.existsSync(metaSrc)) {
+      const metaDest = path.join(goldenDir, meta);
+      const metaTmp = `${metaDest}.tmp-${Date.now()}`;
+      fs.copyFileSync(metaSrc, metaTmp);
+      fs.renameSync(metaTmp, metaDest);
+    }
+  }
+
+  const manifest = loadManifest();
+  const existing = manifest.entries.find((e) => e.scriptKey === opts.scriptKey && e.browser === browser);
+  const prevSteps = existing?.promotedSteps || [];
+  manifest.entries = manifest.entries.filter(
+    (e) => !(e.scriptKey === opts.scriptKey && e.browser === browser),
+  );
+  manifest.entries.push({
+    scriptKey: opts.scriptKey,
+    browser,
+    runSegment,
+    sourceRunTimestamp: opts.sourceRunTimestamp,
+    promotedAt: new Date().toISOString(),
+    sourceScreenshotDir: sourceDir,
+    promotedSteps: [...new Set([...prevSteps, ...names])],
+  });
+  saveManifest(manifest);
+
+  return { copied, goldenDir };
 }
 
 export function revertGolden(scriptKey: string, browser?: string): number {

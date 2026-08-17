@@ -6,7 +6,7 @@ const {
   parseRawOriginalRel,
   buildOptimizedRel,
   getLegacyEnvDefault,
-} = require('../src/utils/test-env-path.cjs');
+} = require('../../src/utils/test-env-path.cjs');
 
 /** 根据 raw original 路径推断 optimized 产物位置（pipeline 刚结束时优先用） */
 function findOptimizedCandidatesForRawTarget(repoRoot, targetRelative, sessionEnv) {

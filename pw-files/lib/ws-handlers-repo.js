@@ -62,6 +62,7 @@ function createRepoHandlers(ctx) {
     openRepoCompareReport,
     sendCompareReportStatus,
     runRepoPromoteBaseline,
+    runRepoVisualReview,
     sendRepoUiIssues,
     cancelRepoCompare,
     runRepoRerunKeepScreenshots,
@@ -283,6 +284,14 @@ function createRepoHandlers(ctx) {
 
     'repo:promote-baseline': async (ws, session, _sessionId, msg) => {
       await runRepoPromoteBaseline(ws, session, msg, {
+        resolveRepoRoot,
+        buildRepoSpawnEnv,
+        spawn,
+      });
+    },
+
+    'repo:visual-review': async (ws, session, _sessionId, msg) => {
+      await runRepoVisualReview(ws, session, msg, {
         resolveRepoRoot,
         buildRepoSpawnEnv,
         spawn,

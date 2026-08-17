@@ -42,6 +42,7 @@ const groups: Record<string, { desc: string; cmds: Array<{ name: string; hint: s
       { name: 'report:bundle-ci', hint: '合并 CI 产物' },
       { name: 'screenshot-report', hint: 'UI 截图对比报告' },
       { name: 'promote-baseline', hint: '提升 Golden 基线' },
+      { name: 'visual-review', hint: '按状态 Approve/Reject Golden' },
       { name: 'trace:show', hint: '打开最新 trace' },
     ],
   },

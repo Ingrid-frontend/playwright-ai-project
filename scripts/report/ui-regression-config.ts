@@ -51,6 +51,14 @@ export interface StructureChecksConfig {
   items: StructureCheckItem[];
 }
 
+export interface DiffRegionsConfig {
+  enabled: boolean;
+  highRatio: number;
+  highMinWidth: number;
+  highMinHeight: number;
+  lowMaxPixels: number;
+}
+
 export interface UiRegressionConfig {
   blockerRatio: number;
   warningRatio: number;
@@ -79,6 +87,7 @@ export interface UiRegressionConfig {
     maxDiffRatio: number;
   };
   aiReview?: AiReviewConfig;
+  diffRegions?: DiffRegionsConfig;
 }
 
 export interface PixelmatchOptions {
@@ -125,6 +134,13 @@ const DEFAULT_CONFIG: UiRegressionConfig = {
     maxItems: 20,
     failOnUiBug: false,
   },
+  diffRegions: {
+    enabled: true,
+    highRatio: 0.002,
+    highMinWidth: 80,
+    highMinHeight: 40,
+    lowMaxPixels: 40,
+  },
 };
 
 const CONFIG_PATH = path.join(process.cwd(), 'config/ui-regression.json');
@@ -155,6 +171,7 @@ export function loadUiRegressionConfig(): UiRegressionConfig {
         } as NonNullable<UiRegressionConfig['autoPromote']>,
         structureChecks: { ...DEFAULT_CONFIG.structureChecks, ...raw.structureChecks },
         aiReview: { ...DEFAULT_CONFIG.aiReview, ...raw.aiReview } as AiReviewConfig,
+        diffRegions: { ...DEFAULT_CONFIG.diffRegions, ...raw.diffRegions } as DiffRegionsConfig,
         viewports: raw.viewports?.length ? raw.viewports : DEFAULT_CONFIG.viewports,
       };
     } catch (e) {
@@ -290,6 +307,10 @@ export function resolveAiReviewConfig(): AiReviewConfig {
   if (env === '1' || env === 'true' || env === 'yes') base.enabled = true;
   if (env === '0' || env === 'false' || env === 'no') base.enabled = false;
   return base;
+}
+
+export function resolveDiffRegionsConfig(): DiffRegionsConfig {
+  return { ...(loadUiRegressionConfig().diffRegions ?? DEFAULT_CONFIG.diffRegions!) };
 }
 
 /** 从截图路径解析 scriptKey，如 screenshots/stage/260612/foo/run-chromium-optimized/ts/step.png */

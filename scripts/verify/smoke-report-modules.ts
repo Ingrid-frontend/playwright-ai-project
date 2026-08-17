@@ -16,6 +16,9 @@ import { classifyComparisonSeverity } from '../report/ui-issues-index.js';
 import { loadFlakeHistory } from '../report/flake-history.js';
 import { isDateCategoryDirSegment } from '../../src/utils/date-category.js';
 import { isLoginLikeText, isLoginLikeUrl } from '../../src/utils/login-detection.js';
+import { parseSnapshotIdentity } from '../report/compare-screenshots-utils.js';
+import { clusterDiffRegions } from '../report/image-diff.js';
+import { PNG } from 'pngjs';
 import * as uiIssuesMod from '../report/ui-issues-index.js';
 import * as feishuMod from '../feishu/index.js';
 import * as figmaMod from '../figma/index.js';
@@ -78,12 +81,14 @@ const html = renderCompareReportHtml({
   summaryHtml: '',
   analysisHtml: '',
   issuesHtml: '',
+  visualReviewHtml: '',
 });
 assert.match(html, /<!DOCTYPE html>/);
 assert.match(html, /截图对比报告/);
 assert.match(html, /function openModal/);
 assert.match(html, /ov-panel/);
 assert.match(html, /data-iteration="260612"/);
+assert.match(html, /Visual Review/);
 pass('renderCompareReportHtml');
 
 const browsers = collectBrowserFilterList(
@@ -160,5 +165,24 @@ assert.equal(flake.latest?.flakeFailed, 1);
 assert.equal(flake.latest?.failed, 2);
 fs.rmSync(flakeTmp, { recursive: true, force: true });
 pass('flake-history');
+
+assert.deepEqual(parseSnapshotIdentity('approval-list__normal'), { snapshotName: 'approval-list', state: 'normal' });
+assert.deepEqual(parseSnapshotIdentity('我的审批-after'), {});
+pass('parseSnapshotIdentity');
+
+const png = new PNG({ width: 20, height: 20 });
+png.data.fill(0);
+for (let y = 2; y < 8; y++) {
+  for (let x = 2; x < 14; x++) {
+    const i = (y * 20 + x) * 4;
+    png.data[i] = 255;
+    png.data[i + 3] = 255;
+  }
+}
+const regions = clusterDiffRegions(png);
+assert.ok(regions.length >= 1);
+assert.equal(regions[0]!.w, 12);
+assert.equal(regions[0]!.h, 6);
+pass('clusterDiffRegions');
 
 console.log('\n✅ smoke-report-modules 通过');

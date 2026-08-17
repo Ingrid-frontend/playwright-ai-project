@@ -104,6 +104,7 @@ const dispatcher = createWsDispatcher({
   openRepoCompareReport: async () => {},
   sendCompareReportStatus: () => {},
   runRepoPromoteBaseline: async () => {},
+  runRepoVisualReview: async () => {},
   sendRepoUiIssues: async () => {},
   cancelRepoCompare: () => {},
   runRepoRerunKeepScreenshots: async () => {},

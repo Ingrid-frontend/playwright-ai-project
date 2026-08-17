@@ -3,13 +3,13 @@ const path = require('path');
 const { send, logLine, errText } = require('./ws-safe');
 const {
   postprocessRecordedScript,
-} = require('../src/utils/strip-login-from-recording.cjs');
+} = require('../../src/utils/strip-login-from-recording.cjs');
 const {
   annotateStorageStateMeta,
-} = require('../src/utils/storage-state-meta.cjs');
+} = require('../../src/utils/storage-state-meta.cjs');
 const {
   extractFromCode,
-} = require('../src/utils/extract-login-account.cjs');
+} = require('../../src/utils/extract-login-account.cjs');
 
 function createRecordingActions(deps) {
   const {

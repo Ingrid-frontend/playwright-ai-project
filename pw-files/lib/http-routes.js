@@ -134,6 +134,56 @@ function registerHttpRoutes(app, deps) {
     }
   });
 
+  app.post('/api/visual-review', express.json(), async (req, res) => {
+    const body = req.body || {};
+    const verdict = String(body.verdict || '').trim();
+    const scriptKey = String(body.scriptKey || body.script || '').trim();
+    const runTs = String(body.runTimestamp || body.run || '').trim();
+    const step = String(body.stepFileName || body.step || '').trim();
+    const browser = String(body.browser || 'chrome').trim().toLowerCase();
+    const issueId = String(body.issueId || '').trim();
+    if (!verdict || !scriptKey || !runTs || !step) {
+      return res.status(400).json({ ok: false, error: '需要 verdict、scriptKey、runTimestamp、stepFileName' });
+    }
+    const repoRoot = resolveRepoRoot();
+    const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    const args = [
+      'run',
+      'visual-review',
+      '--',
+      `--verdict=${verdict}`,
+      `--script=${scriptKey}`,
+      `--run=${runTs}`,
+      `--step=${step}`,
+      `--browser=${browser}`,
+    ];
+    if (issueId) args.push(`--issueId=${issueId}`);
+    try {
+      await new Promise((resolve, reject) => {
+        const proc = spawn(npmCmd, args, { cwd: repoRoot, shell: false });
+        let err = '';
+        let out = '';
+        proc.stdout.on('data', (d) => {
+          out += d.toString();
+        });
+        proc.stderr.on('data', (d) => {
+          err += d.toString();
+        });
+        proc.on('close', (code) => {
+          if (code !== 0) {
+            reject(new Error(stripAnsi(err || out || `退出码 ${code}`).slice(0, 300)));
+            return;
+          }
+          resolve();
+        });
+        proc.on('error', reject);
+      });
+      return res.json({ ok: true });
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
   const FEISHU_VERIFICATION_TOKEN = process.env.FEISHU_VERIFICATION_TOKEN || '';
 
   app.post('/feishu/callback', express.json(), (req, res) => {

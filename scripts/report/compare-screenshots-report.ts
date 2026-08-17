@@ -108,6 +108,7 @@ export interface CompareReportHtmlSlots {
   summaryHtml: string;
   analysisHtml: string;
   issuesHtml: string;
+  visualReviewHtml: string;
 }
 
 export function renderCompareReportHtml(slots: CompareReportHtmlSlots): string {
@@ -124,6 +125,7 @@ export function renderCompareReportHtml(slots: CompareReportHtmlSlots): string {
     summaryHtml,
     analysisHtml,
     issuesHtml,
+    visualReviewHtml,
   } = slots;
 
   return `<!DOCTYPE html>
@@ -181,6 +183,7 @@ ${compareReportCss()}
     <button class="tab active" data-report-tab="optimized" onclick="switchTab('optimized')">Optimized 版本</button>
     <button class="tab" data-report-tab="optimized-diff" onclick="switchTab('optimized-diff')">Optimized 差异</button>
     <button class="tab" data-report-tab="diff-only" onclick="switchTab('diff-only')">有差异</button>
+    <button class="tab" data-report-tab="visual-review" onclick="switchTab('visual-review')">Visual Review</button>
     <button class="tab" data-report-tab="heatmap" onclick="switchTab('heatmap')">热力图</button>
     <button class="tab" data-report-tab="summary" onclick="switchTab('summary')">对比一览</button>
     <button class="tab" data-report-tab="analysis" onclick="switchTab('analysis')">分析摘要</button>
@@ -219,6 +222,10 @@ ${compareReportCss()}
       </div>
     </div>
     ${diffOnlyByIteration}
+  </div>
+
+  <div id="visual-review-content" class="tab-content">
+    ${visualReviewHtml || '<div class="empty-state"><div class="empty-state-title">暂无 Visual Review</div></div>'}
   </div>
 
   <div id="heatmap-content" class="tab-content">

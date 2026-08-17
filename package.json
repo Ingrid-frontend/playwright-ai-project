@@ -54,6 +54,7 @@
     "compare-screenshots": "tsx scripts/report/compare-screenshots.ts",
     "check-baseline-pr": "tsx scripts/report/check-baseline-pr.ts",
     "promote-baseline": "tsx scripts/report/promote-baseline.ts",
+    "visual-review": "tsx scripts/report/visual-review.ts",
     "pr-comment-ui-issues": "tsx scripts/report/pr-comment-issues.ts",
     "open-screenshot-report": "tsx scripts/report/open-screenshot-report.ts",
     "open-screenshot-report:only": "tsx scripts/report/open-screenshot-report.ts --open-only",
@@ -91,7 +92,8 @@
     "feishu:update-report": "tsx scripts/feishu/update-feishu-report.ts",
     "figma:compare": "tsx scripts/figma/figma-spec-compare.ts",
     "figma:spec": "tsx scripts/figma/figma-spec-compare.ts --spec-only",
-    "midscene:run": "tsx scripts/midscene/midscene-run.ts"
+    "midscene:run": "tsx scripts/midscene/midscene-run.ts",
+    "ego:audit": "tsx scripts/ego/audit-selectors.ts"
   },
   "keywords": [
     "playwright",

@@ -51,7 +51,7 @@ const { createSpecSessionHelpers } = require('./lib/spec-session');
 const { createWsDispatcher } = require('./lib/ws-dispatch');
 const { loadEnvFile } = require('./lib/load-env-file');
 const { buildHtmlReport } = require('./lib/report-html');
-const { runRepoPromoteBaseline } = require('./lib/repo-baseline');
+const { runRepoPromoteBaseline, runRepoVisualReview } = require('./lib/repo-baseline');
 const { runFigmaCompare } = require('./lib/figma-compare');
 const { runAiNativeValidate } = require('./lib/ai-native-validate');
 const {
@@ -360,6 +360,7 @@ const { sendHello, handleMessage } = createWsDispatcher({
     openRepoCompareReport,
     sendCompareReportStatus,
     runRepoPromoteBaseline,
+    runRepoVisualReview,
     sendRepoUiIssues,
     cancelRepoCompare,
     runRepoRerunKeepScreenshots,

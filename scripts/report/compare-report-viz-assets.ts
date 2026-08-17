@@ -109,6 +109,26 @@ export function compareReportVizCss(): string {
     .compare-modal-body { flex: 1; overflow: auto; display: flex; gap: 8px; padding: 16px; }
     .compare-modal-pane { flex: 1; overflow: auto; background: #fff; border-radius: 8px; padding: 8px; }
     .compare-modal-pane img { width: 100%; height: auto; }
+    .vr-banner { margin: 8px 16px 16px; padding: 8px 12px; background: #fff7e6; border: 1px solid #ffd591; border-radius: 6px; font-size: 13px; color: #ad6800; }
+    .vr-item { margin: 0 16px 24px; border: 1px solid #e8e8e8; border-radius: 8px; padding: 12px; background: #fff; }
+    .vr-item-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 8px; }
+    .vr-meta { display: block; font-size: 12px; color: #86909c; margin-top: 4px; }
+    .vr-actions { display: flex; gap: 8px; }
+    .vr-btn { padding: 6px 12px; border-radius: 4px; border: 1px solid #d6d8db; background: #fff; cursor: pointer; font-size: 13px; }
+    .vr-approve { background: #1677ff; color: #fff; border-color: #1677ff; }
+    .vr-reject { background: #fff; }
+    .vr-cli { font-size: 12px; color: #86909c; word-break: break-all; }
+    .vr-regions { margin-top: 10px; font-size: 13px; }
+    .vr-regions-title { font-weight: 600; margin-bottom: 4px; }
+    .vr-region-list { margin: 0; padding-left: 18px; }
+    .vr-region-item.vr-high { color: #cf1322; }
+    .vr-region-item.vr-medium { color: #d48806; }
+    .vr-region-item.vr-low { color: #8c8c8c; }
+    .vr-overlay-wrap { position: relative; max-width: 960px; margin: 0 auto; }
+    .vr-box { position: absolute; border: 2px solid #cf1322; pointer-events: none; }
+    .vr-box.vr-medium { border-color: #d48806; }
+    .vr-item[data-verdict="approved"] { outline: 2px solid #52c41a; }
+    .vr-item[data-verdict="rejected"] { outline: 2px solid #ff4d4f; }
   `;
 }
 
@@ -275,5 +295,72 @@ export function compareReportVizJs(): string {
       var th = document.querySelector('#issues-table th[data-sort="' + col + '"] .sort-arrow');
       if (th) { th.className = 'sort-arrow active'; th.textContent = issuesSortDesc ? '↓' : '↑'; }
     }
+
+    function visualReviewCli(item, verdict) {
+      return 'npm run visual-review -- --verdict=' + verdict
+        + ' --script=' + (item.getAttribute('data-script') || '')
+        + ' --run=' + (item.getAttribute('data-run') || '')
+        + ' --step=' + (item.getAttribute('data-step') || '')
+        + ' --browser=' + (item.getAttribute('data-browser') || 'chrome')
+        + ' --issueId=' + (item.getAttribute('data-issue-id') || '');
+    }
+    function initVisualReview() {
+      document.querySelectorAll('.vr-toggle-low').forEach(function(btn) {
+        if (btn.dataset.vrInit) return;
+        btn.dataset.vrInit = '1';
+        btn.addEventListener('click', function() {
+          var wrap = btn.closest('.vr-regions') || btn.closest('.diff-card');
+          if (!wrap) return;
+          wrap.querySelectorAll('[data-low="1"]').forEach(function(el) {
+            el.style.display = el.style.display === 'none' ? '' : 'none';
+          });
+        });
+      });
+      document.querySelectorAll('.vr-copy-cli').forEach(function(btn) {
+        if (btn.dataset.vrInit) return;
+        btn.dataset.vrInit = '1';
+        btn.addEventListener('click', function() {
+          var item = btn.closest('.vr-item');
+          var code = item ? item.querySelector('.vr-cli code') : null;
+          if (code && navigator.clipboard) navigator.clipboard.writeText(code.textContent || '');
+        });
+      });
+      document.querySelectorAll('.vr-btn[data-verdict]').forEach(function(btn) {
+        if (btn.dataset.vrInit) return;
+        btn.dataset.vrInit = '1';
+        btn.addEventListener('click', function() {
+          var item = btn.closest('.vr-item');
+          if (!item) return;
+          var verdict = btn.getAttribute('data-verdict');
+          var payload = {
+            verdict: verdict,
+            issueId: item.getAttribute('data-issue-id'),
+            scriptKey: item.getAttribute('data-script'),
+            runTimestamp: item.getAttribute('data-run'),
+            stepFileName: item.getAttribute('data-step'),
+            browser: item.getAttribute('data-browser')
+          };
+          try { localStorage.setItem('vr-' + payload.issueId, verdict); } catch (e) {}
+          item.setAttribute('data-verdict', verdict);
+          fetch('/api/visual-review', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          }).then(function(res) {
+            if (!res.ok) throw new Error('http ' + res.status);
+            return res.json();
+          }).then(function() {
+            btn.textContent = verdict === 'approved' ? 'Approved' : 'Rejected';
+          }).catch(function() {
+            var cli = visualReviewCli(item, verdict);
+            if (navigator.clipboard) navigator.clipboard.writeText(cli);
+            alert('无法写入 Golden（静态报告）。已复制 CLI：\\n' + cli);
+          });
+        });
+      });
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+      initVisualReview();
+    });
   `;
 }
