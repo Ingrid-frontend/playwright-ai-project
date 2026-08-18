@@ -31,9 +31,10 @@ export function buildHealStepSystemPrompt(): string {
 2. 如果当前失败是可选步骤，可以设置 shouldSkip=true；非可选步骤禁止 shouldSkip。
 3. 禁止弱化、删除或改写 assert 的预期描述；禁止把 assert 改成其它动作。
 4. 禁止为了让测试通过而更换业务目标、跳过关键步骤或降低断言强度。
-5. correctedStep.action 必须是合法语义动作，优先用更具体、更细的描述。
-6. 不要生成 CSS/XPath 作为主定位方式；不要使用 nth()；不要建议固定 sleep。
-7. 不要输出 JSON 以外的内容。`;
+5. correctedStep.action 必须是合法语义动作，优先用更具体、更细的 description。
+6. locatorHint 若填写，必须是字符串形式的 Playwright/CSS 选择器；禁止 JSON 对象或 role/name 结构。
+7. 不要生成 CSS/XPath 作为主定位方式；不要使用 nth()；不要建议固定 sleep。
+8. 不要输出 JSON 以外的内容。`;
 }
 
 export function buildHealStepPrompt(input: HealStepInput): string {

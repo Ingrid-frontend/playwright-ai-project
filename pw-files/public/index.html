@@ -956,7 +956,7 @@
                     <option value="">加载中…</option>
                   </select>
                   <button type="button" class="btn" style="font-size:var(--fs-sm);padding:4px 10px" onclick="refreshIntentList()">刷新</button>
-                  <button type="button" class="btn" style="font-size:var(--fs-sm);padding:4px 10px" onclick="loadIntentYaml()">加载到编辑器</button>
+                  <button type="button" class="btn" style="font-size:var(--fs-sm);padding:4px 10px" onclick="loadIntentYaml()">重新加载</button>
                 </div>
               </div>
               <div>
@@ -976,8 +976,8 @@
                 <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary)">
                   引擎
                   <select id="intentEngine" class="url-input" style="width:auto;min-width:100px;color:var(--text)">
-                    <option value="pw" selected>playwright</option>
-                    <option value="ego">ego</option>
+                    <option value="pw">playwright</option>
+                    <option value="ego" selected>ego</option>
                   </select>
                 </label>
                 <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
@@ -1064,8 +1064,8 @@
               <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg2)">
                 <div style="font-weight:600;color:var(--text);margin-bottom:6px">快速验证 · 用一句话试流程</div>
                 <ul class="sidebar-hint" style="margin:0;padding-left:18px;line-height:1.7;color:var(--text-secondary)">
-                  <li>用自然语言描述步骤，AI 生成<strong>临时</strong> Playwright 脚本并执行</li>
-                  <li>适合探索「能不能跑通」，不直接改正式 YAML 文件</li>
+                  <li>用自然语言描述步骤，默认 <strong>ego</strong> 引擎试跑（NL → Intent YAML → ego 执行）</li>
+                  <li>也可选 Playwright：生成临时脚本并执行</li>
                   <li>试跑通过后，可点「转为 YAML 用例」跳到左侧 Tab 继续保存</li>
                 </ul>
               </div>
@@ -1082,14 +1082,24 @@
                   style="width:100%;color:var(--text)">
               </div>
               <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
-                <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
-                  <input type="checkbox" id="egoNlHeaded"> 有头浏览器
+                <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary)">
+                  引擎
+                  <select id="egoNlEngine" class="url-input" style="width:auto;min-width:100px;color:var(--text)" onchange="onEgoNlEngineChange()">
+                    <option value="ego" selected>ego</option>
+                    <option value="pw">playwright</option>
+                  </select>
+                </label>
+                <label id="egoNlHealWrap" style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
+                  <input type="checkbox" id="egoNlHeal" checked> 定位失败自愈
+                </label>
+                <label id="egoNlHeadedWrap" style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer;opacity:0.45">
+                  <input type="checkbox" id="egoNlHeaded" disabled> 有头浏览器（仅 pw）
+                </label>
+                <label id="egoNlAuditWrap" style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer;opacity:0.45">
+                  <input type="checkbox" id="egoNlAudit" disabled> 执行后再做 ego 选择器体检（仅 pw）
                 </label>
                 <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
-                  <input type="checkbox" id="egoNlAudit"> 执行后再做 ego 选择器体检（仅 optimized.spec）
-                </label>
-                <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
-                  <input type="checkbox" id="egoNlKeepTab"> 体检后保留页面
+                  <input type="checkbox" id="egoNlKeepTab"> 跑完保留 ego Space
                 </label>
               </div>
               <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -1099,8 +1109,22 @@
                 <button type="button" class="btn" id="btnEgoAuditCancel" onclick="cancelEgoAuditUi()" style="display:none">取消</button>
                 <span class="editor-run-status" id="egoAuditStatus"></span>
               </div>
+              <div id="egoNlFlowSteps" class="sidebar-hint" style="color:var(--text-tertiary);line-height:1.7;margin:0">
+                流程（ego）：自然语言 → Intent YAML → ego 执行 → 通过后可转 YAML
+              </div>
+              <div id="egoNlScriptWrap" style="display:none">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 0 4px">
+                  <label id="egoNlPreviewLabel" style="color:var(--text-secondary);margin:0">AI 生成的预览</label>
+                  <div style="display:flex;gap:6px;flex-wrap:wrap">
+                    <button type="button" class="btn" style="font-size:var(--fs-xs);padding:2px 8px" onclick="copyEgoNlScript()">复制</button>
+                    <span class="sidebar-hint" id="egoNlScriptPath" style="margin:0"></span>
+                  </div>
+                </div>
+                <textarea id="egoNlScriptPreview" class="url-input" spellcheck="false" readonly rows="12"
+                  style="width:100%;resize:vertical;color:var(--text);line-height:1.5;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px"></textarea>
+              </div>
               <div id="egoAuditHint" class="sidebar-hint" style="color:var(--text-tertiary)">
-                产物在 <code>results/ego-studio/</code>（临时脚本，不会自动写入 definitions）。
+                产物在 <code>results/ego-studio/</code>（临时 YAML / 脚本，不会自动写入 definitions）。
               </div>
               <div id="egoAuditResult" style="display:none"></div>
             </div>
@@ -1469,6 +1493,8 @@ let state = { recording: false, hasRaw: false, hasOpt: false, hasRun: false };
 const busyState = { optimize: false, run: false, repoPipeline: false, repoCompare: false, repoRerunKeep: false, repoBatch: false, accountLogin: false };
 let figmaCompareSeq = 0;
 let intentRunSeq = 0;
+let intentLoadSeq = 0;
+let intentLoadSilent = false;
 let exploreSeq = 0;
 let egoAuditSeq = 0;
 let lastNlRunContext = null;
@@ -4894,8 +4920,15 @@ function handleMessage(msg) {
     case 'ego:nl-run:start':
       if (msg.seq) egoAuditSeq = msg.seq;
       setEgoAuditBusy(true);
+      clearEgoNlScriptPreview();
       switchToNlValidateTab();
-      log('info', `[口语试跑] 开始${msg.env ? ` · ${msg.env}` : ''}`);
+      log('info', `[口语试跑] 开始 · ${msg.engine || 'ego'}${msg.env ? ` · ${msg.env}` : ''}`);
+      break;
+    case 'ego:nl-run:script':
+    case 'ego:nl-run:intent':
+      if (msg.seq && msg.seq < egoAuditSeq) break;
+      renderEgoNlPreview(msg);
+      log('info', msg.previewYaml ? '[口语试跑] Intent YAML 已生成，ego 执行中…' : '[口语试跑] 临时脚本已生成，正在执行…');
       break;
     case 'ai:validate:done':
     case 'ego:nl-run:done':
@@ -4906,6 +4939,8 @@ function handleMessage(msg) {
           entry: msg.entry || '',
           env: msg.env || '',
           outRel: msg.outRel || '',
+          engine: msg.engine || 'ego',
+          previewYaml: msg.previewYaml || '',
         };
       } else if (!msg.ok) {
         lastNlRunContext = null;
@@ -4930,17 +4965,23 @@ function handleMessage(msg) {
       renderIntentPresetList(msg.items || []);
       break;
     case 'intent:get:done':
+      if (msg.seq && msg.seq < intentLoadSeq) break;
       if (msg.ok && msg.text != null) {
         const box = document.getElementById('intentYamlText');
         if (box) box.value = msg.text;
         if (msg.path) {
           const pathEl = document.getElementById('intentPath');
           if (pathEl) pathEl.value = msg.path;
+          const select = document.getElementById('intentPreset');
+          if (select && [...select.options].some((o) => o.value === msg.path)) {
+            select.value = msg.path;
+          }
         }
-        showToast('已加载 Intent YAML', 'ok');
-      } else {
+        if (!intentLoadSilent) showToast('已加载 Intent YAML', 'ok');
+      } else if (!intentLoadSilent) {
         showToast(msg.message || '加载失败', 'err');
       }
+      intentLoadSilent = false;
       break;
     case 'intent:save:done':
       if (msg.ok) {
@@ -5496,9 +5537,20 @@ function renderIntentPresetList(items) {
     select.innerHTML = opts + '<option value="__custom__">自定义路径…</option>';
     const match = items.find((item) => item.path === current);
     select.value = match ? match.path : items[0]?.path || '__custom__';
-    if (match || items[0]) {
-      const pathEl = document.getElementById('intentPath');
-      if (pathEl && !pathEl.value.trim()) pathEl.value = match?.path || items[0].path;
+    const pathEl = document.getElementById('intentPath');
+    const editor = document.getElementById('intentYamlText');
+    const nextPath = match?.path || items[0]?.path;
+    if (pathEl && nextPath && !pathEl.value.trim()) {
+      pathEl.value = nextPath;
+    }
+    const loadPath = pathEl?.value?.trim();
+    if (
+      loadPath &&
+      (loadPath.endsWith('.yaml') || loadPath.endsWith('.yml')) &&
+      !editor?.value.trim() &&
+      items.some((item) => item.path === loadPath)
+    ) {
+      loadIntentYaml(true);
     }
   }
 }
@@ -5509,16 +5561,23 @@ function onIntentPresetChange() {
   if (!select || !pathEl) return;
   if (select.value && select.value !== '__custom__') {
     pathEl.value = select.value;
+    loadIntentYaml(true);
   }
 }
 
-function loadIntentYaml() {
+function loadIntentYaml(silent = false) {
   const intent = document.getElementById('intentPath')?.value?.trim() || '';
   if (!intent) {
-    showToast('请先选择或填写 YAML 路径', 'err');
+    if (!silent) showToast('请先选择或填写 YAML 路径', 'err');
     return;
   }
-  send('intent:get', { path: intent });
+  if (!intent.endsWith('.yaml') && !intent.endsWith('.yml')) {
+    if (!silent) showToast('仅支持 .yaml / .yml 文件', 'err');
+    return;
+  }
+  intentLoadSilent = silent;
+  intentLoadSeq += 1;
+  send('intent:get', { path: intent, seq: intentLoadSeq });
 }
 
 function saveIntentYaml() {
@@ -5536,7 +5595,7 @@ function startIntentRun() {
   const yamlText = document.getElementById('intentYamlText')?.value?.trim() || '';
   const heal = Boolean(document.getElementById('intentHeal')?.checked);
   const headed = Boolean(document.getElementById('intentHeaded')?.checked);
-  const engine = document.getElementById('intentEngine')?.value || 'pw';
+  const engine = document.getElementById('intentEngine')?.value || 'ego';
   const compareAfter = Boolean(document.getElementById('intentCompareAfter')?.checked);
   const keepTab = Boolean(document.getElementById('intentKeepTab')?.checked);
   const resultBox = document.getElementById('intentRunResult');
@@ -5582,9 +5641,10 @@ function startStyleDriftFullFlow() {
   }
   const gate = Boolean(document.getElementById('styleDriftGate')?.checked);
   const headed = Boolean(document.getElementById('intentHeaded')?.checked);
+  const engine = document.getElementById('intentEngine')?.value || 'ego';
   switchToIntentRunTab();
   setStyleDriftBusy(true);
-  if (!send('style-drift:run-full', { intent, gate, headed })) {
+  if (!send('style-drift:run-full', { intent, gate, headed, engine })) {
     setStyleDriftBusy(false);
     return;
   }
@@ -5712,11 +5772,34 @@ function switchToEgoAuditTab() {
   switchToNlValidateTab();
 }
 
+function onEgoNlEngineChange() {
+  const engine = document.getElementById('egoNlEngine')?.value || 'ego';
+  const pw = engine === 'pw';
+  const headed = document.getElementById('egoNlHeaded');
+  const audit = document.getElementById('egoNlAudit');
+  const headedWrap = document.getElementById('egoNlHeadedWrap');
+  const auditWrap = document.getElementById('egoNlAuditWrap');
+  const healWrap = document.getElementById('egoNlHealWrap');
+  const steps = document.getElementById('egoNlFlowSteps');
+  if (headed) headed.disabled = !pw;
+  if (audit) audit.disabled = !pw;
+  if (headedWrap) headedWrap.style.opacity = pw ? '1' : '0.45';
+  if (auditWrap) auditWrap.style.opacity = pw ? '1' : '0.45';
+  if (healWrap) healWrap.style.display = pw ? 'none' : '';
+  if (steps) {
+    steps.textContent = pw
+      ? '流程（playwright）：自然语言 → 临时脚本 → Playwright 执行 →（可选）体检 → 通过后可转 YAML'
+      : '流程（ego）：自然语言 → Intent YAML → ego 执行 → 通过后可转 YAML';
+  }
+}
+
 function startEgoNlRun() {
   const caseDescription = document.getElementById('egoNlCase')?.value?.trim() || '';
   const entry = document.getElementById('egoNlEntry')?.value?.trim() || '';
+  const engine = document.getElementById('egoNlEngine')?.value || 'ego';
   const headed = Boolean(document.getElementById('egoNlHeaded')?.checked);
   const audit = Boolean(document.getElementById('egoNlAudit')?.checked);
+  const heal = document.getElementById('egoNlHeal')?.checked !== false;
   const keepTab = Boolean(document.getElementById('egoNlKeepTab')?.checked);
   const resultBox = document.getElementById('egoAuditResult');
   if (!caseDescription) {
@@ -5727,9 +5810,10 @@ function startEgoNlRun() {
     resultBox.style.display = 'none';
     resultBox.innerHTML = '';
   }
+  clearEgoNlScriptPreview();
   switchToEgoAuditTab();
   setEgoAuditBusy(true);
-  send('ego:nl-run', { caseDescription, entry, headed, audit, keepTab, settle: 3 });
+  send('ego:nl-run', { caseDescription, entry, engine, headed, audit, heal, keepTab, settle: 3 });
 }
 
 function cancelEgoAuditUi() {
@@ -5738,23 +5822,71 @@ function cancelEgoAuditUi() {
   showToast('已请求取消', 'err');
 }
 
+function clearEgoNlScriptPreview() {
+  const wrap = document.getElementById('egoNlScriptWrap');
+  const preview = document.getElementById('egoNlScriptPreview');
+  const pathEl = document.getElementById('egoNlScriptPath');
+  if (preview) preview.value = '';
+  if (pathEl) pathEl.textContent = '';
+  if (wrap) wrap.style.display = 'none';
+}
+
+function renderEgoNlPreview(msg) {
+  const wrap = document.getElementById('egoNlScriptWrap');
+  const preview = document.getElementById('egoNlScriptPreview');
+  const pathEl = document.getElementById('egoNlScriptPath');
+  const label = document.getElementById('egoNlPreviewLabel');
+  const code = msg.previewYaml || msg.scriptCode || '';
+  if (!wrap || !preview || !code) return;
+  preview.value = code;
+  if (label) {
+    label.textContent = msg.previewYaml ? 'AI 生成的 Intent YAML' : 'AI 生成的临时脚本';
+  }
+  const rel = msg.intentRel || msg.scriptRel || '';
+  if (pathEl) pathEl.textContent = rel ? `· ${rel}` : '';
+  wrap.style.display = '';
+}
+
+function copyEgoNlScript() {
+  const code = document.getElementById('egoNlScriptPreview')?.value || '';
+  if (!code.trim()) {
+    showToast('暂无内容可复制', 'err');
+    return;
+  }
+  copyTextToClipboard(code);
+  showToast('已复制', 'ok');
+}
+
 function renderEgoNlRunResult(msg) {
   setEgoAuditBusy(false);
+  if (msg.previewYaml || msg.scriptCode) renderEgoNlPreview(msg);
   const box = document.getElementById('egoAuditResult');
   if (!box) return;
   box.style.display = 'block';
+  const isEgo = msg.engine === 'ego' || Boolean(msg.previewYaml);
   const audit = msg.audit;
   const results = Array.isArray(audit?.results) ? audit.results : [];
-  const stepRows = results
-    .map((r) => {
-      const meta = egoVerdictMeta(r.verdict);
-      const broken = r.brokenAtPart ? ` · 断在第 ${escHtml(String(r.brokenAtPart))} 段` : '';
-      return `<div style="padding:6px 0;border-bottom:1px solid var(--border);color:${meta.color}">
-        ${meta.mark} 「${escHtml(r.stepName || '')}」 ${meta.label}${broken}
-        <div class="sidebar-hint" style="margin:2px 0 0;color:var(--text-tertiary)">${escHtml(r.raw || '')}</div>
-      </div>`;
-    })
-    .join('');
+  const stepRows = isEgo && Array.isArray(msg.steps) && msg.steps.length
+    ? msg.steps
+        .map((s) => {
+          const mark = s.passed ? '✅' : s.skipped ? '⏭️' : '❌';
+          const heal = s.healed ? ' · 已自愈' : '';
+          const err = s.error ? ` · ${escHtml(String(s.error))}` : '';
+          return `<div style="padding:6px 0;border-bottom:1px solid var(--border);color:var(--text-secondary)">
+            ${mark} ${escHtml(String(s.id || ''))}${heal}${err}
+          </div>`;
+        })
+        .join('')
+    : results
+        .map((r) => {
+          const meta = egoVerdictMeta(r.verdict);
+          const broken = r.brokenAtPart ? ` · 断在第 ${escHtml(String(r.brokenAtPart))} 段` : '';
+          return `<div style="padding:6px 0;border-bottom:1px solid var(--border);color:${meta.color}">
+            ${meta.mark} 「${escHtml(r.stepName || '')}」 ${meta.label}${broken}
+            <div class="sidebar-hint" style="margin:2px 0 0;color:var(--text-tertiary)">${escHtml(r.raw || '')}</div>
+          </div>`;
+        })
+        .join('');
   const status = msg.ok ? '试跑通过' : '试跑未通过';
   const color = msg.ok ? 'var(--green)' : 'var(--red)';
   const summary = audit?.summary;
@@ -5766,12 +5898,16 @@ function renderEgoNlRunResult(msg) {
   const convertBtn = msg.ok
     ? `<div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <button type="button" class="btn btn-run" id="btnNlToIntent" onclick="convertNlToIntent()">转为 YAML 用例</button>
-        <span class="sidebar-hint" style="margin:0">生成 YAML 草稿并跳到「YAML 用例」Tab，确认后点「保存定义」</span>
+        <span class="sidebar-hint" style="margin:0">${isEgo ? 'ego 试跑已生成 YAML，可直接填入左侧编辑器' : '生成 YAML 草稿并跳到「YAML 用例」Tab，确认后点「保存定义」'}</span>
       </div>`
     : '';
+  const artifactLine = isEgo
+    ? `<div class="sidebar-hint" style="margin-bottom:4px">Intent 预览：<code>${escHtml(msg.intentRel || '')}</code></div>`
+    : `<div class="sidebar-hint" style="margin-bottom:4px">临时脚本：<code>${escHtml(msg.scriptRel || '')}</code></div>`;
   box.innerHTML = `
     <div style="font-weight:700;margin-bottom:8px;color:${color}">${status}${msg.message ? ` · ${escHtml(msg.message)}` : ''}</div>
-    <div class="sidebar-hint" style="margin-bottom:4px">临时脚本：<code>${escHtml(msg.scriptRel || '')}</code></div>
+    <div class="sidebar-hint" style="margin-bottom:4px">引擎：<code>${escHtml(msg.engine || 'ego')}</code></div>
+    ${artifactLine}
     <div class="sidebar-hint" style="margin-bottom:8px">结果目录：<code>${escHtml(msg.outRel || '')}</code></div>
     ${auditLine}
     <div>${stepRows || (audit && !audit.skipped ? '<div class="sidebar-hint">无体检步骤（或 ego 不可用）</div>' : '')}</div>
@@ -5792,6 +5928,14 @@ function convertNlToIntent() {
   const ctx = lastNlRunContext;
   if (!ctx?.caseDescription) {
     showToast('没有可转换的试跑记录，请先完成一次试跑', 'err');
+    return;
+  }
+  if (ctx.previewYaml?.trim()) {
+    const editor = document.getElementById('intentYamlText');
+    if (editor) editor.value = ctx.previewYaml;
+    switchToIntentRunTab();
+    showToast('已填入 YAML 编辑器', 'ok');
+    log('ok', '[nl→intent] 已填入 YAML 编辑器（来自 ego 试跑）');
     return;
   }
   if (!send('intent:from-nl', {

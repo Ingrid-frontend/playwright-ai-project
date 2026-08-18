@@ -60,7 +60,7 @@ function printHelp(): void {
 
 选项:
   --intent=<path>     Test Intent YAML
-  --engine=ego|pw     执行引擎（默认 pw）
+  --engine=ego|pw     执行引擎（默认 ego）
   --env=<env>         覆盖意图中的环境
   --profile=<id>      覆盖账号 profile（仅 pw 引擎）
   --out=<dir>         输出目录
@@ -92,7 +92,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const engineRaw = (getArgValue('engine') || 'pw').toLowerCase();
+  const engineRaw = (getArgValue('engine') || 'ego').toLowerCase();
   const engine = engineRaw === 'ego' ? 'ego' : 'pw';
 
   if (engine === 'pw') ensureBrowsersPath();

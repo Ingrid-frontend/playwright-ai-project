@@ -104,7 +104,7 @@ async function runIntent(ws, session, msg = {}, deps) {
   const profile = getSessionAccountProfile(session, repoRoot);
   const headed = Boolean(msg.headed);
   const heal = msg.heal !== false;
-  const engine = String(msg.engine || 'pw').toLowerCase() === 'ego' ? 'ego' : 'pw';
+  const engine = String(msg.engine || 'ego').toLowerCase() === 'ego' ? 'ego' : 'pw';
   const compareAfter = Boolean(msg.compareAfter);
   const keepTab = Boolean(msg.keepTab);
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');

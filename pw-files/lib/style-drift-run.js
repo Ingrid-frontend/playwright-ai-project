@@ -21,7 +21,7 @@ async function runStyleDriftFullFlow(ws, session, msg = {}, deps) {
   try {
     await runIntent(ws, session, {
       intent: intentRel,
-      engine: 'pw',
+      engine: String(msg.engine || 'ego').toLowerCase() === 'pw' ? 'pw' : 'ego',
       heal: false,
       compareAfter: false,
       headed: Boolean(msg.headed),

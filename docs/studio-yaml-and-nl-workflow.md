@@ -7,14 +7,15 @@ Playwright Studio（`npm run studio`）编辑器区有两个与 AI 测试相关�
 | Tab | 原称 | 输入 | 产物 | 适合场景 |
 |-----|------|------|------|----------|
 | **YAML 用例** | Intent 运行 | `tests/definitions/*.yaml` | `results/intent-runs/`、`screenshots/intent/` | 正式回归、样式守护、截图对比、Explore 沉淀 |
-| **口语试跑** | NL 验证 | 自然语言 + 可选入口 URL | `results/ego-studio/generated.ts`（临时） | 快速验证「能不能跑通」 |
+| **口语试跑** | NL 验证 | 自然语言 + 可选入口 URL | `results/ego-studio/`（Intent YAML 或临时脚本） | 快速验证「能不能跑通」 |
 
 ```text
 口语试跑（探索）              YAML 用例（沉淀）
 ─────────────────            ─────────────────
 一句话描述                    YAML 文件
       ↓                            ↓
-临时 Playwright 脚本          语义步骤（pw / ego）
+Intent YAML + ego 执行        语义步骤（ego / pw）
+（或临时 Playwright 脚本）          ↓
       ↓                            ↓
 试跑通过 ──转为 YAML 用例──→  保存 definitions → 回归 / 样式守护
 ```
@@ -38,11 +39,31 @@ npm run ego:explore -- --goal="进入审批列表" --entry=/main/approve
 
 ## 口语试跑 Tab
 
+### 流程（界面内）
+
+```text
+1. 填写自然语言 + 可选入口 URL，选择引擎（默认 ego）
+2. 点「开始试跑」
+3. ego：LLM 生成 intent.preview.yaml → ego 执行；pw：生成 generated.ts → Playwright 执行
+4. 界面预览区展示 YAML 或临时脚本
+5. （pw 且勾选）ego 选择器体检 — 仅 optimized.spec 有效
+6. 结果区显示通过/失败；通过后可「转为 YAML 用例」
+```
+
+产物目录：`results/ego-studio/<timestamp>/`
+
+| 文件 | 说明 |
+|------|------|
+| `intent.preview.yaml` | ego 引擎：AI 生成的 Intent YAML |
+| `generated.ts` | playwright 引擎：AI 生成的临时脚本 |
+| `run/result.json` | 执行是否通过 |
+| `run/stdout.log` | 执行日志（pw） |
+
 ### 能做什么
 
-1. 用自然语言描述步骤，点 **开始试跑**
-2. 后端：`generate-playwright-script.ts` → `run-playwright-script.ts`（可选 ego 选择器体检）
-3. 试跑通过后，点 **转为 YAML 用例**：调用 `scripts/ai/nl-to-intent.ts`，自动切到 **YAML 用例** Tab 并填入编辑器
+1. 用自然语言描述步骤，点 **开始试跑**（默认 **ego**：NL → Intent YAML → ego 执行）
+2. 也可选 **playwright**：`generate-playwright-script.ts` → `run-playwright-script.ts`（可选 ego 选择器体检）
+3. 试跑通过后，点 **转为 YAML 用例**：ego 试跑可直接填入编辑器；pw 试跑调用 `nl-to-intent.ts`
 4. 在 YAML 用例 Tab 确认后 **保存定义**
 
 ### WS 事件

@@ -85,33 +85,86 @@ function shortActionText(action: { description: string; instruction?: string }):
   return source.length <= 24 ? source : '';
 }
 
-async function clickTarget(page: Page, action: Extract<SemanticAction, { type: 'click' }>): Promise<void> {
-  const target = resolveTarget(page, action.scope);
-  if (action.locatorHint) {
+function normalizeLocatorHint(hint: unknown): string | undefined {
+  if (typeof hint === 'string') {
+    const trimmed = hint.trim();
+    return trimmed || undefined;
+  }
+  return undefined;
+}
+
+function clickLabelCandidates(description: string): string[] {
+  const raw = description.trim();
+  const stripped = raw.replace(/\s*(菜单|按钮|链接|Tab|tab)$/u, '').trim();
+  const quoted = extractQuotedText(raw);
+  const out: string[] = [];
+  const add = (value?: string) => {
+    const v = value?.trim();
+    if (v && !out.includes(v)) out.push(v);
+  };
+  add(quoted);
+  add(stripped);
+  add(raw);
+  const short = shortActionText({ description: raw });
+  add(short || undefined);
+  return out;
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function tryClickLocators(target: PageTarget, label: string): Promise<boolean> {
+  const pattern = new RegExp(escapeRegExp(label));
+  const locators = [
+    target.getByRole('menuitem', { name: pattern }).filter({ visible: true }).first(),
+    target.getByText(label, { exact: true }).filter({ visible: true }).first(),
+    target.getByRole('button', { name: pattern }).filter({ visible: true }).first(),
+    target.getByRole('link', { name: pattern }).filter({ visible: true }).first(),
+    target.getByLabel(label).filter({ visible: true }).first(),
+  ];
+  for (const locator of locators) {
     try {
-      await target.locator(action.locatorHint).first().click({ timeout: 10_000 });
+      await locator.click({ timeout: 5_000 });
+      return true;
+    } catch {
+      /* try next */
+    }
+  }
+  return false;
+}
+
+async function clickBySemanticLabel(page: Page, label: string, scope: SemanticScope = 'page'): Promise<boolean> {
+  if (scope === 'iframe') {
+    return tryClickLocators(page.frameLocator('iframe').first(), label);
+  }
+
+  if (await tryClickLocators(page, label)) return true;
+
+  try {
+    const iframe = page.frameLocator('iframe').first();
+    if (await tryClickLocators(iframe, label)) return true;
+  } catch {
+    /* ignore */
+  }
+
+  return false;
+}
+
+async function clickTarget(page: Page, action: Extract<SemanticAction, { type: 'click' }>): Promise<void> {
+  const locatorHint = normalizeLocatorHint(action.locatorHint);
+  const target = resolveTarget(page, action.scope);
+  if (locatorHint) {
+    try {
+      await target.locator(locatorHint).first().click({ timeout: 10_000 });
       return;
     } catch (error) {
       console.log(`⚠️ 使用 locatorHint 点击失败，尝试语义定位: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
-  const text = shortActionText(action);
-  if (text) {
-    const candidates = [
-      target.getByText(text, { exact: true }).first(),
-      target.getByRole('button', { name: text }).first(),
-      target.getByRole('link', { name: text }).first(),
-      target.getByLabel(text).first(),
-    ];
-    for (const locator of candidates) {
-      try {
-        await locator.click({ timeout: 5_000 });
-        return;
-      } catch {
-        /* try next */
-      }
-    }
+  for (const label of clickLabelCandidates(action.description)) {
+    if (await clickBySemanticLabel(page, label, action.scope)) return;
   }
 
   const ordinal = action.description.match(/第\s*(\d+)\s*[条行项个]/);
@@ -132,10 +185,11 @@ async function clickTarget(page: Page, action: Extract<SemanticAction, { type: '
 }
 
 async function fillTarget(page: Page, action: Extract<SemanticAction, { type: 'fill' }>): Promise<void> {
+  const locatorHint = normalizeLocatorHint(action.locatorHint);
   const target = resolveTarget(page, action.scope);
-  if (action.locatorHint) {
+  if (locatorHint) {
     try {
-      await target.locator(action.locatorHint).first().fill(action.value, { timeout: 10_000 });
+      await target.locator(locatorHint).first().fill(action.value, { timeout: 10_000 });
       return;
     } catch (error) {
       console.log(`⚠️ 使用 locatorHint 填充失败，尝试语义定位: ${error instanceof Error ? error.message : String(error)}`);
@@ -163,10 +217,11 @@ async function fillTarget(page: Page, action: Extract<SemanticAction, { type: 'f
 }
 
 async function selectTarget(page: Page, action: Extract<SemanticAction, { type: 'select' }>): Promise<void> {
+  const locatorHint = normalizeLocatorHint(action.locatorHint);
   const target = resolveTarget(page, action.scope);
-  if (action.locatorHint) {
+  if (locatorHint) {
     try {
-      await target.locator(action.locatorHint).first().selectOption(action.value, { timeout: 10_000 });
+      await target.locator(locatorHint).first().selectOption(action.value, { timeout: 10_000 });
       return;
     } catch (error) {
       console.log(`⚠️ 使用 locatorHint 选择失败，尝试语义操作: ${error instanceof Error ? error.message : String(error)}`);
@@ -352,6 +407,16 @@ export function classifyStepError(error: string, step: SemanticStep): StepErrorK
   return 'Retryable';
 }
 
+function sanitizeSemanticAction(action: SemanticAction): SemanticAction {
+  if (action.type === 'click' || action.type === 'fill' || action.type === 'select') {
+    const locatorHint = normalizeLocatorHint(action.locatorHint);
+    if (locatorHint) return { ...action, locatorHint };
+    const { locatorHint: _drop, ...rest } = action;
+    return rest as SemanticAction;
+  }
+  return action;
+}
+
 function acceptHealedStep(original: SemanticStep, corrected: SemanticStep): SemanticStep | null {
   if (original.action.type === 'assert') {
     if (corrected.action.type !== 'assert') return null;
@@ -362,7 +427,7 @@ function acceptHealedStep(original: SemanticStep, corrected: SemanticStep): Sema
     ...original,
     ...corrected,
     id: original.id,
-    action: corrected.action,
+    action: sanitizeSemanticAction(corrected.action),
     optional: original.optional,
   };
 }

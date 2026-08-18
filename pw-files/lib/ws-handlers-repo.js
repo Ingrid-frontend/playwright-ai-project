@@ -260,6 +260,7 @@ function createRepoHandlers(ctx) {
     'ai:validate': async (ws, session, _sessionId, msg) => {
       await runEgoNlFlow(ws, session, {
         ...msg,
+        engine: msg.engine || 'ego',
         audit: msg.audit === true,
         headed: Boolean(msg.headed),
         keepTab: Boolean(msg.keepTab),
@@ -284,12 +285,13 @@ function createRepoHandlers(ctx) {
     'intent:get': async (ws, _session, _sessionId, msg) => {
       const repoRoot = resolveRepoRoot();
       const result = getIntentDefinition(repoRoot, msg.path || msg.intent);
+      const seq = msg.seq;
       if (result.error) {
         send(ws, 'error', { message: result.error });
-        send(ws, 'intent:get:done', { ok: false, message: result.error });
+        send(ws, 'intent:get:done', { ok: false, message: result.error, seq });
         return;
       }
-      send(ws, 'intent:get:done', { ok: true, path: result.path, text: result.text });
+      send(ws, 'intent:get:done', { ok: true, path: result.path, text: result.text, seq });
     },
 
     'intent:save': async (ws, _session, _sessionId, msg) => {
