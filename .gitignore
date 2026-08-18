@@ -17,6 +17,12 @@ results/
 # Screenshots (generated artifacts)
 screenshots/
 !screenshots/.gitkeep
+screenshots-baseline/_quarantine/
+
+# Local debug leftovers
+debug-page.png
+temp-script.txt
+test-code.txt
 
 # Environment variables
 .env
