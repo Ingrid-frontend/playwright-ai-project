@@ -78,6 +78,13 @@ flowchart LR
 - `blockerRatio`（默认 0.5%）
 - `warningRatio`（默认 0.1%）
 - 跨浏览器单独阈值：`crossBrowser.blockerRatio`
+- `gate.mode: style-only` 时 gate 仅看 `style-drift` blocker 与 required structure missing；像素 diff 不进 gate
+
+## 样式守护（styleChecks）
+
+- 配置：`config/ui-regression.json` → `styleChecks.items`（按 `script` 匹配）；YAML Intent 可 `registerRuntimeStyleChecks`
+- 作用域：items 可选 `snapshotName` / `state`，仅在该逻辑快照上采集与对比（见 [style-drift-workflow.md](./style-drift-workflow.md)）
+- 容差：`fontSizePx`、`colorDelta`（RGB 距离，默认 3）
 
 ## CI
 

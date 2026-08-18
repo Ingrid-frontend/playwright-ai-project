@@ -9,6 +9,8 @@ import {
 import {
   loadUiRegressionConfig,
   resolveStyleCheckItems,
+  filterCheckItemsBySnapshot,
+  resolveSnapshotContext,
   type StyleCheckItem,
 } from './ui-regression-config.js';
 import type { StepMeta } from './structure-check.js';
@@ -138,12 +140,6 @@ function parseStepFromFile(name: string): { stepNumber: number; stepName: string
   return { stepNumber: Number.parseInt(m[1]!, 10), stepName: m[2]! };
 }
 
-function snapshotFromStepName(stepName: string): { snapshotName?: string; state?: string } {
-  const i = stepName.indexOf('__');
-  if (i <= 0) return {};
-  return { snapshotName: stepName.slice(0, i), state: stepName.slice(i + 2) || 'normal' };
-}
-
 export function collectStyleDriftUiIssues(
   scriptKey: string,
   shots: StyleDriftScreenshotLite[],
@@ -171,10 +167,9 @@ export function collectStyleDriftUiIssues(
     if (!currentMeta?.styleFingerprint) continue;
 
     const browser = s.browser || 'chrome';
-    const snap =
-      currentMeta.snapshotName
-        ? { snapshotName: currentMeta.snapshotName, state: currentMeta.state || 'normal' }
-        : snapshotFromStepName(parsed.stepName);
+    const snap = resolveSnapshotContext(currentMeta, parsed.stepName);
+    const scopedItems = filterCheckItemsBySnapshot(items, snap);
+    if (!scopedItems.length) continue;
 
     let baselineMeta: StepMeta | null = null;
     let hasGolden = false;
@@ -198,7 +193,7 @@ export function collectStyleDriftUiIssues(
     const findings = compareStyleFingerprints(
       currentMeta.styleFingerprint as StyleFingerprint,
       baselineMeta.styleFingerprint as StyleFingerprint,
-      items,
+      scopedItems,
     );
 
     for (const f of findings) {

@@ -10,16 +10,19 @@ styleChecks:
     label: 主按钮
     props: [backgroundColor, color, fontSize, borderRadius]
     required: true
+    snapshotName: mock-list
   - key: page-title
     selector: "#page-title"
     label: 页面标题
     props: [color, fontSize, fontWeight]
     required: true
+    snapshotName: mock-list
   - key: list-card
     selector: ".list-card"
     label: 列表卡片
     props: [backgroundColor, borderRadius, boxShadow]
     required: false
+    snapshotName: mock-list
 steps:
   - id: open
     action: goto

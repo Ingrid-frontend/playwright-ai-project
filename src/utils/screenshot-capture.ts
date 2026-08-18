@@ -9,6 +9,7 @@ import {
   resolveScreenshotFullPage,
   resolveStructureCheckItems,
   resolveStyleCheckItems,
+  filterCheckItemsBySnapshot,
   type SnapshotViewport,
   type StructureCheckItem,
 } from '../../scripts/report/ui-regression-config.js';
@@ -154,7 +155,10 @@ async function writeStepDiagnostics(
   > | undefined;
   let domHash: string | undefined;
   const cfg = loadUiRegressionConfig().structureChecks;
-  const checkItems = resolveStructureCheckItems(scriptKey);
+  const snapCtx = snapshot?.snapshotName
+    ? { snapshotName: snapshot.snapshotName, state: snapshot.state || 'normal' }
+    : undefined;
+  const checkItems = filterCheckItemsBySnapshot(resolveStructureCheckItems(scriptKey), snapCtx);
 
   const domFingerprintFn = `(function(el){
     var tag=el.tagName;
@@ -207,7 +211,7 @@ async function writeStepDiagnostics(
   }
 
   let styleFingerprint: StyleFingerprint | undefined;
-  const styleItems = resolveStyleCheckItems(scriptKey);
+  const styleItems = filterCheckItemsBySnapshot(resolveStyleCheckItems(scriptKey), snapCtx);
   if (styleItems.length) {
     try {
       styleFingerprint = await collectStyleFingerprint(page, styleItems);

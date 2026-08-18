@@ -5,6 +5,7 @@ import { isLoginLikeText, isLoginLikeUrl } from './login-detection.js';
 export type ScreenshotMeta = {
   domHash?: string;
   selectors?: Record<string, { exists?: boolean; domHash?: string }>;
+  styleFingerprint?: Record<string, Record<string, string>>;
   url?: string;
   title?: string;
   pageText?: string;
@@ -34,16 +35,24 @@ export function isEmptyShellDomHash(domHash: string | undefined): boolean {
 }
 
 export function evaluateMetaQuality(meta: ScreenshotMeta, fileLabel = 'meta'): BaselineQualityIssue | null {
-  if (isEmptyShellDomHash(meta.domHash)) {
-    return {
-      file: fileLabel,
-      reason: `domHash 为空壳（${meta.domHash || '(空)'}），疑似登录失效/未渲染页面`,
-    };
-  }
-
   const selectors = meta.selectors || {};
   const keys = Object.keys(selectors);
   const existing = keys.filter((k) => selectors[k]?.exists === true);
+  const hasStyleFp = Object.values(meta.styleFingerprint || {}).some(
+    (v) => v && v.__missing !== '1' && Object.keys(v).length > 0,
+  );
+
+  if (isEmptyShellDomHash(meta.domHash)) {
+    if (hasStyleFp && existing.length > 0) {
+      // iframe 页：主文档 body 空壳，但子 frame 结构与样式已采集
+    } else {
+      return {
+        file: fileLabel,
+        reason: `domHash 为空壳（${meta.domHash || '(空)'}），疑似登录失效/未渲染页面`,
+      };
+    }
+  }
+
   // 仅当 domHash 已合格时：若有多个 selector 且全部不存在 → 拒
   if (keys.length > 1 && existing.length === 0) {
     return { file: fileLabel, reason: 'selectors 全部 exists=false' };
@@ -105,5 +114,30 @@ export function assertRunEligibleForGolden(runDir: string): void {
     throw new Error(
       `拒绝晋升：疑似登录失效空壳或未渲染页面（${issues.length}/${metas.length} 份 meta 不合格）。\n${sample}`,
     );
+  }
+}
+
+export function assertStepMetasEligibleForGolden(runDir: string, stepPngNames: string[]): void {
+  const metas = stepPngNames.map((n) => n.replace(/\.png$/i, '.meta.json'));
+  const issues: BaselineQualityIssue[] = [];
+  for (const file of metas) {
+    const abs = path.join(runDir, file);
+    if (!fs.existsSync(abs)) {
+      issues.push({ file, reason: 'meta 文件不存在' });
+      continue;
+    }
+    let meta: ScreenshotMeta;
+    try {
+      meta = JSON.parse(fs.readFileSync(abs, 'utf-8')) as ScreenshotMeta;
+    } catch {
+      issues.push({ file, reason: 'meta JSON 解析失败' });
+      continue;
+    }
+    const issue = evaluateMetaQuality(meta, file);
+    if (issue) issues.push(issue);
+  }
+  if (issues.length) {
+    const sample = issues.map((i) => `  - ${i.file}: ${i.reason}`).join('\n');
+    throw new Error(`拒绝晋升：指定 step meta 不合格。\n${sample}`);
   }
 }

@@ -59,6 +59,8 @@ export interface TestIntent {
     frame?: 'main' | 'first';
     props?: string[];
     label?: string;
+    snapshotName?: string;
+    state?: string;
   }>;
   preconditions?: string[];
   constraints?: string[];

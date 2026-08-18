@@ -9,6 +9,8 @@ import {
   loadUiRegressionConfig,
   resolveBaselineStrategy,
   resolveStructureCheckItems,
+  filterCheckItemsBySnapshot,
+  resolveSnapshotContext,
   type StructureCheckItem,
 } from './ui-regression-config.js';
 import type { UiIssue, UiIssueCompareKind, UiIssueSeverity } from './ui-issues.js';
@@ -161,7 +163,9 @@ export function analyzeStepMeta(opts: {
   if (!cfg?.enabled) return [];
 
   const findings: StructureFinding[] = [];
-  const items = resolveStructureCheckItems(opts.scriptKey);
+  const stepName = opts.stepFileName.replace(/\.png$/i, '').replace(/^step-\d+-/, '');
+  const snap = resolveSnapshotContext(opts.currentMeta, stepName);
+  const items = filterCheckItemsBySnapshot(resolveStructureCheckItems(opts.scriptKey), snap);
   const tolerance = cfg.bboxTolerancePx ?? 4;
 
   if (cfg.failOnOverflow && opts.currentMeta.layout?.horizontalOverflow) {

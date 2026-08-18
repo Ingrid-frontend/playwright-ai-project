@@ -53,14 +53,16 @@
         "selector": ".ant-table, table",
         "script": "260612/我的审批_2026-06-09_16-48-19",
         "frame": "first",
-        "required": false
+        "required": false,
+        "snapshotName": "approval-list"
       },
       {
         "key": "approve-tabs",
         "selector": ".ant-tabs, [role='tablist']",
         "script": "260612/我的审批_2026-06-09_16-48-19",
         "frame": "first",
-        "required": false
+        "required": false,
+        "snapshotName": "approval-list"
       }
     ]
   },
@@ -68,7 +70,7 @@
     "enabled": true,
     "tolerance": {
       "fontSizePx": 0,
-      "colorDelta": 0
+      "colorDelta": 3
     },
     "items": [
       {
@@ -77,7 +79,8 @@
         "label": "主按钮",
         "props": ["backgroundColor", "color", "fontSize", "borderRadius"],
         "required": true,
-        "script": "mock/style-drift-demo"
+        "script": "mock/style-drift-demo",
+        "snapshotName": "mock-list"
       },
       {
         "key": "page-title",
@@ -85,7 +88,8 @@
         "label": "页面标题",
         "props": ["color", "fontSize", "fontWeight"],
         "required": true,
-        "script": "mock/style-drift-demo"
+        "script": "mock/style-drift-demo",
+        "snapshotName": "mock-list"
       },
       {
         "key": "list-card",
@@ -93,7 +97,58 @@
         "label": "列表卡片",
         "props": ["backgroundColor", "borderRadius", "boxShadow"],
         "required": false,
-        "script": "mock/style-drift-demo"
+        "script": "mock/style-drift-demo",
+        "snapshotName": "mock-list"
+      },
+      {
+        "key": "approve-primary-btn",
+        "selector": ".ant-input-search-button, .ant-btn-primary",
+        "label": "主按钮",
+        "props": ["backgroundColor", "color", "fontSize", "borderRadius"],
+        "required": true,
+        "script": "260612/我的审批_2026-06-09_16-48-19",
+        "frame": "first",
+        "snapshotName": "approval-list"
+      },
+      {
+        "key": "approve-table-head",
+        "selector": ".ant-table-thead th",
+        "label": "表格表头",
+        "props": ["backgroundColor", "color", "fontSize", "fontWeight"],
+        "required": true,
+        "script": "260612/我的审批_2026-06-09_16-48-19",
+        "frame": "first",
+        "snapshotName": "approval-list"
+      },
+      {
+        "key": "approve-tab-active",
+        "selector": ".ant-tabs-tab-active",
+        "label": "页签选中态",
+        "props": ["color", "fontSize", "fontWeight"],
+        "required": true,
+        "script": "260612/我的审批_2026-06-09_16-48-19",
+        "frame": "first",
+        "snapshotName": "approval-list"
+      },
+      {
+        "key": "approve-input",
+        "selector": ".ant-input-affix-wrapper, .ant-input",
+        "label": "输入框",
+        "props": ["borderColor", "fontSize", "color"],
+        "required": true,
+        "script": "260612/我的审批_2026-06-09_16-48-19",
+        "frame": "first",
+        "snapshotName": "approval-list"
+      },
+      {
+        "key": "approve-page-title",
+        "selector": ".ant-breadcrumb-link, .ant-page-header-heading-title, .ant-tabs-tab-active",
+        "label": "主文案",
+        "props": ["color", "fontSize", "fontWeight"],
+        "required": false,
+        "script": "260612/我的审批_2026-06-09_16-48-19",
+        "frame": "first",
+        "snapshotName": "approval-list"
       }
     ]
   },

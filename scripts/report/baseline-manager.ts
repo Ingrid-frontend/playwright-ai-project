@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { isDisabledViewportScreenshot } from './ui-regression-config.js';
-import { assertRunEligibleForGolden } from '../../src/utils/baseline-quality.js';
+import { assertRunEligibleForGolden, assertStepMetasEligibleForGolden } from '../../src/utils/baseline-quality.js';
 
 export const BASELINE_ROOT = 'screenshots-baseline';
 export const UI_REGRESSION_DIR = 'results/ui-regression';
@@ -207,12 +207,12 @@ export function promoteStepsToGolden(opts: {
     throw new Error(`源运行目录不存在: ${sourceDir}`);
   }
 
-  assertRunEligibleForGolden(sourceDir);
-
   const names = [...new Set(opts.stepFileNames.map((n) => path.basename(n)).filter((n) => n.endsWith('.png')))];
   if (!names.length) {
     throw new Error('promoteStepsToGolden 需要至少一个 step PNG 文件名');
   }
+
+  assertStepMetasEligibleForGolden(sourceDir, names);
 
   const goldenDir = goldenDirForScript(opts.scriptKey, runSegment);
   ensureDir(goldenDir);

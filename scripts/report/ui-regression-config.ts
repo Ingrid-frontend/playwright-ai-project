@@ -29,6 +29,9 @@ export interface StructureCheckItem {
   required?: boolean;
   /** main=主文档（默认）；first=第一个子 frame（iframe 内页面） */
   frame?: 'main' | 'first';
+  /** 仅在该 snapshot 截图上采集/对比；不传则对所有步骤生效 */
+  snapshotName?: string;
+  state?: string;
 }
 
 export interface StyleCheckItem {
@@ -39,6 +42,8 @@ export interface StyleCheckItem {
   frame?: 'main' | 'first';
   props?: string[];
   label?: string;
+  snapshotName?: string;
+  state?: string;
 }
 
 export interface StyleChecksConfig {
@@ -358,6 +363,34 @@ export function resolveStyleCheckItems(scriptKey?: string): StyleCheckItem[] {
   const runtime = scriptKey ? runtimeStyleChecks.get(scriptKey) || [] : [];
   const keys = new Set(runtime.map((i) => i.key));
   return [...runtime, ...configFiltered.filter((i) => !keys.has(i.key))];
+}
+
+export function snapshotFromStepName(stepName: string): { snapshotName?: string; state?: string } {
+  const i = stepName.indexOf('__');
+  if (i <= 0) return {};
+  return { snapshotName: stepName.slice(0, i), state: stepName.slice(i + 2) || 'normal' };
+}
+
+export function resolveSnapshotContext(
+  meta?: { snapshotName?: string; state?: string } | null,
+  stepName?: string,
+): { snapshotName?: string; state?: string } {
+  if (meta?.snapshotName) return { snapshotName: meta.snapshotName, state: meta.state || 'normal' };
+  if (stepName) return snapshotFromStepName(stepName);
+  return {};
+}
+
+export function filterCheckItemsBySnapshot<T extends { snapshotName?: string; state?: string }>(
+  items: T[],
+  snap?: { snapshotName?: string; state?: string },
+): T[] {
+  return items.filter((item) => {
+    if (!item.snapshotName) return true;
+    if (!snap?.snapshotName) return false;
+    if (item.snapshotName !== snap.snapshotName) return false;
+    if (item.state && item.state !== (snap.state || 'normal')) return false;
+    return true;
+  });
 }
 
 export function resolveCompareRunDrift(): boolean {

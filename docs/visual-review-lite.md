@@ -53,3 +53,10 @@ visualTest / takeStepScreenshot
 - 是否影响旧逻辑：否（旧 API / 整 run promote / `--gate` 阈值均保留）
 - 是否影响默认行为：稳定截图路径多一次视口稳定等待；对比缓存若旧 meta 无 `regions` 会重算一次
 - 流程验证：审批样例 `我的审批` 在主文档侧栏，iframe 定位失败；改为 iframe 优先、主文档 `menuitem` 兜底后用例通过。`visualTest(approval-list/normal)` 已落盘；step 3/4 单据未出现走 skipped，detail visualTest 未拍。`compare-screenshots` 已生成 Visual Review Tab。新 snapshot 尚无 Golden，需 Approve 后下次才会出 diff。
+
+### 2026-08-18
+
+- `snapshotName`/`state` 检查项作用域：`structureChecks`/`styleChecks` items 可按逻辑快照过滤，消除 step-1 误报 `approve-table`
+- `colorDelta` 容差：`compareStyleProps` 对 `backgroundColor`/`color`/`borderColor` 做 RGB 距离比较（默认阈值 3）
+- 真实样式守护：`我的审批` 配置 5 项 `styleChecks`（`approval-list` + iframe），已 promote Golden；gate blocker 0，style-drift 与 golden 一致
+- `promoteStepsToGolden` 仅校验指定 step meta；iframe 页以样式指纹 + selector 通过质量门禁

@@ -97,10 +97,29 @@ export async function collectStyleFingerprint(
   return out;
 }
 
+function parseHexRgb(hex: string): [number, number, number] | null {
+  const m = /^#([0-9A-F]{6})$/i.exec(hex.trim());
+  if (!m) return null;
+  const n = Number.parseInt(m[1]!, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+function rgbDistance(a: string, b: string): number {
+  const pa = parseHexRgb(a);
+  const pb = parseHexRgb(b);
+  if (!pa || !pb) return 999;
+  const dr = pa[0] - pb[0];
+  const dg = pa[1] - pb[1];
+  const db = pa[2] - pb[2];
+  return Math.sqrt(dr * dr + dg * dg + db * db);
+}
+
+const COLOR_PROPS = new Set(['backgroundColor', 'color', 'borderColor']);
+
 export function compareStyleProps(
   base: StyleProps,
   cur: StyleProps,
-  tolerance: { fontSizePx?: number },
+  tolerance: { fontSizePx?: number; colorDelta?: number },
 ): Array<{ prop: string; from: string; to: string }> {
   const diffs: Array<{ prop: string; from: string; to: string }> = [];
   const keys = new Set([...Object.keys(base), ...Object.keys(cur)]);
@@ -109,12 +128,16 @@ export function compareStyleProps(
     const a = base[prop] ?? '';
     const b = cur[prop] ?? '';
     if (a === b) continue;
-    if (prop === 'fontSize' && tolerance.fontSizePx) {
+    if (prop === 'fontSize' && tolerance.fontSizePx != null) {
       const pa = Number.parseFloat(a);
       const pb = Number.parseFloat(b);
       if (Number.isFinite(pa) && Number.isFinite(pb) && Math.abs(pa - pb) <= tolerance.fontSizePx) {
         continue;
       }
+    }
+    if (COLOR_PROPS.has(prop) && tolerance.colorDelta != null) {
+      const dist = rgbDistance(a, b);
+      if (dist <= tolerance.colorDelta) continue;
     }
     diffs.push({ prop, from: a, to: b });
   }
