@@ -35,7 +35,7 @@ function createStudioHandlers(ctx) {
     'record:start': async (ws, session, _sessionId, msg) => {
       if (msg.env) session.playwrightEnv = String(msg.env);
       session.lastUrl = msg.url;
-      await startRecording(ws, session, msg.url);
+      await startRecording(ws, session, msg.url, { loginOnly: Boolean(msg.loginOnly) });
     },
 
     'env:set': async (ws, session, _sessionId, msg) => {

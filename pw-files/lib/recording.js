@@ -27,9 +27,11 @@ function createRecordingActions(deps) {
     spawn,
   } = deps;
 
-  async function startRecording(ws, session, url) {
-    send(ws, 'record:start');
+  async function startRecording(ws, session, url, opts = {}) {
+    const loginOnly = Boolean(opts.loginOnly);
+    send(ws, 'record:start', { loginOnly });
     session.recording = true;
+    session.loginOnlyRecord = loginOnly;
     session.rawCode = '';
 
     const outFile = path.join(session.tmpDir, 'recorded.ts');
@@ -39,7 +41,7 @@ function createRecordingActions(deps) {
     const profile = repoReady ? getSessionAccountProfile(session, repoRoot) : 'default';
     let envEntry = repoReady ? getEnvEntryResolved(repoRoot, envId, profile) : null;
 
-    if (repoReady && envEntry?.storageState && !envEntry?.hasStorage) {
+    if (!loginOnly && repoReady && envEntry?.storageState && !envEntry?.hasStorage) {
       logLine(ws, `[env] storageState 无效，自动执行 login.setup…`, 'info');
       await runAccountLogin(ws, session);
       envEntry = getEnvEntryResolved(repoRoot, envId, profile);
@@ -72,8 +74,10 @@ function createRecordingActions(deps) {
       logLine(ws, `[env] 录制结束将写入 ${envEntry.storageState}`, 'dim');
       logLine(
         ws,
-        '[env] 模式3：开始录制仅加载登录态；停止录制才保存；换账号请先用「清除当前登录态」',
-        'dim',
+        loginOnly
+          ? '[account] 请在浏览器中手动登录；完成后关闭窗口或点「停止录制」以保存登录态'
+          : '[env] 模式3：开始录制仅加载登录态；停止录制才保存；换账号请先用「清除当前登录态」',
+        loginOnly ? 'info' : 'dim',
       );
     }
     codegenArgs.push('--output', outFile, recordUrl);
@@ -107,6 +111,7 @@ function createRecordingActions(deps) {
             lines: 0,
             storageSaved: false,
             aborted: true,
+            loginOnly: Boolean(session.loginOnlyRecord),
           });
         });
       });
@@ -213,6 +218,7 @@ function createRecordingActions(deps) {
       lines,
       storageSaved,
       storageState: storageRel || undefined,
+      loginOnly: Boolean(session.loginOnlyRecord),
     });
 
     if (storageSaved && storageRel) {
@@ -228,6 +234,7 @@ function createRecordingActions(deps) {
 
     session.recordSaveStorageAbs = null;
     session.recordSaveStorageRel = null;
+    session.loginOnlyRecord = false;
     session._stoppingRecord = false;
   }
 

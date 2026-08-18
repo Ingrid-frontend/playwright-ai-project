@@ -26,7 +26,8 @@ export function buildResolveOpsSystemPrompt(): string {
 2. 只完成当前步骤目标，不要替用户做后续步骤。
 3. 禁止改写断言期望；本提示不会用于 assert。
 4. 不要输出 CSS/XPath；只用 ref。
-5. 不要输出 JSON 以外的内容。`;
+5. 不要输出 JSON 以外的内容。
+6. 若目标是查看/详情类列表操作，但 Snapshot 没有该原文，改点同类可见按钮（详情、审批、处理），禁止编造不存在的 ref。`;
 }
 
 export function buildResolveOpsPrompt(input: {

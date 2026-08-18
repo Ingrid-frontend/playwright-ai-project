@@ -229,6 +229,8 @@ async function runEgoNlFlow(ws, session, msg = {}, deps) {
     passed: runOk,
     runError: runReport?.error || (runResult.error ? String(runResult.error) : undefined),
     message: ok ? undefined : runReport?.error || runResult.error || '执行未通过',
+    videoRel: runReport?.videoRel,
+    replayRel: runReport?.replayRel,
     audit: canAudit
       ? {
           url: auditPayload?.url || entry || '',
@@ -350,6 +352,8 @@ async function runEgoNlIntentPath(ws, session, ctx) {
     passed: runOk,
     steps,
     screenshotDir: runReport?.screenshotDir,
+    videoRel: runReport?.videoRel,
+    replayRel: runReport?.replayRel,
     runError: runReport?.error || (runResult.error ? String(runResult.error) : undefined),
     message: runOk ? undefined : runReport?.error || runResult.error || 'ego Intent 未通过',
     audit: null,

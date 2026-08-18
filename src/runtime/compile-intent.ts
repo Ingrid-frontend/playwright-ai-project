@@ -114,8 +114,25 @@ export function compileIntentToPlan(input: unknown): {
   }
 
   if (intent.assertions?.length) {
+    const existingExpects = new Set(
+      steps
+        .filter((s) => s.action.type === 'assert')
+        .map((s) => (s.action.type === 'assert' ? (s.action.expect || '').trim() : ''))
+        .filter(Boolean),
+    );
+    const actionDescs = steps
+      .filter((s) => s.action.type === 'click' || s.action.type === 'fill' || s.action.type === 'select')
+      .map((s) =>
+        s.action.type === 'click' || s.action.type === 'fill' || s.action.type === 'select'
+          ? s.action.description || ''
+          : '',
+      );
+
     for (let i = 0; i < intent.assertions.length; i++) {
-      const expectText = intent.assertions[i];
+      const expectText = intent.assertions[i].trim();
+      if (!expectText || existingExpects.has(expectText)) continue;
+      if (actionDescs.some((desc) => desc.includes(expectText))) continue;
+      existingExpects.add(expectText);
       steps.push({
         id: `assert-${i + 1}`,
         action: {

@@ -231,6 +231,8 @@ async function runIntent(ws, session, msg = {}, deps) {
     passed: result?.passed ?? false,
     steps: Array.isArray(result?.steps) ? result.steps : [],
     screenshotDir: result?.screenshotDir,
+    videoRel: result?.videoRel,
+    replayRel: result?.replayRel,
     error: result?.error || (runResult.error ? String(runResult.error) : undefined),
     exitCode: runResult.code,
     compareAfter,

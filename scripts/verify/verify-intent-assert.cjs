@@ -11,7 +11,7 @@ const { validateTestIntent, isNarrativeAssertText } = tsxRequire(
   path.join(__dirname, '../../src/types/test-intent.ts'),
   __filename,
 );
-const { evaluateStructuredAssert } = tsxRequire(
+const { evaluateStructuredAssert, shouldSkipUnobservedAssert, formatMissingAssertDetail } = tsxRequire(
   path.join(__dirname, '../../src/runtime/assert-eval.ts'),
   __filename,
 );
@@ -64,8 +64,43 @@ function main() {
     false,
   );
   assert.strictEqual(
-    evaluateStructuredAssert({ kind: 'url', expect: '/main/approve', url: 'https://x/main/approve' }).ok,
+    evaluateStructuredAssert({
+      kind: 'text',
+      expect: '审批意见',
+      snapshot: 'text "其它"',
+      frameTexts: ['提交 审批意见 取消'],
+    }).ok,
     true,
+  );
+
+  assert.strictEqual(
+    shouldSkipUnobservedAssert('查看', { type: 'click', description: '列表行的查看操作' }),
+    true,
+  );
+  assert.strictEqual(
+    shouldSkipUnobservedAssert('我的审批', { type: 'click', description: '列表行的查看操作' }),
+    false,
+  );
+
+  const miss = formatMissingAssertDetail('查看', '@1 [button] "详情"\n@2 [button] "审批"');
+  assert.ok(miss.includes('详情'), miss);
+  assert.ok(miss.includes('审批'), miss);
+
+  const { plan: compiled } = compileIntentToPlan({
+    name: 'dup-assert',
+    assertions: ['我的审批', '查看', '审批'],
+    steps: [
+      { id: 'step-5', action: 'assert', kind: 'text', expect: '查看' },
+      { id: 'step-6', action: 'click', description: '列表行的查看操作' },
+    ],
+  });
+  const extraAsserts = compiled.steps.filter(
+    (s) => s.action.type === 'assert' && s.action.expect === '查看',
+  );
+  assert.strictEqual(extraAsserts.length, 1, 'duplicate 查看 assert must not be appended');
+  assert.ok(
+    !compiled.steps.some((s) => s.id && String(s.id).startsWith('assert-') && s.action.expect === '查看'),
+    'click 重叠的顶层 assertions 不应再追加',
   );
 
   console.log('✅ verify-intent-assert passed');

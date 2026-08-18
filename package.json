@@ -98,7 +98,8 @@
     "figma:compare": "tsx scripts/figma/figma-spec-compare.ts",
     "figma:spec": "tsx scripts/figma/figma-spec-compare.ts --spec-only",
     "ego:audit": "tsx scripts/ego/audit-selectors.ts",
-    "ego:explore": "tsx scripts/ego/explore-to-intent.ts"
+    "ego:explore": "tsx scripts/ego/explore-to-intent.ts",
+    "ego:export-storage": "tsx scripts/ego/export-storage-state-from-ego.ts"
   },
   "keywords": [
     "playwright",

@@ -8,7 +8,7 @@ const path = require('path');
 const { require: tsxRequire } = require('tsx/cjs/api');
 
 const mod = tsxRequire(path.join(__dirname, '../../src/runtime/ego-snapshot.ts'), __filename);
-const { parseSnapshotText, findCandidates, snapshotContainsText } = mod;
+const { parseSnapshotText, findCandidates, snapshotContainsText, isListActionProbe, pickVisibleListAction } = mod;
 
 function main() {
   // 样本取自 ego lite 真实 snapshotText 输出：缩进树 + 名称在子 text 行
@@ -68,11 +68,34 @@ function main() {
   assert.strictEqual(snapshotContainsText(nested, '审批列表'), true);
   assert.strictEqual(snapshotContainsText(nested, '我的审批'), true);
   assert.strictEqual(snapshotContainsText(nested, '不存在的文案XYZ'), false);
+  // 相邻 text 节点拼接
+  const splitLabel = `root
+  text "审批"
+  text "意见"
+`;
+  assert.strictEqual(snapshotContainsText(splitLabel, '审批意见'), true);
   // 防元数据假阳性：css/href/url 等元数据不得让断言通过
   assert.strictEqual(snapshotContainsText(nested, 'loc=css'), false);
   assert.strictEqual(snapshotContainsText(nested, 'placeholder'), false);
   assert.strictEqual(snapshotContainsText(nested, '127.0.0.1:8799'), false);
   assert.strictEqual(snapshotContainsText(inline, 'aria-label'), false);
+
+  const listSnap = `root
+  heading "我的审批" [ref=1]
+  button "详情" [ref=2]
+  button "审批" [ref=3]
+`;
+  const listNodes = parseSnapshotText(listSnap);
+  assert.strictEqual(isListActionProbe('我的审批'), false);
+  assert.strictEqual(isListActionProbe('列表行的查看操作'), true);
+  assert.strictEqual(isListActionProbe('查看'), true);
+  const picked = pickVisibleListAction(listNodes, '列表行的查看操作', {
+    roles: ['button', 'anchor', 'link'],
+  });
+  assert.strictEqual(picked?.name, '详情');
+  assert.strictEqual(picked?.ref, 2);
+  const exactView = pickVisibleListAction(listNodes, '查看', { roles: ['button'] });
+  assert.strictEqual(exactView?.name, '详情');
 
   console.log('✅ verify-ego-snapshot passed');
 }

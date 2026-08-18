@@ -14,10 +14,13 @@ import { EGO_RESULT_PREFIX, runEgoJson, EgoUnavailableError, EgoUserControllingE
 import {
   findCandidates,
   formatNodesForPrompt,
+  isListActionProbe,
   parseSnapshotText,
+  pickVisibleListAction,
   summarizeSnapshot,
 } from './ego-snapshot.js';
-import { evaluateStructuredAssert, normalizeAssertAction } from './assert-eval.js';
+import { framesFromStepScreenshots, writeFlowReplay } from './flow-replay.js';
+import { evaluateStructuredAssert, formatMissingAssertDetail, normalizeAssertAction, shouldSkipUnobservedAssert } from './assert-eval.js';
 import type { AiTestRunOptions, AiTestRunResult, AiTestStepResult } from './execute-ai-test.js';
 
 export type IntentEgoRunOptions = AiTestRunOptions & {
@@ -94,12 +97,70 @@ async function openEntry(spaceName: string, url: string): Promise<{ url: string;
   ]);
 }
 
-async function takeSnapshot(spaceName: string): Promise<{ snapshot: string; url: string }> {
+async function takeSnapshot(
+  spaceName: string,
+): Promise<{ snapshot: string; url: string; frameTexts: string[] }> {
   return egoSession(spaceName, [
     `const snap = await snapshotText()`,
     `const info = await pageInfo()`,
-    `const __result = { snapshot: String(snap || ''), url: info.url || '' }`,
+    `const frameTexts = []`,
+    `try {`,
+    `  const tree = await cdp('Page.getFrameTree')`,
+    `  const frameIds = []`,
+    `  const walk = (node) => { if (!node || !node.frame) return; frameIds.push(node.frame.id); (node.childFrames || []).forEach(walk) }`,
+    `  if (tree && tree.frameTree) walk(tree.frameTree)`,
+    `  for (const frameId of frameIds) {`,
+    `    try {`,
+    `      const world = await cdp('Page.createIsolatedWorld', { frameId, worldName: 'ego-assert-text' })`,
+    `      const evaluated = await cdp('Runtime.evaluate', {`,
+    `        expression: "(() => (document.body && document.body.innerText || '').replace(/\\\\s+/g, ' ').trim().slice(0, 8000))()",`,
+    `        contextId: world.executionContextId,`,
+    `        returnByValue: true,`,
+    `        awaitPromise: false,`,
+    `      })`,
+    `      const text = evaluated && evaluated.result && evaluated.result.value`,
+    `      if (text) frameTexts.push(String(text))`,
+    `    } catch {}`,
+    `  }`,
+    `} catch {}`,
+    `const __result = { snapshot: String(snap || ''), url: info.url || '', frameTexts }`,
   ]);
+}
+
+async function assertInEgo(
+  spaceName: string,
+  action: Extract<SemanticAction, { type: 'assert' }>,
+  nextAction?: SemanticAction,
+): Promise<'ok' | 'skipped'> {
+  const spec = normalizeAssertAction(action);
+  if (spec.kind === 'url') {
+    const { url } = await takeSnapshot(spaceName);
+    const result = evaluateStructuredAssert({ ...spec, url });
+    if (!result.ok) throw new Error(`断言失败: ${result.detail}`);
+    return 'ok';
+  }
+
+  const first = await takeSnapshot(spaceName);
+  const firstResult = evaluateStructuredAssert({ ...spec, ...first });
+  if (firstResult.ok) return 'ok';
+  if (shouldSkipUnobservedAssert(spec.expect, nextAction)) {
+    const hint = formatMissingAssertDetail(spec.expect, first.snapshot);
+    console.log(
+      `⚠️ 页面未见「${spec.expect}」，已跳过臆造断言（后续 click 将按 Snapshot 定位真实按钮）。${hint}`,
+    );
+    return 'skipped';
+  }
+
+  const deadline = Date.now() + 8_000;
+  let lastDetail = firstResult.detail;
+  while (Date.now() <= deadline) {
+    await waitInEgo(spaceName, 700);
+    const { snapshot, url, frameTexts } = await takeSnapshot(spaceName);
+    const result = evaluateStructuredAssert({ ...spec, snapshot, url, frameTexts });
+    if (result.ok) return 'ok';
+    lastDetail = result.detail;
+  }
+  throw new Error(`断言失败: ${lastDetail}`);
 }
 
 async function captureShotBase64(spaceName: string): Promise<string | undefined> {
@@ -185,7 +246,19 @@ async function resolveOpsForAction(
 
   const nodes = parseSnapshotText(snapshot);
   const desc = descriptionOf(action);
-  const candidates = findCandidates(nodes, desc, { roles: rolesForAction(action) });
+  const roles = rolesForAction(action);
+
+  if (action.type === 'click' && isListActionProbe(desc)) {
+    const picked = pickVisibleListAction(nodes, desc, { roles });
+    if (picked) {
+      if (picked.name.trim() !== desc.trim()) {
+        console.log(`页面未见「${desc}」原文，改点可见操作「${picked.name}」`);
+      }
+      return [{ type: 'click', ref: picked.ref, label: picked.name }];
+    }
+  }
+
+  const candidates = findCandidates(nodes, desc, { roles });
 
   if (candidates.length === 1) {
     const ref = candidates[0].ref;
@@ -310,6 +383,7 @@ export async function executeIntentEgo(
     let attempt = 0;
     let stepPassed = false;
     let healed = false;
+    let skipped = false;
     let errorMessage: string | undefined;
     let screenshotPath: string | undefined;
     let workingStep = step;
@@ -327,11 +401,10 @@ export async function executeIntentEgo(
         } else if (action.type === 'screenshot') {
           /* evidence below */
         } else if (action.type === 'assert') {
-          const { snapshot, url } = await takeSnapshot(spaceName);
-          const spec = normalizeAssertAction(action);
-          const result = evaluateStructuredAssert({ ...spec, snapshot, url });
-          if (!result.ok) {
-            throw new Error(`断言失败: ${result.detail}`);
+          const outcome = await assertInEgo(spaceName, action, plan.steps[index + 1]?.action);
+          if (outcome === 'skipped') {
+            skipped = true;
+            healed = true;
           }
         } else if (action.type === 'act') {
           throw new Error(`act 动作已不支持，请改用 click/fill/select/assert: ${action.instruction}`);
@@ -410,7 +483,7 @@ export async function executeIntentEgo(
       action: step.action,
       passed: stepPassed,
       optional: Boolean(step.optional),
-      skipped: Boolean(step.optional && !stepPassed && errorMessage),
+      skipped: skipped || Boolean(step.optional && !stepPassed && errorMessage),
       attempts: attempt,
       healed,
       error: stepPassed ? undefined : errorMessage,
@@ -435,6 +508,11 @@ export async function executeIntentEgo(
   }
 
   const finishedAt = new Date().toISOString();
+  const flow = writeFlowReplay({
+    outputDir,
+    title: plan.name,
+    frames: framesFromStepScreenshots(steps),
+  });
   const result: AiTestRunResult = {
     passed,
     outputDir,
@@ -442,6 +520,8 @@ export async function executeIntentEgo(
     finishedAt,
     steps,
     error: fatal,
+    videoRel: flow.videoRel,
+    replayRel: flow.replayRel,
   };
 
   fs.writeFileSync(

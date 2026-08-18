@@ -156,11 +156,23 @@ export function findCandidates(
 /**
  * 断言：Snapshot 的「可见文案」是否包含期望内容（程序化，不经 LLM）。
  * 只匹配解析出的可见文本，避免命中 loc=css:input[placeholder="…"] 之类元数据造成假阳性。
+ * 相邻 text 节点会拼接后再匹配（如「审批」+「意见」）。
  */
 export function snapshotContainsText(snapshot: string, expected: string): boolean {
-  const needle = expected.trim().toLowerCase();
+  const needle = expected.trim().toLowerCase().replace(/\s+/g, '');
   if (!needle) return false;
-  return extractVisibleTexts(snapshot).some((text) => text.toLowerCase().includes(needle));
+  const texts = extractVisibleTexts(snapshot)
+    .map((text) => text.toLowerCase().replace(/\s+/g, ''))
+    .filter(Boolean);
+  if (texts.some((text) => text.includes(needle))) return true;
+  for (let i = 0; i < texts.length; i++) {
+    let acc = texts[i];
+    for (let j = i + 1; j < Math.min(texts.length, i + 4); j++) {
+      acc += texts[j];
+      if (acc.includes(needle)) return true;
+    }
+  }
+  return false;
 }
 
 export function summarizeSnapshot(snapshot: string, maxChars = 12_000): string {
@@ -174,4 +186,63 @@ export function formatNodesForPrompt(nodes: SnapshotNode[], limit = 80): string 
     .slice(0, limit)
     .map((n) => `@${n.ref} [${n.role || '?'}] "${n.name}"`)
     .join('\n');
+}
+
+const CONTROL_ROLES = new Set([
+  'button',
+  'anchor',
+  'link',
+  'menuitem',
+  'menuitemcheckbox',
+  'menuitemradio',
+  'tab',
+  'checkbox',
+  'radio',
+  'combobox',
+  'option',
+  'switch',
+]);
+
+/** Snapshot 里可点控件的可见名，供断言失败时对照真实按钮 */
+export function listVisibleControlNames(snapshot: string, limit = 12): string[] {
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const n of parseSnapshotText(snapshot)) {
+    if (!n.name || (n.role && !CONTROL_ROLES.has(n.role))) continue;
+    const name = n.name.trim();
+    if (!name || name.length > 40) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    names.push(name);
+    if (names.length >= limit) break;
+  }
+  return names;
+}
+
+/** 列表行常见操作；更长短语在前，避免「审批」误点「我的审批」 */
+export const LIST_ROW_ACTIONS = ['审批记录', '流程图', '查看', '详情', '处理', '日志', '审批'] as const;
+
+export function isListActionProbe(description: string): boolean {
+  const d = description.trim();
+  if (!d) return false;
+  if (LIST_ROW_ACTIONS.some((a) => d === a || d === `${a}操作`)) return true;
+  return /列表/.test(d) && /(查看|详情|操作)/.test(d);
+}
+
+/** 按 Snapshot 真实按钮挑选列表操作：指定文案没有则改点同类可见项 */
+export function pickVisibleListAction(
+  nodes: SnapshotNode[],
+  description: string,
+  opts: { roles?: string[] } = {},
+): SnapshotNode | null {
+  const roleSet = opts.roles?.map((r) => r.toLowerCase());
+  const controls = nodes.filter((n) => n.name && (!roleSet || !n.role || roleSet.includes(n.role)));
+  const wanted = LIST_ROW_ACTIONS.filter((a) => description.includes(a));
+  const order = [...wanted, ...LIST_ROW_ACTIONS.filter((a) => !wanted.includes(a))];
+  for (const name of order) {
+    const hit = controls.find((n) => n.name.trim() === name);
+    if (hit) return hit;
+  }
+  return null;
 }

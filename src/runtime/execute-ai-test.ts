@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import type { Browser, FrameLocator, Page } from 'playwright';
+import type { Browser, BrowserContext, FrameLocator, Page } from 'playwright';
 import { completeJson } from '../ai/llm-client.js';
 import { buildHealStepPrompt, buildHealStepSystemPrompt } from '../ai/prompts/heal-step.js';
 import {
@@ -13,6 +13,13 @@ import {
 import { getBaseEnvConfig, resolveStorageState } from '../utils/env-config.js';
 import { visualTest } from '../utils/screenshot.js';
 import { registerRuntimeStyleChecks, clearRuntimeStyleChecks } from '../../scripts/report/ui-regression-config.js';
+import {
+  collectFrameTextSamples,
+  formatFrameTextSamples,
+  verifyStorageStateForRun,
+  waitForPwReady,
+} from './pw-page-context.js';
+import { framesFromStepScreenshots, savePlaywrightVideo, writeFlowReplay } from './flow-replay.js';
 
 export type StepErrorKind = 'AssertionError' | 'LocatorError' | 'Retryable';
 
@@ -41,6 +48,8 @@ export interface AiTestRunResult {
   passed: boolean;
   outputDir: string;
   screenshotDir?: string;
+  videoRel?: string;
+  replayRel?: string;
   startedAt: string;
   finishedAt: string;
   steps: AiTestStepResult[];
@@ -48,6 +57,7 @@ export interface AiTestRunResult {
 }
 
 type PageTarget = Page | FrameLocator;
+type TargetRef = { kind: 'page' | 'iframe'; index: number; target: PageTarget; url: string };
 
 const DEFAULT_VIEWPORT = { width: 1280, height: 720 };
 
@@ -61,18 +71,21 @@ function sanitizeName(name: string): string {
   );
 }
 
-function resolveTarget(page: Page, scope: SemanticScope = 'page'): PageTarget {
-  if (scope === 'iframe') {
-    return page.frameLocator('iframe').first();
+function listTargets(page: Page, scope: SemanticScope = 'page'): TargetRef[] {
+  const frames = page.frames().slice(1);
+  const iframeTargets =
+    frames.length === 0
+      ? [{ kind: 'iframe', index: 0, target: page.frameLocator('iframe').first(), url: '' } satisfies TargetRef]
+      : frames.map((frame, index) => ({
+          kind: 'iframe' as const,
+          index,
+          target: page.frameLocator('iframe').nth(index),
+          url: frame.url() || '',
+        }));
+  if (scope !== 'iframe') {
+    return [{ kind: 'page', index: 0, target: page, url: page.url() }, ...iframeTargets];
   }
-  return page;
-}
-
-function waitForPageReady(page: Page): Promise<void> {
-  return page
-    .locator('.ant-spin-spinning, .ant-loading')
-    .waitFor({ state: 'hidden', timeout: 4_000 })
-    .catch(() => {});
+  return iframeTargets;
 }
 
 function extractQuotedText(input: string): string | undefined {
@@ -110,6 +123,22 @@ function clickLabelCandidates(description: string): string[] {
   return out;
 }
 
+function buildLocatorCandidates(action: SemanticAction): string[] {
+  if (action.type === 'click') {
+    return clickLabelCandidates(action.description).map((item) => `click text/role: ${item}`);
+  }
+  if (action.type === 'fill' || action.type === 'select') {
+    const text = shortActionText(action);
+    const out = [action.description.trim()];
+    if (text && !out.includes(text)) out.push(text);
+    return out.map((item) => `${action.type} label: ${item}`);
+  }
+  if (action.type === 'assert') {
+    return [(action.expect || action.description).trim()].filter(Boolean).map((item) => `assert text: ${item}`);
+  }
+  return [];
+}
+
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -135,31 +164,22 @@ async function tryClickLocators(target: PageTarget, label: string): Promise<bool
 }
 
 async function clickBySemanticLabel(page: Page, label: string, scope: SemanticScope = 'page'): Promise<boolean> {
-  if (scope === 'iframe') {
-    return tryClickLocators(page.frameLocator('iframe').first(), label);
+  for (const item of listTargets(page, scope)) {
+    if (await tryClickLocators(item.target, label)) return true;
   }
-
-  if (await tryClickLocators(page, label)) return true;
-
-  try {
-    const iframe = page.frameLocator('iframe').first();
-    if (await tryClickLocators(iframe, label)) return true;
-  } catch {
-    /* ignore */
-  }
-
   return false;
 }
 
 async function clickTarget(page: Page, action: Extract<SemanticAction, { type: 'click' }>): Promise<void> {
   const locatorHint = normalizeLocatorHint(action.locatorHint);
-  const target = resolveTarget(page, action.scope);
   if (locatorHint) {
-    try {
-      await target.locator(locatorHint).first().click({ timeout: 10_000 });
-      return;
-    } catch (error) {
-      console.log(`⚠️ 使用 locatorHint 点击失败，尝试语义定位: ${error instanceof Error ? error.message : String(error)}`);
+    for (const item of listTargets(page, action.scope)) {
+      try {
+        await item.target.locator(locatorHint).first().click({ timeout: 10_000 });
+        return;
+      } catch (error) {
+        console.log(`⚠️ 使用 locatorHint 点击失败，尝试语义定位: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
   }
 
@@ -171,12 +191,14 @@ async function clickTarget(page: Page, action: Extract<SemanticAction, { type: '
   if (ordinal) {
     const index = Math.max(0, Number(ordinal[1]) - 1);
     const rowSelectors = ['tr', '.ant-table-row', '[class*="table-row"]'];
-    for (const selector of rowSelectors) {
-      try {
-        await target.locator(selector).nth(index).click({ timeout: 5_000 });
-        return;
-      } catch {
-        /* try next */
+    for (const item of listTargets(page, action.scope)) {
+      for (const selector of rowSelectors) {
+        try {
+          await item.target.locator(selector).nth(index).click({ timeout: 5_000 });
+          return;
+        } catch {
+          /* try next */
+        }
       }
     }
   }
@@ -186,29 +208,32 @@ async function clickTarget(page: Page, action: Extract<SemanticAction, { type: '
 
 async function fillTarget(page: Page, action: Extract<SemanticAction, { type: 'fill' }>): Promise<void> {
   const locatorHint = normalizeLocatorHint(action.locatorHint);
-  const target = resolveTarget(page, action.scope);
   if (locatorHint) {
-    try {
-      await target.locator(locatorHint).first().fill(action.value, { timeout: 10_000 });
-      return;
-    } catch (error) {
-      console.log(`⚠️ 使用 locatorHint 填充失败，尝试语义定位: ${error instanceof Error ? error.message : String(error)}`);
+    for (const item of listTargets(page, action.scope)) {
+      try {
+        await item.target.locator(locatorHint).first().fill(action.value, { timeout: 10_000 });
+        return;
+      } catch (error) {
+        console.log(`⚠️ 使用 locatorHint 填充失败，尝试语义定位: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
   }
 
   const text = shortActionText(action);
   if (text) {
-    const candidates = [
-      target.getByLabel(text).first(),
-      target.getByPlaceholder(text).first(),
-      target.getByRole('textbox', { name: text }).first(),
-    ];
-    for (const locator of candidates) {
-      try {
-        await locator.fill(action.value, { timeout: 5_000 });
-        return;
-      } catch {
-        /* try next */
+    for (const item of listTargets(page, action.scope)) {
+      const candidates = [
+        item.target.getByLabel(text).first(),
+        item.target.getByPlaceholder(text).first(),
+        item.target.getByRole('textbox', { name: text }).first(),
+      ];
+      for (const locator of candidates) {
+        try {
+          await locator.fill(action.value, { timeout: 5_000 });
+          return;
+        } catch {
+          /* try next */
+        }
       }
     }
   }
@@ -218,28 +243,31 @@ async function fillTarget(page: Page, action: Extract<SemanticAction, { type: 'f
 
 async function selectTarget(page: Page, action: Extract<SemanticAction, { type: 'select' }>): Promise<void> {
   const locatorHint = normalizeLocatorHint(action.locatorHint);
-  const target = resolveTarget(page, action.scope);
   if (locatorHint) {
-    try {
-      await target.locator(locatorHint).first().selectOption(action.value, { timeout: 10_000 });
-      return;
-    } catch (error) {
-      console.log(`⚠️ 使用 locatorHint 选择失败，尝试语义操作: ${error instanceof Error ? error.message : String(error)}`);
+    for (const item of listTargets(page, action.scope)) {
+      try {
+        await item.target.locator(locatorHint).first().selectOption(action.value, { timeout: 10_000 });
+        return;
+      } catch (error) {
+        console.log(`⚠️ 使用 locatorHint 选择失败，尝试语义操作: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
   }
 
   const text = shortActionText(action);
   if (text) {
-    const candidates = [
-      target.getByLabel(text).first(),
-      target.getByRole('combobox', { name: text }).first(),
-    ];
-    for (const locator of candidates) {
-      try {
-        await locator.selectOption(action.value, { timeout: 5_000 });
-        return;
-      } catch {
-        /* try next */
+    for (const item of listTargets(page, action.scope)) {
+      const candidates = [
+        item.target.getByLabel(text).first(),
+        item.target.getByRole('combobox', { name: text }).first(),
+      ];
+      for (const locator of candidates) {
+        try {
+          await locator.selectOption(action.value, { timeout: 5_000 });
+          return;
+        } catch {
+          /* try next */
+        }
       }
     }
   }
@@ -262,25 +290,31 @@ async function assertTarget(page: Page, action: Extract<SemanticAction, { type: 
 
   if (kind === 'count') {
     const n = Number(expectText);
-    const target = resolveTarget(page, action.scope);
     const needle = action.target?.trim();
-    const loc = needle
-      ? target.getByText(needle, { exact: false })
-      : target.locator('body');
-    const count = needle ? await loc.count() : 1;
+    let count = 0;
+    for (const item of listTargets(page, action.scope)) {
+      const loc = needle
+        ? item.target.getByText(needle, { exact: false })
+        : item.target.locator('body');
+      count += needle ? await loc.count() : 1;
+      if (!needle) break;
+      if (count >= n) break;
+    }
     if (count < n) {
       throw new Error(`断言失败: count=${count} < ${n}${needle ? ` target=${needle}` : ''}`);
     }
     return;
   }
 
-  const target = resolveTarget(page, action.scope);
-  try {
-    await target.getByText(expectText, { exact: false }).first().waitFor({ state: 'visible', timeout: 6_000 });
-    return;
-  } catch {
-    throw new Error(`断言失败: 未找到可见文案 ${expectText}`);
+  for (const item of listTargets(page, action.scope)) {
+    try {
+      await item.target.getByText(expectText, { exact: false }).first().waitFor({ state: 'visible', timeout: 6_000 });
+      return;
+    } catch {
+      /* try next */
+    }
   }
+  throw new Error(`断言失败: 未找到可见文案 ${expectText}`);
 }
 
 async function actTarget(_page: Page, action: Extract<SemanticAction, { type: 'act' }>): Promise<void> {
@@ -295,8 +329,7 @@ async function gotoTarget(page: Page, action: Extract<SemanticAction, { type: 'g
   if (!action.path && !action.url) return;
   const target = action.url ? expandIntentPath(action.url) : action.path || '/';
   await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 60_000 });
-  await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {});
-  await waitForPageReady(page);
+  await waitForPwReady(page, { afterNav: true });
 }
 
 async function executeAction(page: Page, action: SemanticAction): Promise<void> {
@@ -327,8 +360,8 @@ async function executeAction(page: Page, action: SemanticAction): Promise<void> 
   }
 
   if (action.type !== 'goto' && action.type !== 'wait') {
-    await page.waitForTimeout(500);
-    await waitForPageReady(page);
+    await waitForPwReady(page);
+    await page.waitForTimeout(150);
   }
 }
 
@@ -444,12 +477,16 @@ async function healStep(
   await page.screenshot({ path: screenshotPath, fullPage: false }).catch(() => {});
   const dom = await page.locator('body').innerHTML().catch(() => '');
   const currentUrl = page.url();
+  const frameTexts = formatFrameTextSamples(await collectFrameTextSamples(page));
+  const failedStep: SemanticStep | undefined = plan.steps[stepIndex];
   const prompt = buildHealStepPrompt({
     plan,
     stepIndex,
     error,
     currentUrl,
     dom: dom.slice(0, 20_000),
+    frameTexts,
+    locatorCandidates: failedStep ? buildLocatorCandidates(failedStep.action) : [],
     constraints,
   });
   return completeJson<HealResult>(prompt, {
@@ -489,15 +526,46 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
   const browser: Browser = await chromium.launch({ headless: !options.headed });
   const consoleLogs: string[] = [];
   const stepResults: AiTestStepResult[] = [];
+  let context: BrowserContext | undefined;
+  let page: Page | undefined;
+
+  const finishFlow = async () => {
+    const videoAbs = path.join(outputDir, 'flow.webm');
+    let saved: string | undefined;
+    try {
+      const video = page?.video();
+      if (context) await context.close();
+      context = undefined;
+      saved = await savePlaywrightVideo(video, videoAbs);
+    } catch {
+      /* ignore */
+    }
+    return writeFlowReplay({
+      outputDir,
+      title: plan.name,
+      videoAbs: saved,
+      frames: framesFromStepScreenshots(stepResults),
+    });
+  };
 
   try {
-    const context = await browser.newContext({
+    const storageCheck = await verifyStorageStateForRun(browser, storageStatePath, {
+      baseURL: baseConfig?.baseURL || process.env.BASE_URL,
+      entry: plan.entry || '/',
+      allowMissing: !storageStatePath,
+    });
+    if (!storageCheck.valid) {
+      throw new Error(storageCheck.reason || 'storageState 不可用，请先执行 npm run login');
+    }
+    context = await browser.newContext({
       viewport: DEFAULT_VIEWPORT,
       baseURL: baseConfig?.baseURL || process.env.BASE_URL,
+      recordVideo: { dir: path.join(outputDir, '_pw-video'), size: DEFAULT_VIEWPORT },
       ...(storageStatePath && fs.existsSync(storageStatePath) ? { storageState: storageStatePath } : {}),
     });
-    const page = await context.newPage();
-    page.on('console', (msg) => consoleLogs.push(`[${msg.type()}] ${msg.text()}`));
+    page = await context.newPage();
+    const pwPage = page;
+    pwPage.on('console', (msg) => consoleLogs.push(`[${msg.type()}] ${msg.text()}`));
 
     if (!storageStatePath || !fs.existsSync(storageStatePath)) {
       console.log('⚠️ 未找到 storageState，将按未登录状态执行');
@@ -507,8 +575,8 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
       const entry = /^https?:\/\//i.test(plan.entry) || plan.entry.startsWith('file:')
         ? expandIntentPath(plan.entry)
         : plan.entry;
-      await page.goto(entry, { waitUntil: 'domcontentloaded', timeout: 60_000 });
-      await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {});
+      await pwPage.goto(entry, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+      await waitForPwReady(pwPage, { afterNav: true });
     }
 
     let allPassed = true;
@@ -525,7 +593,7 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
         attemptsUsed = attempt + 1;
         try {
-          await executeAction(page, step.action);
+          await executeAction(pwPage, step.action);
           passed = true;
           break;
         } catch (error) {
@@ -540,7 +608,7 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
 
           if (canHeal && attempt === maxAttempts - 1) {
             try {
-              const heal = await healStep(page, plan, index, errorMessage, outputDir, options.constraints);
+              const heal = await healStep(pwPage, plan, index, errorMessage, outputDir, options.constraints);
               if (heal.shouldSkip) {
                 if (step.optional && step.action.type !== 'assert') {
                   break;
@@ -555,7 +623,7 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
                   step = accepted;
                   healed = true;
                   try {
-                    await executeAction(page, step.action);
+                    await executeAction(pwPage, step.action);
                     passed = true;
                     errorMessage = undefined;
                     break;
@@ -591,7 +659,7 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
         allPassed = false;
       }
 
-      const screenshotPath = await captureEvidence(page, index, step, outputDir, consoleLogs, screenshotRunDir);
+      const screenshotPath = await captureEvidence(pwPage, index, step, outputDir, consoleLogs, screenshotRunDir);
       stepResults.push({
         id: step.id,
         action: step.action,
@@ -604,11 +672,11 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
       });
     }
 
-    await context.close();
+    const flow = await finishFlow();
     clearRuntimeStyleChecks();
     fs.writeFileSync(
       path.join(outputDir, 'result.json'),
-      `${JSON.stringify({ passed: allPassed, steps: stepResults, screenshotDir: screenshotRunDir }, null, 2)}\n`,
+      `${JSON.stringify({ passed: allPassed, steps: stepResults, screenshotDir: screenshotRunDir, ...flow }, null, 2)}\n`,
       'utf-8',
     );
 
@@ -616,16 +684,25 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
       passed: allPassed,
       outputDir,
       screenshotDir: screenshotRunDir,
+      videoRel: flow.videoRel,
+      replayRel: flow.replayRel,
       startedAt,
       finishedAt: new Date().toISOString(),
       steps: stepResults,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    fs.writeFileSync(path.join(outputDir, 'result.json'), `${JSON.stringify({ passed: false, error: message }, null, 2)}\n`, 'utf-8');
+    const flow = await finishFlow();
+    fs.writeFileSync(
+      path.join(outputDir, 'result.json'),
+      `${JSON.stringify({ passed: false, error: message, steps: stepResults, ...flow }, null, 2)}\n`,
+      'utf-8',
+    );
     return {
       passed: false,
       outputDir,
+      videoRel: flow.videoRel,
+      replayRel: flow.replayRel,
       startedAt,
       finishedAt: new Date().toISOString(),
       steps: stepResults,

@@ -36,7 +36,13 @@ export function buildGeneratePlaywrightScriptSystemPrompt(): string {
    - 找到任一可见即可点击；都找不到时用 console.log 后跳过或软失败，不要对单一 iframe button 硬等短超时。
 8. 使用 expect 做断言，不要只 click 后直接结束。
 9. 不要生成会提交真实业务数据的危险操作，除非用户明确要求。
-10. 不要写 page.goto（入口由运行器打开）；不要以 about:blank 为前提只写 waitForLoadState。`;
+10. 不要写 page.goto（入口由运行器打开）；不要以 about:blank 为前提只写 waitForLoadState。
+11. 打开列表详情（如我的审批）：
+   - 禁止循环 ['查看','详情','审批'] 和 expect(clickedActions.length).toBeGreaterThan(0)。
+   - 禁止用侧栏「我的审批」当列表已打开的证据。
+   - 必须调用 studioOpenFirstListRow(page)：它会在 page 与嵌套 iframe 里找单号/数据行并**自己点击**。不要只 expect 不 click。
+   - 不要再自己写 cell name=1；本页序号往往不是无障碍名「1」。
+   - 打开后断言 dialog 或 /详情|审批意见|基本信息|单号/ 或「关闭」之一。不要提交真实审批。`;
 }
 
 export function buildGeneratePlaywrightScriptPrompt(input: GeneratePlaywrightScriptInput): string {
@@ -57,6 +63,6 @@ export function buildGeneratePlaywrightScriptPrompt(input: GeneratePlaywrightScr
   }
 
   lines.push('');
-  lines.push('请输出可执行代码。');
+  lines.push('请输出可执行代码。打开列表详情时调用 await studioOpenFirstListRow(page)（助手会点击），不要写 actionNames 循环，不要只 expect 不 click。');
   return lines.join('\n');
 }

@@ -6,6 +6,8 @@ export interface HealStepInput {
   error: string;
   currentUrl: string;
   dom: string;
+  frameTexts?: string;
+  locatorCandidates?: string[];
   constraints?: string[];
 }
 
@@ -59,6 +61,20 @@ export function buildHealStepPrompt(input: HealStepInput): string {
     lines.push('');
     lines.push('当前页面 DOM 摘要：');
     lines.push(input.dom);
+  }
+
+  if (input.frameTexts) {
+    lines.push('');
+    lines.push('主页面与 iframe 可见文本摘要：');
+    lines.push(input.frameTexts);
+  }
+
+  if (input.locatorCandidates?.length) {
+    lines.push('');
+    lines.push('建议优先考虑的定位候选：');
+    for (const item of input.locatorCandidates) {
+      lines.push(`- ${item}`);
+    }
   }
 
   lines.push('');

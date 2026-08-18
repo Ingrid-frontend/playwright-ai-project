@@ -135,6 +135,7 @@ async function main(): Promise<void> {
   console.log('');
   console.log(result.passed ? '✅ Intent 测试通过' : '❌ Intent 测试失败');
   console.log(`📁 输出目录: ${result.outputDir}`);
+  if (result.replayRel) console.log(`🎬 流程回放: ${result.replayRel}`);
   for (const step of result.steps) {
     const status = step.passed ? '✅' : step.skipped ? '⏭️' : '❌';
     const healMark = step.healed ? ' [已自愈]' : '';

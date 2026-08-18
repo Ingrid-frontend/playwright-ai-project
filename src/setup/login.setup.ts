@@ -4,7 +4,7 @@ import path from 'path';
 import { env, curConfig } from '../../playwright.config';
 import { getLoginCredentials } from '../utils/credentials';
 import { resolveStorageState, shouldRefreshStorageState } from '../utils/env-config';
-import { isLoginLikePage, validateStorageStateFile } from '../utils/login-detection';
+import { isLoginLikePage, probeStorageState, validateStorageStateFile } from '../utils/login-detection';
 import { annotateStorageStateMeta } from '../utils/storage-state-meta.js';
 
 /**
@@ -22,25 +22,11 @@ setup('🔐 全局登录并持久化状态', async ({ page, browser }) => {
   }
 
   if (!forceRefresh && fs.existsSync(STORAGE_PATH)) {
-    const validity = validateStorageStateFile(STORAGE_PATH);
+    const validity = await probeStorageState(browser, STORAGE_PATH, { baseURL: curConfig.baseURL, entry: '/' });
     if (validity.valid) {
-      const context = await browser.newContext({ storageState: STORAGE_PATH, baseURL: curConfig.baseURL });
-      const probePage = await context.newPage();
-      try {
-        await probePage.goto('/', { waitUntil: 'load', timeout: 30_000 });
-        await probePage.locator('iframe').first().waitFor({ state: 'attached', timeout: 8_000 }).catch(() => {});
-        if (!(await isLoginLikePage(probePage))) {
-          console.log(`💡 检测到有效 loginState，跳过登录（${STORAGE_PATH}）`);
-          console.log('💡 换账号请设置 PLAYWRIGHT_REFRESH_STORAGE=1 或执行 npm run login:force');
-          return;
-        }
-        console.log(`⚠️  loginState 已失效（仍进入登录页），将重新登录: ${STORAGE_PATH}`);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        console.log(`⚠️  loginState 探测失败，将重新登录: ${message}`);
-      } finally {
-        await context.close().catch(() => {});
-      }
+      console.log(`💡 检测到有效 loginState，跳过登录（${STORAGE_PATH}）`);
+      console.log('💡 换账号请设置 PLAYWRIGHT_REFRESH_STORAGE=1 或执行 npm run login:force');
+      return;
     } else {
       console.log(`⚠️  loginState 无效，将重新登录：${validity.reason}`);
     }

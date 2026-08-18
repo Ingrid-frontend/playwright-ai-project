@@ -1,5 +1,10 @@
 import type { SemanticAction } from '../types/ai-test-plan.js';
-import { findCandidates, parseSnapshotText, snapshotContainsText } from './ego-snapshot.js';
+import {
+  findCandidates,
+  listVisibleControlNames,
+  parseSnapshotText,
+  snapshotContainsText,
+} from './ego-snapshot.js';
 
 export type AssertEvalInput = {
   kind: 'text' | 'visible' | 'url' | 'count';
@@ -7,6 +12,7 @@ export type AssertEvalInput = {
   target?: string;
   snapshot?: string;
   url?: string;
+  frameTexts?: string[];
 };
 
 export function normalizeAssertAction(action: Extract<SemanticAction, { type: 'assert' }>): AssertEvalInput {
@@ -43,7 +49,37 @@ export function evaluateStructuredAssert(input: AssertEvalInput): { ok: boolean;
     };
   }
 
-  // text / visible：可见原文子串或节点名
-  const ok = snapshotContainsText(snapshot, expect);
-  return { ok, detail: ok ? `命中文案 ${expect}` : `Snapshot 未找到文案 ${expect}` };
+  // text / visible：可见原文子串或节点名；iframe innerText 作兜底
+  if (snapshotContainsText(snapshot, expect)) {
+    return { ok: true, detail: `命中文案 ${expect}` };
+  }
+  const needle = expect.toLowerCase().replace(/\s+/g, '');
+  const frameHit = (input.frameTexts || []).some((text) =>
+    String(text || '')
+      .toLowerCase()
+      .replace(/\s+/g, '')
+      .includes(needle),
+  );
+  return {
+    ok: frameHit,
+    detail: frameHit ? `命中文案 ${expect}` : formatMissingAssertDetail(expect, snapshot),
+  };
+}
+
+/** 口述操作名被写成 assert，且下一步就是去点它 → 跳过臆造断言 */
+export function shouldSkipUnobservedAssert(
+  expect: string,
+  next?: { type?: string; description?: string },
+): boolean {
+  const needle = expect.trim();
+  if (!needle || !next) return false;
+  if (next.type !== 'click' && next.type !== 'fill' && next.type !== 'select') return false;
+  const desc = (next.description || '').trim();
+  return Boolean(desc && desc.includes(needle));
+}
+
+export function formatMissingAssertDetail(expect: string, snapshot: string): string {
+  const names = listVisibleControlNames(snapshot);
+  const hint = names.length ? `。页面可见操作：${names.join('、')}` : '';
+  return `Snapshot 未找到文案 ${expect}${hint}`;
 }

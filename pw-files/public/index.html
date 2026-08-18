@@ -620,6 +620,21 @@
     padding: 18px 20px;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
   }
+  .studio-modal-panel.flow-replay-panel {
+    width: min(960px, 96vw);
+    height: min(82vh, 760px);
+    display: flex;
+    flex-direction: column;
+    padding: 12px 14px 14px;
+  }
+  .flow-replay-frame {
+    flex: 1;
+    width: 100%;
+    border: 0;
+    border-radius: 8px;
+    background: #000;
+    margin-top: 8px;
+  }
   .studio-modal-title {
     margin: 0 0 10px;
     font-size: var(--fs-lg);
@@ -725,12 +740,14 @@
           <input class="url-input" id="targetUrl" placeholder="随环境自动填入，可手动修改" value="">
         </div>
         <p class="sidebar-hint" style="margin:14px 0 6px;color:var(--text-secondary)">登录态</p>
-        <p class="sidebar-hint" style="margin-bottom:8px">开录自动加载；浏览器登录后<strong>停止录制</strong>即保存。换账号请先清除。</p>
+        <p class="sidebar-hint" style="margin-bottom:8px">无登录态时可点「登录」打开录制浏览器，<strong>手动输入账号</strong>后停止录制即保存。有登录态时该按钮不可用；换账号请先清除。</p>
         <select class="url-input studio-hidden" id="accountProfileSelect" style="width:100%;margin-bottom:8px" disabled hidden aria-hidden="true">
           <option value="default">default</option>
         </select>
-        <button type="button" class="btn btn-full" id="btnClearStorage" style="background:var(--bg3);border:1px solid var(--border);color:var(--amber)" disabled onclick="clearAccountStorage()">清除登录态</button>
-        <button type="button" class="btn btn-full studio-hidden" id="btnAccountLogin" hidden aria-hidden="true" disabled>用配置账号登录</button>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <button type="button" class="btn btn-full" id="btnAccountLogin" disabled onclick="startAccountLogin()">登录</button>
+          <button type="button" class="btn btn-full" id="btnClearStorage" style="background:var(--bg3);border:1px solid var(--border);color:var(--amber)" disabled onclick="clearAccountStorage()">清除登录态</button>
+        </div>
       </div>
 
       <div class="sidebar-accordion sidebar-accordion-compact" id="accordionDateCategories">
@@ -975,7 +992,7 @@
               <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
                 <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary)">
                   引擎
-                  <select id="intentEngine" class="url-input" style="width:auto;min-width:100px;color:var(--text)">
+                  <select id="intentEngine" class="url-input" style="width:auto;min-width:100px;color:var(--text)" onchange="onIntentEngineChange()">
                     <option value="pw">playwright</option>
                     <option value="ego" selected>ego</option>
                   </select>
@@ -983,13 +1000,13 @@
                 <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
                   <input type="checkbox" id="intentHeal" checked> 定位失败自愈
                 </label>
-                <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
-                  <input type="checkbox" id="intentHeaded"> 有头（仅 pw）
+                <label id="intentHeadedWrap" style="display:none;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
+                  <input type="checkbox" id="intentHeaded"> 有头浏览器
                 </label>
                 <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
                   <input type="checkbox" id="intentCompareAfter"> 跑完截图对比
                 </label>
-                <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
+                <label id="intentKeepTabWrap" style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
                   <input type="checkbox" id="intentKeepTab"> 保留 ego Space
                 </label>
               </div>
@@ -1002,7 +1019,7 @@
                 <span class="editor-run-status" id="intentRunStatus"></span>
               </div>
               <div id="intentRunHint" class="sidebar-hint" style="color:var(--text-tertiary)">
-                读取 YAML → 按语义步骤执行（playwright 或 ego）。截图在 <code>screenshots/intent/</code>；勾选「跑完截图对比」可走 UI 回归。
+                读取 YAML → 按语义步骤执行（playwright 或 ego）。截图在 <code>screenshots/intent/</code>；跑完可点「查看流程视频」。勾选「跑完截图对比」可走 UI 回归。
               </div>
               <div id="intentRunResult" style="display:none"></div>
 
@@ -1033,7 +1050,8 @@
               <div>
                 <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">入口 entry（可选）</label>
                 <input type="text" class="url-input" id="exploreEntry" spellcheck="false"
-                  placeholder="/main/approve"
+                  value="/"
+                  placeholder="/"
                   style="width:100%;color:var(--text)">
               </div>
               <div>
@@ -1066,6 +1084,7 @@
                 <ul class="sidebar-hint" style="margin:0;padding-left:18px;line-height:1.7;color:var(--text-secondary)">
                   <li>用自然语言描述步骤，默认 <strong>ego</strong> 引擎试跑（NL → Intent YAML → ego 执行）</li>
                   <li>也可选 Playwright：生成临时脚本并执行</li>
+                  <li>试跑完成后可点「复制试跑反馈」，把流程数据贴给 AI 排查</li>
                   <li>试跑通过后，可点「转为 YAML 用例」跳到左侧 Tab 继续保存</li>
                 </ul>
               </div>
@@ -1078,7 +1097,8 @@
               <div>
                 <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">入口 URL / 路径（可选）</label>
                 <input type="text" class="url-input" id="egoNlEntry" spellcheck="false"
-                  placeholder="/main/approve 或完整 URL；也可写在自然语言里"
+                  value="/"
+                  placeholder="/"
                   style="width:100%;color:var(--text)">
               </div>
               <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
@@ -1092,13 +1112,13 @@
                 <label id="egoNlHealWrap" style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
                   <input type="checkbox" id="egoNlHeal" checked> 定位失败自愈
                 </label>
-                <label id="egoNlHeadedWrap" style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer;opacity:0.45">
-                  <input type="checkbox" id="egoNlHeaded" disabled> 有头浏览器（仅 pw）
+                <label id="egoNlHeadedWrap" style="display:none;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
+                  <input type="checkbox" id="egoNlHeaded"> 有头浏览器
                 </label>
-                <label id="egoNlAuditWrap" style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer;opacity:0.45">
-                  <input type="checkbox" id="egoNlAudit" disabled> 执行后再做 ego 选择器体检（仅 pw）
+                <label id="egoNlAuditWrap" style="display:none;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
+                  <input type="checkbox" id="egoNlAudit"> 执行后再做 ego 选择器体检
                 </label>
-                <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
+                <label id="egoNlKeepTabWrap" style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
                   <input type="checkbox" id="egoNlKeepTab"> 跑完保留 ego Space
                 </label>
               </div>
@@ -1140,9 +1160,9 @@
       <div class="panel-head">
         <span class="panel-head-title">控制台</span>
         <div class="panel-tabs">
-          <div class="ptab" id="ptabLog" onclick="switchPanel('log',this)">日志</div>
+          <div class="ptab active" id="ptabLog" onclick="switchPanel('log',this)">日志</div>
           <div class="ptab" onclick="switchPanel('report',this)">报告</div>
-          <div class="ptab active" id="ptabWorkflow" onclick="switchPanel('workflow',this)">用例</div>
+          <div class="ptab" id="ptabWorkflow" onclick="switchPanel('workflow',this)">用例</div>
         </div>
       </div>
 
@@ -1159,7 +1179,7 @@
       </div>
 
       <!-- Log stream -->
-      <div class="log-stream" id="logStream" style="display:none">
+      <div class="log-stream" id="logStream">
         <div class="log-line">
           <span class="log-time">--:--:--</span>
           <span class="log-dim">Playwright Studio 已就绪，等待操作...</span>
@@ -1201,7 +1221,7 @@
         </div>
       </div>
 
-      <div class="workflow-body active" id="workflowPanel">
+      <div class="workflow-body" id="workflowPanel">
         <div class="workflow-sub-tabs provider-row step-branch-row" role="group" aria-label="用例工作流">
           <button type="button" class="step-branch-chip active" data-workflow="new" id="workflowModeNew" onclick="setWorkflowMode('new', this)">新建用例</button>
           <button type="button" class="step-branch-chip" data-workflow="run" id="workflowModeRun" onclick="setWorkflowMode('run', this)">运行用例</button>
@@ -1486,6 +1506,17 @@
   </div>
 </div>
 
+<div class="studio-modal" id="flowReplayModal" hidden role="dialog" aria-modal="true" aria-labelledby="flowReplayModalTitle">
+  <div class="studio-modal-backdrop" onclick="closeFlowReplay()"></div>
+  <div class="studio-modal-panel flow-replay-panel">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <h3 class="studio-modal-title" id="flowReplayModalTitle" style="margin:0">流程视频</h3>
+      <button type="button" class="btn" onclick="closeFlowReplay()">关闭</button>
+    </div>
+    <iframe class="flow-replay-frame" id="flowReplayFrame" title="流程回放"></iframe>
+  </div>
+</div>
+
 <script>
 // ── State ──────────────────────────────────────────────────────────────
 let ws = null;
@@ -1498,6 +1529,7 @@ let intentLoadSilent = false;
 let exploreSeq = 0;
 let egoAuditSeq = 0;
 let lastNlRunContext = null;
+let pendingNlRunOptions = null;
 let recordTimer = null;
 let recordSeconds = 0;
 let lastOptimizeProvider = 'claude';
@@ -2624,10 +2656,63 @@ function updateHeaderEnvLabel() {
   if (el) el.textContent = `env: ${envState.current || '—'}`;
 }
 
+let loginOnlyRecording = false;
+
 function syncLoginStateControls() {
   const btnClear = document.getElementById('btnClearStorage');
-  if (!btnClear) return;
-  btnClear.disabled = !envState.repoReady || !accountState.hasStorage;
+  const btnLogin = document.getElementById('btnAccountLogin');
+  const ready = Boolean(envState.repoReady);
+  const loggingIn = Boolean(busyState.accountLogin) || loginOnlyRecording;
+  if (btnClear) {
+    btnClear.disabled = !ready || !accountState.hasStorage || loggingIn;
+  }
+  if (btnLogin) {
+    btnLogin.disabled = !ready || accountState.hasStorage || loggingIn || Boolean(state.recording);
+    btnLogin.textContent = loggingIn ? '登录中…' : '登录';
+    btnLogin.title = accountState.hasStorage
+      ? '当前已有登录态，请先清除后再登录'
+      : '打开录制浏览器，手动输入账号；停止录制后保存登录态';
+  }
+}
+
+function startAccountLogin() {
+  if (!ws || ws.readyState !== 1) {
+    showToast('未连接服务器', 'err');
+    return;
+  }
+  if (accountState.hasStorage) {
+    showToast('当前已有登录态，请先清除后再登录', 'err');
+    return;
+  }
+  if (!envState.repoReady) {
+    showToast('仓库未就绪，无法登录', 'err');
+    return;
+  }
+  if (state.recording || loginOnlyRecording) {
+    showToast('正在录制中', 'err');
+    return;
+  }
+  const url = document.getElementById('targetUrl')?.value?.trim() || '';
+  if (!url) {
+    showToast('请填写目标 URL', 'err');
+    return;
+  }
+  loginOnlyRecording = true;
+  busyState.accountLogin = true;
+  recordingAutoFlowActive = false;
+  syncLoginStateControls();
+  updateGlobalTaskBar();
+  if (!send('record:start', { url, env: envState.current, loginOnly: true })) {
+    loginOnlyRecording = false;
+    busyState.accountLogin = false;
+    syncLoginStateControls();
+    updateGlobalTaskBar();
+    return;
+  }
+  setRecordButtonUi(true);
+  startRecordTimer();
+  showToast('请在打开的浏览器中登录，完成后关闭窗口或点停止录制', 'ok');
+  log('info', `[account] 已启动录制登录 → ${url}`);
 }
 
 function renderAccountSelect() {
@@ -4207,10 +4292,26 @@ function handleMessage(msg) {
     case 'record:start':
       setStep(1, 'running'); log('info', '浏览器已启动，开始录制...'); break;
     case 'record:data':
+      if (loginOnlyRecording) break;
       appendRaw(msg.code); break;
     case 'record:done':
       setRecordButtonUi(false);
       setStep(1, 'done');
+      if (loginOnlyRecording || msg.loginOnly) {
+        loginOnlyRecording = false;
+        busyState.accountLogin = false;
+        syncLoginStateControls();
+        updateGlobalTaskBar();
+        syncActionButtons();
+        if (msg.storageSaved && msg.storageState) {
+          log('ok', `[account] 登录态已保存: ${msg.storageState}`);
+          showToast('登录态已保存', 'ok');
+        } else {
+          log('err', '[account] 未检测到有效登录态，请确认已在浏览器中登录后再停止');
+          showToast('未检测到有效登录态，请确认已登录后再停止录制', 'err');
+        }
+        break;
+      }
       document.getElementById('rawCode').value = msg.code;
       setRawMeta(msg.code);
       state.hasRaw = true;
@@ -4433,6 +4534,7 @@ function handleMessage(msg) {
     case 'account:login:start':
       busyState.accountLogin = true;
       syncLoginStateControls();
+      updateGlobalTaskBar();
       break;
     case 'account:login:done':
       busyState.accountLogin = false;
@@ -4441,6 +4543,7 @@ function handleMessage(msg) {
         storageState: msg.storageState,
         hasStorage: msg.hasStorage,
       });
+      updateGlobalTaskBar();
       if (msg.ok) showToast('账号登录成功', 'ok');
       else showToast('账号登录失败', 'err');
       break;
@@ -4933,18 +5036,7 @@ function handleMessage(msg) {
     case 'ai:validate:done':
     case 'ego:nl-run:done':
       if (msg.seq && msg.seq < egoAuditSeq) break;
-      if (msg.ok && msg.caseDescription) {
-        lastNlRunContext = {
-          caseDescription: msg.caseDescription,
-          entry: msg.entry || '',
-          env: msg.env || '',
-          outRel: msg.outRel || '',
-          engine: msg.engine || 'ego',
-          previewYaml: msg.previewYaml || '',
-        };
-      } else if (!msg.ok) {
-        lastNlRunContext = null;
-      }
+      lastNlRunContext = captureNlRunContext(msg);
       renderEgoNlRunResult(msg);
       if (msg.ok) {
         showToast('试跑通过', 'ok');
@@ -5652,6 +5744,40 @@ function startStyleDriftFullFlow() {
   if (statusEl) statusEl.textContent = '运行中…';
 }
 
+function flowReplayUrl(msg) {
+  const direct = String(msg?.replayRel || msg?.videoRel || '').replace(/\\/g, '/').replace(/^\.\//, '');
+  if (direct) return direct.startsWith('/') ? direct : `/${direct}`;
+  const out = String(msg?.outRel || '').replace(/\\/g, '/').replace(/\/$/, '');
+  if (!out) return '';
+  if (msg.scriptRel || msg.intentRel) return `/${out}/run/flow.html`;
+  return `/${out}/flow.html`;
+}
+
+function flowReplayButtonHtml(msg) {
+  const url = flowReplayUrl(msg);
+  if (!url) return '';
+  return `<div style="margin-top:10px"><button type="button" class="btn btn-run" data-flow-url="${escHtml(url)}" onclick="openFlowReplay(this.dataset.flowUrl)">查看流程视频</button></div>`;
+}
+
+function openFlowReplay(url) {
+  const href = String(url || '').trim();
+  if (!href) {
+    showToast('本次运行没有流程视频', 'err');
+    return;
+  }
+  const modal = document.getElementById('flowReplayModal');
+  const frame = document.getElementById('flowReplayFrame');
+  if (frame) frame.src = href;
+  if (modal) modal.hidden = false;
+}
+
+function closeFlowReplay() {
+  const modal = document.getElementById('flowReplayModal');
+  const frame = document.getElementById('flowReplayFrame');
+  if (frame) frame.src = 'about:blank';
+  if (modal) modal.hidden = true;
+}
+
 function renderIntentRunResult(msg) {
   setIntentRunBusy(false);
   const box = document.getElementById('intentRunResult');
@@ -5686,6 +5812,7 @@ function renderIntentRunResult(msg) {
     <div class="sidebar-hint" style="margin-bottom:8px">结果目录：<code>${escHtml(msg.outRel || '')}</code></div>
     ${compareLine}
     <div>${stepRows || '<div class="sidebar-hint">无步骤结果</div>'}</div>
+    ${flowReplayButtonHtml(msg)}
   `;
 }
 
@@ -5708,7 +5835,7 @@ function setExploreBusy(busy) {
 
 function startEgoExplore() {
   const goal = document.getElementById('exploreGoal')?.value?.trim() || '';
-  const entry = document.getElementById('exploreEntry')?.value?.trim() || '';
+  const entry = document.getElementById('exploreEntry')?.value?.trim() || '/';
   const space = document.getElementById('exploreSpace')?.value?.trim() || '';
   const box = document.getElementById('exploreResult');
   if (!goal) {
@@ -5772,20 +5899,27 @@ function switchToEgoAuditTab() {
   switchToNlValidateTab();
 }
 
+function setEngineOptionVisible(id, visible) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.display = visible ? 'flex' : 'none';
+}
+
+function onIntentEngineChange() {
+  const engine = document.getElementById('intentEngine')?.value || 'ego';
+  const pw = engine === 'pw';
+  setEngineOptionVisible('intentHeadedWrap', pw);
+  setEngineOptionVisible('intentKeepTabWrap', !pw);
+}
+
 function onEgoNlEngineChange() {
   const engine = document.getElementById('egoNlEngine')?.value || 'ego';
   const pw = engine === 'pw';
-  const headed = document.getElementById('egoNlHeaded');
-  const audit = document.getElementById('egoNlAudit');
-  const headedWrap = document.getElementById('egoNlHeadedWrap');
-  const auditWrap = document.getElementById('egoNlAuditWrap');
-  const healWrap = document.getElementById('egoNlHealWrap');
+  setEngineOptionVisible('egoNlHeadedWrap', pw);
+  setEngineOptionVisible('egoNlAuditWrap', pw);
+  setEngineOptionVisible('egoNlHealWrap', !pw);
+  setEngineOptionVisible('egoNlKeepTabWrap', !pw);
   const steps = document.getElementById('egoNlFlowSteps');
-  if (headed) headed.disabled = !pw;
-  if (audit) audit.disabled = !pw;
-  if (headedWrap) headedWrap.style.opacity = pw ? '1' : '0.45';
-  if (auditWrap) auditWrap.style.opacity = pw ? '1' : '0.45';
-  if (healWrap) healWrap.style.display = pw ? 'none' : '';
   if (steps) {
     steps.textContent = pw
       ? '流程（playwright）：自然语言 → 临时脚本 → Playwright 执行 →（可选）体检 → 通过后可转 YAML'
@@ -5795,7 +5929,7 @@ function onEgoNlEngineChange() {
 
 function startEgoNlRun() {
   const caseDescription = document.getElementById('egoNlCase')?.value?.trim() || '';
-  const entry = document.getElementById('egoNlEntry')?.value?.trim() || '';
+  const entry = document.getElementById('egoNlEntry')?.value?.trim() || '/';
   const engine = document.getElementById('egoNlEngine')?.value || 'ego';
   const headed = Boolean(document.getElementById('egoNlHeaded')?.checked);
   const audit = Boolean(document.getElementById('egoNlAudit')?.checked);
@@ -5813,6 +5947,7 @@ function startEgoNlRun() {
   clearEgoNlScriptPreview();
   switchToEgoAuditTab();
   setEgoAuditBusy(true);
+  pendingNlRunOptions = { caseDescription, entry, engine, headed, audit, heal, keepTab };
   send('ego:nl-run', { caseDescription, entry, engine, headed, audit, heal, keepTab, settle: 3 });
 }
 
@@ -5896,11 +6031,11 @@ function renderEgoNlRunResult(msg) {
       ? `<div class="sidebar-hint" style="margin-bottom:8px">ego 体检：健康 ${escHtml(String(summary.healthy ?? 0))} · 断裂 ${escHtml(String(summary.blocking ?? 0))} · 需确认 ${escHtml(String(summary.warnings ?? 0))}</div>`
       : '';
   const convertBtn = msg.ok
-    ? `<div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <button type="button" class="btn btn-run" id="btnNlToIntent" onclick="convertNlToIntent()">转为 YAML 用例</button>
-        <span class="sidebar-hint" style="margin:0">${isEgo ? 'ego 试跑已生成 YAML，可直接填入左侧编辑器' : '生成 YAML 草稿并跳到「YAML 用例」Tab，确认后点「保存定义」'}</span>
-      </div>`
+    ? `<button type="button" class="btn btn-run" id="btnNlToIntent" onclick="convertNlToIntent()">转为 YAML 用例</button>`
     : '';
+  const convertHint = msg.ok
+    ? `<span class="sidebar-hint" style="margin:0">${isEgo ? 'ego 试跑已生成 YAML，可直接填入左侧编辑器' : '生成 YAML 草稿并跳到「YAML 用例」Tab，确认后点「保存定义」'}</span>`
+    : `<span class="sidebar-hint" style="margin:0">复制后可贴给 AI 对照自然语言、YAML 和失败步骤</span>`;
   const artifactLine = isEgo
     ? `<div class="sidebar-hint" style="margin-bottom:4px">Intent 预览：<code>${escHtml(msg.intentRel || '')}</code></div>`
     : `<div class="sidebar-hint" style="margin-bottom:4px">临时脚本：<code>${escHtml(msg.scriptRel || '')}</code></div>`;
@@ -5911,8 +6046,113 @@ function renderEgoNlRunResult(msg) {
     <div class="sidebar-hint" style="margin-bottom:8px">结果目录：<code>${escHtml(msg.outRel || '')}</code></div>
     ${auditLine}
     <div>${stepRows || (audit && !audit.skipped ? '<div class="sidebar-hint">无体检步骤（或 ego 不可用）</div>' : '')}</div>
-    ${convertBtn}
+    <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <button type="button" class="btn" onclick="copyEgoNlFeedback()">复制试跑反馈</button>
+      ${convertBtn}
+      ${convertHint}
+      ${flowReplayButtonHtml(msg)}
+    </div>
   `;
+}
+
+function captureNlRunContext(msg) {
+  const pending = pendingNlRunOptions || {};
+  return {
+    caseDescription: msg.caseDescription || pending.caseDescription || document.getElementById('egoNlCase')?.value?.trim() || '',
+    entry: msg.entry || pending.entry || document.getElementById('egoNlEntry')?.value?.trim() || '/',
+    env: msg.env || '',
+    outRel: msg.outRel || '',
+    engine: msg.engine || pending.engine || 'ego',
+    previewYaml: msg.previewYaml || document.getElementById('egoNlScriptPreview')?.value || '',
+    scriptCode: msg.scriptCode || '',
+    intentRel: msg.intentRel || '',
+    scriptRel: msg.scriptRel || '',
+    ok: Boolean(msg.ok),
+    message: msg.message || '',
+    runError: msg.runError || '',
+    steps: Array.isArray(msg.steps) ? msg.steps : [],
+    screenshotDir: msg.screenshotDir || '',
+    heal: pending.heal,
+    keepTab: pending.keepTab,
+    headed: pending.headed,
+    audit: pending.audit,
+  };
+}
+
+function collectRecentStudioLogs(max = 40) {
+  const el = document.getElementById('logStream');
+  if (!el) return [];
+  return Array.from(el.querySelectorAll('.log-line'))
+    .map((line) => (line.innerText || '').replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .slice(-max);
+}
+
+function formatEgoNlFeedback(ctx) {
+  if (!ctx?.caseDescription && !ctx?.previewYaml && !ctx?.message) return '';
+  const status = ctx.ok ? '试跑通过' : '试跑未通过';
+  const lines = [
+    '## 口语试跑反馈',
+    '',
+    '请根据下面这份试跑数据帮我看问题。',
+    '',
+    `- 结果: ${status}`,
+    `- 引擎: ${ctx.engine || 'ego'}`,
+    `- 环境: ${ctx.env || '—'}`,
+    `- 入口: ${ctx.entry || '（未填）'}`,
+    `- 产物: ${ctx.outRel || ctx.intentRel || ctx.scriptRel || '—'}`,
+  ];
+  if (ctx.screenshotDir) lines.push(`- 截图: ${ctx.screenshotDir}`);
+  if (ctx.message) lines.push(`- 错误: ${ctx.message}`);
+  if (ctx.runError && ctx.runError !== ctx.message) lines.push(`- runError: ${ctx.runError}`);
+  const opts = [];
+  if (ctx.engine === 'pw') {
+    if (ctx.headed) opts.push('headed');
+    if (ctx.audit) opts.push('audit');
+  } else {
+    if (ctx.heal !== false) opts.push('heal');
+    if (ctx.keepTab) opts.push('keepTab');
+  }
+  if (opts.length) lines.push(`- 选项: ${opts.join(', ')}`);
+
+  lines.push('', '### 自然语言', '', ctx.caseDescription || '（空）');
+
+  const yaml = (ctx.previewYaml || '').trim();
+  const script = (ctx.scriptCode || '').trim();
+  if (yaml) {
+    const clipped = yaml.length > 12000 ? `${yaml.slice(0, 12000)}\n…(truncated)` : yaml;
+    lines.push('', '### 生成的 Intent YAML', '', '```yaml', clipped, '```');
+  } else if (script) {
+    const clipped = script.length > 12000 ? `${script.slice(0, 12000)}\n…(truncated)` : script;
+    lines.push('', '### 生成的临时脚本', '', '```typescript', clipped, '```');
+  }
+
+  if (Array.isArray(ctx.steps) && ctx.steps.length) {
+    lines.push('', '### 步骤结果');
+    for (const s of ctx.steps) {
+      const mark = s.passed ? '✅' : s.skipped ? '⏭️' : '❌';
+      const action = s.action && typeof s.action === 'object' ? s.action : {};
+      const label = [action.type, action.expect || action.description].filter(Boolean).join(' ');
+      const heal = s.healed ? ' · 已自愈' : '';
+      const err = s.error ? ` · ${String(s.error)}` : '';
+      lines.push(`- ${mark} ${s.id || ''}${label ? ` ${label}` : ''}${heal}${err}`);
+    }
+  }
+
+  const logs = collectRecentStudioLogs(40);
+  if (logs.length) {
+    lines.push('', '### 最近日志', '', '```', logs.join('\n'), '```');
+  }
+  return lines.join('\n');
+}
+
+function copyEgoNlFeedback() {
+  const text = formatEgoNlFeedback(lastNlRunContext);
+  if (!text) {
+    showToast('没有可复制的试跑记录，请先完成一次试跑', 'err');
+    return;
+  }
+  copyTextToClipboard(text);
 }
 
 function setNlToIntentBusy(busy) {
@@ -6771,12 +7011,10 @@ restoreWorkflowMode();
 restoreBrowserProjects();
 bindBrowserProjectControls();
 restoreEditorTab();
+onIntentEngineChange();
+onEgoNlEngineChange();
 renderRunHistory();
-if (['new', 'run', 'jobs'].includes(workflowMode)) {
-  openWorkflowPanel();
-} else {
-  switchPanel('log', document.getElementById('ptabLog'));
-}
+switchPanel('log', document.getElementById('ptabLog'));
 if (workflowMode === 'new') openAccordion('accordionRun');
 if (workflowMode === 'run') expandRunPipelineStep(1);
 if (workflowMode === 'jobs') refreshTestJobsList();
