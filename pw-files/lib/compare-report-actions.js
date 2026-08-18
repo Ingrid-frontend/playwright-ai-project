@@ -47,7 +47,8 @@ async function runRepoCompareReport(ws, session, deps) {
   logLine(ws, '[repo] 运行 compare-screenshots…', 'info');
 
   const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  const proc = spawn(npmCmd, ['run', 'compare-screenshots', '--'], {
+  const extraArgs = Array.isArray(deps.extraArgs) ? deps.extraArgs : [];
+  const proc = spawn(npmCmd, ['run', 'compare-screenshots', '--', ...extraArgs], {
     cwd: repoRoot,
     env: buildRepoSpawnEnv(session),
     shell: false,

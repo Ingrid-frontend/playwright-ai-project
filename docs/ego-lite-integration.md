@@ -25,7 +25,10 @@ ego-browser（Snapshot / click / fill / Space）
 | --- | --- | --- |
 | 稳定回归 / CI 大规模 | `tests/optimized/**/*.spec.ts` | Playwright（`test:ci` 不变） |
 | 易变流程 / 语义验收 | `tests/definitions/*.yaml` | 项目内 LLM + ego Snapshot（默认） |
-| 选择器体检 | `ego:audit` | ego（旁路，不改执行路径） |
+| 口语试跑 → 沉淀 YAML | Studio **口语试跑** Tab → **转为 YAML 用例** | LLM + 临时 pw 脚本 |
+| 选择器体检 | `ego:audit` / 口语试跑可选体检 | ego（旁路，不改执行路径） |
+
+Studio 两个编辑器 Tab 的说明见 [studio-yaml-and-nl-workflow.md](./studio-yaml-and-nl-workflow.md)。
 
 ## 双模式
 

@@ -2,6 +2,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { spawnSync } from 'child_process';
 import dotenv from 'dotenv';
 import { parse as parseYaml } from 'yaml';
 import { compileIntentToPlan } from '../../src/runtime/compile-intent.js';
@@ -59,16 +60,23 @@ function printHelp(): void {
 
 选项:
   --intent=<path>     Test Intent YAML
-  --engine=ego|pw     执行引擎（默认 ego）
+  --engine=ego|pw     执行引擎（默认 pw）
   --env=<env>         覆盖意图中的环境
   --profile=<id>      覆盖账号 profile（仅 pw 引擎）
   --out=<dir>         输出目录
   --headed            有头浏览器（仅 pw）
+  --compare           跑完后执行 compare-screenshots
+  --gate              与 --compare 联用，启用 gate
   --keep-tab          ego 跑完保留 Space
   --heal              强制开启自愈（默认开启；assert 永不自愈）
   --no-heal           关闭自愈
   -h, --help
 `);
+}
+
+function expandRepoRootInYaml(text: string): string {
+  const repoRoot = process.cwd();
+  return text.replace(/\{repoRoot\}/g, repoRoot);
 }
 
 async function main(): Promise<void> {
@@ -84,12 +92,12 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const engineRaw = (getArgValue('engine') || 'ego').toLowerCase();
-  const engine = engineRaw === 'pw' || engineRaw === 'playwright' ? 'pw' : 'ego';
+  const engineRaw = (getArgValue('engine') || 'pw').toLowerCase();
+  const engine = engineRaw === 'ego' ? 'ego' : 'pw';
 
   if (engine === 'pw') ensureBrowsersPath();
 
-  const raw = parseYaml(fs.readFileSync(intentPath, 'utf-8'));
+  const raw = parseYaml(expandRepoRootInYaml(fs.readFileSync(intentPath, 'utf-8')));
   const { intent, plan } = compileIntentToPlan(raw);
 
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
@@ -134,6 +142,13 @@ async function main(): Promise<void> {
   }
   if (result.error) {
     console.log(`❌ ${result.error}`);
+  }
+
+  if (hasFlag('compare') && result.passed) {
+    const compareArgs = ['tsx', 'scripts/report/compare-screenshots.ts'];
+    if (hasFlag('gate')) compareArgs.push('--gate');
+    const cmp = spawnSync('npx', compareArgs, { cwd: process.cwd(), stdio: 'inherit', shell: false });
+    process.exit(cmp.status ?? 1);
   }
 
   process.exit(result.passed ? 0 : 1);

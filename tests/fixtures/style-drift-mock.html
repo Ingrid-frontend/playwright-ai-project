@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Style Drift Mock</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f5f5f5;
+      padding: 24px;
+    }
+    .toolbar {
+      margin-bottom: 16px;
+    }
+    #page-title {
+      color: #1f1f1f;
+      font-size: 20px;
+      font-weight: 600;
+      margin: 0 0 16px;
+    }
+    #primary-btn {
+      background: #1677ff;
+      color: #ffffff;
+      font-size: 14px;
+      border: none;
+      border-radius: 6px;
+      padding: 4px 15px;
+      cursor: pointer;
+    }
+    .list-card {
+      background: #ffffff;
+      border-radius: 8px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+      padding: 16px;
+      margin-top: 16px;
+      max-width: 480px;
+    }
+    body.drift #primary-btn {
+      background: #1668dc;
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <button type="button" id="toggle-drift">模拟样式变更</button>
+  </div>
+  <h1 id="page-title">审批列表示例</h1>
+  <button id="primary-btn" type="button">主按钮</button>
+  <div class="list-card">
+    <div>单据 A-001</div>
+    <div>单据 A-002</div>
+  </div>
+  <script>
+    const params = new URLSearchParams(location.search);
+    if (params.get("drift") === "1") document.body.classList.add("drift");
+    document.getElementById("toggle-drift").addEventListener("click", () => {
+      document.body.classList.toggle("drift");
+    });
+  </script>
+</body>
+</html>

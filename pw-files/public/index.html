@@ -520,6 +520,24 @@
   .report-body { flex: 1; overflow-y: auto; padding: 16px; display: none; }
   .report-body.active { display: block; }
 
+  .workflow-body {
+    flex: 1; min-height: 0; display: none; flex-direction: column; overflow: hidden;
+  }
+  .workflow-body.active { display: flex; }
+  .workflow-sub-tabs {
+    display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px;
+    border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .workflow-scroll {
+    flex: 1; min-height: 0; overflow-y: auto;
+  }
+  .workflow-scroll .sidebar-section { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .workflow-scroll .pipeline { padding: 12px 16px; }
+  #workflowPanel #pipelineJobs {
+    display: flex; flex-direction: column; min-height: 0; border-bottom: none;
+  }
+  #workflowPanel #pipelineJobs:not(.studio-hidden) { display: flex; }
+
   .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
   .stat-card {
     background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius);
@@ -736,267 +754,6 @@
         </div>
       </div>
 
-      <div class="sidebar-section" id="workflowModeSection">
-        <div class="sidebar-label">工作模式</div>
-        <div class="provider-row step-branch-row" role="group" aria-label="工作模式">
-          <button type="button" class="step-branch-chip active" data-workflow="new" id="workflowModeNew" onclick="setWorkflowMode('new', this)">新建用例</button>
-          <button type="button" class="step-branch-chip" data-workflow="run" id="workflowModeRun" onclick="setWorkflowMode('run', this)">运行用例</button>
-          <button type="button" class="step-branch-chip" data-workflow="jobs" id="workflowModeJobs" onclick="setWorkflowMode('jobs', this)">定时任务</button>
-        </div>
-      </div>
-
-      <div class="sidebar-accordion" id="accordionRun">
-        <button type="button" class="accordion-trigger" aria-expanded="false">
-          执行设置 <span class="acc-chevron">›</span>
-        </button>
-        <div class="accordion-body">
-          <p class="exec-scope-hint" id="execScopeHint">—</p>
-          <p class="sidebar-hint">运行模式四选一；浏览器可多选（至少保留一个）。</p>
-          <div class="opt-grid provider-row run-mode-row">
-            <label class="opt-chip on" title="弹出浏览器窗口，脚本自动执行"><input type="radio" name="pwRunMode" value="headed" checked> 有界面</label>
-            <label class="opt-chip" title="Playwright Inspector 单步调试"><input type="radio" name="pwRunMode" value="debug"> 调试</label>
-            <label class="opt-chip" title="Playwright Test UI 可视化面板"><input type="radio" name="pwRunMode" value="ui"> UI 模式</label>
-            <label class="opt-chip" title="无头运行并输出 JSON 报告"><input type="radio" name="pwRunMode" value="headless"> 无头</label>
-          </div>
-          <p class="sidebar-hint" style="margin-top:12px;margin-bottom:8px">浏览器（可多选，至少保留一个）</p>
-          <div class="opt-grid provider-row" id="browserProjectRow">
-            <label class="opt-chip on"><input type="checkbox" name="pwBrowserProject" value="optimized" checked> Chrome</label>
-            <label class="opt-chip on"><input type="checkbox" name="pwBrowserProject" value="optimized-webkit" checked> Safari</label>
-            <label class="opt-chip"><input type="checkbox" name="pwBrowserProject" value="optimized-firefox"> Firefox</label>
-          </div>
-        </div>
-      </div>
-
-      <div class="sidebar-section studio-hidden" id="repoSpecPickerSection">
-        <div class="sidebar-label">测试用例</div>
-        <select class="url-input" id="repoProfileFilter" style="margin-bottom:8px;width:100%" onchange="onRepoProfileFilterChange()" title="按录制时的账号档案筛选">
-          <option value="all">全部账号档案</option>
-        </select>
-        <div class="provider-row step-branch-row" role="group" aria-label="运行方式" style="margin-bottom:10px">
-          <button type="button" class="step-branch-chip active" data-run-sub="single" id="runSubSingle" onclick="setRunSubMode('single', this)">单个</button>
-          <button type="button" class="step-branch-chip" data-run-sub="batch" id="runSubBatch" onclick="setRunSubMode('batch', this)">批量</button>
-        </div>
-        <div id="runSpecSingle">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:8px">
-          <span class="sidebar-hint" style="margin:0">选择用例</span>
-          <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px;flex-shrink:0" onclick="refreshRepoOptimizedList()">刷新</button>
-        </div>
-        <input type="text" class="url-input" id="repoSpecSearch" placeholder="搜索用例路径…" style="margin-bottom:6px;width:100%" spellcheck="false">
-        <select class="url-input" id="repoOptimizedPick" style="margin-bottom:6px;width:100%;color:var(--text)"></select>
-          <div style="display:flex;gap:6px;margin-bottom:6px">
-            <button type="button" class="btn btn-full" style="flex:1" onclick="loadSelectedOptimizedToEditor()">载入到编辑器</button>
-            <button type="button" class="btn btn-full" id="btnDeleteSpecSingle" style="flex:1;border-color:rgba(248,113,113,.35);color:var(--red)" onclick="deleteSelectedOptimizedSpecs()">删除所选用例</button>
-          </div>
-          <div style="display:flex;gap:6px;margin-bottom:6px">
-            <button type="button" class="btn btn-full" id="btnCleanLatestRunSingle" style="flex:1;font-size:var(--fs-xs)" onclick="cleanSelectedSpecScreenshots('latest')" title="删除 chrome/webkit 最近一次 run 的 timestamp 目录">清理最近 run</button>
-            <button type="button" class="btn btn-full" id="btnCleanAllScreenshotsSingle" style="flex:1;font-size:var(--fs-xs);border-color:rgba(251,191,36,.35);color:var(--amber,#d97706)" onclick="cleanSelectedSpecScreenshots('all')" title="删除该用例 screenshots/ 目录及 results/diffs 缓存">清理全部截图</button>
-          </div>
-        </div>
-        <div id="runSpecBatch" class="studio-hidden">
-          <input type="text" class="url-input" id="repoBatchSpecSearch" placeholder="筛选批量列表…" style="margin-bottom:6px;width:100%" spellcheck="false">
-          <div class="batch-spec-toolbar">
-            <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="refreshRepoOptimizedList()">刷新</button>
-            <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="selectAllBatchSpecs(true)">全选</button>
-            <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="selectAllBatchSpecs(false)">全不选</button>
-            <button type="button" class="btn" id="btnDeleteSpecBatch" style="font-size:var(--fs-xs);padding:4px 8px;color:var(--red)" onclick="deleteSelectedOptimizedSpecs()">删除所选</button>
-            <button type="button" class="btn" id="btnCleanLatestRunBatch" style="font-size:var(--fs-xs);padding:4px 8px" onclick="cleanSelectedSpecScreenshots('latest')" title="清理所选用例最近一次 run">清理最近 run</button>
-            <button type="button" class="btn" id="btnCleanAllScreenshotsBatch" style="font-size:var(--fs-xs);padding:4px 8px;color:var(--amber,#d97706)" onclick="cleanSelectedSpecScreenshots('all')" title="清理所选用例全部截图">清理全部截图</button>
-          </div>
-          <div id="repoBatchSpecList" class="batch-spec-list"></div>
-          <label class="opt-chip" style="margin:0"><input type="checkbox" id="batchStopOnError"> 遇错停止</label>
-        </div>
-      </div>
-
-      <div class="pipeline studio-hidden" id="pipelineJobs">
-        <div class="sidebar-section" style="padding-bottom:10px">
-          <div class="sidebar-label">任务列表</div>
-          <p class="sidebar-hint">读取 <code>config/test-jobs.json</code>。可选环境 / 账号档案 / 用例子集执行；多账号 Job 会按 meta 分组 login。Cron：<code>npm run test-job:daemon</code></p>
-          <button type="button" class="btn btn-full" style="margin-top:4px" onclick="refreshTestJobsList()">刷新任务</button>
-        </div>
-        <div id="testJobsList" class="test-job-list jobs-panel-list"></div>
-      </div>
-
-      <div class="pipeline" id="pipelineNew">
-        <div class="sidebar-label">新建流程</div>
-        <div class="step-item active" id="step1" data-step="1" role="button" tabindex="0">
-          <div class="step-bullet">1</div>
-          <div class="step-info">
-            <div class="step-name">开始录制</div>
-            <div class="step-sub" id="stepSub1">在浏览器中录制操作</div>
-          </div>
-        </div>
-
-        <div class="step-action-panel active" id="step1Panel" data-step-panel="1">
-          <p class="sidebar-hint" style="margin-bottom:8px">在弹出窗口中操作，停止后会自动生成并执行优化脚本。</p>
-          <button type="button" class="btn btn-record btn-full" id="btnRecord" onclick="event.stopPropagation(); startRecord()">
-            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
-            开始录制
-          </button>
-          <div class="sidebar-accordion studio-hidden" id="accordionRecordingNames" hidden aria-hidden="true">
-            <button type="button" class="accordion-trigger" aria-expanded="false">
-              保存命名（可选） <span class="acc-chevron">›</span>
-            </button>
-            <div class="accordion-body">
-              <p class="sidebar-hint" style="margin-bottom:6px">留空则按录制内容自动命名。</p>
-              <input type="text" class="url-input" id="recordingFeatureName" style="margin-bottom:6px;width:100%" placeholder="功能名，如：我的审批" spellcheck="false">
-              <input type="text" class="url-input" id="recordingBehaviorName" style="width:100%" placeholder="行为，如：click（普通点击可留空）" spellcheck="false">
-              <button type="button" class="sidebar-link-btn" onclick="openDateCategoriesEditor()">管理迭代 ›</button>
-            </div>
-          </div>
-        </div>
-        <div class="step-item" id="step2" data-step="2" role="button" tabindex="0">
-          <div class="step-bullet">2</div>
-          <div class="step-info">
-            <div class="step-name">自动生成用例</div>
-            <div class="step-sub" id="stepSub2">录制完成后自动生成优化脚本</div>
-            <div class="step-branch-row studio-hidden" role="group" aria-label="第二步方式" hidden aria-hidden="true">
-              <button type="button" class="step-branch-chip active" data-mode="ai" id="step2ModeAi" onclick="event.stopPropagation(); setStep2Mode('ai', this)">AI 优化脚本</button>
-              <button type="button" class="step-branch-chip" data-mode="repo" id="step2ModeRepo" onclick="event.stopPropagation(); setStep2Mode('repo', this)">保存并生成用例</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="step-action-panel studio-hidden" id="step2PanelAi" data-mode="ai" hidden aria-hidden="true">
-          <p class="sidebar-hint" style="margin-bottom:8px">对当前录制脚本做 AI 重构，请先配置模型与优化选项。</p>
-          <div class="sidebar-accordion" id="accordionAi">
-            <button type="button" class="accordion-trigger" aria-expanded="false">
-              AI 与优化 <span class="acc-chevron">›</span>
-            </button>
-            <div class="accordion-body">
-              <p class="sidebar-hint">选择模型并填写对应密钥；留空则使用服务器环境变量。</p>
-              <div class="provider-row" style="margin-bottom:10px">
-                <label class="opt-chip on"><input type="radio" name="aiProvider" id="providerClaude" value="claude" checked> Claude</label>
-                <label class="opt-chip"><input type="radio" name="aiProvider" id="providerDeepseek" value="deepseek"> DeepSeek</label>
-              </div>
-              <div class="api-key-summary" id="apiKeySummaryAnthropic" data-provider="claude" style="display:none"></div>
-              <div class="api-key-block expanded active" id="apiKeyBlockAnthropic" data-provider="claude">
-                <div class="api-key-label">Anthropic（Claude）</div>
-                <input type="password" class="url-input" id="apiKeyAnthropic" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
-              </div>
-              <div class="api-key-summary" id="apiKeySummaryDeepseek" data-provider="deepseek"></div>
-              <div class="api-key-block collapsed" id="apiKeyBlockDeepseek" data-provider="deepseek">
-                <div class="api-key-label">DeepSeek</div>
-                <input type="password" class="url-input" id="apiKeyDeepseek" placeholder="sk-..." autocomplete="off" spellcheck="false">
-              </div>
-              <p id="apiKeyStatus" class="api-key-status-line">Claude · 使用环境变量或界面密钥</p>
-              <div class="key-tools">
-                <label class="opt-chip"><input type="checkbox" id="showApiKeys">显示密钥</label>
-                <label class="opt-chip"><input type="checkbox" id="persistEncryptedApiKeys">加密保存到浏览器</label>
-              </div>
-              <details class="api-key-details">
-                <summary>密钥与保存说明</summary>
-                仅当前选中的模型会使用对应密钥；两个都填时不会混用。加密保存使用 AES-GCM 写入 localStorage，解密密钥在 sessionStorage，关闭浏览器后需重新输入。
-              </details>
-              <div class="sidebar-label" style="margin-top:14px;margin-bottom:8px">优化选项</div>
-              <div class="opt-grid">
-                <label class="opt-chip on"><input type="checkbox" id="optSelector" checked>选择器优化</label>
-                <label class="opt-chip on"><input type="checkbox" id="optAssert" checked>补充断言</label>
-                <label class="opt-chip on"><input type="checkbox" id="optWait" checked>移除硬等待</label>
-                <label class="opt-chip on"><input type="checkbox" id="optEnv" checked>环境变量</label>
-                <label class="opt-chip"><input type="checkbox" id="optPom">Page Object</label>
-                <label class="opt-chip"><input type="checkbox" id="optComment">中文注释</label>
-              </div>
-            </div>
-          </div>
-          <button type="button" class="btn btn-optimize btn-full" id="btnOptimize" onclick="event.stopPropagation(); handleOptimizeClick()" disabled data-default-label="AI 优化脚本">
-            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2 7h7l-5.5 4 2 7L12 16l-5.5 4 2-7L3 9h7z"/></svg>
-            <span class="btn-label">AI 优化脚本</span>
-          </button>
-        </div>
-
-        <div class="step-action-panel" id="step2PanelRepo" data-mode="repo">
-          <p class="sidebar-hint" style="margin-bottom:8px">录制完成后会自动生成优化脚本并继续执行，无需保存。</p>
-          <button type="button" class="btn btn-full studio-hidden" id="btnRepoSave" onclick="commitRepoArtifacts()" style="border-color:rgba(77,159,255,.35);color:var(--blue);margin-bottom:8px" hidden aria-hidden="true">保存到项目</button>
-          <div style="display:flex;gap:6px">
-            <button type="button" class="btn studio-hidden" style="flex:1" id="btnRepoPipeline" onclick="runRepoPipelineClick()" hidden aria-hidden="true">生成用例</button>
-            <button type="button" class="btn" style="flex:1" id="btnRepoPipelineCancel" onclick="send('cancel:repo-pipeline')">取消自动生成</button>
-          </div>
-        </div>
-        <div class="step-item" id="step3" data-step="3" role="button" tabindex="0">
-          <div class="step-bullet">3</div>
-          <div class="step-info">
-            <div class="step-name">执行用例（含截图）</div>
-            <div class="step-sub" id="stepSub3">执行用例并自动截取步骤图</div>
-          </div>
-        </div>
-
-        <div class="step-action-panel" id="step3PanelRepo">
-          <p class="sidebar-hint" style="margin-bottom:8px">运行模式见上方「执行设置」。</p>
-          <button type="button" class="btn btn-run btn-full" id="btnRepoTest" onclick="event.stopPropagation(); handleRepoTestClick()" data-default-label="执行（含截图）">执行（含截图）</button>
-          <button type="button" class="btn btn-full" id="btnRepoRerunKeep" onclick="event.stopPropagation(); handleRepoRerunKeepClick()" data-default-label="追加 run（保留截图）" style="border-color:rgba(82,196,26,.35);color:#52c41a">追加 run（保留截图）</button>
-          <ul class="compare-checklist" id="compareChecklistNew"></ul>
-          <button type="button" class="btn btn-full" id="btnRepoCompare" onclick="openScreenshotCompareHub()" style="border-color:rgba(77,159,255,.35);color:var(--blue)">截图对比报告</button>
-          <button type="button" class="btn btn-full" id="btnRepoCompareCancel" style="font-size:var(--fs-sm);padding:6px 10px;margin-top:6px" disabled onclick="send('cancel:repo-compare')">取消对比报告生成</button>
-        </div>
-
-
-        <div class="step-item" id="step4" data-step="4" role="button" tabindex="0">
-          <div class="step-bullet">4</div>
-          <div class="step-info">
-            <div class="step-name">生成报告</div>
-            <div class="step-sub" id="stepSub4">查看结果并下载脚本</div>
-          </div>
-        </div>
-
-        <div class="step-action-panel" id="step4Panel" data-step-panel="4">
-          <p class="sidebar-hint" style="margin-bottom:8px">生成报告后可在右侧「报告」面板查看。</p>
-          <button type="button" class="btn btn-report btn-full" id="btnReport" onclick="event.stopPropagation(); generateReport()" disabled>
-            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>
-            生成报告
-          </button>
-        </div>
-      </div>
-
-      <div class="pipeline studio-hidden" id="pipelineRun">
-        <div class="sidebar-label">运行流程</div>
-        <div class="step-item active" id="runStep1" data-run-step="1" role="button" tabindex="0">
-          <div class="step-bullet">1</div>
-          <div class="step-info">
-            <div class="step-name">选择用例</div>
-            <div class="step-sub" id="runStepSub1">在上方选择单个或批量用例</div>
-          </div>
-        </div>
-        <div class="step-action-panel active" id="runStep1Panel">
-          <div class="run-spec-summary" id="runStep1Summary">请在上方「测试用例」选择要运行的用例。</div>
-        </div>
-        <div class="step-item" id="runStep2" data-run-step="2" role="button" tabindex="0">
-          <div class="step-bullet">2</div>
-          <div class="step-info">
-            <div class="step-name">执行</div>
-            <div class="step-sub" id="runStepSub2">运行所选用例并截取步骤图</div>
-          </div>
-        </div>
-        <div class="step-action-panel" id="runStep2Panel">
-          <p class="sidebar-hint" style="margin-bottom:8px">运行模式见「执行设置」。</p>
-          <p class="batch-progress" id="batchProgressText"></p>
-          <div class="batch-fail-actions studio-hidden" id="batchFailCopyBar">
-            <button type="button" class="btn btn-full" style="font-size:var(--fs-sm);padding:6px 10px;margin-bottom:6px" onclick="copyAllBatchFailures()">复制全部失败信息</button>
-          </div>
-          <div class="batch-results-wrap studio-hidden" id="batchResultsWrap">
-            <table class="batch-results-table" id="batchResultsTable">
-              <thead><tr><th>用例</th><th>结果</th><th>操作</th></tr></thead>
-              <tbody id="batchResultsBody"></tbody>
-            </table>
-          </div>
-          <button type="button" class="btn btn-run btn-full" id="btnRunExecute" onclick="event.stopPropagation(); handleRunExecuteClick()" data-default-label="执行（含截图）">执行（含截图）</button>
-          <button type="button" class="btn btn-full" id="btnRunRerunKeep" onclick="event.stopPropagation(); handleRepoRerunKeepClick()" data-default-label="追加 run（保留截图）" style="border-color:rgba(82,196,26,.35);color:#52c41a">追加 run（保留截图）</button>
-        </div>
-        <div class="step-item" id="runStep3" data-run-step="3" role="button" tabindex="0">
-          <div class="step-bullet">3</div>
-          <div class="step-info">
-            <div class="step-name">报告</div>
-            <div class="step-sub" id="runStepSub3">生成截图对比报告</div>
-          </div>
-        </div>
-        <div class="step-action-panel" id="runStep3Panel">
-          <ul class="compare-checklist" id="compareChecklistRun"></ul>
-          <button type="button" class="btn btn-full" id="btnRunRerunKeepReport" onclick="event.stopPropagation(); handleRepoRerunKeepClick()" data-default-label="追加 run（保留截图）" style="border-color:rgba(82,196,26,.35);color:#52c41a;margin-bottom:6px">追加 run（保留截图）</button>
-          <button type="button" class="btn btn-full" id="btnRunCompare" onclick="openScreenshotCompareHub()" style="border-color:rgba(77,159,255,.35);color:var(--blue)">截图对比报告</button>
-          <button type="button" class="btn btn-full" id="btnRunCompareCancel" style="font-size:var(--fs-sm);padding:6px 10px;margin-top:6px" disabled onclick="send('cancel:repo-compare')">取消对比报告生成</button>
-        </div>
-      </div>
-
-
       </div>
 
     </aside>
@@ -1006,10 +763,10 @@
       <div class="jobs-workspace studio-hidden" id="jobsWorkspace">
         <div class="jobs-workspace-head">
           <div class="jobs-workspace-title" id="jobsWorkspaceTitle">定时任务</div>
-          <div class="jobs-workspace-sub" id="jobsWorkspaceSub">在左侧选择任务，查看配置、运行状态与日志</div>
+          <div class="jobs-workspace-sub" id="jobsWorkspaceSub">在右侧「用例」面板选择任务，查看配置、运行状态与日志</div>
         </div>
         <div class="jobs-workspace-body">
-          <div class="jobs-workspace-empty" id="jobsWorkspaceEmpty">← 从左侧选择一个任务</div>
+          <div class="jobs-workspace-empty" id="jobsWorkspaceEmpty">← 从右侧「用例」面板选择一个任务</div>
           <div id="jobsWorkspaceDetail" class="studio-hidden" style="display:flex;flex-direction:column;gap:16px;flex:1;min-height:0">
             <div class="jobs-run-bar" id="jobsRunBar">
               <label class="jobs-run-label" for="jobsRunEnvSelect">执行环境</label>
@@ -1060,14 +817,11 @@
         <div class="tab active" onclick="switchTab('figma',this)">
           设计稿对比
         </div>
-        <div class="tab" onclick="switchTab('ai-validate',this)">
-          AI 验证
-        </div>
         <div class="tab" onclick="switchTab('intent-run',this)">
-          Intent 运行
+          YAML 用例
         </div>
         <div class="tab" onclick="switchTab('ego-audit',this)">
-          NL 生成运行
+          口语试跑
         </div>
       </div>
 
@@ -1183,42 +937,20 @@
           </div>
         </div>
 
-        <!-- AI native validation -->
-        <div class="editor-pane" id="pane-ai-validate">
-          <div style="flex:1;overflow-y:auto;padding:16px;font-size:var(--fs-sm);line-height:1.8">
-            <div style="display:flex;flex-direction:column;gap:10px;max-width:760px">
-              <div>
-                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">自然语言测试步骤</label>
-                <textarea id="aiValidateCase" class="url-input" spellcheck="false" rows="5"
-                  placeholder="例如：打开我的审批，选择最新一条记录，查看详情，断言状态为待审批"
-                  style="width:100%;resize:vertical;color:var(--text);line-height:1.6"></textarea>
-              </div>
-              <div>
-                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">入口 URL / 路径（可选）</label>
-                <input type="text" class="url-input" id="aiValidateEntry" spellcheck="false"
-                  placeholder="留空则按语义计划自身入口；也可填写 /main/approve 或完整 URL"
-                  style="width:100%;color:var(--text)">
-              </div>
-              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-                <button type="button" class="btn btn-run" id="btnAiValidate" onclick="startAiValidate()" style="flex-shrink:0">
-                  <span class="btn-label">生成脚本并验证</span>
-                </button>
-                <span class="editor-run-status" id="aiValidateStatus"></span>
-              </div>
-              <div id="aiValidateHint" class="sidebar-hint" style="color:var(--text-tertiary)">
-                直接调用 API 生成 Playwright 脚本并执行。生成脚本会复用当前环境和登录态。
-              </div>
-              <div id="aiValidateResult" style="display:none"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Intent run + Explore -->
+        <!-- YAML 用例 + Explore + 样式守护 -->
         <div class="editor-pane" id="pane-intent-run">
           <div style="flex:1;overflow-y:auto;padding:16px;font-size:var(--fs-sm);line-height:1.8">
             <div style="display:flex;flex-direction:column;gap:10px;max-width:760px">
+              <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg2)">
+                <div style="font-weight:600;color:var(--text);margin-bottom:6px">正式用例 · 可保存、可反复跑</div>
+                <ul class="sidebar-hint" style="margin:0;padding-left:18px;line-height:1.7;color:var(--text-secondary)">
+                  <li>用 YAML 文件描述测试步骤，适合回归、样式守护、截图对比</li>
+                  <li>可编辑保存到 <code>tests/definitions/</code>，也可用 Explore 自动生成草稿</li>
+                  <li>与「口语试跑」不同：这里是<strong>长期维护</strong>的用例，不是一次性临时脚本</li>
+                </ul>
+              </div>
               <div>
-                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">Intent 定义</label>
+                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">选择用例文件</label>
                 <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                   <select id="intentPreset" class="url-input" style="flex:1;min-width:180px;color:var(--text)" onchange="onIntentPresetChange()">
                     <option value="">加载中…</option>
@@ -1244,8 +976,8 @@
                 <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary)">
                   引擎
                   <select id="intentEngine" class="url-input" style="width:auto;min-width:100px;color:var(--text)">
-                    <option value="ego" selected>ego</option>
-                    <option value="pw">playwright</option>
+                    <option value="pw" selected>playwright</option>
+                    <option value="ego">ego</option>
                   </select>
                 </label>
                 <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
@@ -1263,16 +995,32 @@
               </div>
               <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
                 <button type="button" class="btn btn-run" id="btnIntentRun" onclick="startIntentRun()" style="flex-shrink:0">
-                  <span class="btn-label">运行 Intent</span>
+                  <span class="btn-label">运行用例</span>
                 </button>
                 <button type="button" class="btn" id="btnIntentSave" onclick="saveIntentYaml()">保存定义</button>
                 <button type="button" class="btn" id="btnIntentCancel" onclick="cancelIntentRun()" style="display:none">取消</button>
                 <span class="editor-run-status" id="intentRunStatus"></span>
               </div>
               <div id="intentRunHint" class="sidebar-hint" style="color:var(--text-tertiary)">
-                固定 YAML → ego Snapshot 动态执行（默认）。断言失败不会自愈。截图落在 <code>screenshots/intent/</code>。
+                读取 YAML → 按语义步骤执行（playwright 或 ego）。截图在 <code>screenshots/intent/</code>；勾选「跑完截图对比」可走 UI 回归。
               </div>
               <div id="intentRunResult" style="display:none"></div>
+
+              <hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
+              <div style="font-weight:600;color:var(--text)">样式守护</div>
+              <p class="sidebar-hint" style="color:var(--text-tertiary);margin:0">
+                使用上方 Intent 定义 → pw 截图 + computed style 指纹 → Golden 对比。演示 <code>style-drift-mock.yaml</code> 无需登录。
+              </p>
+              <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
+                <input type="checkbox" id="styleDriftGate" checked> Gate 模式（style-only）
+              </label>
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <button type="button" class="btn btn-run" id="btnStyleDriftRunFull" onclick="startStyleDriftFullFlow()" style="flex-shrink:0">
+                  <span class="btn-label">样式守护全流程</span>
+                </button>
+                <span class="editor-run-status" id="styleDriftRunStatus"></span>
+              </div>
+              <p class="sidebar-hint" id="styleDriftStatus" style="color:var(--text-tertiary);margin:0">运行 YAML 用例 → 截图对比 → 报告三档分类</p>
 
               <hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
               <div style="font-weight:600;color:var(--text)">Explore → 生成 Intent</div>
@@ -1309,12 +1057,20 @@
           </div>
         </div>
 
-        <!-- NL → temp script → run (+ optional ego audit) -->
+        <!-- 口语试跑：NL → 临时脚本 → 执行 -->
         <div class="editor-pane" id="pane-ego-audit">
           <div style="flex:1;overflow-y:auto;padding:16px;font-size:var(--fs-sm);line-height:1.8">
             <div style="display:flex;flex-direction:column;gap:10px;max-width:760px">
+              <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg2)">
+                <div style="font-weight:600;color:var(--text);margin-bottom:6px">快速验证 · 用一句话试流程</div>
+                <ul class="sidebar-hint" style="margin:0;padding-left:18px;line-height:1.7;color:var(--text-secondary)">
+                  <li>用自然语言描述步骤，AI 生成<strong>临时</strong> Playwright 脚本并执行</li>
+                  <li>适合探索「能不能跑通」，不直接改正式 YAML 文件</li>
+                  <li>试跑通过后，可点「转为 YAML 用例」跳到左侧 Tab 继续保存</li>
+                </ul>
+              </div>
               <div>
-                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">自然语言测试步骤</label>
+                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">你想测什么？（自然语言）</label>
                 <textarea id="egoNlCase" class="url-input" spellcheck="false" rows="6"
                   placeholder="例如：打开我的审批，进入第一条待审批，断言详情页出现审批相关文案"
                   style="width:100%;resize:vertical;color:var(--text);line-height:1.6"></textarea>
@@ -1338,13 +1094,13 @@
               </div>
               <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
                 <button type="button" class="btn btn-run" id="btnEgoAudit" onclick="startEgoNlRun()" style="flex-shrink:0">
-                  <span class="btn-label">生成并运行</span>
+                  <span class="btn-label">开始试跑</span>
                 </button>
                 <button type="button" class="btn" id="btnEgoAuditCancel" onclick="cancelEgoAuditUi()" style="display:none">取消</button>
                 <span class="editor-run-status" id="egoAuditStatus"></span>
               </div>
               <div id="egoAuditHint" class="sidebar-hint" style="color:var(--text-tertiary)">
-                遗留路径：自然语言 → 临时 Playwright 脚本 → 执行（将迁移为 YAML Intent，请优先用「Intent 运行 / Explore」）。入口建议填 <code>/</code> 或业务 path；运行器会先 goto 再执行。产物在 <code>results/ego-studio/</code>。
+                产物在 <code>results/ego-studio/</code>（临时脚本，不会自动写入 definitions）。
               </div>
               <div id="egoAuditResult" style="display:none"></div>
             </div>
@@ -1360,8 +1116,9 @@
       <div class="panel-head">
         <span class="panel-head-title">控制台</span>
         <div class="panel-tabs">
-          <div class="ptab active" onclick="switchPanel('log',this)">日志</div>
+          <div class="ptab" id="ptabLog" onclick="switchPanel('log',this)">日志</div>
           <div class="ptab" onclick="switchPanel('report',this)">报告</div>
+          <div class="ptab active" id="ptabWorkflow" onclick="switchPanel('workflow',this)">用例</div>
         </div>
       </div>
 
@@ -1378,7 +1135,7 @@
       </div>
 
       <!-- Log stream -->
-      <div class="log-stream" id="logStream">
+      <div class="log-stream" id="logStream" style="display:none">
         <div class="log-line">
           <span class="log-time">--:--:--</span>
           <span class="log-dim">Playwright Studio 已就绪，等待操作...</span>
@@ -1419,6 +1176,266 @@
           <div id="runHistoryList" class="sidebar-hint">暂无执行记录</div>
         </div>
       </div>
+
+      <div class="workflow-body active" id="workflowPanel">
+        <div class="workflow-sub-tabs provider-row step-branch-row" role="group" aria-label="用例工作流">
+          <button type="button" class="step-branch-chip active" data-workflow="new" id="workflowModeNew" onclick="setWorkflowMode('new', this)">新建用例</button>
+          <button type="button" class="step-branch-chip" data-workflow="run" id="workflowModeRun" onclick="setWorkflowMode('run', this)">运行用例</button>
+          <button type="button" class="step-branch-chip" data-workflow="jobs" id="workflowModeJobs" onclick="setWorkflowMode('jobs', this)">定时任务</button>
+        </div>
+        <div class="workflow-scroll" id="workflowPanelScroll">
+          <div class="sidebar-accordion" id="accordionRun">
+                  <button type="button" class="accordion-trigger" aria-expanded="false">
+                    执行设置 <span class="acc-chevron">›</span>
+                  </button>
+                  <div class="accordion-body">
+                    <p class="exec-scope-hint" id="execScopeHint">—</p>
+                    <p class="sidebar-hint">运行模式四选一；浏览器可多选（至少保留一个）。</p>
+                    <div class="opt-grid provider-row run-mode-row">
+                      <label class="opt-chip on" title="弹出浏览器窗口，脚本自动执行"><input type="radio" name="pwRunMode" value="headed" checked> 有界面</label>
+                      <label class="opt-chip" title="Playwright Inspector 单步调试"><input type="radio" name="pwRunMode" value="debug"> 调试</label>
+                      <label class="opt-chip" title="Playwright Test UI 可视化面板"><input type="radio" name="pwRunMode" value="ui"> UI 模式</label>
+                      <label class="opt-chip" title="无头运行并输出 JSON 报告"><input type="radio" name="pwRunMode" value="headless"> 无头</label>
+                    </div>
+                    <p class="sidebar-hint" style="margin-top:12px;margin-bottom:8px">浏览器（可多选，至少保留一个）</p>
+                    <div class="opt-grid provider-row" id="browserProjectRow">
+                      <label class="opt-chip on"><input type="checkbox" name="pwBrowserProject" value="optimized" checked> Chrome</label>
+                      <label class="opt-chip on"><input type="checkbox" name="pwBrowserProject" value="optimized-webkit" checked> Safari</label>
+                      <label class="opt-chip"><input type="checkbox" name="pwBrowserProject" value="optimized-firefox"> Firefox</label>
+                    </div>
+                  </div>
+                </div>
+          
+                <div class="sidebar-section studio-hidden" id="repoSpecPickerSection">
+                  <div class="sidebar-label">测试用例</div>
+                  <select class="url-input" id="repoProfileFilter" style="margin-bottom:8px;width:100%" onchange="onRepoProfileFilterChange()" title="按录制时的账号档案筛选">
+                    <option value="all">全部账号档案</option>
+                  </select>
+                  <div class="provider-row step-branch-row" role="group" aria-label="运行方式" style="margin-bottom:10px">
+                    <button type="button" class="step-branch-chip active" data-run-sub="single" id="runSubSingle" onclick="setRunSubMode('single', this)">单个</button>
+                    <button type="button" class="step-branch-chip" data-run-sub="batch" id="runSubBatch" onclick="setRunSubMode('batch', this)">批量</button>
+                  </div>
+                  <div id="runSpecSingle">
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:8px">
+                    <span class="sidebar-hint" style="margin:0">选择用例</span>
+                    <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px;flex-shrink:0" onclick="refreshRepoOptimizedList()">刷新</button>
+                  </div>
+                  <input type="text" class="url-input" id="repoSpecSearch" placeholder="搜索用例路径…" style="margin-bottom:6px;width:100%" spellcheck="false">
+                  <select class="url-input" id="repoOptimizedPick" style="margin-bottom:6px;width:100%;color:var(--text)"></select>
+                    <div style="display:flex;gap:6px;margin-bottom:6px">
+                      <button type="button" class="btn btn-full" style="flex:1" onclick="loadSelectedOptimizedToEditor()">载入到编辑器</button>
+                      <button type="button" class="btn btn-full" id="btnDeleteSpecSingle" style="flex:1;border-color:rgba(248,113,113,.35);color:var(--red)" onclick="deleteSelectedOptimizedSpecs()">删除所选用例</button>
+                    </div>
+                    <div style="display:flex;gap:6px;margin-bottom:6px">
+                      <button type="button" class="btn btn-full" id="btnCleanLatestRunSingle" style="flex:1;font-size:var(--fs-xs)" onclick="cleanSelectedSpecScreenshots('latest')" title="删除 chrome/webkit 最近一次 run 的 timestamp 目录">清理最近 run</button>
+                      <button type="button" class="btn btn-full" id="btnCleanAllScreenshotsSingle" style="flex:1;font-size:var(--fs-xs);border-color:rgba(251,191,36,.35);color:var(--amber,#d97706)" onclick="cleanSelectedSpecScreenshots('all')" title="删除该用例 screenshots/ 目录及 results/diffs 缓存">清理全部截图</button>
+                    </div>
+                  </div>
+                  <div id="runSpecBatch" class="studio-hidden">
+                    <input type="text" class="url-input" id="repoBatchSpecSearch" placeholder="筛选批量列表…" style="margin-bottom:6px;width:100%" spellcheck="false">
+                    <div class="batch-spec-toolbar">
+                      <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="refreshRepoOptimizedList()">刷新</button>
+                      <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="selectAllBatchSpecs(true)">全选</button>
+                      <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="selectAllBatchSpecs(false)">全不选</button>
+                      <button type="button" class="btn" id="btnDeleteSpecBatch" style="font-size:var(--fs-xs);padding:4px 8px;color:var(--red)" onclick="deleteSelectedOptimizedSpecs()">删除所选</button>
+                      <button type="button" class="btn" id="btnCleanLatestRunBatch" style="font-size:var(--fs-xs);padding:4px 8px" onclick="cleanSelectedSpecScreenshots('latest')" title="清理所选用例最近一次 run">清理最近 run</button>
+                      <button type="button" class="btn" id="btnCleanAllScreenshotsBatch" style="font-size:var(--fs-xs);padding:4px 8px;color:var(--amber,#d97706)" onclick="cleanSelectedSpecScreenshots('all')" title="清理所选用例全部截图">清理全部截图</button>
+                    </div>
+                    <div id="repoBatchSpecList" class="batch-spec-list"></div>
+                    <label class="opt-chip" style="margin:0"><input type="checkbox" id="batchStopOnError"> 遇错停止</label>
+                  </div>
+                </div>
+          
+                <div class="pipeline studio-hidden" id="pipelineJobs">
+                  <div class="sidebar-section" style="padding-bottom:10px">
+                    <div class="sidebar-label">任务列表</div>
+                    <p class="sidebar-hint">读取 <code>config/test-jobs.json</code>。可选环境 / 账号档案 / 用例子集执行；多账号 Job 会按 meta 分组 login。Cron：<code>npm run test-job:daemon</code></p>
+                    <button type="button" class="btn btn-full" style="margin-top:4px" onclick="refreshTestJobsList()">刷新任务</button>
+                  </div>
+                  <div id="testJobsList" class="test-job-list jobs-panel-list"></div>
+                </div>
+          
+                <div class="pipeline" id="pipelineNew">
+                  <div class="sidebar-label">新建流程</div>
+                  <div class="step-item active" id="step1" data-step="1" role="button" tabindex="0">
+                    <div class="step-bullet">1</div>
+                    <div class="step-info">
+                      <div class="step-name">开始录制</div>
+                      <div class="step-sub" id="stepSub1">在浏览器中录制操作</div>
+                    </div>
+                  </div>
+          
+                  <div class="step-action-panel active" id="step1Panel" data-step-panel="1">
+                    <p class="sidebar-hint" style="margin-bottom:8px">在弹出窗口中操作，停止后会自动生成并执行优化脚本。</p>
+                    <button type="button" class="btn btn-record btn-full" id="btnRecord" onclick="event.stopPropagation(); startRecord()">
+                      <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
+                      开始录制
+                    </button>
+                    <div class="sidebar-accordion studio-hidden" id="accordionRecordingNames" hidden aria-hidden="true">
+                      <button type="button" class="accordion-trigger" aria-expanded="false">
+                        保存命名（可选） <span class="acc-chevron">›</span>
+                      </button>
+                      <div class="accordion-body">
+                        <p class="sidebar-hint" style="margin-bottom:6px">留空则按录制内容自动命名。</p>
+                        <input type="text" class="url-input" id="recordingFeatureName" style="margin-bottom:6px;width:100%" placeholder="功能名，如：我的审批" spellcheck="false">
+                        <input type="text" class="url-input" id="recordingBehaviorName" style="width:100%" placeholder="行为，如：click（普通点击可留空）" spellcheck="false">
+                        <button type="button" class="sidebar-link-btn" onclick="openDateCategoriesEditor()">管理迭代 ›</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="step-item" id="step2" data-step="2" role="button" tabindex="0">
+                    <div class="step-bullet">2</div>
+                    <div class="step-info">
+                      <div class="step-name">自动生成用例</div>
+                      <div class="step-sub" id="stepSub2">录制完成后自动生成优化脚本</div>
+                      <div class="step-branch-row studio-hidden" role="group" aria-label="第二步方式" hidden aria-hidden="true">
+                        <button type="button" class="step-branch-chip active" data-mode="ai" id="step2ModeAi" onclick="event.stopPropagation(); setStep2Mode('ai', this)">AI 优化脚本</button>
+                        <button type="button" class="step-branch-chip" data-mode="repo" id="step2ModeRepo" onclick="event.stopPropagation(); setStep2Mode('repo', this)">保存并生成用例</button>
+                      </div>
+                    </div>
+                  </div>
+          
+                  <div class="step-action-panel studio-hidden" id="step2PanelAi" data-mode="ai" hidden aria-hidden="true">
+                    <p class="sidebar-hint" style="margin-bottom:8px">对当前录制脚本做 AI 重构，请先配置模型与优化选项。</p>
+                    <div class="sidebar-accordion" id="accordionAi">
+                      <button type="button" class="accordion-trigger" aria-expanded="false">
+                        AI 与优化 <span class="acc-chevron">›</span>
+                      </button>
+                      <div class="accordion-body">
+                        <p class="sidebar-hint">选择模型并填写对应密钥；留空则使用服务器环境变量。</p>
+                        <div class="provider-row" style="margin-bottom:10px">
+                          <label class="opt-chip on"><input type="radio" name="aiProvider" id="providerClaude" value="claude" checked> Claude</label>
+                          <label class="opt-chip"><input type="radio" name="aiProvider" id="providerDeepseek" value="deepseek"> DeepSeek</label>
+                        </div>
+                        <div class="api-key-summary" id="apiKeySummaryAnthropic" data-provider="claude" style="display:none"></div>
+                        <div class="api-key-block expanded active" id="apiKeyBlockAnthropic" data-provider="claude">
+                          <div class="api-key-label">Anthropic（Claude）</div>
+                          <input type="password" class="url-input" id="apiKeyAnthropic" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
+                        </div>
+                        <div class="api-key-summary" id="apiKeySummaryDeepseek" data-provider="deepseek"></div>
+                        <div class="api-key-block collapsed" id="apiKeyBlockDeepseek" data-provider="deepseek">
+                          <div class="api-key-label">DeepSeek</div>
+                          <input type="password" class="url-input" id="apiKeyDeepseek" placeholder="sk-..." autocomplete="off" spellcheck="false">
+                        </div>
+                        <p id="apiKeyStatus" class="api-key-status-line">Claude · 使用环境变量或界面密钥</p>
+                        <div class="key-tools">
+                          <label class="opt-chip"><input type="checkbox" id="showApiKeys">显示密钥</label>
+                          <label class="opt-chip"><input type="checkbox" id="persistEncryptedApiKeys">加密保存到浏览器</label>
+                        </div>
+                        <details class="api-key-details">
+                          <summary>密钥与保存说明</summary>
+                          仅当前选中的模型会使用对应密钥；两个都填时不会混用。加密保存使用 AES-GCM 写入 localStorage，解密密钥在 sessionStorage，关闭浏览器后需重新输入。
+                        </details>
+                        <div class="sidebar-label" style="margin-top:14px;margin-bottom:8px">优化选项</div>
+                        <div class="opt-grid">
+                          <label class="opt-chip on"><input type="checkbox" id="optSelector" checked>选择器优化</label>
+                          <label class="opt-chip on"><input type="checkbox" id="optAssert" checked>补充断言</label>
+                          <label class="opt-chip on"><input type="checkbox" id="optWait" checked>移除硬等待</label>
+                          <label class="opt-chip on"><input type="checkbox" id="optEnv" checked>环境变量</label>
+                          <label class="opt-chip"><input type="checkbox" id="optPom">Page Object</label>
+                          <label class="opt-chip"><input type="checkbox" id="optComment">中文注释</label>
+                        </div>
+                      </div>
+                    </div>
+                    <button type="button" class="btn btn-optimize btn-full" id="btnOptimize" onclick="event.stopPropagation(); handleOptimizeClick()" disabled data-default-label="AI 优化脚本">
+                      <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2 7h7l-5.5 4 2 7L12 16l-5.5 4 2-7L3 9h7z"/></svg>
+                      <span class="btn-label">AI 优化脚本</span>
+                    </button>
+                  </div>
+          
+                  <div class="step-action-panel" id="step2PanelRepo" data-mode="repo">
+                    <p class="sidebar-hint" style="margin-bottom:8px">录制完成后会自动生成优化脚本并继续执行，无需保存。</p>
+                    <button type="button" class="btn btn-full studio-hidden" id="btnRepoSave" onclick="commitRepoArtifacts()" style="border-color:rgba(77,159,255,.35);color:var(--blue);margin-bottom:8px" hidden aria-hidden="true">保存到项目</button>
+                    <div style="display:flex;gap:6px">
+                      <button type="button" class="btn studio-hidden" style="flex:1" id="btnRepoPipeline" onclick="runRepoPipelineClick()" hidden aria-hidden="true">生成用例</button>
+                      <button type="button" class="btn" style="flex:1" id="btnRepoPipelineCancel" onclick="send('cancel:repo-pipeline')">取消自动生成</button>
+                    </div>
+                  </div>
+                  <div class="step-item" id="step3" data-step="3" role="button" tabindex="0">
+                    <div class="step-bullet">3</div>
+                    <div class="step-info">
+                      <div class="step-name">执行用例（含截图）</div>
+                      <div class="step-sub" id="stepSub3">执行用例并自动截取步骤图</div>
+                    </div>
+                  </div>
+          
+                  <div class="step-action-panel" id="step3PanelRepo">
+                    <p class="sidebar-hint" style="margin-bottom:8px">运行模式见「执行设置」。</p>
+                    <button type="button" class="btn btn-run btn-full" id="btnRepoTest" onclick="event.stopPropagation(); handleRepoTestClick()" data-default-label="执行（含截图）">执行（含截图）</button>
+                    <button type="button" class="btn btn-full" id="btnRepoRerunKeep" onclick="event.stopPropagation(); handleRepoRerunKeepClick()" data-default-label="追加 run（保留截图）" style="border-color:rgba(82,196,26,.35);color:#52c41a">追加 run（保留截图）</button>
+                    <ul class="compare-checklist" id="compareChecklistNew"></ul>
+                    <button type="button" class="btn btn-full" id="btnRepoCompare" onclick="openScreenshotCompareHub()" style="border-color:rgba(77,159,255,.35);color:var(--blue)">截图对比报告</button>
+                    <button type="button" class="btn btn-full" id="btnRepoCompareCancel" style="font-size:var(--fs-sm);padding:6px 10px;margin-top:6px" disabled onclick="send('cancel:repo-compare')">取消对比报告生成</button>
+                  </div>
+          
+          
+                  <div class="step-item" id="step4" data-step="4" role="button" tabindex="0">
+                    <div class="step-bullet">4</div>
+                    <div class="step-info">
+                      <div class="step-name">生成报告</div>
+                      <div class="step-sub" id="stepSub4">查看结果并下载脚本</div>
+                    </div>
+                  </div>
+          
+                  <div class="step-action-panel" id="step4Panel" data-step-panel="4">
+                    <p class="sidebar-hint" style="margin-bottom:8px">生成报告后可在右侧「报告」面板查看。</p>
+                    <button type="button" class="btn btn-report btn-full" id="btnReport" onclick="event.stopPropagation(); generateReport()" disabled>
+                      <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>
+                      生成报告
+                    </button>
+                  </div>
+                </div>
+          
+                <div class="pipeline studio-hidden" id="pipelineRun">
+                  <div class="sidebar-label">运行流程</div>
+                  <div class="step-item active" id="runStep1" data-run-step="1" role="button" tabindex="0">
+                    <div class="step-bullet">1</div>
+                    <div class="step-info">
+                      <div class="step-name">选择用例</div>
+                      <div class="step-sub" id="runStepSub1">在「用例」面板选择单个或批量用例</div>
+                    </div>
+                  </div>
+                  <div class="step-action-panel active" id="runStep1Panel">
+                    <div class="run-spec-summary" id="runStep1Summary">请在「用例」面板「测试用例」中选择要运行的用例。</div>
+                  </div>
+                  <div class="step-item" id="runStep2" data-run-step="2" role="button" tabindex="0">
+                    <div class="step-bullet">2</div>
+                    <div class="step-info">
+                      <div class="step-name">执行</div>
+                      <div class="step-sub" id="runStepSub2">运行所选用例并截取步骤图</div>
+                    </div>
+                  </div>
+                  <div class="step-action-panel" id="runStep2Panel">
+                    <p class="sidebar-hint" style="margin-bottom:8px">运行模式见「执行设置」。</p>
+                    <p class="batch-progress" id="batchProgressText"></p>
+                    <div class="batch-fail-actions studio-hidden" id="batchFailCopyBar">
+                      <button type="button" class="btn btn-full" style="font-size:var(--fs-sm);padding:6px 10px;margin-bottom:6px" onclick="copyAllBatchFailures()">复制全部失败信息</button>
+                    </div>
+                    <div class="batch-results-wrap studio-hidden" id="batchResultsWrap">
+                      <table class="batch-results-table" id="batchResultsTable">
+                        <thead><tr><th>用例</th><th>结果</th><th>操作</th></tr></thead>
+                        <tbody id="batchResultsBody"></tbody>
+                      </table>
+                    </div>
+                    <button type="button" class="btn btn-run btn-full" id="btnRunExecute" onclick="event.stopPropagation(); handleRunExecuteClick()" data-default-label="执行（含截图）">执行（含截图）</button>
+                    <button type="button" class="btn btn-full" id="btnRunRerunKeep" onclick="event.stopPropagation(); handleRepoRerunKeepClick()" data-default-label="追加 run（保留截图）" style="border-color:rgba(82,196,26,.35);color:#52c41a">追加 run（保留截图）</button>
+                  </div>
+                  <div class="step-item" id="runStep3" data-run-step="3" role="button" tabindex="0">
+                    <div class="step-bullet">3</div>
+                    <div class="step-info">
+                      <div class="step-name">报告</div>
+                      <div class="step-sub" id="runStepSub3">生成截图对比报告</div>
+                    </div>
+                  </div>
+                  <div class="step-action-panel" id="runStep3Panel">
+                    <ul class="compare-checklist" id="compareChecklistRun"></ul>
+                    <button type="button" class="btn btn-full" id="btnRunRerunKeepReport" onclick="event.stopPropagation(); handleRepoRerunKeepClick()" data-default-label="追加 run（保留截图）" style="border-color:rgba(82,196,26,.35);color:#52c41a;margin-bottom:6px">追加 run（保留截图）</button>
+                    <button type="button" class="btn btn-full" id="btnRunCompare" onclick="openScreenshotCompareHub()" style="border-color:rgba(77,159,255,.35);color:var(--blue)">截图对比报告</button>
+                    <button type="button" class="btn btn-full" id="btnRunCompareCancel" style="font-size:var(--fs-sm);padding:6px 10px;margin-top:6px" disabled onclick="send('cancel:repo-compare')">取消对比报告生成</button>
+                  </div>
+                </div>
+        </div>
+      </div>
     </div>
 
   </div>
@@ -1451,10 +1468,10 @@ let ws = null;
 let state = { recording: false, hasRaw: false, hasOpt: false, hasRun: false };
 const busyState = { optimize: false, run: false, repoPipeline: false, repoCompare: false, repoRerunKeep: false, repoBatch: false, accountLogin: false };
 let figmaCompareSeq = 0;
-let aiValidateSeq = 0;
 let intentRunSeq = 0;
 let exploreSeq = 0;
 let egoAuditSeq = 0;
+let lastNlRunContext = null;
 let recordTimer = null;
 let recordSeconds = 0;
 let lastOptimizeProvider = 'claude';
@@ -1513,7 +1530,9 @@ function getActiveEditorTab() {
   if (document.getElementById('pane-opt')?.classList.contains('active')) return 'opt';
   if (document.getElementById('pane-raw')?.classList.contains('active')) return 'raw';
   if (document.getElementById('pane-diff')?.classList.contains('active')) return 'diff';
-  if (document.getElementById('pane-ai-validate')?.classList.contains('active')) return 'ai-validate';
+  if (document.getElementById('pane-figma')?.classList.contains('active')) return 'figma';
+  if (document.getElementById('pane-intent-run')?.classList.contains('active')) return 'intent-run';
+  if (document.getElementById('pane-ego-audit')?.classList.contains('active')) return 'ego-audit';
   return 'raw';
 }
 
@@ -1521,12 +1540,12 @@ function getActiveScriptCode() {
   const tab = getActiveEditorTab();
   if (tab === 'opt') return document.getElementById('optCode')?.value?.trim() || '';
   if (tab === 'raw') return document.getElementById('rawCode')?.value?.trim() || '';
-  if (tab === 'ai-validate') return '';
+  if (tab === 'intent-run' || tab === 'ego-audit') return '';
   return '';
 }
 
 function syncEditorRunHint() {
-  if (['diff', 'figma', 'ai-validate'].includes(getActiveEditorTab())) return;
+  if (['diff', 'figma', 'intent-run', 'ego-audit'].includes(getActiveEditorTab())) return;
   if (busyState.run && pendingRunKind !== 'repo') return;
   setEditorRunStatus('', '');
 }
@@ -2256,12 +2275,12 @@ function syncRunStep1Summary() {
     const total = repoState.optimizedSpecs.filter((p) => p && !isDraftOptimizedSpecPath(p)).length;
     el.textContent = n
       ? `已选 ${n} / ${total} 个用例（${getSelectedBrowserProjects().length} 个浏览器）`
-      : '请在上方批量列表勾选要执行的用例';
+      : '请在「用例」面板批量列表勾选要执行的用例';
     return;
   }
   const spec = document.getElementById('repoOptimizedPick')?.value?.trim();
   if (!spec) {
-    el.textContent = '请在上方下拉框选择单个测试用例';
+    el.textContent = '请在「用例」面板下拉框选择单个测试用例';
     return;
   }
   el.textContent = `当前：${formatOptimizedSpecLabel(spec)}`;
@@ -2385,9 +2404,10 @@ function loadBatchResultSpecByIndex(i) {
 function restoreEditorTab() {
   try {
     const saved = sessionStorage.getItem(SS_EDITOR_TAB);
-    if (saved === 'figma' || saved === 'ai-validate' || saved === 'intent-run' || saved === 'ego-audit') {
-      const idxMap = { figma: 3, 'ai-validate': 4, 'intent-run': 5, 'ego-audit': 6 };
-      switchTab(saved, document.querySelectorAll('.tab')[idxMap[saved]]);
+    if (saved === 'figma' || saved === 'intent-run' || saved === 'ego-audit' || saved === 'ai-validate') {
+      const tab = saved === 'ai-validate' ? 'ego-audit' : saved;
+      const idxMap = { figma: 3, 'intent-run': 4, 'ego-audit': 5 };
+      switchTab(tab, document.querySelectorAll('.tab')[idxMap[tab]]);
     } else {
       switchTab('figma', document.querySelectorAll('.tab')[3]);
     }
@@ -2424,7 +2444,7 @@ let workflowMode = 'new';
 let runSubMode = 'single';
 let currentRunPipelineStep = 1;
 const RUN_STEP_DEFAULTS = {
-  1: '在上方选择单个或批量用例',
+  1: '在「用例」面板选择单个或批量用例',
   2: '运行所选用例并截取步骤图',
   3: '生成截图对比报告',
 };
@@ -2938,6 +2958,10 @@ function applyWorkflowLayout() {
   document.getElementById('centerEditorWrap')?.classList.toggle('studio-hidden', isJobs);
 }
 
+function openWorkflowPanel() {
+  switchPanel('workflow', document.getElementById('ptabWorkflow'));
+}
+
 function getJobRunEnv(job) {
   if (!job) return envState.current || 'stage';
   return testJobsState.runEnvByJobId[job.id] || job.playwrightEnv || envState.current || 'stage';
@@ -3180,7 +3204,7 @@ function renderJobsWorkspace(job, opts = {}) {
     emptyEl?.classList.remove('studio-hidden');
     detailEl?.classList.add('studio-hidden');
     if (titleEl) titleEl.textContent = '定时任务';
-    if (subEl) subEl.textContent = '在左侧选择任务，查看配置、运行状态与日志';
+    if (subEl) subEl.textContent = '在右侧「用例」面板选择任务，查看配置、运行状态与日志';
     return;
   }
   emptyEl?.classList.add('studio-hidden');
@@ -3457,6 +3481,9 @@ function setWorkflowMode(mode, el) {
     /* ignore */
   }
   applyWorkflowLayout();
+  if (['new', 'run', 'jobs'].includes(workflowMode)) {
+    openWorkflowPanel();
+  }
   if (workflowMode === 'run') {
     expandRunPipelineStep(1);
     refreshRepoOptimizedList();
@@ -4017,7 +4044,6 @@ function connectWS() {
   ws.onopen = () => {
     document.getElementById('wsDot').className = 'ws-dot connected';
     document.getElementById('wsStatus').textContent = '已连接';
-    setAiValidateBusy(false);
     setIntentRunBusy(false);
     setEgoAuditBusy(false);
     dateCategoryState.loaded = false;
@@ -4039,7 +4065,6 @@ function connectWS() {
   ws.onclose = () => {
     document.getElementById('wsDot').className = 'ws-dot';
     document.getElementById('wsStatus').textContent = '重连中…';
-    setAiValidateBusy(false);
     setIntentRunBusy(false);
     setEgoAuditBusy(false);
     updateGlobalTaskBar();
@@ -4120,7 +4145,7 @@ function syncActionButtons() {
   }
   if (!busyState.run) {
     const tab = getActiveEditorTab();
-    btnRun.disabled = ['diff', 'figma', 'ai-validate'].includes(tab) || !getActiveScriptCode();
+    btnRun.disabled = ['diff', 'figma', 'intent-run', 'ego-audit'].includes(tab) || !getActiveScriptCode();
   }
   else if (pendingRunKind === 'repo') btnRun.disabled = true;
   if (btnRecord) btnRecord.disabled = busyState.optimize || busyState.run || busyState.repoPipeline;
@@ -4794,6 +4819,7 @@ function handleMessage(msg) {
           chip.classList.toggle('active', chip.dataset.workflow === 'jobs');
         });
         applyWorkflowLayout();
+        openWorkflowPanel();
         try {
           sessionStorage.setItem(SS_WORKFLOW_MODE, 'jobs');
         } catch {
@@ -4865,21 +4891,40 @@ function handleMessage(msg) {
       void loadAndRenderFigmaResult(msg);
       break;
     case 'ai:validate:start':
-      if (msg.seq) aiValidateSeq = msg.seq;
-      setAiValidateBusy(true);
-      switchToAiValidateTab();
-      log('info', `[ai-validate] 开始验证${msg.env ? ` · ${msg.env}` : ''}`);
+    case 'ego:nl-run:start':
+      if (msg.seq) egoAuditSeq = msg.seq;
+      setEgoAuditBusy(true);
+      switchToNlValidateTab();
+      log('info', `[口语试跑] 开始${msg.env ? ` · ${msg.env}` : ''}`);
       break;
     case 'ai:validate:done':
-      if (msg.seq && msg.seq < aiValidateSeq) break;
-      renderAiValidateResult(msg);
-      if (msg.ok) {
-        showToast('AI 验证通过', 'ok');
-        log('ok', '[ai-validate] 验证通过');
-      } else {
-        showToast(msg.message || 'AI 验证未通过', 'err');
-        log('err', `[ai-validate] ${msg.message || '验证未通过'}`);
+    case 'ego:nl-run:done':
+      if (msg.seq && msg.seq < egoAuditSeq) break;
+      if (msg.ok && msg.caseDescription) {
+        lastNlRunContext = {
+          caseDescription: msg.caseDescription,
+          entry: msg.entry || '',
+          env: msg.env || '',
+          outRel: msg.outRel || '',
+        };
+      } else if (!msg.ok) {
+        lastNlRunContext = null;
       }
+      renderEgoNlRunResult(msg);
+      if (msg.ok) {
+        showToast('试跑通过', 'ok');
+        log('ok', '[口语试跑] 通过');
+      } else {
+        showToast(msg.message || '试跑未通过', 'err');
+        log('err', `[口语试跑] ${msg.message || '未通过'}`);
+      }
+      break;
+    case 'intent:from-nl:start':
+      setNlToIntentBusy(true);
+      log('info', '[nl→intent] 正在生成 YAML…');
+      break;
+    case 'intent:from-nl:done':
+      renderNlToIntentResult(msg);
       break;
     case 'intent:list:done':
       renderIntentPresetList(msg.items || []);
@@ -4918,11 +4963,30 @@ function handleMessage(msg) {
       if (msg.seq && msg.seq < intentRunSeq) break;
       renderIntentRunResult(msg);
       if (msg.ok) {
-        showToast('Intent 通过', 'ok');
+        showToast('用例运行通过', 'ok');
         log('ok', '[intent] 通过');
       } else {
         showToast(msg.message || 'Intent 未通过', 'err');
         log('err', `[intent] ${msg.message || '未通过'}`);
+      }
+      break;
+    case 'style-drift:run-full:start':
+      setStyleDriftBusy(true);
+      switchToIntentRunTab();
+      log('info', `[style-drift] 全流程开始${msg.intent ? ` · ${msg.intent}` : ''}`);
+      break;
+    case 'style-drift:run-full:done':
+      setStyleDriftBusy(false);
+      if (msg.ok) {
+        const t = msg.triage || {};
+        const hint = `confirmed=${t.confirmed ?? 0} pending=${t.pending ?? 0} ignored=${t.ignored ?? 0}`;
+        showToast(`样式守护完成 · ${hint}`, 'ok');
+        log('ok', `[style-drift] 完成 · ${hint}`);
+        const statusEl = document.getElementById('styleDriftStatus');
+        if (statusEl) statusEl.textContent = `完成：${hint} · 报告 results/ui-regression/compare-report.html`;
+      } else {
+        showToast(msg.message || '样式守护失败', 'err');
+        log('err', `[style-drift] ${msg.message || '失败'}`);
       }
       break;
     case 'ego:explore:start':
@@ -4957,23 +5021,6 @@ function handleMessage(msg) {
       } else {
         showToast(msg.message || 'ego 体检未通过', 'err');
         log('err', `[ego] ${msg.message || '未通过'}`);
-      }
-      break;
-    case 'ego:nl-run:start':
-      if (msg.seq) egoAuditSeq = msg.seq;
-      setEgoAuditBusy(true);
-      switchToEgoAuditTab();
-      log('info', `[ego-nl] 生成并运行${msg.env ? ` · ${msg.env}` : ''}`);
-      break;
-    case 'ego:nl-run:done':
-      if (msg.seq && msg.seq < egoAuditSeq) break;
-      renderEgoNlRunResult(msg);
-      if (msg.ok) {
-        showToast('临时脚本执行通过', 'ok');
-        log('ok', '[ego-nl] 执行通过');
-      } else {
-        showToast(msg.message || '执行未通过', 'err');
-        log('err', `[ego-nl] ${msg.message || '未通过'}`);
       }
       break;
     case 'repo:compare-report:start':
@@ -5374,7 +5421,7 @@ function setEditorRunStatus(text, status) {
 
 function syncEditorRunBarVisibility() {
   const bar = document.getElementById('editorRunBar');
-  const noRun = ['diff','figma','ai-validate','intent-run','ego-audit'].some((n) => document.getElementById('pane-' + n)?.classList.contains('active'));
+  const noRun = ['diff','figma','intent-run','ego-audit'].some((n) => document.getElementById('pane-' + n)?.classList.contains('active'));
   if (bar) bar.style.display = noRun ? 'none' : 'block';
 }
 
@@ -5408,24 +5455,9 @@ function switchToFigmaTab() {
   if (tab) switchTab('figma', tab);
 }
 
-function setAiValidateBusy(busy) {
-  const btn = document.getElementById('btnAiValidate');
-  const status = document.getElementById('aiValidateStatus');
-  if (btn) {
-    btn.disabled = busy;
-    btn.style.opacity = busy ? 0.6 : 1;
-    const label = btn.querySelector('.btn-label');
-    if (label) label.textContent = busy ? '验证中…' : '生成脚本并验证';
-  }
-  if (status) {
-    status.textContent = busy ? '验证中…' : '';
-    status.style.display = busy ? '' : 'none';
-  }
-}
-
-function switchToAiValidateTab() {
-  const tab = Array.from(document.querySelectorAll('.tab')).find((t) => t.textContent.includes('AI 验证'));
-  if (tab) switchTab('ai-validate', tab);
+function switchToNlValidateTab() {
+  const tab = Array.from(document.querySelectorAll('.tab')).find((t) => t.textContent.includes('口语试跑'));
+  if (tab) switchTab('ego-audit', tab);
 }
 
 function setIntentRunBusy(busy) {
@@ -5436,7 +5468,7 @@ function setIntentRunBusy(busy) {
     btn.disabled = busy;
     btn.style.opacity = busy ? 0.6 : 1;
     const label = btn.querySelector('.btn-label');
-    if (label) label.textContent = busy ? '运行中…' : '运行 Intent';
+    if (label) label.textContent = busy ? '运行中…' : '运行用例';
   }
   if (cancelBtn) cancelBtn.style.display = busy ? '' : 'none';
   if (status) {
@@ -5446,7 +5478,7 @@ function setIntentRunBusy(busy) {
 }
 
 function switchToIntentRunTab() {
-  const tab = Array.from(document.querySelectorAll('.tab')).find((t) => t.textContent.includes('Intent 运行'));
+  const tab = Array.from(document.querySelectorAll('.tab')).find((t) => t.textContent.includes('YAML 用例'));
   if (tab) switchTab('intent-run', tab);
 }
 
@@ -5456,17 +5488,18 @@ function refreshIntentList() {
 
 function renderIntentPresetList(items) {
   const select = document.getElementById('intentPreset');
-  if (!select) return;
   const current = document.getElementById('intentPath')?.value?.trim() || '';
   const opts = items.length
     ? items.map((item) => `<option value="${escHtml(item.path)}">${escHtml(item.name)}</option>`).join('')
     : '<option value="">（tests/definitions 为空）</option>';
-  select.innerHTML = opts + '<option value="__custom__">自定义路径…</option>';
-  const match = items.find((item) => item.path === current);
-  select.value = match ? match.path : items[0]?.path || '__custom__';
-  if (match || items[0]) {
-    const pathEl = document.getElementById('intentPath');
-    if (pathEl && !pathEl.value.trim()) pathEl.value = match?.path || items[0].path;
+  if (select) {
+    select.innerHTML = opts + '<option value="__custom__">自定义路径…</option>';
+    const match = items.find((item) => item.path === current);
+    select.value = match ? match.path : items[0]?.path || '__custom__';
+    if (match || items[0]) {
+      const pathEl = document.getElementById('intentPath');
+      if (pathEl && !pathEl.value.trim()) pathEl.value = match?.path || items[0].path;
+    }
   }
 }
 
@@ -5503,7 +5536,7 @@ function startIntentRun() {
   const yamlText = document.getElementById('intentYamlText')?.value?.trim() || '';
   const heal = Boolean(document.getElementById('intentHeal')?.checked);
   const headed = Boolean(document.getElementById('intentHeaded')?.checked);
-  const engine = document.getElementById('intentEngine')?.value || 'ego';
+  const engine = document.getElementById('intentEngine')?.value || 'pw';
   const compareAfter = Boolean(document.getElementById('intentCompareAfter')?.checked);
   const keepTab = Boolean(document.getElementById('intentKeepTab')?.checked);
   const resultBox = document.getElementById('intentRunResult');
@@ -5526,6 +5559,39 @@ function cancelIntentRun() {
   showToast('已请求取消 Intent', 'err');
 }
 
+function setStyleDriftBusy(busy) {
+  const btn = document.getElementById('btnStyleDriftRunFull');
+  const status = document.getElementById('styleDriftRunStatus');
+  if (btn) {
+    btn.disabled = busy;
+    btn.style.opacity = busy ? 0.6 : 1;
+    const label = btn.querySelector('.btn-label');
+    if (label) label.textContent = busy ? '运行中…' : '样式守护全流程';
+  }
+  if (status) {
+    status.textContent = busy ? '运行中…' : '';
+    status.style.display = busy ? '' : 'none';
+  }
+}
+
+function startStyleDriftFullFlow() {
+  const intent = document.getElementById('intentPath')?.value?.trim() || '';
+  if (!intent) {
+    showToast('请先选择或填写 Intent YAML 路径', 'err');
+    return;
+  }
+  const gate = Boolean(document.getElementById('styleDriftGate')?.checked);
+  const headed = Boolean(document.getElementById('intentHeaded')?.checked);
+  switchToIntentRunTab();
+  setStyleDriftBusy(true);
+  if (!send('style-drift:run-full', { intent, gate, headed })) {
+    setStyleDriftBusy(false);
+    return;
+  }
+  const statusEl = document.getElementById('styleDriftStatus');
+  if (statusEl) statusEl.textContent = '运行中…';
+}
+
 function renderIntentRunResult(msg) {
   setIntentRunBusy(false);
   const box = document.getElementById('intentRunResult');
@@ -5544,11 +5610,15 @@ function renderIntentRunResult(msg) {
       return `<div style="padding:5px 0;border-bottom:1px solid var(--border);color:${passed ? 'var(--green)' : skipped ? 'var(--text-tertiary)' : 'var(--red)'}">${mark} ${escHtml(id)}${healMark}${error}</div>`;
     })
     .join('');
-  const status = msg.ok ? 'Intent 通过' : 'Intent 未通过';
+  const status = msg.ok ? '用例运行通过' : '用例运行未通过';
   const color = msg.ok ? 'var(--green)' : 'var(--red)';
   const compareLine =
     msg.compareAfter != null
-      ? `<div class="sidebar-hint" style="margin-bottom:8px">截图对比：${msg.compareOk ? '已触发' : '未触发/失败'}</div>`
+      ? `<div class="sidebar-hint" style="margin-bottom:8px">截图对比：${msg.compareOk ? '已触发' : '未触发/失败'}${
+          msg.triage
+            ? ` · confirmed=${msg.triage.confirmed ?? 0} pending=${msg.triage.pending ?? 0} ignored=${msg.triage.ignored ?? 0}`
+            : ''
+        }</div>`
       : '';
   box.innerHTML = `
     <div style="font-weight:700;margin-bottom:8px;color:${color}">${status}</div>
@@ -5611,7 +5681,7 @@ function renderExploreResult(msg) {
     box.innerHTML = `
       <div style="font-weight:700;margin-bottom:8px;color:var(--green)">探索完成 · 预览已填入编辑器</div>
       <div class="sidebar-hint">目录：<code>${escHtml(msg.outRel || '')}</code></div>
-      <div class="sidebar-hint" style="margin-top:6px">确认后点击「保存定义」写入 tests/definitions/</div>
+      <div class="sidebar-hint" style="margin-top:6px">确认后切到「YAML 用例」点「保存定义」写入 tests/definitions/</div>
     `;
   } else {
     box.innerHTML = `
@@ -5629,20 +5699,17 @@ function setEgoAuditBusy(busy) {
     btn.disabled = busy;
     btn.style.opacity = busy ? 0.6 : 1;
     const label = btn.querySelector('.btn-label');
-    if (label) label.textContent = busy ? '运行中…' : '生成并运行';
+    if (label) label.textContent = busy ? '试跑中…' : '开始试跑';
   }
   if (cancelBtn) cancelBtn.style.display = busy ? '' : 'none';
   if (status) {
-    status.textContent = busy ? '运行中…' : '';
+    status.textContent = busy ? '试跑中…' : '';
     status.style.display = busy ? '' : 'none';
   }
 }
 
 function switchToEgoAuditTab() {
-  const tab = Array.from(document.querySelectorAll('.tab')).find((t) =>
-    t.textContent.includes('NL 生成运行') || t.textContent.includes('ego'),
-  );
-  if (tab) switchTab('ego-audit', tab);
+  switchToNlValidateTab();
 }
 
 function startEgoNlRun() {
@@ -5688,7 +5755,7 @@ function renderEgoNlRunResult(msg) {
       </div>`;
     })
     .join('');
-  const status = msg.ok ? '执行通过' : '执行未通过';
+  const status = msg.ok ? '试跑通过' : '试跑未通过';
   const color = msg.ok ? 'var(--green)' : 'var(--red)';
   const summary = audit?.summary;
   const auditLine = audit?.skipped
@@ -5696,13 +5763,69 @@ function renderEgoNlRunResult(msg) {
     : summary
       ? `<div class="sidebar-hint" style="margin-bottom:8px">ego 体检：健康 ${escHtml(String(summary.healthy ?? 0))} · 断裂 ${escHtml(String(summary.blocking ?? 0))} · 需确认 ${escHtml(String(summary.warnings ?? 0))}</div>`
       : '';
+  const convertBtn = msg.ok
+    ? `<div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <button type="button" class="btn btn-run" id="btnNlToIntent" onclick="convertNlToIntent()">转为 YAML 用例</button>
+        <span class="sidebar-hint" style="margin:0">生成 YAML 草稿并跳到「YAML 用例」Tab，确认后点「保存定义」</span>
+      </div>`
+    : '';
   box.innerHTML = `
     <div style="font-weight:700;margin-bottom:8px;color:${color}">${status}${msg.message ? ` · ${escHtml(msg.message)}` : ''}</div>
     <div class="sidebar-hint" style="margin-bottom:4px">临时脚本：<code>${escHtml(msg.scriptRel || '')}</code></div>
     <div class="sidebar-hint" style="margin-bottom:8px">结果目录：<code>${escHtml(msg.outRel || '')}</code></div>
     ${auditLine}
     <div>${stepRows || (audit && !audit.skipped ? '<div class="sidebar-hint">无体检步骤（或 ego 不可用）</div>' : '')}</div>
+    ${convertBtn}
   `;
+}
+
+function setNlToIntentBusy(busy) {
+  const btn = document.getElementById('btnNlToIntent');
+  if (btn) {
+    btn.disabled = busy;
+    btn.style.opacity = busy ? 0.6 : 1;
+    btn.textContent = busy ? '生成中…' : '转为 YAML 用例';
+  }
+}
+
+function convertNlToIntent() {
+  const ctx = lastNlRunContext;
+  if (!ctx?.caseDescription) {
+    showToast('没有可转换的试跑记录，请先完成一次试跑', 'err');
+    return;
+  }
+  if (!send('intent:from-nl', {
+    caseDescription: ctx.caseDescription,
+    entry: ctx.entry || '',
+    env: ctx.env || '',
+    outRel: ctx.outRel || '',
+  })) {
+    return;
+  }
+  setNlToIntentBusy(true);
+}
+
+function renderNlToIntentResult(msg) {
+  setNlToIntentBusy(false);
+  const box = document.getElementById('egoAuditResult');
+  if (msg.ok && msg.previewYaml) {
+    const editor = document.getElementById('intentYamlText');
+    if (editor) editor.value = msg.previewYaml;
+    switchToIntentRunTab();
+    showToast('已生成 YAML，请确认后保存', 'ok');
+    log('ok', '[nl→intent] 已填入 YAML 编辑器');
+    if (box) {
+      const note = document.createElement('div');
+      note.className = 'sidebar-hint';
+      note.style.marginTop = '8px';
+      note.style.color = 'var(--green)';
+      note.textContent = 'YAML 草稿已填入「YAML 用例」编辑器，请切换 Tab 确认并保存';
+      box.appendChild(note);
+    }
+  } else {
+    showToast(msg.message || '转为 YAML 失败', 'err');
+    log('err', `[nl→intent] ${msg.message || '失败'}`);
+  }
 }
 
 function egoVerdictMeta(verdict) {
@@ -5737,47 +5860,6 @@ function renderEgoAuditResult(msg) {
       results: msg.results,
     },
   });
-}
-
-function startAiValidate() {
-  const caseDescription = document.getElementById('aiValidateCase')?.value?.trim();
-  const entry = document.getElementById('aiValidateEntry')?.value?.trim() || '';
-  const resultBox = document.getElementById('aiValidateResult');
-  if (!caseDescription) {
-    showToast('请先填写自然语言测试步骤', 'err');
-    return;
-  }
-  if (resultBox) {
-    resultBox.style.display = 'none';
-    resultBox.innerHTML = '';
-  }
-  switchToAiValidateTab();
-  setAiValidateBusy(true);
-  send('ai:validate', { caseDescription, entry });
-}
-
-function renderAiValidateResult(msg) {
-  setAiValidateBusy(false);
-  const box = document.getElementById('aiValidateResult');
-  if (!box) return;
-  box.style.display = 'block';
-  const steps = Array.isArray(msg.steps) ? msg.steps : [];
-  const stepRows = steps
-    .map((step) => {
-      const passed = Boolean(step.passed);
-      const skipped = Boolean(step.skipped);
-      const mark = passed ? '✓' : skipped ? '·' : '✗';
-      const error = step.error ? `：${escHtml(String(step.error))}` : '';
-      return `<div style="padding:5px 0;border-bottom:1px solid var(--border);color:${passed ? 'var(--green)' : skipped ? 'var(--text-tertiary)' : 'var(--red)'}">${mark} ${escHtml(step.id || '')}${error}</div>`;
-    })
-    .join('');
-  const status = msg.ok ? '验证通过' : '验证未通过';
-  const color = msg.ok ? 'var(--green)' : 'var(--red)';
-  box.innerHTML = `
-    <div style="font-weight:700;margin-bottom:8px;color:${color}">${status}</div>
-    <div class="sidebar-hint" style="margin-bottom:8px">结果目录：<code>${escHtml(msg.outRel || '')}</code></div>
-    <div>${stepRows || '<div class="sidebar-hint">无步骤结果</div>'}</div>
-  `;
 }
 
 function startFigmaCompare() {
@@ -5975,8 +6057,18 @@ function renderFigmaCompareResult(msg) {
 function switchPanel(name, el) {
   document.querySelectorAll('.ptab').forEach(t => t.classList.remove('active'));
   if (el) el.classList.add('active');
-  document.getElementById('logStream').style.display = name === 'log' ? 'block' : 'none';
-  document.getElementById('reportPanel').style.display = name === 'report' ? 'block' : 'none';
+  const log = document.getElementById('logStream');
+  const report = document.getElementById('reportPanel');
+  const workflow = document.getElementById('workflowPanel');
+  if (log) log.style.display = name === 'log' ? 'block' : 'none';
+  if (report) {
+    report.style.display = name === 'report' ? 'block' : 'none';
+    report.classList.toggle('active', name === 'report');
+  }
+  if (workflow) {
+    workflow.style.display = name === 'workflow' ? 'flex' : 'none';
+    workflow.classList.toggle('active', name === 'workflow');
+  }
 }
 
 function setStepSub(n, text) {
@@ -6536,6 +6628,11 @@ restoreBrowserProjects();
 bindBrowserProjectControls();
 restoreEditorTab();
 renderRunHistory();
+if (['new', 'run', 'jobs'].includes(workflowMode)) {
+  openWorkflowPanel();
+} else {
+  switchPanel('log', document.getElementById('ptabLog'));
+}
 if (workflowMode === 'new') openAccordion('accordionRun');
 if (workflowMode === 'run') expandRunPipelineStep(1);
 if (workflowMode === 'jobs') refreshTestJobsList();

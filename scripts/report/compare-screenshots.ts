@@ -20,6 +20,7 @@ import {
   buildPlainLanguageAnalysis,
   attachIssueReviews,
 } from './ui-issues-index.js';
+import { applyTriageToReport } from './issue-triage.js';
 import { appendHistorySnapshot, loadStepTrends, type StepTrendPoint } from './ui-regression-history.js';
 import {
   generateHeatmapTabHtml,
@@ -274,6 +275,7 @@ async function main() {
   const uiIssues = collectAllUiIssues(testDirComparisons);
   const issuesReport = buildUiIssuesReport(uiIssues);
   const reviewSummary = await attachIssueReviews(issuesReport);
+  applyTriageToReport(issuesReport);
 
   const comparisonCounts = countComparisonSeverities(testDirComparisons);
   issuesReport.summary.comparisonTotal = comparisonCounts.total;

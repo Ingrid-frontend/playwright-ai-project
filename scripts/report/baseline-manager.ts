@@ -328,6 +328,52 @@ export function getGoldenScreenshotPath(
   return fs.existsSync(p) ? p : null;
 }
 
+export function getGoldenBySnapshot(
+  scriptKey: string,
+  browser: string,
+  snapshotName: string,
+  state: string,
+): { pngPath: string; metaPath: string } | null {
+  const runSegment = browserToRunSegment(browser);
+  const dir = goldenDirForScript(scriptKey, runSegment);
+  if (!fs.existsSync(dir)) return null;
+
+  for (const name of fs.readdirSync(dir)) {
+    if (!name.endsWith('.meta.json')) continue;
+    const metaPath = path.join(dir, name);
+    try {
+      const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as {
+        snapshotName?: string;
+        state?: string;
+      };
+      if (meta.snapshotName === snapshotName && (meta.state || 'normal') === state) {
+        const pngPath = metaPath.replace(/\.meta\.json$/i, '.png');
+        if (fs.existsSync(pngPath)) return { pngPath, metaPath };
+      }
+    } catch {
+      /* skip */
+    }
+  }
+
+  for (const name of fs.readdirSync(dir)) {
+    if (!name.endsWith('.png')) continue;
+    const match = name.match(/step-\d+-(.+)\.png$/i);
+    if (!match) continue;
+    const part = match[1]!;
+    const j = part.indexOf('__');
+    if (j <= 0) continue;
+    if (part.slice(0, j) === snapshotName && part.slice(j + 2) === state) {
+      const pngPath = path.join(dir, name);
+      return { pngPath, metaPath: metaPathForPng(pngPath) };
+    }
+  }
+  return null;
+}
+
+function metaPathForPng(pngPath: string): string {
+  return pngPath.replace(/\.png$/i, '.meta.json');
+}
+
 export function stepFileNameFromScreenshot(fullPath: string): string {
   return path.basename(fullPath);
 }

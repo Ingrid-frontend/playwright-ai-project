@@ -34,6 +34,9 @@ export interface TestIntentStep {
   scope?: SemanticScope;
   locatorHint?: string;
   label?: string;
+  snapshotName?: string;
+  state?: string;
+  mode?: 'stable' | 'fast';
   timeoutMs?: number;
   strategy?: ExecutionStrategy;
   optional?: boolean;
@@ -48,6 +51,15 @@ export interface TestIntent {
   env?: string;
   profile?: string;
   entry?: string;
+  scriptKey?: string;
+  styleChecks?: Array<{
+    key: string;
+    selector: string;
+    required?: boolean;
+    frame?: 'main' | 'first';
+    props?: string[];
+    label?: string;
+  }>;
   preconditions?: string[];
   constraints?: string[];
   assertions?: string[];
@@ -185,6 +197,9 @@ function validateStep(raw: unknown, index: number): TestIntentStep {
     scope: assertOptionalString(raw.scope, `steps[${index}].scope`) as SemanticScope | undefined,
     locatorHint: assertOptionalString(raw.locatorHint, `steps[${index}].locatorHint`),
     label: assertOptionalString(raw.label, `steps[${index}].label`),
+    snapshotName: assertOptionalString(raw.snapshotName, `steps[${index}].snapshotName`),
+    state: assertOptionalString(raw.state, `steps[${index}].state`),
+    mode: assertOptionalString(raw.mode, `steps[${index}].mode`) as 'stable' | 'fast' | undefined,
     timeoutMs: timeoutMs as number | undefined,
     strategy: strategy as ExecutionStrategy | undefined,
     optional: raw.optional === true,
@@ -220,6 +235,10 @@ export function validateTestIntent(value: unknown): TestIntent {
     env: assertOptionalString(value.env, 'env'),
     profile: assertOptionalString(value.profile, 'profile'),
     entry: assertOptionalString(value.entry, 'entry'),
+    scriptKey: assertOptionalString(value.scriptKey, 'scriptKey'),
+    styleChecks: Array.isArray(value.styleChecks)
+      ? (value.styleChecks as TestIntent['styleChecks'])
+      : undefined,
     preconditions: assertStringArray(value.preconditions, 'preconditions'),
     constraints: assertStringArray(value.constraints, 'constraints'),
     assertions,

@@ -1,12 +1,12 @@
 import fs from 'fs';
 import path from 'path';
 import type { DiffRegion, ImageComparison } from './image-diff.js';
-import { loadUiRegressionConfig, resolveAiReviewConfig } from './ui-regression-config.js';
+import { loadUiRegressionConfig, resolveAiReviewConfig, resolveGateMode } from './ui-regression-config.js';
 import { parseRunMetaFromScreenshotPath, parseSnapshotIdentity } from './compare-screenshots-utils.js';
 import type { PlainLanguageAnalysis } from './ui-issues-analysis.js';
 import type { UiIssueReview, ReviewSummary } from './ui-issue-review.js';
 
-export type UiIssueCompareKind = 'golden' | 'last-green' | 'cross-browser' | 'run-drift' | 'structure';
+export type UiIssueCompareKind = 'golden' | 'last-green' | 'cross-browser' | 'run-drift' | 'structure' | 'style-drift';
 export type UiIssueSeverity = 'blocker' | 'warning' | 'noise';
 
 const SEVERITY_ORDER: Record<UiIssueSeverity, number> = {
@@ -46,6 +46,7 @@ export interface UiIssue {
   stepFileName?: string;
   width?: number;
   height?: number;
+  triageStatus?: 'confirmed' | 'pending' | 'ignored';
 }
 
 export interface UiIssuesReport {
@@ -285,21 +286,34 @@ export function writeUiIssuesReport(report: UiIssuesReport, outPath = 'results/u
 }
 
 export function gateShouldFail(report: UiIssuesReport): boolean {
+  const gateMode = resolveGateMode();
+  const active = report.issues.filter((i) => i.triageStatus !== 'ignored');
+
+  if (gateMode === 'style-only') {
+    const styleBlockers = active.filter(
+      (i) =>
+        i.severity === 'blocker' &&
+        (i.compareKind === 'style-drift' ||
+          (i.compareKind === 'structure' && i.structureType === 'missing-selector')),
+    );
+    return styleBlockers.length > 0;
+  }
+
   const cfg = loadUiRegressionConfig();
-  const goldenBlockers = report.issues.filter(
+  const goldenBlockers = active.filter(
     (i) => i.severity === 'blocker' && (i.compareKind === 'golden' || i.compareKind === 'last-green'),
   ).length;
-  const crossBlockers = report.issues.filter(
+  const crossBlockers = active.filter(
     (i) => i.severity === 'blocker' && i.compareKind === 'cross-browser',
   ).length;
 
   if (goldenBlockers > 0) return true;
   if (cfg.crossBrowser.countAsBlockerInGate && crossBlockers > 0) return true;
-  const structureBlockers = report.issues.filter(
+  const structureBlockers = active.filter(
     (i) => i.severity === 'blocker' && i.compareKind === 'structure',
   ).length;
   if (structureBlockers > 0) return true;
-  const goldenStructureBlockers = report.issues.filter(
+  const goldenStructureBlockers = active.filter(
     (i) =>
       i.severity === 'blocker' &&
       (i.compareKind === 'golden' || i.compareKind === 'last-green') &&
@@ -309,7 +323,7 @@ export function gateShouldFail(report: UiIssuesReport): boolean {
 
   const aiCfg = resolveAiReviewConfig();
   if (aiCfg.failOnUiBug) {
-    const uiBugs = report.issues.filter((i) => i.review?.verdict === 'ui_bug').length;
+    const uiBugs = active.filter((i) => i.review?.verdict === 'ui_bug').length;
     if (uiBugs > 0) return true;
   }
   return false;

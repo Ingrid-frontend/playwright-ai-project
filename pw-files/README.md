@@ -36,6 +36,12 @@ export ANTHROPIC_API_KEY=sk-ant-xxxxxx
 
 # macOS / Linux — DeepSeek（OpenAI 兼容接口，可与 Claude 二选一或同时配置）
 export DEEPSEEK_API_KEY=sk-xxxxxx
+
+# Explore / 口语试跑 / Intent 自愈 — 也可在项目根 .env 配置 AI_TEST_*（含火山方舟 OpenAI 兼容）
+# AI_TEST_PROVIDER=openai
+# AI_TEST_OPENAI_API_KEY=ark-xxxx
+# AI_TEST_MODEL=ep-xxxx
+# AI_TEST_OPENAI_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
 # 可选：自定义模型与接口根地址（默认模型 deepseek-chat，根地址 https://api.deepseek.com）
 # export DEEPSEEK_MODEL=deepseek-v4-flash
 # export DEEPSEEK_API_BASE=https://api.deepseek.com
@@ -58,6 +64,19 @@ npm run dev
 访问 **http://localhost:3001**（与 `server.js` 中 `PORT` 一致；可用环境变量 `PORT` 修改）。
 
 从仓库根也可执行：`npm run studio`。
+
+启动后终端会显示 **AI_TEST_PROVIDER**、**火山方舟**（若配置）、Claude/DeepSeek Key 是否就绪。Explore、口语试跑、Intent 自愈、NL→YAML 均读取项目根 `.env`（见 [studio-yaml-and-nl-workflow.md](../docs/studio-yaml-and-nl-workflow.md)）。
+
+---
+
+## 编辑器 Tab（YAML 用例 / 口语试跑）
+
+| Tab | 说明 |
+|-----|------|
+| **YAML 用例** | 正式 Intent YAML：运行、保存、Explore 生成、样式守护全流程 |
+| **口语试跑** | 自然语言 → 临时脚本试跑；通过后 **转为 YAML 用例** |
+
+侧栏 **新建用例 / 运行用例 / 定时任务** 在右侧控制台 **用例** Tab，与上述编辑器 Tab 分工不同。详见 [studio-yaml-and-nl-workflow.md](../docs/studio-yaml-and-nl-workflow.md)。
 
 ---
 

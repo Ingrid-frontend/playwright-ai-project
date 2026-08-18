@@ -2,6 +2,10 @@
 
 Visual Review Lite（UI State、Diff Region、人审 Approve）见 [visual-review-lite.md](./visual-review-lite.md)。
 
+**Style-Drift 样式守护**（YAML Intent + computed style 指纹、Gate style-only）见 [style-drift-workflow.md](./style-drift-workflow.md)。
+
+Studio **YAML 用例 / 口语试跑** Tab 与工作流见 [studio-yaml-and-nl-workflow.md](./studio-yaml-and-nl-workflow.md)。
+
 ## 主路径（推荐）
 
 ```mermaid

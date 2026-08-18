@@ -6,10 +6,13 @@ import {
   loadUiRegressionConfig,
   resolveMaskSelectors,
   resolveSnapshotViewports,
+  resolveScreenshotFullPage,
   resolveStructureCheckItems,
+  resolveStyleCheckItems,
   type SnapshotViewport,
   type StructureCheckItem,
 } from '../../scripts/report/ui-regression-config.js';
+import { collectStyleFingerprint, type StyleFingerprint } from './style-fingerprint.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -157,8 +160,7 @@ async function writeStepDiagnostics(
     var tag=el.tagName;
     var children=el.children?el.children.length:0;
     var cls=(el.className&&el.className.toString)?String(el.className).slice(0,120):'';
-    var text=(el.textContent||'').replace(/\\s+/g,' ').trim().slice(0,240);
-    return tag+'|'+children+'|'+cls+'|'+text;
+    return tag+'|'+children+'|'+cls;
   })`;
 
   if (cfg?.domHashRoot) {
@@ -204,6 +206,16 @@ async function writeStepDiagnostics(
     }
   }
 
+  let styleFingerprint: StyleFingerprint | undefined;
+  const styleItems = resolveStyleCheckItems(scriptKey);
+  if (styleItems.length) {
+    try {
+      styleFingerprint = await collectStyleFingerprint(page, styleItems);
+    } catch {
+      styleFingerprint = undefined;
+    }
+  }
+
   const metaPath = screenshotPath.replace(/\.png$/i, '.meta.json');
   fs.mkdirSync(path.dirname(metaPath), { recursive: true });
   fs.writeFileSync(
@@ -215,6 +227,7 @@ async function writeStepDiagnostics(
         layout,
         domHash,
         selectors,
+        styleFingerprint,
         consoleErrors: [...bag.consoleErrors],
         pageErrors: [...bag.pageErrors],
         ...(snapshot?.snapshotName ? { snapshotName: snapshot.snapshotName } : {}),
@@ -228,7 +241,7 @@ async function writeStepDiagnostics(
 }
 
 export function useFullPageByDefault(): boolean {
-  return process.env.SCREENSHOT_FULL_PAGE === '1';
+  return resolveScreenshotFullPage();
 }
 
 export async function captureScreenshotAtViewports(

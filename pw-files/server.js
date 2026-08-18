@@ -50,14 +50,16 @@ const { createSessionStore } = require('./lib/session');
 const { createSpecSessionHelpers } = require('./lib/spec-session');
 const { createWsDispatcher } = require('./lib/ws-dispatch');
 const { loadEnvFile } = require('./lib/load-env-file');
+const { getLlmStartupLines } = require('./lib/llm-env-status');
 const { buildHtmlReport } = require('./lib/report-html');
 const { runRepoPromoteBaseline, runRepoVisualReview } = require('./lib/repo-baseline');
 const { runFigmaCompare } = require('./lib/figma-compare');
-const { runAiNativeValidate } = require('./lib/ai-native-validate');
 const { runIntent, listIntentDefinitions, getIntentDefinition, saveIntentDefinition } = require('./lib/intent-run');
+const { runStyleDriftFullFlow } = require('./lib/style-drift-run');
 const { runEgoAudit } = require('./lib/ego-audit');
 const { runEgoNlFlow } = require('./lib/ego-nl-run');
 const { runEgoExplore } = require('./lib/ego-explore');
+const { runNlToIntent } = require('./lib/nl-to-intent');
 const {
   openRepoCompareReport,
   runRepoCompareReport,
@@ -99,7 +101,6 @@ const {
   cancelRepoTest,
   cancelRepoBatch,
   cancelRepoCompare,
-  cancelAiValidate,
   cancelIntentRun,
   cancelEgoAudit,
   cancelEgoExplore,
@@ -361,8 +362,6 @@ const { sendHello, handleMessage } = createWsDispatcher({
     cancelRepoTest,
     cancelRepoBatch,
     runFigmaCompare,
-    runAiNativeValidate,
-    cancelAiValidate,
     runIntent,
     listIntentDefinitions,
     getIntentDefinition,
@@ -371,6 +370,7 @@ const { sendHello, handleMessage } = createWsDispatcher({
     runEgoAudit,
     runEgoNlFlow,
     runEgoExplore,
+    runNlToIntent,
     cancelEgoAudit,
     cancelEgoExplore,
     runRepoCompareReport,
@@ -382,6 +382,7 @@ const { sendHello, handleMessage } = createWsDispatcher({
     cancelRepoCompare,
     runRepoRerunKeepScreenshots,
     cancelRepoRerun,
+    runStyleDriftFullFlow,
   },
   jobs: {
     handleJobsList,
@@ -417,10 +418,8 @@ fixPlaywrightBrowsersEnv(process.env);
 server.listen(PORT, () => {
   console.log(`\n🎭 Playwright Studio`);
   console.log(`   http://localhost:${PORT}`);
-  console.log(`   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY ? '✓ 已配置' : '✗ 未配置'}`);
-  console.log(`   DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY ? '✓ 已配置' : '✗ 未配置'}`);
-  if (!ANTHROPIC_API_KEY && !DEEPSEEK_API_KEY) {
-    console.log('   （两者皆未配置时将使用演示模式；也可在网页侧栏输入密钥）');
+  for (const line of getLlmStartupLines(process.env)) {
+    console.log(line);
   }
   console.log('');
 });

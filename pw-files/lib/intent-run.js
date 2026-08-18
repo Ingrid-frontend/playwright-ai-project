@@ -104,7 +104,7 @@ async function runIntent(ws, session, msg = {}, deps) {
   const profile = getSessionAccountProfile(session, repoRoot);
   const headed = Boolean(msg.headed);
   const heal = msg.heal !== false;
-  const engine = String(msg.engine || 'ego').toLowerCase() === 'pw' ? 'pw' : 'ego';
+  const engine = String(msg.engine || 'pw').toLowerCase() === 'ego' ? 'ego' : 'pw';
   const compareAfter = Boolean(msg.compareAfter);
   const keepTab = Boolean(msg.keepTab);
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
@@ -197,6 +197,7 @@ async function runIntent(ws, session, msg = {}, deps) {
   }
 
   let compareOk;
+  let triage;
   if (compareAfter && runResult.code === 0 && typeof runRepoCompareReport === 'function') {
     logLine(ws, '[intent] 触发截图对比…', 'info');
     try {
@@ -206,6 +207,14 @@ async function runIntent(ws, session, msg = {}, deps) {
         buildRepoSpawnEnv,
       });
       compareOk = true;
+      const issuesPath = path.join(repoRoot, 'results/ui-issues.json');
+      if (fs.existsSync(issuesPath)) {
+        try {
+          triage = JSON.parse(fs.readFileSync(issuesPath, 'utf-8')).summary?.triage;
+        } catch {
+          /* ignore */
+        }
+      }
     } catch (err) {
       compareOk = false;
       logLine(ws, `[intent] 对比失败: ${errText(err)}`, 'warn');
@@ -226,6 +235,7 @@ async function runIntent(ws, session, msg = {}, deps) {
     exitCode: runResult.code,
     compareAfter,
     compareOk,
+    triage,
     message: ok ? undefined : result?.error || runResult.error || 'Intent 未通过',
   };
   send(ws, 'intent:run:done', payload);

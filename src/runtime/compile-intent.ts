@@ -63,6 +63,9 @@ function toSemanticAction(step: TestIntentStep): SemanticAction {
       return {
         type: 'screenshot',
         label: step.label,
+        snapshotName: step.snapshotName,
+        state: step.state,
+        mode: step.mode,
       };
     default:
       throw new Error(`未知动作类型: ${step.action}`);
@@ -135,6 +138,8 @@ export function compileIntentToPlan(input: unknown): {
     env: intent.env,
     profile: intent.profile,
     entry: intent.entry,
+    scriptKey: intent.scriptKey,
+    styleChecks: intent.styleChecks,
     steps,
   });
 

@@ -34,7 +34,13 @@ export type SemanticAction =
       scope?: SemanticScope;
     }
   | { type: 'wait'; description?: string; timeoutMs?: number }
-  | { type: 'screenshot'; label?: string };
+  | {
+      type: 'screenshot';
+      label?: string;
+      snapshotName?: string;
+      state?: string;
+      mode?: 'stable' | 'fast';
+    };
 
 export type EvidenceKind = 'screenshot' | 'dom' | 'console';
 
@@ -53,6 +59,15 @@ export interface SemanticTestPlan {
   env?: string;
   profile?: string;
   entry?: string;
+  scriptKey?: string;
+  styleChecks?: Array<{
+    key: string;
+    selector: string;
+    required?: boolean;
+    frame?: 'main' | 'first';
+    props?: string[];
+    label?: string;
+  }>;
   steps: SemanticStep[];
 }
 
@@ -162,6 +177,9 @@ function assertAction(value: unknown, stepId: string): SemanticAction {
       return {
         type: 'screenshot',
         label: assertOptionalString(value.label, `${stepId}.action.label`),
+        snapshotName: assertOptionalString(value.snapshotName, `${stepId}.action.snapshotName`),
+        state: assertOptionalString(value.state, `${stepId}.action.state`),
+        mode: assertOptionalString(value.mode, `${stepId}.action.mode`) as 'stable' | 'fast' | undefined,
       };
     default:
       throw new Error(`步骤 ${stepId} 包含未知动作类型: ${type}`);
@@ -220,6 +238,8 @@ export function validateSemanticTestPlan(value: unknown): SemanticTestPlan {
     env: assertOptionalString(value.env, 'env'),
     profile: assertOptionalString(value.profile, 'profile'),
     entry: assertOptionalString(value.entry, 'entry'),
+    scriptKey: assertOptionalString(value.scriptKey, 'scriptKey'),
+    styleChecks: Array.isArray(value.styleChecks) ? (value.styleChecks as SemanticTestPlan['styleChecks']) : undefined,
     steps: normalizedSteps,
   };
 }

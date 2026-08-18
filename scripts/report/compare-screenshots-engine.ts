@@ -7,7 +7,7 @@ import {
   runWithConcurrency,
 } from './image-diff.js';
 import { generateBaselineComparisons } from './baseline-comparisons.js';
-import { resolveCompareCrossBrowser, resolveCrossBrowserPixelmatch, resolveSameBrowserPixelmatch } from './ui-regression-config.js';
+import { resolveCompareCrossBrowser, resolveCompareRunDrift, resolveCrossBrowserPixelmatch, resolveSameBrowserPixelmatch } from './ui-regression-config.js';
 import { calendarDayKeyForScreenshot, formatDateGroupTitle } from './compare-screenshots-render.js';
 import { getAllScreenshots } from './compare-screenshots-scan.js';
 import {
@@ -359,13 +359,15 @@ export async function generateTestComparisons(testDir: string, screenshots: Map<
   for (const stepNumber of allSteps) {
     const stepScreenshots = screenshots.get(stepNumber) || [];
 
-    const stepComparisons = await generateComparisonsByStepName(
-      stepScreenshots,
-      stepNumber,
-      diffOutputDir,
-      outputPath,
-      testDir,
-    );
+    const stepComparisons = resolveCompareRunDrift()
+      ? await generateComparisonsByStepName(
+          stepScreenshots,
+          stepNumber,
+          diffOutputDir,
+          outputPath,
+          testDir,
+        )
+      : [];
     const baselineComparisons = await generateBaselineComparisons(
       testDir,
       stepScreenshots,

@@ -50,7 +50,8 @@ export function buildExploreDecideSystemPrompt(): string {
 1. description 用用户可见文案，禁止 @N、CSS、nth()。
 2. 一次只推进一步，优先最短路径达成 goal。
 3. 遇到验证码/登录墙：done=true 并说明需人工。
-4. 不要输出 JSON 以外内容。`;
+4. 不要输出 JSON 以外内容。
+5. 只输出一次，禁止重复粘贴同一 JSON。`;
 }
 
 export function buildExploreDecidePrompt(input: {

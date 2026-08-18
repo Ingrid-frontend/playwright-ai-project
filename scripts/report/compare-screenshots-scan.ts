@@ -80,12 +80,28 @@ export function getAllScreenshots(dir: string, type: 'pom' | 'optimized', output
         const match = entry.name.match(/step-(\d+)-(.+)\.png/);
         if (match) {
           const stepNumber = parseInt(match[1]);
-          const stepName = match[2];
-
+          let stepName = match[2];
           let route = '';
-          const routeMatch = stepName.match(/^(.+)__(.+)$/);
-          if (routeMatch) {
-            route = routeMatch[2];
+
+          const metaPath = fullPath.replace(/\.png$/i, '.meta.json');
+          if (fs.existsSync(metaPath)) {
+            try {
+              const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+              if (meta.snapshotName) {
+                stepName = String(meta.snapshotName);
+                route = meta.state ? String(meta.state) : '';
+              }
+            } catch {
+              /* ignore */
+            }
+          }
+
+          if (!route) {
+            const routeMatch = stepName.match(/^(.+)__(.+)$/);
+            if (routeMatch) {
+              stepName = routeMatch[1];
+              route = routeMatch[2];
+            }
           }
 
           if (isLoginScreenshotCandidate(entry.name, route)) {
@@ -122,7 +138,7 @@ export function getAllScreenshots(dir: string, type: 'pom' | 'optimized', output
             date,
             displayTimestamp,
             type,
-            stepName: routeMatch ? routeMatch[1] : stepName,
+            stepName,
             browser,
             route
           } as ScreenshotInfo);

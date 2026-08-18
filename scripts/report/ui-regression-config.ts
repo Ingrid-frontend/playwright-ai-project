@@ -31,6 +31,62 @@ export interface StructureCheckItem {
   frame?: 'main' | 'first';
 }
 
+export interface StyleCheckItem {
+  key: string;
+  selector: string;
+  script?: string;
+  required?: boolean;
+  frame?: 'main' | 'first';
+  props?: string[];
+  label?: string;
+}
+
+export interface StyleChecksConfig {
+  enabled: boolean;
+  tolerance: {
+    fontSizePx?: number;
+    colorDelta?: number;
+  };
+  items: StyleCheckItem[];
+}
+
+export interface GateConfig {
+  mode: 'style-only' | 'pixel' | 'hybrid';
+}
+
+export interface UiRegressionConfig {
+  blockerRatio: number;
+  warningRatio: number;
+  diffOnlyTabMinRatio: number;
+  defaultBrowsers: string[];
+  compareCrossBrowser: boolean;
+  compareRunDrift: boolean;
+  baselineStrategy: BaselineStrategy;
+  ignoreRegions: IgnoreRegion[];
+  maskSelectors: MaskSelector[];
+  viewports: SnapshotViewport[];
+  structureChecks: StructureChecksConfig;
+  styleChecks: StyleChecksConfig;
+  gate: GateConfig;
+  screenshot: {
+    freezeAnimations: boolean;
+    deviceScaleFactor: number;
+    fullPage: boolean;
+  };
+  crossBrowser: {
+    blockerRatio: number;
+    warningRatio: number;
+    countAsBlockerInGate: boolean;
+    pixelmatchThreshold: number;
+    includeAA: boolean;
+  };
+  autoPromote?: {
+    maxDiffRatio: number;
+  };
+  aiReview?: AiReviewConfig;
+  diffRegions?: DiffRegionsConfig;
+}
+
 export interface AiReviewConfig {
   enabled: boolean;
   minSeverity: 'warning' | 'blocker';
@@ -59,37 +115,6 @@ export interface DiffRegionsConfig {
   lowMaxPixels: number;
 }
 
-export interface UiRegressionConfig {
-  blockerRatio: number;
-  warningRatio: number;
-  diffOnlyTabMinRatio: number;
-  defaultBrowsers: string[];
-  compareCrossBrowser: boolean;
-  baselineStrategy: BaselineStrategy;
-  ignoreRegions: IgnoreRegion[];
-  maskSelectors: MaskSelector[];
-  viewports: SnapshotViewport[];
-  structureChecks: StructureChecksConfig;
-  screenshot: {
-    freezeAnimations: boolean;
-    deviceScaleFactor: number;
-  };
-  crossBrowser: {
-    blockerRatio: number;
-    warningRatio: number;
-    countAsBlockerInGate: boolean;
-    /** 跨浏览器 pixelmatch 颜色阈值（0~1），默认可比同浏览器更宽松 */
-    pixelmatchThreshold: number;
-    /** 跨浏览器是否将抗锯齿像素计为差异，默认 false 以降低引擎渲染噪声 */
-    includeAA: boolean;
-  };
-  autoPromote?: {
-    maxDiffRatio: number;
-  };
-  aiReview?: AiReviewConfig;
-  diffRegions?: DiffRegionsConfig;
-}
-
 export interface PixelmatchOptions {
   threshold: number;
   includeAA: boolean;
@@ -101,7 +126,8 @@ const DEFAULT_CONFIG: UiRegressionConfig = {
   diffOnlyTabMinRatio: 0.003,
   defaultBrowsers: ['chrome', 'webkit'],
   compareCrossBrowser: true,
-  baselineStrategy: 'hybrid',
+  compareRunDrift: false,
+  baselineStrategy: 'golden',
   ignoreRegions: [],
   maskSelectors: [],
   viewports: [{ name: 'desktop', width: 1280, height: 720, default: true }],
@@ -114,9 +140,18 @@ const DEFAULT_CONFIG: UiRegressionConfig = {
     domHashRoot: 'body',
     items: [],
   },
+  styleChecks: {
+    enabled: true,
+    tolerance: { fontSizePx: 0, colorDelta: 0 },
+    items: [],
+  },
+  gate: {
+    mode: 'style-only',
+  },
   screenshot: {
     freezeAnimations: true,
     deviceScaleFactor: 1,
+    fullPage: false,
   },
   crossBrowser: {
     blockerRatio: 0.03,
@@ -146,6 +181,15 @@ const DEFAULT_CONFIG: UiRegressionConfig = {
 const CONFIG_PATH = path.join(process.cwd(), 'config/ui-regression.json');
 
 let cached: UiRegressionConfig | null = null;
+const runtimeStyleChecks = new Map<string, StyleCheckItem[]>();
+
+export function registerRuntimeStyleChecks(scriptKey: string, items: StyleCheckItem[]): void {
+  runtimeStyleChecks.set(scriptKey, items);
+}
+
+export function clearRuntimeStyleChecks(): void {
+  runtimeStyleChecks.clear();
+}
 
 /** 清除缓存并重新加载配置（用于配置变更后热更新） */
 export function reloadUiRegressionConfig(): UiRegressionConfig {
@@ -170,6 +214,13 @@ export function loadUiRegressionConfig(): UiRegressionConfig {
           ...raw.autoPromote,
         } as NonNullable<UiRegressionConfig['autoPromote']>,
         structureChecks: { ...DEFAULT_CONFIG.structureChecks, ...raw.structureChecks },
+        styleChecks: {
+          ...DEFAULT_CONFIG.styleChecks,
+          ...raw.styleChecks,
+          tolerance: { ...DEFAULT_CONFIG.styleChecks.tolerance, ...raw.styleChecks?.tolerance },
+          items: raw.styleChecks?.items ?? DEFAULT_CONFIG.styleChecks.items,
+        },
+        gate: { ...DEFAULT_CONFIG.gate, ...raw.gate },
         aiReview: { ...DEFAULT_CONFIG.aiReview, ...raw.aiReview } as AiReviewConfig,
         diffRegions: { ...DEFAULT_CONFIG.diffRegions, ...raw.diffRegions } as DiffRegionsConfig,
         viewports: raw.viewports?.length ? raw.viewports : DEFAULT_CONFIG.viewports,
@@ -299,6 +350,26 @@ export function isDisabledViewportScreenshot(fileName: string): boolean {
 export function resolveStructureCheckItems(scriptKey?: string): StructureCheckItem[] {
   const items = loadUiRegressionConfig().structureChecks?.items || [];
   return items.filter((item) => scriptKeyMatches(item.script, scriptKey));
+}
+
+export function resolveStyleCheckItems(scriptKey?: string): StyleCheckItem[] {
+  const fromConfig = loadUiRegressionConfig().styleChecks?.items || [];
+  const configFiltered = fromConfig.filter((item) => scriptKeyMatches(item.script, scriptKey));
+  const runtime = scriptKey ? runtimeStyleChecks.get(scriptKey) || [] : [];
+  const keys = new Set(runtime.map((i) => i.key));
+  return [...runtime, ...configFiltered.filter((i) => !keys.has(i.key))];
+}
+
+export function resolveCompareRunDrift(): boolean {
+  return loadUiRegressionConfig().compareRunDrift === true;
+}
+
+export function resolveGateMode(): GateConfig['mode'] {
+  return loadUiRegressionConfig().gate?.mode || 'style-only';
+}
+
+export function resolveScreenshotFullPage(): boolean {
+  return loadUiRegressionConfig().screenshot?.fullPage === true;
 }
 
 export function resolveAiReviewConfig(): AiReviewConfig {

@@ -21,6 +21,13 @@ function envValue(...keys: string[]): string | undefined {
   return undefined;
 }
 
+function buildChatCompletionsUrl(baseUrl: string | undefined, defaultBase: string): string {
+  const base = (baseUrl || defaultBase).replace(/\/$/, '');
+  if (base.endsWith('/chat/completions')) return base;
+  if (base.endsWith('/v1') || base.endsWith('/v3')) return `${base}/chat/completions`;
+  return `${base}/v1/chat/completions`;
+}
+
 export function resolveLlmConfig(providerHint?: string): LlmConfig {
   const provider = (providerHint || envValue('AI_TEST_PROVIDER') || 'deepseek') as AiProvider;
 
@@ -28,14 +35,14 @@ export function resolveLlmConfig(providerHint?: string): LlmConfig {
     const apiKey = envValue('AI_TEST_ANTHROPIC_API_KEY', 'ANTHROPIC_API_KEY');
     const model = envValue('AI_TEST_MODEL', 'ANTHROPIC_MODEL') || 'claude-sonnet-4-20250514';
     if (!apiKey) throw new Error('未配置 Anthropic API Key，请设置 ANTHROPIC_API_KEY');
-    return { provider, apiKey, model, baseUrl: envValue('ANTHROPIC_API_BASE') };
+    return { provider, apiKey, model, baseUrl: envValue('AI_TEST_ANTHROPIC_BASE_URL', 'ANTHROPIC_API_BASE') };
   }
 
   if (provider === 'openai') {
     const apiKey = envValue('AI_TEST_OPENAI_API_KEY', 'OPENAI_API_KEY');
     const model = envValue('AI_TEST_MODEL', 'OPENAI_MODEL') || 'gpt-4.1';
     if (!apiKey) throw new Error('未配置 OpenAI API Key，请设置 OPENAI_API_KEY');
-    return { provider, apiKey, model, baseUrl: envValue('OPENAI_API_BASE') };
+    return { provider, apiKey, model, baseUrl: envValue('AI_TEST_OPENAI_BASE_URL', 'OPENAI_API_BASE') };
   }
 
   const apiKey = envValue('AI_TEST_DEEPSEEK_API_KEY', 'DEEPSEEK_API_KEY');
@@ -74,8 +81,7 @@ export async function completeText(prompt: string, options: CompleteTextOptions 
 
   const defaultBase =
     config.provider === 'deepseek' ? 'https://api.deepseek.com' : 'https://api.openai.com';
-  const base = (config.baseUrl || defaultBase).replace(/\/$/, '');
-  const url = base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`;
+  const url = buildChatCompletionsUrl(config.baseUrl, defaultBase);
   const messages = [
     ...(system ? [{ role: 'system', content: system }] : []),
     { role: 'user', content: prompt },
@@ -100,18 +106,42 @@ export async function completeText(prompt: string, options: CompleteTextOptions 
   return json.choices?.[0]?.message?.content || '';
 }
 
+export function extractFirstJsonValue(text: string): string {
+  const trimmed = text.trim();
+  const start = trimmed.search(/[\[{]/);
+  if (start < 0) return trimmed;
+
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+
+  for (let i = start; i < trimmed.length; i++) {
+    const ch = trimmed[i];
+    if (inString) {
+      if (escape) escape = false;
+      else if (ch === '\\') escape = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === '{' || ch === '[') depth++;
+    else if (ch === '}' || ch === ']') {
+      depth--;
+      if (depth === 0) return trimmed.slice(start, i + 1);
+    }
+  }
+
+  return trimmed.slice(start);
+}
+
 export function stripJsonFence(text: string): string {
   const trimmed = text.trim();
   const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fence?.[1]) return fence[1].trim();
-
-  const firstObject = trimmed.indexOf('{');
-  const lastObject = trimmed.lastIndexOf('}');
-  if (firstObject >= 0 && lastObject > firstObject) {
-    return trimmed.slice(firstObject, lastObject + 1);
-  }
-
-  return trimmed;
+  const body = fence?.[1]?.trim() ?? trimmed;
+  return extractFirstJsonValue(body);
 }
 
 export async function completeJson<T>(

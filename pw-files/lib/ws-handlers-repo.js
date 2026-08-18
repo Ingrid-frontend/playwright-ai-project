@@ -56,8 +56,6 @@ function createRepoHandlers(ctx) {
     cancelRepoTest,
     cancelRepoBatch,
     runFigmaCompare,
-    runAiNativeValidate,
-    cancelAiValidate,
     runIntent,
     listIntentDefinitions,
     getIntentDefinition,
@@ -66,6 +64,7 @@ function createRepoHandlers(ctx) {
     runEgoAudit,
     runEgoNlFlow,
     runEgoExplore,
+    runNlToIntent,
     cancelEgoAudit,
     cancelEgoExplore,
     runRepoCompareReport,
@@ -77,6 +76,7 @@ function createRepoHandlers(ctx) {
     cancelRepoCompare,
     runRepoRerunKeepScreenshots,
     cancelRepoRerun,
+    runStyleDriftFullFlow,
   } = ctx;
 
   return {
@@ -258,7 +258,12 @@ function createRepoHandlers(ctx) {
     },
 
     'ai:validate': async (ws, session, _sessionId, msg) => {
-      await runAiNativeValidate(ws, session, msg, {
+      await runEgoNlFlow(ws, session, {
+        ...msg,
+        audit: msg.audit === true,
+        headed: Boolean(msg.headed),
+        keepTab: Boolean(msg.keepTab),
+      }, {
         resolveRepoRoot,
         spawn,
         buildRepoSpawnEnv,
@@ -268,7 +273,7 @@ function createRepoHandlers(ctx) {
     },
 
     'cancel:ai-validate': async (_ws, session) => {
-      cancelAiValidate(session);
+      cancelEgoAudit(session);
     },
 
     'intent:list': async (ws) => {
@@ -310,6 +315,18 @@ function createRepoHandlers(ctx) {
       });
     },
 
+    'style-drift:run-full': async (ws, session, _sessionId, msg) => {
+      await runStyleDriftFullFlow(ws, session, msg, {
+        resolveRepoRoot,
+        spawn,
+        buildRepoSpawnEnv,
+        getSessionPlaywrightEnv,
+        getSessionAccountProfile,
+        runRepoCompareReport,
+        runIntent,
+      });
+    },
+
     'cancel:intent-run': async (_ws, session) => {
       cancelIntentRun(session);
     },
@@ -325,6 +342,15 @@ function createRepoHandlers(ctx) {
 
     'cancel:ego-explore': async (_ws, session) => {
       cancelEgoExplore(session);
+    },
+
+    'intent:from-nl': async (ws, session, _sessionId, msg) => {
+      await runNlToIntent(ws, session, msg, {
+        resolveRepoRoot,
+        spawn,
+        buildRepoSpawnEnv,
+        getSessionPlaywrightEnv,
+      });
     },
 
     'ego:audit': async (ws, session, _sessionId, msg) => {

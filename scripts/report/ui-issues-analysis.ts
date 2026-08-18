@@ -53,6 +53,7 @@ const COMPARE_KIND_ZH: Record<UiIssueCompareKind, string> = {
   'run-drift': '运行间对比',
   'cross-browser': '跨浏览器',
   structure: '结构检查',
+  'style-drift': '样式指纹',
 };
 
 const VERDICT_ZH: Record<ReviewVerdict, string> = {

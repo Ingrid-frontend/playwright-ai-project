@@ -18,6 +18,9 @@ export interface StepMeta {
   viewport?: { name: string; width: number; height: number };
   layout?: { horizontalOverflow?: boolean; scrollWidth?: number; innerWidth?: number };
   domHash?: string;
+  snapshotName?: string;
+  state?: string;
+  styleFingerprint?: Record<string, Record<string, string>>;
   selectors?: Record<
     string,
     { exists: boolean; bbox?: { x: number; y: number; width: number; height: number }; domHash?: string }
@@ -103,13 +106,19 @@ function checkSelectorItem(
   const base = baseline?.selectors?.[item.key];
 
   if (!cur.exists) {
-    if (item.required !== false) {
+    if (item.required === true) {
       findings.push({
         type: 'missing-selector',
         key: item.key,
         severity: 'blocker',
         message: `选择器缺失: ${item.selector}`,
-        baselineKind: baseline ? undefined : undefined,
+      });
+    } else {
+      findings.push({
+        type: 'missing-selector',
+        key: item.key,
+        severity: 'warning',
+        message: `可选选择器缺失: ${item.selector}`,
       });
     }
     return findings;

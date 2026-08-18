@@ -11,6 +11,8 @@ import {
   type SemanticTestPlan,
 } from '../types/ai-test-plan.js';
 import { getBaseEnvConfig, resolveStorageState } from '../utils/env-config.js';
+import { visualTest } from '../utils/screenshot.js';
+import { registerRuntimeStyleChecks, clearRuntimeStyleChecks } from '../../scripts/report/ui-regression-config.js';
 
 export type StepErrorKind = 'AssertionError' | 'LocatorError' | 'Retryable';
 
@@ -38,6 +40,7 @@ export interface AiTestStepResult {
 export interface AiTestRunResult {
   passed: boolean;
   outputDir: string;
+  screenshotDir?: string;
   startedAt: string;
   finishedAt: string;
   steps: AiTestStepResult[];
@@ -229,9 +232,14 @@ async function actTarget(_page: Page, action: Extract<SemanticAction, { type: 'a
   throw new Error(`act 动作已不支持，请改用 click/fill/select/assert: ${action.instruction}`);
 }
 
+function expandIntentPath(value: string): string {
+  return value.replace(/\{repoRoot\}/g, process.cwd());
+}
+
 async function gotoTarget(page: Page, action: Extract<SemanticAction, { type: 'goto' }>): Promise<void> {
   if (!action.path && !action.url) return;
-  await page.goto(action.url || action.path || '/', { waitUntil: 'domcontentloaded', timeout: 60_000 });
+  const target = action.url ? expandIntentPath(action.url) : action.path || '/';
+  await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 60_000 });
   await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {});
   await waitForPageReady(page);
 }
@@ -275,11 +283,20 @@ async function captureEvidence(
   step: SemanticStep,
   outputDir: string,
   consoleLogs: string[],
+  screenshotRunDir?: string,
 ): Promise<string | undefined> {
   const needsScreenshot = step.evidence?.includes('screenshot') || step.action.type === 'screenshot';
   let screenshotPath: string | undefined;
 
-  if (needsScreenshot) {
+  if (needsScreenshot && step.action.type === 'screenshot' && step.action.snapshotName && screenshotRunDir) {
+    const shot = await visualTest(page, {
+      dir: screenshotRunDir,
+      name: step.action.snapshotName,
+      state: step.action.state || 'normal',
+      step: stepIndex + 1,
+    });
+    screenshotPath = shot.path;
+  } else if (needsScreenshot) {
     screenshotPath = path.join(outputDir, `step-${String(stepIndex + 1).padStart(2, '0')}.png`);
     await page.screenshot({ path: screenshotPath, fullPage: false }).catch(() => {
       screenshotPath = undefined;
@@ -389,6 +406,13 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
   );
   fs.mkdirSync(outputDir, { recursive: true });
 
+  const scriptKey = plan.scriptKey || `intent/${sanitizeName(plan.name)}`;
+  if (plan.styleChecks?.length) {
+    registerRuntimeStyleChecks(scriptKey, plan.styleChecks);
+  }
+  const screenshotRunDir = path.join('screenshots', env, scriptKey, 'run-chromium-optimized', stamp);
+  fs.mkdirSync(screenshotRunDir, { recursive: true });
+
   let storageStatePath: string | undefined;
   try {
     storageStatePath = path.resolve(process.cwd(), resolveStorageState(env, profile));
@@ -415,7 +439,10 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
     }
 
     if (plan.entry && !plan.steps.some((step) => step.action.type === 'goto')) {
-      await page.goto(plan.entry, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+      const entry = /^https?:\/\//i.test(plan.entry) || plan.entry.startsWith('file:')
+        ? expandIntentPath(plan.entry)
+        : plan.entry;
+      await page.goto(entry, { waitUntil: 'domcontentloaded', timeout: 60_000 });
       await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {});
     }
 
@@ -499,7 +526,7 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
         allPassed = false;
       }
 
-      const screenshotPath = await captureEvidence(page, index, step, outputDir, consoleLogs);
+      const screenshotPath = await captureEvidence(page, index, step, outputDir, consoleLogs, screenshotRunDir);
       stepResults.push({
         id: step.id,
         action: step.action,
@@ -513,15 +540,17 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
     }
 
     await context.close();
+    clearRuntimeStyleChecks();
     fs.writeFileSync(
       path.join(outputDir, 'result.json'),
-      `${JSON.stringify({ passed: allPassed, steps: stepResults }, null, 2)}\n`,
+      `${JSON.stringify({ passed: allPassed, steps: stepResults, screenshotDir: screenshotRunDir }, null, 2)}\n`,
       'utf-8',
     );
 
     return {
       passed: allPassed,
       outputDir,
+      screenshotDir: screenshotRunDir,
       startedAt,
       finishedAt: new Date().toISOString(),
       steps: stepResults,

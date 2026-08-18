@@ -2,9 +2,13 @@
   "blockerRatio": 0.005,
   "warningRatio": 0.001,
   "diffOnlyTabMinRatio": 0.003,
-  "defaultBrowsers": ["chrome", "webkit"],
+  "defaultBrowsers": ["chrome"],
   "compareCrossBrowser": false,
-  "baselineStrategy": "hybrid",
+  "compareRunDrift": false,
+  "baselineStrategy": "golden",
+  "gate": {
+    "mode": "style-only"
+  },
   "ignoreRegions": [],
   "maskSelectors": [
     {
@@ -60,6 +64,39 @@
       }
     ]
   },
+  "styleChecks": {
+    "enabled": true,
+    "tolerance": {
+      "fontSizePx": 0,
+      "colorDelta": 0
+    },
+    "items": [
+      {
+        "key": "primary-btn",
+        "selector": "#primary-btn",
+        "label": "主按钮",
+        "props": ["backgroundColor", "color", "fontSize", "borderRadius"],
+        "required": true,
+        "script": "mock/style-drift-demo"
+      },
+      {
+        "key": "page-title",
+        "selector": "#page-title",
+        "label": "页面标题",
+        "props": ["color", "fontSize", "fontWeight"],
+        "required": true,
+        "script": "mock/style-drift-demo"
+      },
+      {
+        "key": "list-card",
+        "selector": ".list-card",
+        "label": "列表卡片",
+        "props": ["backgroundColor", "borderRadius", "boxShadow"],
+        "required": false,
+        "script": "mock/style-drift-demo"
+      }
+    ]
+  },
   "aiReview": {
     "enabled": false,
     "minSeverity": "warning",
@@ -68,7 +105,8 @@
   },
   "screenshot": {
     "freezeAnimations": true,
-    "deviceScaleFactor": 1
+    "deviceScaleFactor": 1,
+    "fullPage": false
   },
   "autoPromote": {
     "maxDiffRatio": 0.005
