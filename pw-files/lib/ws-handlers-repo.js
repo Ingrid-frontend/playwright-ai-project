@@ -1,5 +1,7 @@
 const fs = require('fs');
 const path = require('path');
+const { listFlowReplays, runFlowReplay } = require('./flow-replay-list');
+const { runReplaySummary } = require('./replay-summary');
 
 function createRepoHandlers(ctx) {
   const {
@@ -280,6 +282,30 @@ function createRepoHandlers(ctx) {
     'intent:list': async (ws) => {
       const repoRoot = resolveRepoRoot();
       send(ws, 'intent:list:done', { items: listIntentDefinitions(repoRoot) });
+    },
+
+    'replay:list': async (ws) => {
+      const repoRoot = resolveRepoRoot();
+      send(ws, 'replay:list:done', { items: listFlowReplays(repoRoot) });
+    },
+
+    'replay:run': async (ws, session, _sessionId, msg) => {
+      await runFlowReplay(ws, session, msg, {
+        resolveRepoRoot,
+        spawn,
+        buildRepoSpawnEnv,
+        getSessionPlaywrightEnv,
+        getSessionAccountProfile,
+        runIntent,
+      });
+    },
+
+    'replay:summary': async (ws, session, _sessionId, msg) => {
+      await runReplaySummary(ws, session, msg, {
+        resolveRepoRoot,
+        spawn,
+        buildRepoSpawnEnv,
+      });
     },
 
     'intent:get': async (ws, _session, _sessionId, msg) => {

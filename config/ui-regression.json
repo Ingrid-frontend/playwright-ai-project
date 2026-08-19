@@ -5,7 +5,7 @@
   "defaultBrowsers": ["chrome"],
   "compareCrossBrowser": false,
   "compareRunDrift": false,
-  "baselineStrategy": "golden",
+  "baselineStrategy": "hybrid",
   "gate": {
     "mode": "style-only"
   },

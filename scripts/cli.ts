@@ -39,6 +39,7 @@ const groups: Record<string, { desc: string; cmds: Array<{ name: string; hint: s
     cmds: [
       { name: 'report', hint: '打开 Playwright HTML 报告' },
       { name: 'report:dashboard', hint: '生成 UI 质量仪表盘' },
+      { name: 'report:replay-summary', hint: '流程回放汇总报告' },
       { name: 'report:bundle', hint: '打包 public-reports' },
       { name: 'report:bundle-ci', hint: '合并 CI 产物' },
       { name: 'screenshot-report', hint: 'UI 截图对比报告' },

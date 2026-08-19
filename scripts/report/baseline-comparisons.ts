@@ -34,6 +34,12 @@ export function runTimestampSortKey(timestamp: string): number {
     const t = Date.parse(`${legacy[1]}T${legacy[2]}:${legacy[3]}:${legacy[4]}`);
     if (!Number.isNaN(t)) return t;
   }
+  // intent: run-chromium-2026-08-19-06-13-41
+  const intent = timestamp.match(/(\d{4}-\d{2}-\d{2})-(\d{2})-(\d{2})-(\d{2})/);
+  if (intent) {
+    const t = Date.parse(`${intent[1]}T${intent[2]}:${intent[3]}:${intent[4]}`);
+    if (!Number.isNaN(t)) return t;
+  }
   return 0;
 }
 

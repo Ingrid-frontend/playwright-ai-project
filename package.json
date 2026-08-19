@@ -28,6 +28,7 @@
     "test:ci:firefox": "playwright test --project=optimized --project=optimized-webkit --project=optimized-firefox && npm run compare-screenshots -- --gate",
     "report": "playwright show-report",
     "report:dashboard": "tsx scripts/report/generate-quality-dashboard.ts",
+    "report:replay-summary": "tsx scripts/report/flow-replay-summary.ts",
     "report:bundle": "tsx scripts/report/bundle-public-reports.ts",
     "report:bundle-ci": "tsx scripts/report/bundle-ci-artifacts.ts",
     "trace:show": "tsx scripts/report/show-latest-trace.ts",

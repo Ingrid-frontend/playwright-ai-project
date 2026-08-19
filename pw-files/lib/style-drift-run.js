@@ -12,7 +12,12 @@ async function runStyleDriftFullFlow(ws, session, msg = {}, deps) {
     runIntent,
   } = deps;
   const repoRoot = resolveRepoRoot();
-  const intentRel = String(msg.intent || 'tests/definitions/style-drift-mock.yaml').trim();
+  const intentRel = String(msg.intent || '').trim();
+  if (!intentRel) {
+    send(ws, 'error', { message: '请先选择或填写 Intent YAML 路径' });
+    send(ws, 'style-drift:run-full:done', { ok: false, message: '缺少 Intent YAML' });
+    return;
+  }
   const gate = Boolean(msg.gate);
 
   send(ws, 'style-drift:run-full:start', { intent: intentRel, gate });
