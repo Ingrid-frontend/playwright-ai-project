@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import type { DiffRegion, ImageComparison } from './image-diff.js';
-import { loadUiRegressionConfig, resolveAiReviewConfig, resolveGateMode } from './ui-regression-config.js';
+import { loadUiRegressionConfig, resolveAiReviewConfig, resolveGateMode, scriptKeyHitsPixelGate } from './ui-regression-config.js';
 import { parseRunMetaFromScreenshotPath, parseSnapshotIdentity } from './compare-screenshots-utils.js';
 import type { PlainLanguageAnalysis } from './ui-issues-analysis.js';
 import type { UiIssueReview, ReviewSummary } from './ui-issue-review.js';
@@ -296,7 +296,14 @@ export function gateShouldFail(report: UiIssuesReport): boolean {
         (i.compareKind === 'style-drift' ||
           (i.compareKind === 'structure' && i.structureType === 'missing-selector')),
     );
-    return styleBlockers.length > 0;
+    if (styleBlockers.length > 0) return true;
+    const pixelBlockers = active.filter(
+      (i) =>
+        i.severity === 'blocker' &&
+        (i.compareKind === 'golden' || i.compareKind === 'last-green') &&
+        scriptKeyHitsPixelGate(i.scriptKey),
+    );
+    return pixelBlockers.length > 0;
   }
 
   const cfg = loadUiRegressionConfig();

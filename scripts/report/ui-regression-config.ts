@@ -57,6 +57,8 @@ export interface StyleChecksConfig {
 
 export interface GateConfig {
   mode: 'style-only' | 'pixel' | 'hybrid';
+  /** scriptKey 以此前缀开头时，style-only 下 golden/last-green blocker 仍会使 --gate 失败 */
+  pixelScriptPrefixes?: string[];
 }
 
 export interface UiRegressionConfig {
@@ -152,6 +154,7 @@ const DEFAULT_CONFIG: UiRegressionConfig = {
   },
   gate: {
     mode: 'style-only',
+    pixelScriptPrefixes: ['intent/'],
   },
   screenshot: {
     freezeAnimations: true,
@@ -399,6 +402,17 @@ export function resolveCompareRunDrift(): boolean {
 
 export function resolveGateMode(): GateConfig['mode'] {
   return loadUiRegressionConfig().gate?.mode || 'style-only';
+}
+
+export function resolvePixelScriptPrefixes(): string[] {
+  const prefixes = loadUiRegressionConfig().gate?.pixelScriptPrefixes;
+  return Array.isArray(prefixes) ? prefixes.filter((p) => typeof p === 'string' && p.trim()) : [];
+}
+
+export function scriptKeyHitsPixelGate(scriptKey: string | undefined): boolean {
+  const key = String(scriptKey || '').replace(/\\/g, '/');
+  if (!key) return false;
+  return resolvePixelScriptPrefixes().some((prefix) => key === prefix || key.startsWith(prefix));
 }
 
 export function resolveScreenshotFullPage(): boolean {

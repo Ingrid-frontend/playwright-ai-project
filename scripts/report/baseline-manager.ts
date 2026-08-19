@@ -60,6 +60,68 @@ export function browserToRunSegment(browser: string): string {
   return 'run-chromium-optimized';
 }
 
+function browserRunPrefix(browser: string): string {
+  const b = browser.toLowerCase();
+  if (b === 'webkit') return 'run-webkit-';
+  if (b === 'firefox') return 'run-firefox-';
+  return 'run-chromium-';
+}
+
+/** Intent 旧目录 run-chromium-{stamp} 与现约定 run-*-optimized/{stamp} */
+export function resolveSourceRunDir(opts: {
+  scriptKey: string;
+  sourceRunTimestamp: string;
+  browser?: string;
+  screenshotsRoot?: string;
+}): string {
+  const screenshotsRoot = opts.screenshotsRoot || 'screenshots';
+  const browser = opts.browser || 'chrome';
+  const ts = opts.sourceRunTimestamp;
+  const runSegment = browserToRunSegment(browser);
+  const prefix = browserRunPrefix(browser);
+  const candidates = [
+    path.join(screenshotsRoot, opts.scriptKey, runSegment, ts),
+    path.join(screenshotsRoot, opts.scriptKey, `${prefix}${ts}`),
+    path.join(screenshotsRoot, opts.scriptKey, ts),
+  ];
+  for (const dir of candidates) {
+    if (fs.existsSync(dir) && fs.statSync(dir).isDirectory()) return dir;
+  }
+  throw new Error(`源运行目录不存在: ${candidates[0]}`);
+}
+
+export function findLatestRunTimestamp(
+  scriptKey: string,
+  browser = 'chrome',
+  screenshotsRoot = 'screenshots',
+): string | null {
+  const prefix = browserRunPrefix(browser);
+  const runSegment = browserToRunSegment(browser);
+  const hits: Array<{ ts: string; mtime: number }> = [];
+
+  const optimizedRoot = path.join(screenshotsRoot, scriptKey, runSegment);
+  if (fs.existsSync(optimizedRoot) && fs.statSync(optimizedRoot).isDirectory()) {
+    for (const name of fs.readdirSync(optimizedRoot)) {
+      const abs = path.join(optimizedRoot, name);
+      if (!fs.statSync(abs).isDirectory()) continue;
+      hits.push({ ts: name, mtime: fs.statSync(abs).mtimeMs });
+    }
+  }
+
+  const scriptRoot = path.join(screenshotsRoot, scriptKey);
+  if (fs.existsSync(scriptRoot) && fs.statSync(scriptRoot).isDirectory()) {
+    for (const name of fs.readdirSync(scriptRoot)) {
+      if (name === runSegment || !name.startsWith(prefix)) continue;
+      const abs = path.join(scriptRoot, name);
+      if (!fs.statSync(abs).isDirectory()) continue;
+      hits.push({ ts: name.slice(prefix.length), mtime: fs.statSync(abs).mtimeMs });
+    }
+  }
+
+  hits.sort((a, b) => b.mtime - a.mtime);
+  return hits[0]?.ts || null;
+}
+
 export function runSegmentToBrowser(runSegment: string): string {
   if (/webkit/i.test(runSegment)) return 'webkit';
   if (/firefox/i.test(runSegment)) return 'firefox';
@@ -119,16 +181,12 @@ export function promoteRunToGolden(opts: {
   const screenshotsRoot = opts.screenshotsRoot || 'screenshots';
   const browser = opts.browser || 'chrome';
   const runSegment = browserToRunSegment(browser);
-  const sourceDir = path.join(
+  const sourceDir = resolveSourceRunDir({
+    scriptKey: opts.scriptKey,
+    sourceRunTimestamp: opts.sourceRunTimestamp,
+    browser,
     screenshotsRoot,
-    opts.scriptKey,
-    runSegment,
-    opts.sourceRunTimestamp,
-  );
-
-  if (!fs.existsSync(sourceDir)) {
-    throw new Error(`源运行目录不存在: ${sourceDir}`);
-  }
+  });
 
   assertRunEligibleForGolden(sourceDir);
 
@@ -196,16 +254,12 @@ export function promoteStepsToGolden(opts: {
   const screenshotsRoot = opts.screenshotsRoot || 'screenshots';
   const browser = opts.browser || 'chrome';
   const runSegment = browserToRunSegment(browser);
-  const sourceDir = path.join(
+  const sourceDir = resolveSourceRunDir({
+    scriptKey: opts.scriptKey,
+    sourceRunTimestamp: opts.sourceRunTimestamp,
+    browser,
     screenshotsRoot,
-    opts.scriptKey,
-    runSegment,
-    opts.sourceRunTimestamp,
-  );
-
-  if (!fs.existsSync(sourceDir)) {
-    throw new Error(`源运行目录不存在: ${sourceDir}`);
-  }
+  });
 
   const names = [...new Set(opts.stepFileNames.map((n) => path.basename(n)).filter((n) => n.endsWith('.png')))];
   if (!names.length) {

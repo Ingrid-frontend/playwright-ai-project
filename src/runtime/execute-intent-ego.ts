@@ -12,6 +12,7 @@ import type { SemanticAction, SemanticStep, SemanticTestPlan } from '../types/ai
 import { getBaseEnvConfig } from '../utils/env-config.js';
 import { EGO_RESULT_PREFIX, runEgoJson, EgoUnavailableError, EgoUserControllingError } from '../utils/ego-browser.js';
 import {
+  extractVisibleTexts,
   findCandidates,
   formatNodesForPrompt,
   isListActionProbe,
@@ -69,7 +70,7 @@ function resolveUrl(env: string, pathOrUrl?: string): string | undefined {
 }
 
 function intentScreenshotDir(env: string, planName: string, stamp: string): string {
-  return path.join('screenshots', 'intent', env, sanitizeName(planName), `run-chromium-${stamp}`);
+  return path.join('screenshots', 'intent', env, sanitizeName(planName), 'run-chromium-optimized', stamp);
 }
 
 function stepShotName(index: number, step: SemanticStep): string {
@@ -192,12 +193,50 @@ async function assertInEgo(
   throw new Error(`断言失败: ${lastDetail}`);
 }
 
-async function captureShotBase64(spaceName: string): Promise<string | undefined> {
-  const data = await egoSession<{ data?: string }>(spaceName, [
+async function captureShotWithPage(spaceName: string): Promise<{
+  data?: string;
+  url: string;
+  title?: string;
+  snapshot: string;
+}> {
+  return egoSession(spaceName, [
     `const shot = await cdp('Page.captureScreenshot', { format: 'png' })`,
-    `const __result = { data: shot && shot.data }`,
+    `let snap = ''`,
+    `try { snap = await snapshotText() } catch {}`,
+    `const info = await pageInfo()`,
+    `const __result = { data: shot && shot.data, snapshot: String(snap || ''), url: info.url || '', title: info.title || '' }`,
   ]);
-  return data.data;
+}
+
+function egoDomHash(snapshot: string): string {
+  const nodes = parseSnapshotText(snapshot);
+  const src =
+    nodes
+      .slice(0, 48)
+      .map((n) => `${n.role}:${n.name}`)
+      .join('|') ||
+    snapshot.slice(0, 64) ||
+    'intent-shot';
+  let payload = Buffer.from(src).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  if (payload.length < 8) payload = `${payload}xxxxxxxx`.slice(0, 8);
+  return `EGO|${Math.max(nodes.length, 1)}|${payload.slice(0, 32)}`;
+}
+
+function writeShotMeta(
+  pngPath: string,
+  info: { url?: string; title?: string; snapshot?: string },
+): string {
+  const snapshot = info.snapshot || '';
+  const meta = {
+    capturedAt: new Date().toISOString(),
+    url: info.url || '',
+    title: info.title || '',
+    pageText: extractVisibleTexts(snapshot).join(' ').slice(0, 800),
+    domHash: egoDomHash(snapshot),
+  };
+  const metaPath = pngPath.replace(/\.png$/i, '.meta.json');
+  fs.writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`, 'utf-8');
+  return metaPath;
 }
 
 function writePng(base64: string | undefined, filePath: string): string | undefined {
@@ -591,12 +630,14 @@ export async function executeIntentEgo(
         const needsShot =
           workingStep.evidence?.includes('screenshot') || workingStep.action.type === 'screenshot';
         if (needsShot) {
-          const b64 = await captureShotBase64(spaceName);
+          const shot = await captureShotWithPage(spaceName);
           const dest = path.join(shotDir, stepShotName(index, workingStep));
-          screenshotPath = writePng(b64, dest);
+          screenshotPath = writePng(shot.data, dest);
           if (screenshotPath) {
+            const metaPath = writeShotMeta(screenshotPath, shot);
             const copy = path.join(outputDir, path.basename(dest));
             fs.copyFileSync(screenshotPath, copy);
+            fs.copyFileSync(metaPath, path.join(outputDir, path.basename(metaPath)));
           }
         }
 

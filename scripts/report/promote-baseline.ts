@@ -6,19 +6,7 @@
  *   npm run promote-baseline -- --script 260612/xxx --latest
  *   npm run promote-baseline -- --script 260612/xxx --latest --step=step-2-approval-list__normal.png
  */
-import fs from 'fs';
-import path from 'path';
-import { browserToRunSegment, promoteRunToGolden, promoteStepsToGolden, revertGolden } from './baseline-manager.js';
-
-function findLatestRunTimestamp(scriptKey: string, browser: string): string | null {
-  const runDir = path.join(process.cwd(), 'screenshots', scriptKey, browserToRunSegment(browser));
-  if (!fs.existsSync(runDir)) return null;
-  const runs = fs
-    .readdirSync(runDir)
-    .filter((f) => fs.statSync(path.join(runDir, f)).isDirectory())
-    .sort((a, b) => fs.statSync(path.join(runDir, b)).mtimeMs - fs.statSync(path.join(runDir, a)).mtimeMs);
-  return runs[0] || null;
-}
+import { findLatestRunTimestamp, promoteRunToGolden, promoteStepsToGolden, revertGolden } from './baseline-manager.js';
 
 function printHelp(): void {
   console.log(`用法: npm run promote-baseline -- [选项]

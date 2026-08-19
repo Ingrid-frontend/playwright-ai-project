@@ -6,7 +6,6 @@ import {
 import type { ImageComparison } from './image-diff.js';
 import { collectStructureUiIssues } from './structure-check.js';
 import { collectStyleDriftUiIssues } from './style-drift-check.js';
-import { resolveGateMode } from './ui-regression-config.js';
 import {
   extractStepNameFromPath,
   routeFromScreenshotPath,
@@ -29,7 +28,6 @@ interface TestDirComparisons {
 }
 
 export function collectAllUiIssues(testDirComparisons: TestDirComparisons[]): UiIssue[] {
-  const gateMode = resolveGateMode();
   const issues: UiIssue[] = [];
   for (const tdc of testDirComparisons) {
     const structureShots: Array<{
@@ -42,21 +40,19 @@ export function collectAllUiIssues(testDirComparisons: TestDirComparisons[]): Ui
     }> = [];
 
     for (const comp of tdc.comparisons) {
-      if (gateMode !== 'style-only') {
-        const comparisons = [...comp.optimizedComparisons, ...comp.crossBrowserComparisons];
-        for (const c of comparisons) {
-          const shotPath = c.image2Path || c.image1Path;
-          const stepName = extractStepNameFromPath(shotPath);
-          const route = routeFromScreenshotPath(shotPath);
-          const issue = comparisonToUiIssue(c, {
-            scriptKey: tdc.testDir,
-            stepNumber: comp.stepNumber,
-            stepName,
-            browser: c.browser || c.browser2 || 'chrome',
-            route,
-          });
-          if (issue) issues.push(issue);
-        }
+      const comparisons = [...comp.optimizedComparisons, ...comp.crossBrowserComparisons];
+      for (const c of comparisons) {
+        const shotPath = c.image2Path || c.image1Path;
+        const stepName = extractStepNameFromPath(shotPath);
+        const route = routeFromScreenshotPath(shotPath);
+        const issue = comparisonToUiIssue(c, {
+          scriptKey: tdc.testDir,
+          stepNumber: comp.stepNumber,
+          stepName,
+          browser: c.browser || c.browser2 || 'chrome',
+          route,
+        });
+        if (issue) issues.push(issue);
       }
 
       for (const s of comp.optimizedScreenshots) {
