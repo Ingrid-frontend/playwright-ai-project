@@ -1905,6 +1905,9 @@ function buildFailureBundle(opts) {
       screenshotHint: opts.screenshotHint || 'screenshots/',
       playwrightReportDir: opts.playwrightReportDir || 'playwright-report',
       testResultsDir: opts.testResultsDir || 'test-results',
+      failureBundleRel: opts.failureBundleRel || '',
+      failureSummaryRel: opts.failureSummaryRel || '',
+      replayRel: opts.replayRel || '',
     },
     batchLabel: opts.batchLabel || '',
   };
@@ -1922,8 +1925,12 @@ function trimMessage(msg, maxLines = 10) {
 function formatFailureSummaryText(bundle) {
   if (!bundle) return '';
   const s = bundle.summary;
+  const head =
+    bundle.kind === 'intent' || bundle.kind === 'nl-run'
+      ? '【Intent 执行失败摘要】'
+      : '【Playwright 执行失败摘要】';
   const lines = [
-    `【Playwright 执行失败摘要】`,
+    head,
     `用例: ${bundle.specRelative || '（批量）'}`,
     `环境: ${bundle.playwrightEnv} | project: ${(bundle.projects || []).join(', ') || '—'}`,
     `结果: ${s.passed}/${s.total} 通过, ${s.failed} 失败, 耗时 ${s.duration}s, exit ${s.exitCode}`,
@@ -1971,8 +1978,17 @@ function formatFailureFullMarkdown(bundle) {
   lines.push(
     `- 截图目录: ${bundle.artifacts?.screenshotHint || 'screenshots/'}`,
     `- 报告: ${bundle.artifacts?.playwrightReportDir || 'playwright-report'}`,
-    ``,
   );
+  if (bundle.artifacts?.failureSummaryRel) {
+    lines.push(`- 失败排查包: \`${bundle.artifacts.failureSummaryRel}\``);
+  }
+  if (bundle.artifacts?.failureBundleRel) {
+    lines.push(`- 失败结构化包: \`${bundle.artifacts.failureBundleRel}\``);
+  }
+  if (bundle.artifacts?.replayRel) {
+    lines.push(`- 流程回放: \`${bundle.artifacts.replayRel}\``);
+  }
+  lines.push(``);
   if (bundle.sections?.length) {
     for (const sec of bundle.sections) {
       lines.push(`## 用例: ${sec.specRelative}`, ``);
@@ -1994,20 +2010,33 @@ function formatFailureFullMarkdown(bundle) {
 
 function formatFailureForAi(bundle) {
   const head = formatFailureSummaryText(bundle);
+  const isIntent = bundle.kind === 'intent' || bundle.kind === 'nl-run';
+  const yamlText = document.getElementById('intentYamlText')?.value?.trim() || '';
   const opt = document.getElementById('optCode')?.value?.trim() || '';
-  const optExcerpt = opt ? opt.split('\n').slice(0, 100).join('\n') : '（编辑器无优化脚本）';
+  const excerpt = isIntent
+    ? yamlText
+      ? yamlText.split('\n').slice(0, 120).join('\n')
+      : '（YAML 编辑器为空）'
+    : opt
+      ? opt.split('\n').slice(0, 100).join('\n')
+      : '（编辑器无优化脚本）';
+  const excerptLabel = isIntent ? '当前 Intent YAML（节选）' : '当前优化脚本（节选）';
+  const excerptLang = isIntent ? 'yaml' : 'typescript';
+  const askLine = isIntent
+    ? '请根据以下失败信息帮我修改 Intent YAML（保持语义步骤风格，不要臆造 assert）：'
+    : '请根据以下失败信息帮我修改 Playwright 优化用例（保持项目既有 step/smartClick 风格）：';
   return [
     head,
     '',
     '---',
-    '请根据以下失败信息帮我修改 Playwright 优化用例（保持项目既有 step/smartClick 风格）：',
+    askLine,
     '',
     formatFailureFullMarkdown(bundle),
     '',
     '---',
-    '当前优化脚本（节选）:',
-    '```typescript',
-    optExcerpt,
+    `${excerptLabel}:`,
+    '```' + excerptLang,
+    excerpt,
     '```',
   ].join('\n');
 }
@@ -2070,6 +2099,52 @@ function buildFailureBundleFromRunDone(msg) {
   });
 }
 
+function buildIntentFailureBundle(msg) {
+  const steps = Array.isArray(msg.steps) ? msg.steps : [];
+  const failedStep = [...steps].reverse().find((s) => !s.passed && !s.skipped);
+  const errText = failedStep?.error || msg.error || msg.runError || msg.message || '';
+  const failures = errText
+    ? [
+        {
+          title: msg.intent || msg.caseDescription || msg.intentRel || 'Intent 用例',
+          location: msg.intent || msg.intentRel || msg.outRel || '',
+          message: errText,
+          lastStep: failedStep?.id || '',
+          hint: msg.replayRel ? `流程回放: ${msg.replayRel}` : msg.outRel ? `结果目录: ${msg.outRel}` : '',
+        },
+      ]
+    : [];
+  return buildFailureBundle({
+    kind: msg.intent ? 'intent' : 'nl-run',
+    specRelative: msg.intent || msg.intentRel || msg.caseDescription || '',
+    playwrightEnv: msg.env || envState.current,
+    runMode: `engine=${msg.engine || 'ego'}`,
+    summary: {
+      passed: msg.ok ? 1 : 0,
+      failed: msg.ok ? 0 : 1,
+      total: 1,
+      duration: '—',
+      exitCode: msg.exitCode ?? (msg.ok ? 0 : 1),
+    },
+    failures,
+    screenshotHint: msg.screenshotDir || msg.outRel || '',
+    playwrightReportDir: msg.outRel || '',
+    failureBundleRel: msg.failureBundleRel || '',
+    failureSummaryRel: msg.failureSummaryRel || '',
+    replayRel: msg.replayRel || '',
+  });
+}
+
+function handleIntentFailureFromMsg(msg) {
+  if (msg.ok) {
+    hideFailureDiagnosticsPanel();
+    return;
+  }
+  const bundle = buildIntentFailureBundle(msg);
+  if (!bundle.failures?.length && !msg.failureSummaryRel) return;
+  renderFailureDiagnosticsPanel(bundle);
+}
+
 async function copyTextToClipboard(text) {
   try {
     await navigator.clipboard.writeText(text);
@@ -2120,7 +2195,12 @@ function renderFailureDiagnosticsPanel(bundle) {
     ? bundle.sections.reduce((n, sec) => n + sec.failures.length, 0)
     : bundle.failures.length;
   if (title) {
-    title.textContent = bundle.kind === 'batch' ? `批量执行失败（${bundle.batchLabel}）` : '执行失败';
+    title.textContent =
+      bundle.kind === 'batch'
+        ? `批量执行失败（${bundle.batchLabel}）`
+        : bundle.kind === 'intent' || bundle.kind === 'nl-run'
+          ? 'Intent 执行失败'
+          : '执行失败';
   }
   summary.textContent = bundle.kind === 'batch'
     ? `共 ${failCount} 条失败明细；${s.failed} 个用例未通过。可点击下方按钮复制，或在批量表中逐条复制。`
@@ -2177,6 +2257,13 @@ function openFailureSpec() {
   const spec = lastFailureBundle?.specRelative;
   if (!spec) {
     showToast('批量失败请从表格「打开」对应用例', 'err');
+    return;
+  }
+  if (/\.ya?ml$/i.test(spec)) {
+    const pathEl = document.getElementById('intentPath');
+    if (pathEl) pathEl.value = spec;
+    switchToIntentRunTab();
+    loadIntentYaml(true);
     return;
   }
   send('repo:load-optimized', { specRelative: spec });
@@ -5038,6 +5125,7 @@ function handleMessage(msg) {
       if (msg.seq && msg.seq < egoAuditSeq) break;
       lastNlRunContext = captureNlRunContext(msg);
       renderEgoNlRunResult(msg);
+      handleIntentFailureFromMsg(msg);
       if (msg.ok) {
         showToast('试跑通过', 'ok');
         log('ok', '[口语试跑] 通过');
@@ -5095,6 +5183,7 @@ function handleMessage(msg) {
     case 'intent:run:done':
       if (msg.seq && msg.seq < intentRunSeq) break;
       renderIntentRunResult(msg);
+      handleIntentFailureFromMsg(msg);
       if (msg.ok) {
         showToast('用例运行通过', 'ok');
         log('ok', '[intent] 通过');
@@ -6170,7 +6259,8 @@ function convertNlToIntent() {
     showToast('没有可转换的试跑记录，请先完成一次试跑', 'err');
     return;
   }
-  if (ctx.previewYaml?.trim()) {
+  const shouldRegenerate = Boolean(ctx.ok && ctx.outRel);
+  if (ctx.previewYaml?.trim() && !shouldRegenerate) {
     const editor = document.getElementById('intentYamlText');
     if (editor) editor.value = ctx.previewYaml;
     switchToIntentRunTab();
@@ -6187,6 +6277,9 @@ function convertNlToIntent() {
     return;
   }
   setNlToIntentBusy(true);
+  if (shouldRegenerate) {
+    log('info', '[nl→intent] 试跑已通过，按 run/result.json 重新生成 YAML…');
+  }
 }
 
 function renderNlToIntentResult(msg) {

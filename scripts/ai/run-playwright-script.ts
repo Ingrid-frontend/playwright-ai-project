@@ -7,6 +7,7 @@ import { spawn } from 'child_process';
 import { getBaseEnvConfig, resolveStorageState } from '../../src/utils/env-config.js';
 import { verifyStorageStateForRun } from '../../src/runtime/pw-page-context.js';
 import { writeFlowReplay } from '../../src/runtime/flow-replay.js';
+import { writeFailureBundle } from '../../src/runtime/failure-bundle.js';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
@@ -262,19 +263,48 @@ async function main(): Promise<void> {
     title: '口语试跑',
     videoAbs: fs.existsSync(videoAbs) ? videoAbs : undefined,
   });
-  const result = {
+  const startedAt = new Date().toISOString();
+  const finishedAt = new Date().toISOString();
+  const baseResult = {
     passed,
-    exitCode,
     outputDir: outDir,
-    script: scriptPath,
+    startedAt,
+    finishedAt,
+    steps: [] as [],
     error: passed ? undefined : (stderr || stdout || `退出码 ${exitCode}`).trim().slice(0, 800),
     videoRel: flow.videoRel,
     replayRel: flow.replayRel,
   };
   fs.writeFileSync(logPath, stdout + stderr, 'utf-8');
+  const failure = writeFailureBundle({
+    kind: 'playwright-script',
+    outputDir: outDir,
+    stdoutLogRel: path.relative(process.cwd(), logPath).replace(/\\/g, '/'),
+    result: {
+      ...baseResult,
+      engine: 'pw',
+      planName: path.basename(scriptPath),
+    },
+  });
+  const result = {
+    passed,
+    exitCode,
+    outputDir: outDir,
+    script: scriptPath,
+    error: baseResult.error,
+    videoRel: flow.videoRel,
+    replayRel: flow.replayRel,
+    ...(failure
+      ? {
+          failureBundleRel: failure.bundleRel,
+          failureSummaryRel: failure.summaryRel,
+        }
+      : {}),
+  };
   fs.writeFileSync(path.join(outDir, 'result.json'), `${JSON.stringify(result, null, 2)}\n`, 'utf-8');
   console.log(passed ? '✅ Playwright 脚本执行通过' : '❌ Playwright 脚本执行失败');
   console.log(`📁 输出目录: ${outDir}`);
+  if (failure?.summaryRel) console.log(`📋 失败排查包: ${failure.summaryRel}`);
   process.exit(passed ? 0 : 1);
 }
 

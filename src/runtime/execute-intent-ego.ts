@@ -20,6 +20,28 @@ import {
   summarizeSnapshot,
 } from './ego-snapshot.js';
 import { framesFromStepScreenshots, writeFlowReplay } from './flow-replay.js';
+import { writeFailureBundle, type HealLogEntry } from './failure-bundle.js';
+import {
+  isApprovalFlowAdminPage,
+  isEArchiveModulePage,
+  isHomePath,
+  isHuilianyiEnv,
+  isApplicantSearchFill,
+  isListFilterSearchClick,
+  isMenuSearchFill,
+  isMenuSearchResultClick,
+  navClickKind,
+  normalizeHuilianyiEntryPath,
+  assertWrongPageForListOps,
+  extractMenuSearchLabel,
+  pickApplicantSearchInput,
+  pickListFilterSearch,
+  pickMenuSearchResult,
+  pickWorkbenchTopNav,
+  resolveNavClickOps,
+  verifyNavClickOutcome,
+  WORKBENCH_HOME_PATH,
+} from './ego-nav-guard.js';
 import { evaluateStructuredAssert, formatMissingAssertDetail, normalizeAssertAction, shouldSkipUnobservedAssert } from './assert-eval.js';
 import type { AiTestRunOptions, AiTestRunResult, AiTestStepResult } from './execute-ai-test.js';
 
@@ -89,12 +111,19 @@ async function egoSession<T>(
 
 async function openEntry(spaceName: string, url: string): Promise<{ url: string; title?: string }> {
   return egoSession(spaceName, [
-    `await openOrReuseTab(${jsString(url)}, { wait: true, timeout: 45 })`,
-    `await waitForNetworkIdle({ timeout: 15 }).catch(() => {})`,
-    `await wait(1)`,
+    ...buildForceGotoLines(url),
     `const info = await pageInfo()`,
     `const __result = { url: info.url, title: info.title }`,
   ]);
+}
+
+function buildForceGotoLines(url: string): string[] {
+  return [
+    `await openOrReuseTab(${jsString(url)}, { wait: true, timeout: 45 })`,
+    `await gotoAndWait(${jsString(url)}, { timeout: 45 }).catch(() => {})`,
+    `await waitForNetworkIdle({ timeout: 15 }).catch(() => {})`,
+    `await wait(1)`,
+  ];
 }
 
 async function takeSnapshot(
@@ -201,12 +230,44 @@ async function runOps(spaceName: string, ops: EgoResolvedOp[]): Promise<void> {
 }
 
 async function gotoInEgo(spaceName: string, url: string): Promise<void> {
-  await egoSession(spaceName, [
-    `await openOrReuseTab(${jsString(url)}, { wait: true, timeout: 45 })`,
-    `await waitForNetworkIdle({ timeout: 15 }).catch(() => {})`,
-    `await wait(0.8)`,
-    `const __result = { ok: true }`,
-  ]);
+  await egoSession(spaceName, [...buildForceGotoLines(url), `const __result = { ok: true }`]);
+}
+
+async function recoverFromWrongHuilianyiPage(spaceName: string, env: string): Promise<void> {
+  if (!isHuilianyiEnv(env)) return;
+
+  let { snapshot } = await takeSnapshot(spaceName);
+
+  for (let round = 0; round < 3; round++) {
+    if (!isApprovalFlowAdminPage(snapshot) && !isEArchiveModulePage(snapshot)) return;
+
+    const home = resolveUrl(env, WORKBENCH_HOME_PATH);
+    if (home) {
+      await gotoInEgo(spaceName, home);
+      await waitInEgo(spaceName, 1500);
+      snapshot = (await takeSnapshot(spaceName)).snapshot;
+      if (!isApprovalFlowAdminPage(snapshot) && !isEArchiveModulePage(snapshot)) return;
+    }
+
+    const nav = pickWorkbenchTopNav(parseSnapshotText(snapshot));
+    if (nav) {
+      await runOps(spaceName, [{ type: 'click', ref: nav.ref, label: '工作台' }]);
+      await waitInEgo(spaceName, 1500);
+      snapshot = (await takeSnapshot(spaceName)).snapshot;
+      if (!isApprovalFlowAdminPage(snapshot) && !isEArchiveModulePage(snapshot)) return;
+    }
+  }
+
+  if (isEArchiveModulePage(snapshot)) {
+    throw new Error(
+      '入口仍在 e档案 模块，未能切回工作台。请关闭 ego Tab 或手动点顶栏「工作台」后重试',
+    );
+  }
+  if (isApprovalFlowAdminPage(snapshot)) {
+    throw new Error(
+      '入口仍在系统管理审批流配置页，未能切回工作台。请关闭 ego Tab 或手动点顶栏「工作台」后重试',
+    );
+  }
 }
 
 async function waitInEgo(spaceName: string, timeoutMs: number): Promise<void> {
@@ -218,7 +279,7 @@ function rolesForAction(action: SemanticAction): string[] | undefined {
   // 注意：ego lite 的 role 词表与 ARIA 不完全一致（链接是 anchor 而非 link，图片是 image）
   if (action.type === 'click') {
     return [
-      'button', 'anchor', 'link', 'menuitem', 'menuitemcheckbox', 'menuitemradio',
+      'button', 'anchor', 'link', 'menu', 'menuitem', 'menuitemcheckbox', 'menuitemradio',
       'tab', 'checkbox', 'radio', 'option', 'switch', 'list_item', 'listitem',
       'table_cell', 'cell', 'image', 'heading', 'container',
     ];
@@ -239,6 +300,7 @@ async function resolveOpsForAction(
   action: SemanticAction,
   snapshot: string,
   constraints?: string[],
+  ctx?: { menuSearchValue?: string },
 ): Promise<EgoResolvedOp[]> {
   if (action.type !== 'click' && action.type !== 'fill' && action.type !== 'select') {
     throw new Error(`无法解析动作: ${action.type}`);
@@ -247,6 +309,43 @@ async function resolveOpsForAction(
   const nodes = parseSnapshotText(snapshot);
   const desc = descriptionOf(action);
   const roles = rolesForAction(action);
+
+  if (action.type === 'fill' && isApplicantSearchFill(desc)) {
+    const wrong = assertWrongPageForListOps(snapshot);
+    if (wrong) throw new Error(wrong);
+    const picked = pickApplicantSearchInput(nodes);
+    if (picked) {
+      return [{ type: 'fill', ref: picked.ref, value: action.value, label: picked.name }];
+    }
+  }
+
+  if (action.type === 'click' && isListFilterSearchClick(desc)) {
+    const wrong = assertWrongPageForListOps(snapshot);
+    if (wrong) throw new Error(wrong);
+    const picked = pickListFilterSearch(nodes);
+    if (picked) return [{ type: 'click', ref: picked.ref, label: '搜索' }];
+  }
+
+  if (action.type === 'click') {
+    const searchLabel = ctx?.menuSearchValue?.trim() || extractMenuSearchLabel(desc);
+    if (searchLabel) {
+      const picked = pickMenuSearchResult(nodes, searchLabel);
+      if (picked) {
+        return [{ type: 'click', ref: picked.ref, label: picked.name || searchLabel }];
+      }
+    }
+    if (isMenuSearchResultClick(desc) && !searchLabel) {
+      const picked = pickMenuSearchResult(nodes);
+      if (picked) {
+        return [{ type: 'click', ref: picked.ref, label: picked.name || '我的审批' }];
+      }
+    }
+    const kind = navClickKind(desc);
+    if (kind) {
+      const navOps = resolveNavClickOps(nodes, desc, kind);
+      if (navOps) return navOps;
+    }
+  }
 
   if (action.type === 'click' && isListActionProbe(desc)) {
     const picked = pickVisibleListAction(nodes, desc, { roles });
@@ -343,18 +442,59 @@ export async function executeIntentEgo(
   const spaceName = options.spaceName || `intent:${sanitizeName(plan.name)}`;
   const startedAt = new Date().toISOString();
   const steps: AiTestStepResult[] = [];
+  const healLogs: HealLogEntry[] = [];
   let passed = true;
   let fatal: string | undefined;
 
-  const entry =
-    resolveUrl(env, plan.entry) ||
+  const persistResult = (payload: Record<string, unknown>, result: AiTestRunResult): AiTestRunResult => {
+    const failure = writeFailureBundle({
+      kind: 'intent',
+      outputDir,
+      env,
+      profile: options.profile,
+      healLogs,
+      result: {
+        ...result,
+        engine: 'ego',
+        planName: plan.name,
+      },
+    });
+    const out = {
+      ...payload,
+      engine: 'ego',
+      screenshotDir: shotDir,
+      spaceName,
+      ...(failure
+        ? {
+            failureBundleRel: failure.bundleRel,
+            failureSummaryRel: failure.summaryRel,
+          }
+        : {}),
+    };
+    fs.writeFileSync(path.join(outputDir, 'result.json'), `${JSON.stringify(out, null, 2)}\n`);
+    fs.writeFileSync(
+      path.join(outputDir, 'screenshots-path.txt'),
+      `${path.relative(process.cwd(), shotDir)}\n`,
+    );
+    return failure
+      ? { ...result, failureBundleRel: failure.bundleRel, failureSummaryRel: failure.summaryRel }
+      : result;
+  };
+
+  const entryPath =
+    normalizeHuilianyiEntryPath(env, plan.entry) ||
     (plan.steps[0]?.action.type === 'goto'
-      ? resolveUrl(env, plan.steps[0].action.url || plan.steps[0].action.path)
-      : undefined);
+      ? normalizeHuilianyiEntryPath(env, plan.steps[0].action.url || plan.steps[0].action.path)
+      : undefined) ||
+    plan.entry;
+  const entry = resolveUrl(env, entryPath);
 
   try {
     if (entry) {
       await openEntry(spaceName, entry);
+      if (isHomePath(plan.entry)) {
+        await recoverFromWrongHuilianyiPage(spaceName, env);
+      }
     } else {
       await egoSession(spaceName, [
         `await ensureRealTab()`,
@@ -373,9 +513,11 @@ export async function executeIntentEgo(
       steps: [],
       error: message,
     };
-    fs.writeFileSync(path.join(outputDir, 'result.json'), `${JSON.stringify(result, null, 2)}\n`);
-    return result;
+    return persistResult(result, result);
   }
+
+  let pendingMenuSearchValue: string | undefined;
+  let pendingMenuSearchClick = false;
 
   for (let index = 0; index < plan.steps.length; index++) {
     const step = plan.steps[index];
@@ -394,8 +536,14 @@ export async function executeIntentEgo(
         const action = workingStep.action;
 
         if (action.type === 'goto') {
-          const url = resolveUrl(env, action.url || action.path);
-          if (url) await gotoInEgo(spaceName, url);
+          const pathOrUrl = action.url || action.path;
+          const url = resolveUrl(env, normalizeHuilianyiEntryPath(env, pathOrUrl) || pathOrUrl);
+          if (url) {
+            await gotoInEgo(spaceName, url);
+            if (isHomePath(pathOrUrl)) {
+              await recoverFromWrongHuilianyiPage(spaceName, env);
+            }
+          }
         } else if (action.type === 'wait') {
           await waitInEgo(spaceName, action.timeoutMs ?? 1000);
         } else if (action.type === 'screenshot') {
@@ -409,9 +557,33 @@ export async function executeIntentEgo(
         } else if (action.type === 'act') {
           throw new Error(`act 动作已不支持，请改用 click/fill/select/assert: ${action.instruction}`);
         } else if (action.type === 'click' || action.type === 'fill' || action.type === 'select') {
+          const desc = descriptionOf(action);
+          if (action.type === 'click' && (pendingMenuSearchValue || isMenuSearchResultClick(desc))) {
+            await waitInEgo(spaceName, 500);
+          }
           const { snapshot } = await takeSnapshot(spaceName);
-          const ops = await resolveOpsForAction(action, snapshot, options.constraints);
+          const ops = await resolveOpsForAction(action, snapshot, options.constraints, {
+            menuSearchValue: pendingMenuSearchClick ? pendingMenuSearchValue : undefined,
+          });
           await runOps(spaceName, ops);
+          if (action.type === 'fill' && isMenuSearchFill(desc) && action.value?.trim()) {
+            pendingMenuSearchValue = action.value.trim();
+            pendingMenuSearchClick = true;
+          }
+          if (action.type === 'click') {
+            const kind = navClickKind(desc);
+            const menuNav = pendingMenuSearchClick || isMenuSearchResultClick(desc) || extractMenuSearchLabel(desc);
+            if (kind || menuNav) {
+              await waitInEgo(spaceName, 600);
+              const after = await takeSnapshot(spaceName);
+              const navErr = verifyNavClickOutcome(kind || 'my-approval', after.snapshot);
+              if (navErr) throw new Error(navErr);
+            }
+            if (pendingMenuSearchClick) {
+              pendingMenuSearchClick = false;
+              pendingMenuSearchValue = undefined;
+            }
+          }
         } else {
           throw new Error(`未知动作: ${(action as { type: string }).type}`);
         }
@@ -447,7 +619,16 @@ export async function executeIntentEgo(
               snapshot,
               options.constraints,
             );
+            healLogs.push({
+              stepId: step.id,
+              attempt,
+              engine: 'ego',
+              at: new Date().toISOString(),
+              error: errorMessage,
+              output: heal || undefined,
+            });
             if (heal?.shouldSkip && workingStep.optional) {
+              healLogs[healLogs.length - 1].accepted = true;
               stepPassed = true;
               errorMessage = undefined;
               break;
@@ -462,6 +643,7 @@ export async function executeIntentEgo(
               }
               workingStep = { ...workingStep, action: nextAction };
               healed = true;
+              healLogs[healLogs.length - 1].accepted = true;
               continue;
             }
           } catch {
@@ -524,14 +706,13 @@ export async function executeIntentEgo(
     replayRel: flow.replayRel,
   };
 
-  fs.writeFileSync(
-    path.join(outputDir, 'result.json'),
-    `${JSON.stringify({ ...result, engine: 'ego', screenshotDir: shotDir, spaceName }, null, 2)}\n`,
+  return persistResult(
+    {
+      ...result,
+      engine: 'ego',
+      screenshotDir: shotDir,
+      spaceName,
+    },
+    result,
   );
-  fs.writeFileSync(
-    path.join(outputDir, 'screenshots-path.txt'),
-    `${path.relative(process.cwd(), shotDir)}\n`,
-  );
-
-  return result;
 }

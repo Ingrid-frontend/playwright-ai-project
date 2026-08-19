@@ -233,6 +233,8 @@ async function runIntent(ws, session, msg = {}, deps) {
     screenshotDir: result?.screenshotDir,
     videoRel: result?.videoRel,
     replayRel: result?.replayRel,
+    failureBundleRel: result?.failureBundleRel,
+    failureSummaryRel: result?.failureSummaryRel,
     error: result?.error || (runResult.error ? String(runResult.error) : undefined),
     exitCode: runResult.code,
     compareAfter,

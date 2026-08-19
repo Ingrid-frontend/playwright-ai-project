@@ -11,6 +11,7 @@ import { stringify as stringifyYaml } from 'yaml';
 import { completeJson } from '../../src/ai/llm-client.js';
 import { buildNlToIntentPrompt, buildNlToIntentSystemPrompt } from '../../src/ai/prompts/nl-to-intent.js';
 import { validateTestIntent } from '../../src/types/test-intent.js';
+import { normalizeTestIntent, summarizeRunSteps } from '../../src/utils/intent-normalize.js';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
@@ -44,6 +45,28 @@ function printHelp(): void {
 `);
 }
 
+function readRunContext(runDir: string): { passed: boolean; stepSummary?: string } {
+  const resultPath = path.join(runDir, 'result.json');
+  if (!fs.existsSync(resultPath)) return { passed: false };
+  try {
+    const report = JSON.parse(fs.readFileSync(resultPath, 'utf-8')) as {
+      passed?: boolean;
+      steps?: Array<{
+        id?: string;
+        passed?: boolean;
+        action?: { type?: string; description?: string; path?: string; expect?: string };
+      }>;
+    };
+    const steps = Array.isArray(report.steps) ? report.steps : [];
+    return {
+      passed: report.passed === true,
+      stepSummary: steps.length ? summarizeRunSteps(steps) : undefined,
+    };
+  } catch {
+    return { passed: false };
+  }
+}
+
 async function main(): Promise<void> {
   if (hasFlag('help') || hasFlag('h')) {
     printHelp();
@@ -67,20 +90,22 @@ async function main(): Promise<void> {
   }
 
   let runPassed = false;
+  let runStepSummary: string | undefined;
   if (runDir) {
-    const resultPath = path.join(runDir, 'result.json');
-    if (fs.existsSync(resultPath)) {
-      try {
-        const report = JSON.parse(fs.readFileSync(resultPath, 'utf-8')) as { passed?: boolean };
-        runPassed = report.passed !== false;
-      } catch {
-        /* ignore */
-      }
-    }
+    const ctx = readRunContext(runDir);
+    runPassed = ctx.passed;
+    runStepSummary = ctx.stepSummary;
   }
 
   const draft = await completeJson<Record<string, unknown>>(
-    buildNlToIntentPrompt({ caseDescription, env, entry, scriptCode, runPassed }),
+    buildNlToIntentPrompt({
+      caseDescription,
+      env,
+      entry,
+      scriptCode,
+      runPassed,
+      runStepSummary,
+    }),
     { system: buildNlToIntentSystemPrompt(), temperature: 0.1, maxTokens: 4000 },
   );
 
@@ -91,6 +116,7 @@ async function main(): Promise<void> {
   let intent;
   try {
     intent = validateTestIntent(draft);
+    intent = validateTestIntent(normalizeTestIntent(intent, { caseDescription }));
   } catch (err) {
     console.error(`❌ Intent 校验失败: ${err instanceof Error ? err.message : err}`);
     process.exit(1);

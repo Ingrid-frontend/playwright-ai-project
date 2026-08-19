@@ -91,7 +91,11 @@ export function parseSnapshotText(snapshot: string): SnapshotNode[] {
     }
 
     let name = cur.inlineName;
-    if (!name && descendantTexts.length > 0) name = descendantTexts.join(' ');
+    if (!name && descendantTexts.length > 0) {
+      name = descendantTexts.every((t) => t.length <= 2)
+        ? descendantTexts.join('')
+        : descendantTexts.join(' ');
+    }
 
     // 无名控件（如 checkbox [ref=4]）常由紧邻的同级 text 兄弟做标签
     if (!name) {

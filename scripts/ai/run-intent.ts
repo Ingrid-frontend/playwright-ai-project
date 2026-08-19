@@ -144,6 +144,9 @@ async function main(): Promise<void> {
   if (result.error) {
     console.log(`❌ ${result.error}`);
   }
+  if (!result.passed && result.failureSummaryRel) {
+    console.log(`📋 失败排查包: ${result.failureSummaryRel}`);
+  }
 
   if (hasFlag('compare') && result.passed) {
     const compareArgs = ['tsx', 'scripts/report/compare-screenshots.ts'];

@@ -27,7 +27,9 @@ export function buildResolveOpsSystemPrompt(): string {
 3. 禁止改写断言期望；本提示不会用于 assert。
 4. 不要输出 CSS/XPath；只用 ref。
 5. 不要输出 JSON 以外的内容。
-6. 若目标是查看/详情类列表操作，但 Snapshot 没有该原文，改点同类可见按钮（详情、审批、处理），禁止编造不存在的 ref。`;
+6. 若目标是查看/详情类列表操作，但 Snapshot 没有该原文，改点同类可见按钮（详情、审批、处理），禁止编造不存在的 ref。
+7. 顶栏模块切换（如工作台）：优先 role=tab 且 name 完全匹配的节点，不要点侧栏或正文里的同名文字。
+8. 菜单搜索填值后点菜单项：优先 role=menuitem 或 menu，name 与填值完全一致（如「我的审批」），不要点「我的代理」或正文同名文字。`;
 }
 
 export function buildResolveOpsPrompt(input: {
@@ -72,7 +74,9 @@ export function buildHealFromSnapshotSystemPrompt(): string {
 1. 禁止改写 assert 期望。
 2. 禁止建议 @N / CSS / nth()。
 3. 非可选步骤禁止 shouldSkip=true。
-4. 不要输出 JSON 以外的内容。`;
+4. correctedDescription 必须是短可见文案（如「我的审批」「申请人」），禁止逐字拆解或长句叙述。
+5. fill 申请人搜索时禁止改成菜单搜索框。
+6. 不要输出 JSON 以外的内容。`;
 }
 
 export function buildHealFromSnapshotPrompt(input: {

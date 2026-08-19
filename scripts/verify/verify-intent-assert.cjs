@@ -86,6 +86,25 @@ function main() {
   assert.ok(miss.includes('详情'), miss);
   assert.ok(miss.includes('审批'), miss);
 
+  const wrongPage = formatMissingAssertDetail(
+    '张三',
+    'button "重置" [ref=1]\nbutton "新建资料" [ref=2]\ntext "资料归集" [ref=3]\nbutton "加入中转站" [ref=4]',
+  );
+  assert.ok(wrongPage.includes('e档案'), wrongPage);
+  assert.ok(!wrongPage.includes('新建资料'), wrongPage);
+
+  const emptySearch = formatMissingAssertDetail('张三', '@1 [button] "搜索"\n@2 [button] "重置"');
+  assert.ok(emptySearch.includes('搜索结果为空'), emptySearch);
+
+  const sidebarFalse = evaluateStructuredAssert({
+    kind: 'text',
+    expect: '审批',
+    snapshot:
+      'text "e档案" [ref=0]\ntext "我的审批" [ref=1]\ntext "待补充资料" [ref=2]\nbutton "快捷入口" [ref=3]\ntext "管理员首页" [ref=4]',
+  });
+  assert.strictEqual(sidebarFalse.ok, false, sidebarFalse.detail);
+  assert.ok(sidebarFalse.detail.includes('侧栏菜单名误判'), sidebarFalse.detail);
+
   const { plan: compiled } = compileIntentToPlan({
     name: 'dup-assert',
     assertions: ['我的审批', '查看', '审批'],

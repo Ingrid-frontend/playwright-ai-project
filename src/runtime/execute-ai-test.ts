@@ -20,6 +20,7 @@ import {
   waitForPwReady,
 } from './pw-page-context.js';
 import { framesFromStepScreenshots, savePlaywrightVideo, writeFlowReplay } from './flow-replay.js';
+import { writeFailureBundle, type HealLogEntry } from './failure-bundle.js';
 
 export type StepErrorKind = 'AssertionError' | 'LocatorError' | 'Retryable';
 
@@ -50,6 +51,8 @@ export interface AiTestRunResult {
   screenshotDir?: string;
   videoRel?: string;
   replayRel?: string;
+  failureBundleRel?: string;
+  failureSummaryRel?: string;
   startedAt: string;
   finishedAt: string;
   steps: AiTestStepResult[];
@@ -526,8 +529,40 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
   const browser: Browser = await chromium.launch({ headless: !options.headed });
   const consoleLogs: string[] = [];
   const stepResults: AiTestStepResult[] = [];
+  const healLogs: HealLogEntry[] = [];
   let context: BrowserContext | undefined;
   let page: Page | undefined;
+
+  const persistResult = (
+    payload: Record<string, unknown>,
+    result: AiTestRunResult,
+  ): AiTestRunResult => {
+    const failure = writeFailureBundle({
+      kind: 'intent',
+      outputDir,
+      env,
+      profile,
+      healLogs,
+      result: {
+        ...result,
+        engine: 'pw',
+        planName: plan.name,
+      },
+    });
+    const out = {
+      ...payload,
+      ...(failure
+        ? {
+            failureBundleRel: failure.bundleRel,
+            failureSummaryRel: failure.summaryRel,
+          }
+        : {}),
+    };
+    fs.writeFileSync(path.join(outputDir, 'result.json'), `${JSON.stringify(out, null, 2)}\n`, 'utf-8');
+    return failure
+      ? { ...result, failureBundleRel: failure.bundleRel, failureSummaryRel: failure.summaryRel }
+      : result;
+  };
 
   const finishFlow = async () => {
     const videoAbs = path.join(outputDir, 'flow.webm');
@@ -609,6 +644,17 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
           if (canHeal && attempt === maxAttempts - 1) {
             try {
               const heal = await healStep(pwPage, plan, index, errorMessage, outputDir, options.constraints);
+              healLogs.push({
+                stepId: step.id,
+                attempt: attempt + 1,
+                engine: 'pw',
+                at: new Date().toISOString(),
+                error: errorMessage,
+                output: {
+                  shouldSkip: heal.shouldSkip,
+                  correctedStep: heal.correctedStep,
+                },
+              });
               if (heal.shouldSkip) {
                 if (step.optional && step.action.type !== 'assert') {
                   break;
@@ -617,6 +663,7 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
               }
               if (heal.correctedStep) {
                 const accepted = acceptHealedStep(step, heal.correctedStep);
+                healLogs[healLogs.length - 1].accepted = Boolean(accepted);
                 if (!accepted) {
                   console.log(`⚠️ ${step.id} 自愈结果被拒绝（禁止弱化断言或改写断言）`);
                 } else {
@@ -630,6 +677,7 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
                   } catch (healExecError) {
                     errorMessage =
                       healExecError instanceof Error ? healExecError.message : String(healExecError);
+                    healLogs[healLogs.length - 1].execError = errorMessage;
                     console.log(`❌ ${step.id} 自愈后仍失败: ${errorMessage}`);
                   }
                 }
@@ -674,40 +722,36 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
 
     const flow = await finishFlow();
     clearRuntimeStyleChecks();
-    fs.writeFileSync(
-      path.join(outputDir, 'result.json'),
-      `${JSON.stringify({ passed: allPassed, steps: stepResults, screenshotDir: screenshotRunDir, ...flow }, null, 2)}\n`,
-      'utf-8',
-    );
-
-    return {
+    const finishedAt = new Date().toISOString();
+    const baseResult: AiTestRunResult = {
       passed: allPassed,
       outputDir,
       screenshotDir: screenshotRunDir,
       videoRel: flow.videoRel,
       replayRel: flow.replayRel,
       startedAt,
-      finishedAt: new Date().toISOString(),
+      finishedAt,
       steps: stepResults,
     };
+    return persistResult(
+      { passed: allPassed, steps: stepResults, screenshotDir: screenshotRunDir, ...flow },
+      baseResult,
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const flow = await finishFlow();
-    fs.writeFileSync(
-      path.join(outputDir, 'result.json'),
-      `${JSON.stringify({ passed: false, error: message, steps: stepResults, ...flow }, null, 2)}\n`,
-      'utf-8',
-    );
-    return {
+    const finishedAt = new Date().toISOString();
+    const baseResult: AiTestRunResult = {
       passed: false,
       outputDir,
       videoRel: flow.videoRel,
       replayRel: flow.replayRel,
       startedAt,
-      finishedAt: new Date().toISOString(),
+      finishedAt,
       steps: stepResults,
       error: message,
     };
+    return persistResult({ passed: false, error: message, steps: stepResults, ...flow }, baseResult);
   } finally {
     await browser.close();
   }

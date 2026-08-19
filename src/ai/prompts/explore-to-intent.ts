@@ -109,7 +109,7 @@ export function buildExploreToIntentSystemPrompt(): string {
 5. 合并重复无效步骤，保留达成 goal 的最短路径。
 6. 不要输出 JSON 以外内容。
 7. 禁止把用户口述的操作名（查看、编辑、删除、通过、提交、取消、关闭）写成 assert expect。这些只用于 click/fill description。
-8. 没有 Snapshot 时不要臆造列表按钮/操作列文案。assert 只写进入页面后几乎一定出现的短文案（如标题「我的审批」）。
+8. 没有 Snapshot 时不要臆造列表按钮/操作列文案。assert 只写进入页面后主内容区几乎一定出现的短文案（如待办、审批、单据），不要用侧栏菜单名代替列表页证据。
 9. 禁止在 click 前对同一按钮文案做 assert；先 click，再 assert 点击后新出现的文案。
 10. 列表「查看/详情/审批」等：只生成一条 click，description 用「列表可见的查看或详情操作」。不要为每个臆造按钮名生成 assert；执行期按 Snapshot 点真实可见的那个。`;
 }
