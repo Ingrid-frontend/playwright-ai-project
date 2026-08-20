@@ -73,8 +73,8 @@ npm run dev
 
 | Tab | 说明 |
 |-----|------|
-| **YAML 用例** | 正式 Intent YAML：运行、保存、Explore 生成、样式守护全流程 |
-| **口语试跑** | 自然语言 → 临时脚本试跑；通过后 **转为 YAML 用例** |
+| **YAML 用例** | 正式 Intent：Explore 草稿 → 编辑保存 → 运行 → 样式守护 |
+| **口语试跑** | 自然语言 → 立刻试跑；通过后 **转为 YAML 用例** |
 
 侧栏 **新建用例 / 运行用例 / 定时任务** 在右侧控制台 **用例** Tab，与上述编辑器 Tab 分工不同。详见 [studio-yaml-and-nl-workflow.md](../docs/studio-yaml-and-nl-workflow.md)。
 

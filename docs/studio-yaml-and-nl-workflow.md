@@ -22,12 +22,14 @@ Intent YAML + ego 执行        语义步骤（ego / pw）
 
 ## YAML 用例 Tab
 
-### 能做什么
+界面按生命周期排序（生成草稿 → 编辑保存 → 运行 → 样式守护）：
 
-- 选择或编辑 Intent YAML，**运行用例**（引擎：playwright / ego）
-- **保存定义** 到 `tests/definitions/`
-- **Explore → 生成 Intent**：ego 代操探索后填入 YAML 编辑器
-- **样式守护全流程**：用上方同一 YAML 路径 → pw 截图 + style 指纹 → Golden 对比（见 [style-drift-workflow.md](./style-drift-workflow.md)）
+1. **生成草稿（可选）**：Explore — ego 代操探索后填入 YAML 编辑器（不判定通过/失败）
+2. **编辑并保存**：选择 / 编辑 Intent YAML，**保存定义** 到 `tests/definitions/`
+3. **运行用例**：引擎 playwright / ego；下方为最近流程回放
+4. **样式守护全流程**：用上方同一 YAML → pw 截图 + style 指纹 → Golden 对比（见 [style-drift-workflow.md](./style-drift-workflow.md)）
+
+已有 YAML 可跳过第 1 步。想先验证「能不能跑通」用 **口语试跑** Tab。
 
 ### CLI 等价
 

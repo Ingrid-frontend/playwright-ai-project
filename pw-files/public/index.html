@@ -899,97 +899,23 @@
           </div>
         </div>
 
-        <!-- YAML 用例 + Explore + 样式守护 -->
+        <!-- YAML 用例：生成草稿 → 编辑保存 → 运行 → 回放 → 样式守护 -->
         <div class="editor-pane active" id="pane-intent-run">
           <div style="flex:1;overflow-y:auto;padding:16px;font-size:var(--fs-sm);line-height:1.8">
             <div style="display:flex;flex-direction:column;gap:10px;max-width:760px">
               <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg2)">
                 <div style="font-weight:600;color:var(--text);margin-bottom:6px">正式用例 · 可保存、可反复跑</div>
                 <ul class="sidebar-hint" style="margin:0;padding-left:18px;line-height:1.7;color:var(--text-secondary)">
-                  <li>用 YAML 文件描述测试步骤，适合回归、样式守护、截图对比</li>
-                  <li>可编辑保存到 <code>tests/definitions/</code>，也可用 Explore 自动生成草稿</li>
-                  <li>与「口语试跑」不同：这里是<strong>长期维护</strong>的用例，不是一次性临时脚本</li>
+                  <li>推荐流程：<strong>生成草稿</strong> → <strong>编辑保存</strong> → <strong>运行</strong> → <strong>样式守护</strong></li>
+                  <li>已有 YAML 可跳过探索，直接选文件 / 编辑后运行</li>
+                  <li>想先验证「能不能跑通」请用上方 Tab「口语试跑」；本页是<strong>长期维护</strong>的用例沉淀</li>
                 </ul>
               </div>
-              <div>
-                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">选择用例文件</label>
-                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                  <select id="intentPreset" class="url-input" style="flex:1;min-width:180px;color:var(--text)" onchange="onIntentPresetChange()">
-                    <option value="">加载中…</option>
-                  </select>
-                  <button type="button" class="btn" style="font-size:var(--fs-sm);padding:4px 10px" onclick="refreshIntentList()">刷新</button>
-                  <button type="button" class="btn" style="font-size:var(--fs-sm);padding:4px 10px" onclick="loadIntentYaml()">重新加载</button>
-                </div>
-                <div id="intentDefManage" style="display:none;margin-top:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg2)"></div>
-              </div>
-              <div>
-                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">YAML 路径</label>
-                <input type="text" class="url-input" id="intentPath" spellcheck="false"
-                  value=""
-                  placeholder="tests/definitions/xxx.yaml"
-                  style="width:100%;color:var(--text)">
-              </div>
-              <div>
-                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">YAML 编辑器（可保存到 definitions）</label>
-                <textarea id="intentYamlText" class="url-input" spellcheck="false" rows="10"
-                  placeholder="留空则直接跑上方路径；填写完整 YAML 可临时执行或保存"
-                  style="width:100%;resize:vertical;color:var(--text);line-height:1.5;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px"></textarea>
-              </div>
-              <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
-                <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary)">
-                  引擎
-                  <select id="intentEngine" class="url-input" style="width:auto;min-width:100px;color:var(--text)" onchange="onIntentEngineChange()">
-                    <option value="pw">playwright</option>
-                    <option value="ego" selected>ego</option>
-                  </select>
-                </label>
-                <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
-                  <input type="checkbox" id="intentHeal" checked> 定位失败自愈
-                </label>
-                <label id="intentHeadedWrap" style="display:none;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
-                  <input type="checkbox" id="intentHeaded"> 有头浏览器
-                </label>
-                <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
-                  <input type="checkbox" id="intentCompareAfter"> 跑完截图对比
-                </label>
-                <label id="intentKeepTabWrap" style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
-                  <input type="checkbox" id="intentKeepTab"> 保留 ego Space
-                </label>
-              </div>
-              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-                <button type="button" class="btn btn-run" id="btnIntentRun" onclick="startIntentRun()" style="flex-shrink:0">
-                  <span class="btn-label">运行用例</span>
-                </button>
-                <button type="button" class="btn" id="btnIntentSave" onclick="saveIntentYaml()">保存定义</button>
-                <button type="button" class="btn" id="btnIntentTrust" onclick="refreshIntentTrust()">可信度</button>
-                <button type="button" class="btn" id="btnIntentCancel" onclick="cancelIntentRun()" style="display:none">取消</button>
-                <span class="editor-run-status" id="intentRunStatus"></span>
-              </div>
-              <div id="intentTrustPanel" style="display:none;margin-top:4px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg2)"></div>
-              <div id="intentRunHint" class="sidebar-hint" style="color:var(--text-tertiary)">
-                读取 YAML → 按语义步骤执行（playwright 或 ego）。有自愈时结果区可「应用自愈建议」（不改 assert）。点「可信度」查看历史。
-              </div>
-              <div data-replay-list style="margin-top:4px"></div>
-              <div id="intentRunResult" style="display:none"></div>
 
-              <hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
-              <div style="font-weight:600;color:var(--text)">样式守护</div>
+              <div style="font-weight:600;color:var(--text)">1. 生成草稿（可选）</div>
               <p class="sidebar-hint" style="color:var(--text-tertiary);margin:0">
-                使用上方 Intent 定义 → pw 截图 + computed style 指纹 → Golden 对比。
+                路径不熟时用 Explore：ego 代操探索 → 语义轨迹 → 填入下方编辑器（只出草稿，不判定通过/失败）。已有用例可跳过。
               </p>
-              <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
-                <input type="checkbox" id="styleDriftGate" checked> Gate 模式（style-only）
-              </label>
-              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-                <button type="button" class="btn btn-run" id="btnStyleDriftRunFull" onclick="startStyleDriftFullFlow()" style="flex-shrink:0">
-                  <span class="btn-label">样式守护全流程</span>
-                </button>
-                <span class="editor-run-status" id="styleDriftRunStatus"></span>
-              </div>
-              <p class="sidebar-hint" id="styleDriftStatus" style="color:var(--text-tertiary);margin:0">运行 YAML 用例 → 截图对比 → 报告三档分类</p>
-
-              <hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
-              <div style="font-weight:600;color:var(--text)">Explore → 生成 Intent</div>
               <div>
                 <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">探索目标 goal</label>
                 <input type="text" class="url-input" id="exploreGoal" spellcheck="false"
@@ -1016,10 +942,92 @@
                 <button type="button" class="btn" id="btnExploreCancel" onclick="cancelEgoExploreUi()" style="display:none">取消</button>
                 <span class="editor-run-status" id="exploreStatus"></span>
               </div>
-              <div class="sidebar-hint" style="color:var(--text-tertiary)">
-                ego Space 代操 → 语义轨迹 → Intent YAML 预览（不生成 Playwright）。确认后点「保存定义」。
-              </div>
               <div id="exploreResult" style="display:none"></div>
+
+              <hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
+              <div style="font-weight:600;color:var(--text)">2. 编辑并保存</div>
+              <div>
+                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">选择用例文件</label>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                  <select id="intentPreset" class="url-input" style="flex:1;min-width:180px;color:var(--text)" onchange="onIntentPresetChange()">
+                    <option value="">加载中…</option>
+                  </select>
+                  <button type="button" class="btn" style="font-size:var(--fs-sm);padding:4px 10px" onclick="refreshIntentList()">刷新</button>
+                  <button type="button" class="btn" style="font-size:var(--fs-sm);padding:4px 10px" onclick="loadIntentYaml()">重新加载</button>
+                </div>
+                <div id="intentDefManage" style="display:none;margin-top:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg2)"></div>
+              </div>
+              <div>
+                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">YAML 路径</label>
+                <input type="text" class="url-input" id="intentPath" spellcheck="false"
+                  value=""
+                  placeholder="tests/definitions/xxx.yaml"
+                  style="width:100%;color:var(--text)">
+              </div>
+              <div>
+                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">YAML 编辑器（可保存到 definitions）</label>
+                <textarea id="intentYamlText" class="url-input" spellcheck="false" rows="10"
+                  placeholder="留空则直接跑上方路径；填写完整 YAML 可临时执行或保存"
+                  style="width:100%;resize:vertical;color:var(--text);line-height:1.5;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px"></textarea>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <button type="button" class="btn" id="btnIntentSave" onclick="saveIntentYaml()">保存定义</button>
+                <button type="button" class="btn" id="btnIntentTrust" onclick="refreshIntentTrust()">可信度</button>
+                <span class="sidebar-hint" style="color:var(--text-tertiary)">确认草稿无误后保存到 <code>tests/definitions/</code></span>
+              </div>
+              <div id="intentTrustPanel" style="display:none;margin-top:4px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg2)"></div>
+
+              <hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
+              <div style="font-weight:600;color:var(--text)">3. 运行用例</div>
+              <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+                <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary)">
+                  引擎
+                  <select id="intentEngine" class="url-input" style="width:auto;min-width:100px;color:var(--text)" onchange="onIntentEngineChange()">
+                    <option value="pw">playwright</option>
+                    <option value="ego" selected>ego</option>
+                  </select>
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
+                  <input type="checkbox" id="intentHeal" checked> 定位失败自愈
+                </label>
+                <label id="intentHeadedWrap" style="display:none;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
+                  <input type="checkbox" id="intentHeaded"> 有头浏览器
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
+                  <input type="checkbox" id="intentCompareAfter"> 跑完截图对比
+                </label>
+                <label id="intentKeepTabWrap" style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
+                  <input type="checkbox" id="intentKeepTab"> 保留 ego Space
+                </label>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <button type="button" class="btn btn-run" id="btnIntentRun" onclick="startIntentRun()" style="flex-shrink:0">
+                  <span class="btn-label">运行用例</span>
+                </button>
+                <button type="button" class="btn" id="btnIntentCancel" onclick="cancelIntentRun()" style="display:none">取消</button>
+                <span class="editor-run-status" id="intentRunStatus"></span>
+              </div>
+              <div id="intentRunHint" class="sidebar-hint" style="color:var(--text-tertiary)">
+                读取上方 YAML → 按语义步骤执行（playwright 或 ego）。有自愈时结果区可「应用自愈建议」（不改 assert）。
+              </div>
+              <div data-replay-list style="margin-top:4px"></div>
+              <div id="intentRunResult" style="display:none"></div>
+
+              <hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
+              <div style="font-weight:600;color:var(--text)">4. 样式守护</div>
+              <p class="sidebar-hint" style="color:var(--text-tertiary);margin:0">
+                用例稳定后：用上方同一 Intent → pw 截图 + computed style 指纹 → Golden 对比。
+              </p>
+              <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
+                <input type="checkbox" id="styleDriftGate" checked> Gate 模式（style-only）
+              </label>
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <button type="button" class="btn btn-run" id="btnStyleDriftRunFull" onclick="startStyleDriftFullFlow()" style="flex-shrink:0">
+                  <span class="btn-label">样式守护全流程</span>
+                </button>
+                <span class="editor-run-status" id="styleDriftRunStatus"></span>
+              </div>
+              <p class="sidebar-hint" id="styleDriftStatus" style="color:var(--text-tertiary);margin:0">运行 YAML 用例 → 截图对比 → 报告三档分类</p>
             </div>
           </div>
         </div>
@@ -1031,10 +1039,10 @@
               <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg2)">
                 <div style="font-weight:600;color:var(--text);margin-bottom:6px">快速验证 · 用一句话试流程</div>
                 <ul class="sidebar-hint" style="margin:0;padding-left:18px;line-height:1.7;color:var(--text-secondary)">
-                  <li>用自然语言描述步骤，默认 <strong>ego</strong> 引擎试跑（NL → Intent YAML → ego 执行）</li>
-                  <li>也可选 Playwright：生成临时脚本并执行</li>
+                  <li>用自然语言描述步骤并<strong>立刻执行</strong>，看能不能跑通（默认 ego；可选 Playwright）</li>
+                  <li>与 YAML Tab 的 Explore 不同：这里会判定通过/失败；Explore 只探索出草稿、不验通过</li>
+                  <li>试跑通过后点「转为 YAML 用例」，再到 YAML Tab 编辑保存 → 运行 → 样式守护</li>
                   <li>试跑完成后可点「复制试跑反馈」，把流程数据贴给 AI 排查</li>
-                  <li>试跑通过后，可点「转为 YAML 用例」跳到左侧 Tab 继续保存</li>
                 </ul>
               </div>
               <div>
@@ -6492,11 +6500,14 @@ function renderExploreResult(msg) {
   box.style.display = 'block';
   if (msg.ok && msg.previewYaml) {
     const editor = document.getElementById('intentYamlText');
-    if (editor) editor.value = msg.previewYaml;
+    if (editor) {
+      editor.value = msg.previewYaml;
+      editor.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
     box.innerHTML = `
-      <div style="font-weight:700;margin-bottom:8px;color:var(--green)">探索完成 · 预览已填入编辑器</div>
+      <div style="font-weight:700;margin-bottom:8px;color:var(--green)">探索完成 · 预览已填入下方编辑器</div>
       <div class="sidebar-hint">目录：<code>${escHtml(msg.outRel || '')}</code></div>
-      <div class="sidebar-hint" style="margin-top:6px">确认后切到「YAML 用例」点「保存定义」写入 tests/definitions/</div>
+      <div class="sidebar-hint" style="margin-top:6px">请确认编辑器内容，再点「保存定义」写入 <code>tests/definitions/</code></div>
     `;
   } else {
     box.innerHTML = `
