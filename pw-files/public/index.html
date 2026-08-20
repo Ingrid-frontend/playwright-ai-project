@@ -1015,11 +1015,13 @@
                   <span class="btn-label">运行用例</span>
                 </button>
                 <button type="button" class="btn" id="btnIntentSave" onclick="saveIntentYaml()">保存定义</button>
+                <button type="button" class="btn" id="btnIntentTrust" onclick="refreshIntentTrust()">可信度</button>
                 <button type="button" class="btn" id="btnIntentCancel" onclick="cancelIntentRun()" style="display:none">取消</button>
                 <span class="editor-run-status" id="intentRunStatus"></span>
               </div>
+              <div id="intentTrustPanel" style="display:none;margin-top:4px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg2)"></div>
               <div id="intentRunHint" class="sidebar-hint" style="color:var(--text-tertiary)">
-                读取 YAML → 按语义步骤执行（playwright 或 ego）。截图在 <code>screenshots/intent/</code>；跑完可点「查看流程视频」。勾选「跑完截图对比」可走 UI 回归。
+                读取 YAML → 按语义步骤执行（playwright 或 ego）。有自愈时结果区可「应用自愈建议」（不改 assert）。点「可信度」查看历史。
               </div>
               <div data-replay-list style="margin-top:4px"></div>
               <div id="intentRunResult" style="display:none"></div>
@@ -1551,6 +1553,8 @@ let figmaCompareSeq = 0;
 let intentRunSeq = 0;
 let intentLoadSeq = 0;
 let intentLoadSilent = false;
+/** 最近一次 Intent 运行，用于自愈写回 */
+let lastIntentBoundary = null;
 let exploreSeq = 0;
 let egoAuditSeq = 0;
 let lastNlRunContext = null;
@@ -5293,6 +5297,37 @@ function handleMessage(msg) {
       }
       refreshReplayList();
       break;
+    case 'heal:suggest:apply:start':
+      log('info', `[heal] 写回补丁中${msg.intent ? ` · ${msg.intent}` : ''}`);
+      break;
+    case 'heal:suggest:apply:done':
+      if (msg.ok) {
+        showToast(`已写回 ${msg.patchCount || 0} 条自愈建议`, 'ok');
+        log('ok', `[heal] 已写回 ${msg.intent || ''}`);
+        if (typeof msg.yamlText === 'string' && msg.yamlText.trim()) {
+          const ta = document.getElementById('intentYamlText');
+          if (ta) ta.value = msg.yamlText;
+          if (msg.intent) {
+            const pathEl = document.getElementById('intentPath');
+            if (pathEl) pathEl.value = msg.intent;
+          }
+        }
+      } else {
+        showToast(msg.message || '自愈写回失败', 'err');
+        log('err', `[heal] ${msg.message || '写回失败'}`);
+      }
+      break;
+    case 'trust:report:done':
+      switchToIntentRunTab();
+      renderIntentTrustPanel(msg);
+      if (msg.ok) {
+        const n = Array.isArray(msg.records) ? msg.records.length : 0;
+        showToast(n ? `可信度 ${n} 条` : '暂无可信度记录', 'ok');
+        log('ok', `[trust] 已加载 ${n} 条`);
+      } else {
+        showToast(msg.message || '可信度加载失败', 'err');
+      }
+      break;
     case 'style-drift:run-full:start':
       setStyleDriftBusy(true);
       switchToIntentRunTab();
@@ -5945,7 +5980,7 @@ function replayScriptCandidates(it) {
   if (it.engine === 'pw') {
     if (out) rels.push(`${out}/generated.ts`);
   } else if (out) {
-    rels.push(`${out}/intent.preview.yaml`, `${out}/intent.yaml`);
+    rels.push(`${out}/script.ego.js`, `${out}/intent.preview.yaml`, `${out}/intent.yaml`);
   }
   return [...new Set(rels.map((r) => String(r).replace(/\\/g, '/').replace(/^\.\//, '')).filter(Boolean))];
 }
@@ -5965,7 +6000,7 @@ async function loadReplayScript(it) {
       if (!res.ok) continue;
       const text = await res.text();
       if (!String(text).trim()) continue;
-      return { text, rel, kind: rel.endsWith('.ts') ? 'ts' : 'yaml' };
+      return { text, rel, kind: rel.endsWith('.ts') ? 'ts' : rel.endsWith('.js') ? 'js' : 'yaml' };
     } catch {
       /* ignore */
     }
@@ -6023,7 +6058,8 @@ async function runReplayScript(index) {
   }
   switchToIntentRunTab();
   setIntentRunBusy(true);
-  if (!send('replay:run', { outRel: it.outRel, engine: 'pw', env, entry, scriptRel: script.rel })) {
+  const runEngine = script.kind === 'js' ? 'ego' : 'pw';
+  if (!send('replay:run', { outRel: it.outRel, engine: runEngine, env, entry, scriptRel: script.rel })) {
     setIntentRunBusy(false);
   }
 }
@@ -6039,7 +6075,7 @@ async function openReplayScript(index) {
     showToast('未找到对应脚本文件', 'err');
     return;
   }
-  const kind = script.kind === 'ts' ? 'Playwright 脚本' : script.kind === 'yaml' ? 'Intent YAML' : '脚本';
+  const kind = script.kind === 'ts' ? 'Playwright 脚本' : script.kind === 'yaml' ? 'Intent YAML' : script.kind === 'js' ? 'Ego 脚本' : '脚本';
   const titleEl = document.getElementById('replayScriptModalTitle');
   const pathEl = document.getElementById('replayScriptPath');
   const textEl = document.getElementById('replayScriptText');
@@ -6106,6 +6142,13 @@ function renderIntentRunResult(msg) {
   const box = document.getElementById('intentRunResult');
   if (!box) return;
   box.style.display = 'block';
+  lastIntentBoundary = {
+    outRel: msg.outRel || '',
+    intent: msg.intent || '',
+    trust: msg.trust || null,
+    healSuggest: msg.healSuggest || null,
+    reviewRequired: Boolean(msg.reviewRequired),
+  };
   const steps = Array.isArray(msg.steps) ? msg.steps : [];
   const stepRows = steps
     .map((step) => {
@@ -6129,14 +6172,159 @@ function renderIntentRunResult(msg) {
             : ''
         }</div>`
       : '';
+  const trust = msg.trust;
+  const trustLine = trust
+    ? `<div class="sidebar-hint" style="margin-bottom:8px">可信度：人设 <code>${escHtml(trust.trustLevel || '—')}</code> · 建议 <code>${escHtml(trust.suggestedTrustLevel || '—')}</code> · 连续通过 ${escHtml(String(trust.consecutivePass ?? 0))} · 自愈率 ${escHtml(String(Math.round((trust.healRate || 0) * 100)))}%</div>`
+    : '';
+  const reviewLine = msg.reviewRequired
+    ? `<div class="sidebar-hint" style="margin-bottom:8px;color:var(--orange,#d97706)">reviewRequired：合并前须人审</div>`
+    : '';
+  const alertLines = (trust?.alerts || [])
+    .map((a) => `<div class="sidebar-hint" style="margin-bottom:4px;color:var(--orange,#d97706)">⚠ ${escHtml(a)}</div>`)
+    .join('');
+  const hs = msg.healSuggest;
+  const patches = Array.isArray(hs?.patches) ? hs.patches : [];
+  const accepted = patches.filter((p) => p.accepted);
+  let healBlock = '';
+  if (patches.length) {
+    const rows = patches
+      .slice(0, 8)
+      .map((p) => {
+        const fields = Object.entries(p.fields || {})
+          .map(([k, v]) => `${escHtml(k)}=<code>${escHtml(String(v))}</code>`)
+          .join(' · ');
+        return `<div style="padding:4px 0;border-bottom:1px solid var(--border)"><code>${escHtml(p.stepId)}</code> ${p.accepted ? '已采纳' : '未采纳'} · ${fields}</div>`;
+      })
+      .join('');
+    healBlock = `
+      <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">
+        <div style="font-weight:600;margin-bottom:6px">自愈建议（不改 assert）</div>
+        <div class="sidebar-hint" style="margin-bottom:6px">${escHtml(hs.mdRel || 'heal-suggest.md')} · 可写回 ${accepted.length}/${patches.length}</div>
+        ${rows}
+        ${
+          accepted.length
+            ? `<div style="margin-top:8px"><button type="button" class="btn btn-run" onclick="applyHealSuggestFromUi()">应用已采纳补丁</button></div>`
+            : ''
+        }
+      </div>`;
+  }
+  const failLine = msg.failureSummaryRel
+    ? `<div class="sidebar-hint" style="margin-top:8px">失败排查包：<code>${escHtml(msg.failureSummaryRel)}</code></div>`
+    : '';
   box.innerHTML = `
     <div style="font-weight:700;margin-bottom:8px;color:${color}">${status}</div>
     <div class="sidebar-hint" style="margin-bottom:4px">引擎：<code>${escHtml(msg.engine || '')}</code> · 定义：<code>${escHtml(msg.intent || '')}</code></div>
     <div class="sidebar-hint" style="margin-bottom:8px">结果目录：<code>${escHtml(msg.outRel || '')}</code></div>
+    ${reviewLine}
+    ${trustLine}
+    ${alertLines}
     ${compareLine}
     <div>${stepRows || '<div class="sidebar-hint">无步骤结果</div>'}</div>
+    ${healBlock}
+    ${failLine}
     ${flowReplayButtonHtml(msg)}
   `;
+  if (trust) renderIntentTrustPanel({ ok: true, records: [trust], fromRun: true });
+}
+
+function applyHealSuggestFromUi() {
+  const ctx = lastIntentBoundary;
+  if (!ctx?.outRel) {
+    showToast('缺少最近一次运行目录', 'err');
+    return;
+  }
+  const pathEl = document.getElementById('intentPath')?.value?.trim() || '';
+  const targetIntent =
+    pathEl.startsWith('tests/definitions/') ? pathEl : ctx.intent || pathEl;
+  if (!targetIntent) {
+    showToast('缺少 Intent 路径（建议先选 definitions 下的 YAML）', 'err');
+    return;
+  }
+  const accepted = (ctx.healSuggest?.patches || []).filter((p) => p.accepted);
+  if (!accepted.length) {
+    showToast('没有已采纳的自愈补丁', 'err');
+    return;
+  }
+  if (
+    !confirm(
+      `将把 ${accepted.length} 条已采纳补丁写回：\n${targetIntent}\n\n仅改 click/fill/select，不会改 assert。继续？`,
+    )
+  ) {
+    return;
+  }
+  send('heal:suggest:apply', { runRel: ctx.outRel, intent: targetIntent });
+}
+
+function refreshIntentTrust() {
+  switchToIntentRunTab();
+  const status = document.getElementById('intentRunStatus');
+  if (status) {
+    status.textContent = '加载可信度…';
+    status.style.display = '';
+  }
+  const ok = send('trust:report', {});
+  if (!ok && status) status.textContent = '';
+  else log('info', '[trust] 请求可信度报告');
+}
+
+function renderIntentTrustPanel(msg) {
+  const panel = document.getElementById('intentTrustPanel');
+  const status = document.getElementById('intentRunStatus');
+  if (status && status.textContent === '加载可信度…') status.textContent = '';
+  if (!panel) {
+    showToast('找不到可信度面板，请硬刷新页面 (Cmd+Shift+R)', 'err');
+    return;
+  }
+  try {
+    const records = Array.isArray(msg.records) ? msg.records : [];
+    panel.style.display = 'block';
+    if (!records.length) {
+      panel.innerHTML = `<div style="font-weight:600;margin-bottom:6px">Intent 可信度</div><div class="sidebar-hint">暂无记录（先运行用例）</div>`;
+      panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      return;
+    }
+    const rows = records
+      .slice(0, msg.fromRun ? 1 : 20)
+      .map((r) => {
+        const alert = (r.alerts || []).length ? escHtml(r.alerts.join('；')) : '—';
+        return `<tr>
+        <td style="padding:4px 6px">${escHtml(r.name || r.intentKey)}</td>
+        <td style="padding:4px 6px"><code>${escHtml(r.trustLevel || '—')}</code></td>
+        <td style="padding:4px 6px"><code>${escHtml(r.suggestedTrustLevel || '—')}</code></td>
+        <td style="padding:4px 6px">${escHtml(String(r.passed ?? 0))}/${escHtml(String(r.runs ?? 0))}</td>
+        <td style="padding:4px 6px">${escHtml(String(Math.round((r.healRate || 0) * 100)))}%</td>
+        <td style="padding:4px 6px;color:var(--text-secondary)">${alert}</td>
+      </tr>`;
+      })
+      .join('');
+    const title = msg.fromRun ? '本次可信度' : 'Intent 可信度';
+    const watch = msg.watchCount != null ? ` · 需关注 ${msg.watchCount}` : '';
+    panel.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
+      <div style="font-weight:600">${title}${watch}</div>
+      ${msg.fromRun ? `<button type="button" class="btn" onclick="refreshIntentTrust()">查看全部</button>` : ''}
+    </div>
+    <div style="overflow:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead>
+          <tr style="text-align:left;color:var(--text-secondary)">
+            <th style="padding:4px 6px">用例</th>
+            <th style="padding:4px 6px">人设</th>
+            <th style="padding:4px 6px">建议</th>
+            <th style="padding:4px 6px">通过</th>
+            <th style="padding:4px 6px">自愈率</th>
+            <th style="padding:4px 6px">告警</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } catch (err) {
+    showToast(`可信度渲染失败: ${err?.message || err}`, 'err');
+    log('err', `[trust] render failed: ${err?.message || err}`);
+  }
 }
 
 function setExploreBusy(busy) {

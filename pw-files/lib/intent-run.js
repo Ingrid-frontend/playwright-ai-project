@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { send, logLine, stripAnsi, errText } = require('./ws-safe');
+const { collectRunBoundary } = require('./intent-boundary');
 
 function resolveIntentPath(repoRoot, intentRel) {
   const rel = String(intentRel || '').trim().replace(/\\/g, '/');
@@ -223,6 +224,7 @@ async function runIntent(ws, session, msg = {}, deps) {
   }
 
   const ok = runResult.code === 0 && result?.passed === true;
+  const boundary = collectRunBoundary(repoRoot, outAbs, resolved.rel);
   const payload = {
     ok,
     outRel,
@@ -235,7 +237,10 @@ async function runIntent(ws, session, msg = {}, deps) {
     videoRel: result?.videoRel,
     replayRel: result?.replayRel,
     failureBundleRel: result?.failureBundleRel,
-    failureSummaryRel: result?.failureSummaryRel,
+    failureSummaryRel: result?.failureSummaryRel || boundary.failureSummaryRel,
+    trust: boundary.trust || undefined,
+    healSuggest: boundary.healSuggest || undefined,
+    reviewRequired: boundary.reviewRequired,
     error: result?.error || (runResult.error ? String(runResult.error) : undefined),
     exitCode: runResult.code,
     compareAfter,
@@ -245,6 +250,16 @@ async function runIntent(ws, session, msg = {}, deps) {
   };
   send(ws, 'intent:run:done', payload);
   logLine(ws, ok ? '[intent] 通过' : '[intent] 未通过', ok ? 'ok' : 'err');
+  if (boundary.trust?.alerts?.length) {
+    for (const a of boundary.trust.alerts) logLine(ws, `[trust] ${a}`, 'warn');
+  }
+  if (boundary.healSuggest?.patches?.length) {
+    logLine(
+      ws,
+      `[heal] 建议补丁 ${boundary.healSuggest.patches.length} 条 · ${boundary.healSuggest.mdRel || 'heal-suggest.md'}`,
+      'info',
+    );
+  }
 }
 
 module.exports = {

@@ -127,11 +127,12 @@ AI_TEST_PROVIDER: openai
 
 边界总览：[ai-test-boundaries.md](./ai-test-boundaries.md)。
 
-| 能力 | 命令 |
-|------|------|
-| Intent 元数据 | YAML 可选 `reviewRequired`、`trustLevel`（`trial`/`stable`/`watch`） |
-| 自愈建议补丁 | 运行产物目录下的 `heal-suggest.json` / `heal-suggest.md`；`npm run heal:suggest` |
-| 可信度报告 | `npm run trust:report`（`results/history/intent-trust/`） |
+| 能力 | Studio | CLI |
+|------|--------|-----|
+| Intent 元数据 | YAML 可写 `reviewRequired`、`trustLevel` | 同左 |
+| 运行后可信度 | YAML Tab 结果区 +「可信度」按钮 | `npm run trust:report` |
+| 自愈建议 | 结果区展示补丁；「应用已采纳补丁」人确认后写回 | `npm run heal:suggest` |
+| 用例挖掘 | — | `npm run mine:cases` |
 
 `assert` 步骤永不自愈；建议补丁只覆盖 click/fill/select 的 `description` / `value` / `locatorHint`。
 
@@ -139,5 +140,6 @@ AI_TEST_PROVIDER: openai
 
 | 日期 | 变更 |
 |------|------|
+| 2026-08-20 | Studio YAML Tab 接入 trust 面板与 heal-suggest 应用 |
 | 2026-08-20 | 补充 trust / heal-suggest / reviewRequired；链到 ai-test-boundaries |
 | 2026-08-18 | Tab 改名 YAML 用例 / 口语试跑；口语试跑→YAML 转换；样式守护并入 YAML Tab；火山方舟启动检测 |

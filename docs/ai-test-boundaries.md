@@ -54,8 +54,9 @@ AI 生成 / Explore → intent:run（可 heal）→ 失败包 + heal-suggest
 
 ## 相关命令
 
-| 命令 | 作用 |
+| 命令 / 入口 | 作用 |
 |------|------|
+| Studio → YAML 用例 | 运行后展示 trust / heal-suggest；「应用已采纳补丁」「可信度」 |
 | `npm run intent:run -- --intent=...` | 执行 Intent（默认 heal on；assert 除外） |
 | `npm run heal:suggest -- --run=<dir>` | 从运行产物生成/查看自愈建议补丁 |
 | `npm run heal:suggest -- --run=<dir> --intent=... --apply` | 人确认后写回非 assert 字段 |

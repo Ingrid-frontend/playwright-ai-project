@@ -63,6 +63,8 @@ function createRepoHandlers(ctx) {
     getIntentDefinition,
     saveIntentDefinition,
     cancelIntentRun,
+    applyHealSuggest,
+    sendTrustReport,
     runEgoAudit,
     runEgoNlFlow,
     runEgoExplore,
@@ -341,6 +343,18 @@ function createRepoHandlers(ctx) {
         getSessionAccountProfile,
         runRepoCompareReport,
       });
+    },
+
+    'heal:suggest:apply': async (ws, session, _sessionId, msg) => {
+      await applyHealSuggest(ws, session, msg, {
+        resolveRepoRoot,
+        spawn,
+        buildRepoSpawnEnv,
+      });
+    },
+
+    'trust:report': async (ws) => {
+      sendTrustReport(ws, { resolveRepoRoot });
     },
 
     'style-drift:run-full': async (ws, session, _sessionId, msg) => {
