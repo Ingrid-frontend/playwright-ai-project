@@ -11,13 +11,7 @@
     "pixelScriptPrefixes": ["intent/"]
   },
   "ignoreRegions": [],
-  "maskSelectors": [
-    { "selector": ".ant-badge-count, .ant-scroll-number, .ant-badge-dot" },
-    { "selector": ".ant-avatar, [class*='avatar']" },
-    { "selector": "time, .ant-statistic-content, [class*='datetime'], [class*='DateTime']" },
-    { "selector": ".ant-pagination, .advanced-table-footer" },
-    { "selector": ".ant-table-tbody" }
-  ],
+  "maskSelectors": [],
   "viewports": [
     { "name": "desktop", "width": 1280, "height": 720, "default": true },
     { "name": "mobile", "width": 375, "height": 812, "enabled": false }
