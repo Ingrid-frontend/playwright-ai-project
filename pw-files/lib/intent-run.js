@@ -67,6 +67,57 @@ function saveIntentDefinition(repoRoot, msg = {}) {
   return { path: rel };
 }
 
+/** 批量删除 tests/definitions 下的 YAML 用例 */
+function deleteIntentDefinitions(repoRoot, paths = []) {
+  const deleted = [];
+  const skipped = [];
+  const seen = new Set();
+  for (const raw of paths) {
+    let rel = String(raw || '').trim().replace(/\\/g, '/');
+    if (!rel) continue;
+    if (!rel.includes('/')) rel = `tests/definitions/${rel}`;
+    if (!rel.startsWith('tests/definitions/') || rel.includes('..') || path.isAbsolute(rel)) {
+      skipped.push({ path: String(raw || ''), reason: '仅允许 tests/definitions/' });
+      continue;
+    }
+    if (!/\.ya?ml$/i.test(rel)) {
+      skipped.push({ path: rel, reason: '不是 yaml 文件' });
+      continue;
+    }
+    // 禁止删到 definitions 目录本身或子目录外的路径
+    const parts = rel.split('/').filter(Boolean);
+    if (parts.length !== 3) {
+      skipped.push({ path: rel, reason: '仅允许 definitions 根下单层文件' });
+      continue;
+    }
+    if (seen.has(rel)) continue;
+    seen.add(rel);
+    const abs = path.join(repoRoot, rel);
+    if (!fs.existsSync(abs)) {
+      skipped.push({ path: rel, reason: '不存在' });
+      continue;
+    }
+    let st;
+    try {
+      st = fs.statSync(abs);
+    } catch {
+      skipped.push({ path: rel, reason: '无法读取' });
+      continue;
+    }
+    if (!st.isFile()) {
+      skipped.push({ path: rel, reason: '不是文件' });
+      continue;
+    }
+    try {
+      fs.unlinkSync(abs);
+      deleted.push(rel);
+    } catch (err) {
+      skipped.push({ path: rel, reason: errText(err) || '删除失败' });
+    }
+  }
+  return { deleted, skipped };
+}
+
 async function runIntent(ws, session, msg = {}, deps) {
   const {
     resolveRepoRoot,
@@ -267,5 +318,6 @@ module.exports = {
   listIntentDefinitions,
   getIntentDefinition,
   saveIntentDefinition,
+  deleteIntentDefinitions,
   resolveIntentPath,
 };

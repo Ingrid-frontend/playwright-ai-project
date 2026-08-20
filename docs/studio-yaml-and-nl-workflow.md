@@ -132,6 +132,8 @@ AI_TEST_PROVIDER: openai
 | Intent 元数据 | YAML 可写 `reviewRequired`、`trustLevel` | 同左 |
 | 运行后可信度 | YAML Tab 结果区 +「可信度」按钮 | `npm run trust:report` |
 | 自愈建议 | 结果区展示补丁；「应用已采纳补丁」人确认后写回 | `npm run heal:suggest` |
+| 流程回放批量删除 | 列表勾选「删除所选」/「清空列表」 | — |
+| YAML 用例批量删除 | definitions 勾选「删除所选」/「清空全部」 | — |
 | 用例挖掘 | — | `npm run mine:cases` |
 
 `assert` 步骤永不自愈；建议补丁只覆盖 click/fill/select 的 `description` / `value` / `locatorHint`。

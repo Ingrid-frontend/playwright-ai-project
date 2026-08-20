@@ -975,6 +975,7 @@
                   <button type="button" class="btn" style="font-size:var(--fs-sm);padding:4px 10px" onclick="refreshIntentList()">刷新</button>
                   <button type="button" class="btn" style="font-size:var(--fs-sm);padding:4px 10px" onclick="loadIntentYaml()">重新加载</button>
                 </div>
+                <div id="intentDefManage" style="display:none;margin-top:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg2)"></div>
               </div>
               <div>
                 <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">YAML 路径</label>
@@ -5218,8 +5219,33 @@ function handleMessage(msg) {
     case 'intent:list:done':
       renderIntentPresetList(msg.items || []);
       break;
+    case 'intent:delete:done':
+      if (msg.ok) {
+        showToast(msg.message || `已删除 ${msg.deleted?.length || 0} 条`, 'ok');
+        log('ok', `[intent] ${msg.message || '已删除'}`);
+        const pathEl = document.getElementById('intentPath');
+        const cur = pathEl?.value?.trim() || '';
+        if (cur && Array.isArray(msg.deleted) && msg.deleted.includes(cur)) {
+          if (pathEl) pathEl.value = '';
+          const editor = document.getElementById('intentYamlText');
+          if (editor) editor.value = '';
+        }
+      } else {
+        showToast(msg.message || '删除失败', 'err');
+        log('err', `[intent] ${msg.message || '删除失败'}`);
+      }
+      break;
     case 'replay:list:done':
       renderReplayList(msg.items || []);
+      break;
+    case 'replay:delete:done':
+      if (msg.ok) {
+        showToast(msg.message || `已删除 ${msg.deleted?.length || 0} 条`, 'ok');
+        log('ok', `[replay] ${msg.message || '已删除'}`);
+      } else {
+        showToast(msg.message || '删除失败', 'err');
+        log('err', `[replay] ${msg.message || '删除失败'}`);
+      }
       break;
     case 'replay:summary:start': {
       const hint = document.getElementById('replaySummaryHint');
@@ -5844,19 +5870,23 @@ function refreshIntentList() {
   send('intent:list', {});
 }
 
+let lastIntentDefItems = [];
+
 function renderIntentPresetList(items) {
+  const list = Array.isArray(items) ? items : [];
+  lastIntentDefItems = list;
   const select = document.getElementById('intentPreset');
   const current = document.getElementById('intentPath')?.value?.trim() || '';
-  const opts = items.length
-    ? items.map((item) => `<option value="${escHtml(item.path)}">${escHtml(item.name)}</option>`).join('')
+  const opts = list.length
+    ? list.map((item) => `<option value="${escHtml(item.path)}">${escHtml(item.name)}</option>`).join('')
     : '<option value="">（tests/definitions 为空）</option>';
   if (select) {
     select.innerHTML = opts + '<option value="__custom__">自定义路径…</option>';
-    const match = items.find((item) => item.path === current);
-    select.value = match ? match.path : items[0]?.path || '__custom__';
+    const match = list.find((item) => item.path === current);
+    select.value = match ? match.path : list[0]?.path || '__custom__';
     const pathEl = document.getElementById('intentPath');
     const editor = document.getElementById('intentYamlText');
-    const nextPath = match?.path || items[0]?.path;
+    const nextPath = match?.path || list[0]?.path;
     if (pathEl && nextPath && !pathEl.value.trim()) {
       pathEl.value = nextPath;
     }
@@ -5865,11 +5895,95 @@ function renderIntentPresetList(items) {
       loadPath &&
       (loadPath.endsWith('.yaml') || loadPath.endsWith('.yml')) &&
       !editor?.value.trim() &&
-      items.some((item) => item.path === loadPath)
+      list.some((item) => item.path === loadPath)
     ) {
       loadIntentYaml(true);
     }
   }
+  renderIntentDefManage(list);
+}
+
+function renderIntentDefManage(items) {
+  const box = document.getElementById('intentDefManage');
+  if (!box) return;
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) {
+    box.style.display = 'none';
+    box.innerHTML = '';
+    return;
+  }
+  box.style.display = 'block';
+  const rows = list
+    .map(
+      (it) => `<label style="display:flex;align-items:center;gap:8px;padding:3px 0;cursor:pointer;font-size:var(--fs-xs)">
+      <input type="checkbox" class="intent-def-pick" data-path="${escHtml(it.path)}" onchange="syncIntentDefDeleteBar()">
+      <code style="color:var(--text-secondary)">${escHtml(it.name)}</code>
+    </label>`,
+    )
+    .join('');
+  box.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+      <span style="font-weight:600;font-size:var(--fs-xs)">批量管理 definitions</span>
+      <label style="display:flex;align-items:center;gap:4px;color:var(--text-secondary);cursor:pointer;font-size:var(--fs-xs)">
+        <input type="checkbox" id="intentDefPickAll" onchange="toggleIntentDefPickAll(this.checked)"> 全选
+      </label>
+      <button type="button" class="btn" id="btnIntentDefDeleteSelected" style="font-size:var(--fs-xs);padding:2px 8px" onclick="deleteSelectedIntentDefs()" disabled>删除所选</button>
+      <button type="button" class="btn" style="font-size:var(--fs-xs);padding:2px 8px" onclick="deleteAllIntentDefs()">清空全部</button>
+      <span class="sidebar-hint" id="intentDefDeleteHint" style="margin:0"></span>
+    </div>
+    <div style="max-height:140px;overflow:auto">${rows}</div>
+  `;
+  syncIntentDefDeleteBar();
+}
+
+function getSelectedIntentDefPaths() {
+  const set = new Set();
+  document.querySelectorAll('.intent-def-pick:checked').forEach((el) => {
+    const p = String(el.getAttribute('data-path') || '').trim();
+    if (p) set.add(p);
+  });
+  return [...set];
+}
+
+function syncIntentDefDeleteBar() {
+  const selected = getSelectedIntentDefPaths();
+  const btn = document.getElementById('btnIntentDefDeleteSelected');
+  if (btn) btn.disabled = selected.length === 0;
+  const hint = document.getElementById('intentDefDeleteHint');
+  if (hint) hint.textContent = selected.length ? `已选 ${selected.length} 条` : '';
+  const total = document.querySelectorAll('.intent-def-pick').length;
+  const all = document.getElementById('intentDefPickAll');
+  if (all) {
+    all.checked = total > 0 && selected.length === total;
+    all.indeterminate = selected.length > 0 && selected.length < total;
+  }
+}
+
+function toggleIntentDefPickAll(checked) {
+  document.querySelectorAll('.intent-def-pick').forEach((el) => {
+    el.checked = Boolean(checked);
+  });
+  syncIntentDefDeleteBar();
+}
+
+function deleteSelectedIntentDefs() {
+  const paths = getSelectedIntentDefPaths();
+  if (!paths.length) {
+    showToast('请先勾选要删除的 YAML 用例', 'err');
+    return;
+  }
+  if (!confirm(`确认删除所选 ${paths.length} 条 YAML 用例？\n仅删除 tests/definitions/ 下文件，不可恢复。`)) return;
+  send('intent:delete', { paths });
+}
+
+function deleteAllIntentDefs() {
+  const paths = lastIntentDefItems.map((it) => String(it.path || '').trim()).filter(Boolean);
+  if (!paths.length) {
+    showToast('列表为空', 'err');
+    return;
+  }
+  if (!confirm(`确认清空 tests/definitions 下全部 ${paths.length} 条 YAML 用例？\n不可恢复。`)) return;
+  send('intent:delete', { paths });
 }
 
 function onIntentPresetChange() {
@@ -6020,7 +6134,11 @@ function renderReplayList(items) {
           const url = rel ? (rel.startsWith('/') ? rel : `/${rel}`) : '';
           const mark = it.passed === true ? '通过' : it.passed === false ? '失败' : '';
           const color = it.passed === true ? 'var(--green)' : it.passed === false ? 'var(--red)' : 'var(--text-tertiary)';
+          const outRel = String(it.outRel || '').replace(/\\/g, '/');
           return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0;border-bottom:1px solid var(--border)">
+            <label style="display:flex;align-items:center;cursor:pointer" title="选择">
+              <input type="checkbox" class="replay-pick" data-out-rel="${escHtml(outRel)}" onchange="syncReplayDeleteBar()">
+            </label>
             <code>${escHtml(it.engine || '')}</code>
             <span style="flex:1;min-width:140px;color:var(--text)">${escHtml(it.title || it.outRel || '')}</span>
             <span style="color:${color};font-size:var(--fs-xs)">${escHtml(mark)}</span>
@@ -6031,10 +6149,72 @@ function renderReplayList(items) {
         })
         .join('')
     : `<div class="sidebar-hint">暂无回放。口语试跑或 YAML 用例跑完后会出现。</div>`;
-  const html = `<div style="font-weight:600;color:var(--text);margin:8px 0 4px">最近流程回放</div>${rows}`;
+  const toolbar = list.length
+    ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:4px 0 8px">
+        <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer;font-size:var(--fs-xs)">
+          <input type="checkbox" id="replayPickAll" onchange="toggleReplayPickAll(this.checked)"> 全选
+        </label>
+        <button type="button" class="btn" id="btnReplayDeleteSelected" style="font-size:var(--fs-xs);padding:2px 8px" onclick="deleteSelectedReplays()" disabled>删除所选</button>
+        <button type="button" class="btn" style="font-size:var(--fs-xs);padding:2px 8px" onclick="deleteAllListedReplays()">清空列表</button>
+        <span class="sidebar-hint" id="replayDeleteHint" style="margin:0"></span>
+      </div>`
+    : '';
+  const html = `<div style="font-weight:600;color:var(--text);margin:8px 0 4px">最近流程回放</div>${toolbar}${rows}`;
   document.querySelectorAll('[data-replay-list]').forEach((el) => {
     el.innerHTML = html;
   });
+  syncReplayDeleteBar();
+}
+
+function getSelectedReplayOutRels() {
+  const set = new Set();
+  document.querySelectorAll('.replay-pick:checked').forEach((el) => {
+    const rel = String(el.getAttribute('data-out-rel') || '').trim();
+    if (rel) set.add(rel);
+  });
+  return [...set];
+}
+
+function syncReplayDeleteBar() {
+  const selected = getSelectedReplayOutRels();
+  document.querySelectorAll('#btnReplayDeleteSelected').forEach((btn) => {
+    btn.disabled = selected.length === 0;
+  });
+  document.querySelectorAll('#replayDeleteHint').forEach((el) => {
+    el.textContent = selected.length ? `已选 ${selected.length} 条` : '';
+  });
+  const total = document.querySelectorAll('.replay-pick').length;
+  document.querySelectorAll('#replayPickAll').forEach((el) => {
+    el.checked = total > 0 && selected.length === total;
+    el.indeterminate = selected.length > 0 && selected.length < total;
+  });
+}
+
+function toggleReplayPickAll(checked) {
+  document.querySelectorAll('.replay-pick').forEach((el) => {
+    el.checked = Boolean(checked);
+  });
+  syncReplayDeleteBar();
+}
+
+function deleteSelectedReplays() {
+  const outRels = getSelectedReplayOutRels();
+  if (!outRels.length) {
+    showToast('请先勾选要删除的回放', 'err');
+    return;
+  }
+  if (!confirm(`确认删除所选 ${outRels.length} 条流程回放？\n将移除对应 results 目录，不可恢复。`)) return;
+  send('replay:delete', { outRels });
+}
+
+function deleteAllListedReplays() {
+  const outRels = lastReplayItems.map((it) => String(it.outRel || '').trim()).filter(Boolean);
+  if (!outRels.length) {
+    showToast('列表为空', 'err');
+    return;
+  }
+  if (!confirm(`确认清空当前列表 ${outRels.length} 条流程回放？\n将移除对应 results 目录，不可恢复。`)) return;
+  send('replay:delete', { outRels });
 }
 
 async function runReplayScript(index) {

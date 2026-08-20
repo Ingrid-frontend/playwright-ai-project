@@ -32,7 +32,7 @@ function detectEngine(dirAbs, dirName, result) {
 }
 
 function findScript(dirAbs, repoRoot) {
-  const names = ['intent.preview.yaml', 'generated.ts', 'intent.yaml'];
+  const names = ['script.ego.js', 'intent.preview.yaml', 'generated.ts', 'intent.yaml'];
   for (const name of names) {
     const abs = path.join(dirAbs, name);
     if (!fs.existsSync(abs)) continue;
@@ -45,7 +45,7 @@ function findScript(dirAbs, repoRoot) {
     if (text.length > 80_000) text = `${text.slice(0, 80_000)}\n…`;
     return {
       scriptRel: path.relative(repoRoot, abs).replace(/\\/g, '/'),
-      scriptKind: name.endsWith('.ts') ? 'ts' : 'yaml',
+      scriptKind: name.endsWith('.ts') ? 'ts' : name.endsWith('.js') ? 'js' : 'yaml',
       scriptText: text,
     };
   }
@@ -157,6 +157,51 @@ function allowedReplayRel(rel) {
   return '';
 }
 
+/** 批量删除流程回放目录（按 outRel） */
+function deleteFlowReplays(repoRoot, outRels = []) {
+  const deleted = [];
+  const skipped = [];
+  const seen = new Set();
+  for (const raw of outRels) {
+    const rel = allowedReplayRel(raw);
+    if (!rel) {
+      skipped.push({ outRel: String(raw || ''), reason: '非法路径' });
+      continue;
+    }
+    if (seen.has(rel)) continue;
+    seen.add(rel);
+    // 只删运行根目录，禁止删到更深层或根本身
+    const parts = rel.split('/').filter(Boolean);
+    if (parts.length < 3) {
+      skipped.push({ outRel: rel, reason: '路径过短' });
+      continue;
+    }
+    const abs = path.join(repoRoot, rel);
+    if (!fs.existsSync(abs)) {
+      skipped.push({ outRel: rel, reason: '不存在' });
+      continue;
+    }
+    let st;
+    try {
+      st = fs.statSync(abs);
+    } catch {
+      skipped.push({ outRel: rel, reason: '无法读取' });
+      continue;
+    }
+    if (!st.isDirectory()) {
+      skipped.push({ outRel: rel, reason: '不是目录' });
+      continue;
+    }
+    try {
+      fs.rmSync(abs, { recursive: true, force: true });
+      deleted.push(rel);
+    } catch (err) {
+      skipped.push({ outRel: rel, reason: errText(err) || '删除失败' });
+    }
+  }
+  return { deleted, skipped };
+}
+
 async function runFlowReplay(ws, session, msg = {}, deps) {
   const {
     resolveRepoRoot,
@@ -200,6 +245,85 @@ async function runFlowReplay(ws, session, msg = {}, deps) {
       },
       deps,
     );
+    return;
+  }
+
+  if (script.scriptKind === 'js') {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const runOutRel = `results/ego-studio/${stamp}-approve-filter-rerun`;
+    const runAbs = path.join(repoRoot, runOutRel);
+    fs.mkdirSync(runAbs, { recursive: true });
+    session.replayRunSeq = (session.replayRunSeq || 0) + 1;
+    const seq = session.replayRunSeq;
+    send(ws, 'replay:run:start', { seq, outRel: runOutRel, engine: 'ego', env, scriptRel: script.scriptRel });
+    logLine(ws, `[replay] 运行 ${script.scriptRel} · engine=ego-js · env=${env}`, 'info');
+
+    const spawnEnv = { ...buildRepoSpawnEnv(session) };
+    spawnEnv.HL_STUDIO_ROOT = repoRoot;
+    spawnEnv.HL_STUDIO_OUT = runAbs;
+    const homeBin = path.join(require('os').homedir(), '.local/bin');
+    if (spawnEnv.PATH && !String(spawnEnv.PATH).includes(homeBin)) {
+      spawnEnv.PATH = homeBin + path.delimiter + spawnEnv.PATH;
+    }
+
+    if (session.replayRunProc) {
+      try {
+        session.replayRunProc.kill('SIGTERM');
+      } catch {
+        /* ignore */
+      }
+    }
+    const proc = spawn('ego-browser', ['nodejs'], {
+      cwd: repoRoot,
+      env: spawnEnv,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    session.replayRunProc = proc;
+    try {
+      fs.createReadStream(path.join(repoRoot, script.scriptRel)).pipe(proc.stdin);
+    } catch (error) {
+      send(ws, 'error', { message: '无法读取 ego 脚本' });
+      send(ws, 'replay:run:done', { ok: false, message: errText(error), outRel: runOutRel });
+      return;
+    }
+    const runResult = await new Promise((resolve) => {
+      proc.stdout.on('data', (d) => {
+        const text = stripAnsi(d.toString()).trimEnd();
+        if (text) logLine(ws, text, 'dim');
+      });
+      proc.stderr.on('data', (d) => {
+        const text = stripAnsi(d.toString()).trimEnd();
+        if (text) logLine(ws, text, 'warn');
+      });
+      proc.on('error', (error) => {
+        if (session.replayRunProc === proc) session.replayRunProc = null;
+        resolve({ code: null, error: errText(error) });
+      });
+      proc.on('close', (code) => {
+        if (session.replayRunProc === proc) session.replayRunProc = null;
+        resolve({ code, error: null });
+      });
+    });
+    if (session.replayRunSeq !== seq) return;
+
+    const result = readJson(path.join(runAbs, 'run', 'result.json')) || readJson(path.join(runAbs, 'result.json'));
+    const ok = runResult.code === 0 && result?.passed !== false;
+    const payload = {
+      ok,
+      seq,
+      engine: 'ego',
+      outRel: runOutRel,
+      intent: script.scriptRel,
+      passed: result?.passed ?? false,
+      steps: Array.isArray(result?.steps) ? result.steps : [],
+      videoRel: result?.videoRel,
+      replayRel: result?.replayRel || `${runOutRel}/run/flow.html`,
+      error: result?.error || (runResult.error ? String(runResult.error) : undefined),
+      exitCode: runResult.code,
+      message: ok ? undefined : result?.error || runResult.error || '执行未通过',
+    };
+    send(ws, 'replay:run:done', payload);
+    logLine(ws, ok ? '[replay] 通过' : '[replay] 未通过', ok ? 'ok' : 'err');
     return;
   }
 
@@ -291,4 +415,4 @@ async function runFlowReplay(ws, session, msg = {}, deps) {
   logLine(ws, ok ? '[replay] 通过' : '[replay] 未通过', ok ? 'ok' : 'err');
 }
 
-module.exports = { listFlowReplays, collectReplaySummaryRows, runFlowReplay };
+module.exports = { listFlowReplays, collectReplaySummaryRows, runFlowReplay, deleteFlowReplays, allowedReplayRel };

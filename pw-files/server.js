@@ -54,7 +54,7 @@ const { getLlmStartupLines } = require('./lib/llm-env-status');
 const { buildHtmlReport } = require('./lib/report-html');
 const { runRepoPromoteBaseline, runRepoVisualReview } = require('./lib/repo-baseline');
 const { runFigmaCompare } = require('./lib/figma-compare');
-const { runIntent, listIntentDefinitions, getIntentDefinition, saveIntentDefinition } = require('./lib/intent-run');
+const { runIntent, listIntentDefinitions, getIntentDefinition, saveIntentDefinition, deleteIntentDefinitions } = require('./lib/intent-run');
 const { applyHealSuggest, sendTrustReport } = require('./lib/intent-boundary');
 const { runStyleDriftFullFlow } = require('./lib/style-drift-run');
 const { runEgoAudit } = require('./lib/ego-audit');
@@ -367,6 +367,7 @@ const { sendHello, handleMessage } = createWsDispatcher({
     listIntentDefinitions,
     getIntentDefinition,
     saveIntentDefinition,
+    deleteIntentDefinitions,
     cancelIntentRun,
     applyHealSuggest,
     sendTrustReport,

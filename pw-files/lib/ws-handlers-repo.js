@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { listFlowReplays, runFlowReplay } = require('./flow-replay-list');
+const { listFlowReplays, runFlowReplay, deleteFlowReplays } = require('./flow-replay-list');
 const { runReplaySummary } = require('./replay-summary');
 
 function createRepoHandlers(ctx) {
@@ -62,6 +62,7 @@ function createRepoHandlers(ctx) {
     listIntentDefinitions,
     getIntentDefinition,
     saveIntentDefinition,
+    deleteIntentDefinitions,
     cancelIntentRun,
     applyHealSuggest,
     sendTrustReport,
@@ -291,6 +292,27 @@ function createRepoHandlers(ctx) {
       send(ws, 'replay:list:done', { items: listFlowReplays(repoRoot) });
     },
 
+    'replay:delete': async (ws, _session, _sessionId, msg) => {
+      const repoRoot = resolveRepoRoot();
+      const outRels = Array.isArray(msg.outRels) ? msg.outRels : msg.outRel ? [msg.outRel] : [];
+      if (!outRels.length) {
+        send(ws, 'error', { message: '请选择要删除的流程回放' });
+        send(ws, 'replay:delete:done', { ok: false, message: '未选择条目' });
+        return;
+      }
+      const result = deleteFlowReplays(repoRoot, outRels);
+      const ok = result.deleted.length > 0;
+      send(ws, 'replay:delete:done', {
+        ok,
+        deleted: result.deleted,
+        skipped: result.skipped,
+        message: ok
+          ? `已删除 ${result.deleted.length} 条`
+          : result.skipped[0]?.reason || '删除失败',
+      });
+      send(ws, 'replay:list:done', { items: listFlowReplays(repoRoot) });
+    },
+
     'replay:run': async (ws, session, _sessionId, msg) => {
       await runFlowReplay(ws, session, msg, {
         resolveRepoRoot,
@@ -331,6 +353,27 @@ function createRepoHandlers(ctx) {
         return;
       }
       send(ws, 'intent:save:done', { ok: true, path: result.path });
+      send(ws, 'intent:list:done', { items: listIntentDefinitions(repoRoot) });
+    },
+
+    'intent:delete': async (ws, _session, _sessionId, msg) => {
+      const repoRoot = resolveRepoRoot();
+      const paths = Array.isArray(msg.paths) ? msg.paths : msg.path ? [msg.path] : [];
+      if (!paths.length) {
+        send(ws, 'error', { message: '请选择要删除的 YAML 用例' });
+        send(ws, 'intent:delete:done', { ok: false, message: '未选择条目' });
+        return;
+      }
+      const result = deleteIntentDefinitions(repoRoot, paths);
+      const ok = result.deleted.length > 0;
+      send(ws, 'intent:delete:done', {
+        ok,
+        deleted: result.deleted,
+        skipped: result.skipped,
+        message: ok
+          ? `已删除 ${result.deleted.length} 条`
+          : result.skipped[0]?.reason || '删除失败',
+      });
       send(ws, 'intent:list:done', { items: listIntentDefinitions(repoRoot) });
     },
 
