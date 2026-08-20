@@ -9,6 +9,9 @@ export type ScreenshotMeta = {
   url?: string;
   title?: string;
   pageText?: string;
+  viewport?: { width?: number; height?: number; deviceScaleFactor?: number };
+  imageWidth?: number;
+  imageHeight?: number;
 };
 
 export type BaselineQualityIssue = {
@@ -66,6 +69,37 @@ export function evaluateMetaQuality(meta: ScreenshotMeta, fileLabel = 'meta'): B
     return { file: fileLabel, reason: 'title/pageText 像登录页文案' };
   }
 
+  const sizeIssue = evaluateViewportConsistency(meta, fileLabel);
+  if (sizeIssue) return sizeIssue;
+
+  return null;
+}
+
+/**
+ * 尺寸一致性：基线图必须是在约定视口下截的。
+ * 否则后续每次比对都会因尺寸不一致被判成整页差异，淹没真实衰退。
+ */
+export function evaluateViewportConsistency(
+  meta: ScreenshotMeta,
+  fileLabel = 'meta',
+): BaselineQualityIssue | null {
+  const vp = meta.viewport;
+  const expectedW = Number(vp?.width);
+  const expectedH = Number(vp?.height);
+  const dsf = Number(vp?.deviceScaleFactor) > 0 ? Number(vp!.deviceScaleFactor) : 1;
+  const actualW = Number(meta.imageWidth);
+  const actualH = Number(meta.imageHeight);
+  if (!(expectedW > 0 && expectedH > 0 && actualW > 0 && actualH > 0)) return null;
+
+  // fullPage 截图高度会超出视口，故只对宽度做严格校验，高度只要不小于视口即可
+  const wantW = Math.round(expectedW * dsf);
+  const wantH = Math.round(expectedH * dsf);
+  if (actualW !== wantW || actualH < wantH) {
+    return {
+      file: fileLabel,
+      reason: `截图尺寸 ${actualW}x${actualH} 与约定视口 ${wantW}x${wantH} 不匹配，基线会导致整页假阳性`,
+    };
+  }
   return null;
 }
 

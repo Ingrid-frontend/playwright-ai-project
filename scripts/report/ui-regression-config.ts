@@ -419,6 +419,21 @@ export function resolveScreenshotFullPage(): boolean {
   return loadUiRegressionConfig().screenshot?.fullPage === true;
 }
 
+/**
+ * 截图基准视口 + DPR。像素比对要求当前图与基线图尺寸严格一致，
+ * 因此非 Playwright 引擎（如 ego）也必须复用这里的值来覆盖真实窗口大小。
+ */
+export function resolveScreenshotViewport(): { width: number; height: number; deviceScaleFactor: number } {
+  const cfg = loadUiRegressionConfig();
+  const vp = resolveSnapshotViewports()[0] || cfg.viewports[0];
+  const dsf = Number(cfg.screenshot?.deviceScaleFactor);
+  return {
+    width: Number(vp?.width) > 0 ? Number(vp.width) : 1280,
+    height: Number(vp?.height) > 0 ? Number(vp.height) : 720,
+    deviceScaleFactor: Number.isFinite(dsf) && dsf > 0 ? dsf : 1,
+  };
+}
+
 export function resolveAiReviewConfig(): AiReviewConfig {
   const base = { ...(loadUiRegressionConfig().aiReview ?? DEFAULT_CONFIG.aiReview!) };
   const env = process.env.PLAYWRIGHT_UI_AI_REVIEW?.trim().toLowerCase();

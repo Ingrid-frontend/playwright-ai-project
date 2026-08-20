@@ -13,6 +13,7 @@ const {
   isEmptyShellDomHash,
   evaluateMetaQuality,
   assertRunEligibleForGolden,
+  evaluateViewportConsistency,
 } = tsxRequire(path.join(__dirname, '../../src/utils/baseline-quality.ts'), __filename);
 
 function main() {
@@ -55,6 +56,22 @@ function main() {
   );
   fs.writeFileSync(path.join(tmpGood, 'step-1-x.png'), Buffer.from([1, 2, 3]));
   assertRunEligibleForGolden(tmpGood);
+
+  // 视口一致性：尺寸对得上放行，对不上（如 2908x1640 vs 1280x720）拒绝
+  const okSize = { viewport: { width: 1280, height: 720, deviceScaleFactor: 1 }, imageWidth: 1280, imageHeight: 720 };
+  assert.strictEqual(evaluateViewportConsistency(okSize), null);
+
+  const fullPage = { viewport: { width: 1280, height: 720, deviceScaleFactor: 1 }, imageWidth: 1280, imageHeight: 4200 };
+  assert.strictEqual(evaluateViewportConsistency(fullPage), null, 'fullPage 高度超出视口应放行');
+
+  const drifted = { viewport: { width: 1280, height: 720, deviceScaleFactor: 1 }, imageWidth: 2908, imageHeight: 1640 };
+  assert.ok(evaluateViewportConsistency(drifted), '窗口漂移尺寸应被拒绝');
+
+  const dpr2 = { viewport: { width: 1280, height: 720, deviceScaleFactor: 2 }, imageWidth: 2560, imageHeight: 1440 };
+  assert.strictEqual(evaluateViewportConsistency(dpr2), null, 'DPR=2 应按倍数换算');
+
+  // 缺字段时不误判（老基线没有 viewport 元数据）
+  assert.strictEqual(evaluateViewportConsistency({ imageWidth: 1280, imageHeight: 720 }), null);
 
   console.log('✅ verify-baseline-quality passed');
 }

@@ -86,15 +86,19 @@ async function screenshotDashboardPng(): Promise<Buffer> {
   }
 }
 
-function imgElement(imgKey: string, title: string): Record<string, unknown> {
-  return {
+function imgElement(imgKey: string, title = ''): Record<string, unknown> {
+  const el: Record<string, unknown> = {
     tag: 'img',
-    title: { tag: 'plain_text', content: title },
     img_key: imgKey,
     mode: 'fit_horizontal',
-    alt: { tag: 'plain_text', content: title },
     preview: true,
   };
+  // 不传 title，避免卡片上多出一行「质量仪表盘」文案
+  if (title) {
+    el.title = { tag: 'plain_text', content: title };
+    el.alt = { tag: 'plain_text', content: title };
+  }
+  return el;
 }
 
 export function isChartCardEnabled(): boolean {
@@ -112,7 +116,7 @@ export async function buildChartCardElements(): Promise<ChartCardBuildResult | n
     const imgKey = await uploadMessageImage(token, dashboardPng, 'ui-dashboard.png');
 
     const elements: Array<Record<string, unknown>> = [
-      imgElement(imgKey, '质量仪表盘'),
+      imgElement(imgKey),
       { tag: 'div', text: { tag: 'lark_md', content: buildSummaryMarkdown() } },
     ];
 

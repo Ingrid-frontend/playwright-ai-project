@@ -1,0 +1,50 @@
+{
+  "capturedAt": "2026-08-20T06:12:05.212Z",
+  "viewport": {
+    "name": "desktop",
+    "width": 1280,
+    "height": 720,
+    "deviceScaleFactor": 1
+  },
+  "imageWidth": 1280,
+  "imageHeight": 720,
+  "layout": {
+    "horizontalOverflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280
+  },
+  "domHash": "BODY|1|",
+  "selectors": {
+    "golden-login-workbench-tab": {
+      "exists": true,
+      "bbox": {
+        "x": 240,
+        "y": 0,
+        "width": 42,
+        "height": 44
+      },
+      "domHash": "DIV|1|ant-tabs-tab-active ant-tabs-tab"
+    },
+    "golden-login-side-menu": {
+      "exists": true,
+      "bbox": {
+        "x": 0,
+        "y": 102,
+        "width": 220,
+        "height": 618
+      },
+      "domHash": "UL|14|ant-menu ant-menu-light ant-menu-root ant-menu-inline"
+    }
+  },
+  "styleFingerprint": {
+    "golden-login-workbench-tab": {
+      "color": "#FFFFFF",
+      "fontSize": "14px",
+      "fontWeight": "600"
+    }
+  },
+  "consoleErrors": [],
+  "pageErrors": [],
+  "snapshotName": "home",
+  "state": "normal"
+}

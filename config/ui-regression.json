@@ -16,8 +16,7 @@
     { "selector": ".ant-avatar, [class*='avatar']" },
     { "selector": "time, .ant-statistic-content, [class*='datetime'], [class*='DateTime']" },
     { "selector": ".ant-pagination, .advanced-table-footer" },
-    { "selector": ".ant-table-tbody" },
-    { "selector": "canvas, [class*='chart'], [class*='Chart']" }
+    { "selector": ".ant-table-tbody" }
   ],
   "viewports": [
     { "name": "desktop", "width": 1280, "height": 720, "default": true },

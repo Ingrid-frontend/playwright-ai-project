@@ -2,6 +2,7 @@ import { Frame, Page } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { PNG } from 'pngjs';
 import {
   loadUiRegressionConfig,
   resolveMaskSelectors,
@@ -28,6 +29,64 @@ function withViewportSuffix(filePath: string, vpName: string, isDefault: boolean
 
 export async function lockViewportForSnapshot(page: Page, viewport: SnapshotViewport): Promise<void> {
   await page.setViewportSize({ width: viewport.width, height: viewport.height });
+}
+
+function bandIsLetterbox(png: PNG, y0: number, y1: number): boolean {
+  const w = png.width;
+  const h = Math.min(y1, png.height);
+  if (y0 >= h) return true;
+  let non = 0;
+  const total = w * (h - y0);
+  if (total <= 0) return true;
+  for (let y = y0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (w * y + x) * 4;
+      if (png.data[i] < 250 || png.data[i + 1] < 250 || png.data[i + 2] < 250) non++;
+    }
+  }
+  return non / total < 0.01;
+}
+
+/**
+ * 部分环境下 page.screenshot 会产出大于 CSS 视口的画布，真实页面只在左上角
+ *（如 1600×900 / 2560×1440 中仅 1280×720 有内容）。统一裁到约定 CSS 尺寸。
+ */
+export function normalizeScreenshotToCssViewport(
+  filePath: string,
+  viewport: SnapshotViewport,
+  fullPage: boolean,
+): { width: number; height: number; cropped: boolean } {
+  if (!fs.existsSync(filePath)) {
+    return { width: 0, height: 0, cropped: false };
+  }
+  let png = PNG.sync.read(fs.readFileSync(filePath));
+  const wantW = viewport.width;
+  const wantH = viewport.height;
+  let cropped = false;
+
+  if (png.width > wantW && png.height >= wantH) {
+    const out = new PNG({ width: wantW, height: png.height });
+    PNG.bitblt(png, out, 0, 0, wantW, png.height, 0, 0);
+    png = out;
+    cropped = true;
+  }
+
+  const shouldCropHeight =
+    png.width === wantW &&
+    png.height > wantH &&
+    (!fullPage || bandIsLetterbox(png, wantH, png.height));
+
+  if (shouldCropHeight) {
+    const out = new PNG({ width: wantW, height: wantH });
+    PNG.bitblt(png, out, 0, 0, wantW, wantH, 0, 0);
+    png = out;
+    cropped = true;
+  }
+
+  if (cropped) {
+    fs.writeFileSync(filePath, PNG.sync.write(png));
+  }
+  return { width: png.width, height: png.height, cropped };
 }
 
 let freezeAnimationsApplied = false;
@@ -135,6 +194,7 @@ async function writeStepDiagnostics(
   viewport: SnapshotViewport,
   scriptKey?: string,
   snapshot?: { snapshotName?: string; state?: string },
+  imageSize?: { width: number; height: number },
 ): Promise<void> {
   if (process.env.SCREENSHOT_DIAGNOSTICS === '0') return;
   const bag = ensurePageDiag(page);
@@ -227,7 +287,16 @@ async function writeStepDiagnostics(
     JSON.stringify(
       {
         capturedAt: new Date().toISOString(),
-        viewport: { name: viewport.name, width: viewport.width, height: viewport.height },
+        // scale:'css' → 图像像素 = CSS 视口；deviceScaleFactor 固定记 1 供晋升闸门校验
+        viewport: {
+          name: viewport.name,
+          width: viewport.width,
+          height: viewport.height,
+          deviceScaleFactor: 1,
+        },
+        ...(imageSize && imageSize.width > 0
+          ? { imageWidth: imageSize.width, imageHeight: imageSize.height }
+          : {}),
         layout,
         domHash,
         selectors,
@@ -265,10 +334,23 @@ export async function captureScreenshotAtViewports(
     await lockViewportForSnapshot(page, vp);
     await applyMaskSelectors(page, opts.scriptKey);
     await page.screenshot({ path: outPath, fullPage, scale: SCREENSHOT_SCALE });
-    await writeStepDiagnostics(page, outPath, vp, opts.scriptKey, {
-      snapshotName: opts.snapshotName,
-      state: opts.state,
-    });
+    const imageSize = normalizeScreenshotToCssViewport(outPath, vp, fullPage);
+    if (imageSize.cropped) {
+      console.log(
+        `✂️  截图已裁至 CSS 视口 ${vp.width}x${vp.height}: ${path.basename(outPath)}`,
+      );
+    }
+    await writeStepDiagnostics(
+      page,
+      outPath,
+      vp,
+      opts.scriptKey,
+      {
+        snapshotName: opts.snapshotName,
+        state: opts.state,
+      },
+      imageSize,
+    );
     if (isDefault) primaryPath = outPath;
   }
 
