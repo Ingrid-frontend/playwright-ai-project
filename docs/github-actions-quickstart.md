@@ -258,6 +258,5 @@ npm audit fix
 
 ## 📚 相关文档
 
-- [GitHub部署配置指南](github-deployment.md)
 - [Playwright官方文档](https://playwright.dev/)
 - [GitHub Actions文档](https://docs.github.com/en/actions)

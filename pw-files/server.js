@@ -53,7 +53,6 @@ const { loadEnvFile } = require('./lib/load-env-file');
 const { getLlmStartupLines } = require('./lib/llm-env-status');
 const { buildHtmlReport } = require('./lib/report-html');
 const { runRepoPromoteBaseline, runRepoVisualReview } = require('./lib/repo-baseline');
-const { runFigmaCompare } = require('./lib/figma-compare');
 const { runIntent, listIntentDefinitions, getIntentDefinition, saveIntentDefinition, deleteIntentDefinitions } = require('./lib/intent-run');
 const { applyHealSuggest, sendTrustReport } = require('./lib/intent-boundary');
 const { runStyleDriftFullFlow } = require('./lib/style-drift-run');
@@ -362,7 +361,6 @@ const { sendHello, handleMessage } = createWsDispatcher({
     cancelRepoPipeline,
     cancelRepoTest,
     cancelRepoBatch,
-    runFigmaCompare,
     runIntent,
     listIntentDefinitions,
     getIntentDefinition,
@@ -415,7 +413,7 @@ wss.on('connection', (ws) => {
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────
-// Studio 进程读取项目根 .env（如 FIGMA_TOKEN / FEISHU_*），不覆盖已有环境变量
+// Studio 进程读取项目根 .env（如 FEISHU_*），不覆盖已有环境变量
 try { loadEnvFile(path.join(resolveRepoRoot(), '.env')); } catch { /* ignore */ }
 fixPlaywrightBrowsersEnv(process.env);
 

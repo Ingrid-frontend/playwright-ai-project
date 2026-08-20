@@ -159,7 +159,7 @@ chmod 755 tests/deprecated/errors
 - [README.md](../README.md) - 项目主文档
 - [Playwright配置](../playwright.config.ts) - Playwright配置文件
 - [错误收集器优化](error-reporter-optimization.md) - 优化详情文档
-- [GitHub部署](github-deployment.md) - GitHub部署指南
+- [GitHub Actions 快速开始](github-actions-quickstart.md) - CI 配置指南
 
 ## 🎉 总结
 

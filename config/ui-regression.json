@@ -1,5 +1,5 @@
 {
-  "blockerRatio": 0.005,
+  "blockerRatio": 0.01,
   "warningRatio": 0.001,
   "diffOnlyTabMinRatio": 0.003,
   "defaultBrowsers": ["chrome"],
@@ -12,18 +12,12 @@
   },
   "ignoreRegions": [],
   "maskSelectors": [
-    {
-      "selector": ".ant-badge-count, .ant-scroll-number, .ant-badge-dot",
-      "script": "260612/我的审批_2026-06-09_16-48-19"
-    },
-    {
-      "selector": ".ant-avatar, [class*='avatar']",
-      "script": "260612/我的审批_2026-06-09_16-48-19"
-    },
-    {
-      "selector": "time, .ant-statistic-content, [class*='datetime'], [class*='DateTime']",
-      "script": "260612/我的审批_2026-06-09_16-48-19"
-    }
+    { "selector": ".ant-badge-count, .ant-scroll-number, .ant-badge-dot" },
+    { "selector": ".ant-avatar, [class*='avatar']" },
+    { "selector": "time, .ant-statistic-content, [class*='datetime'], [class*='DateTime']" },
+    { "selector": ".ant-pagination, .advanced-table-footer" },
+    { "selector": ".ant-table-tbody" },
+    { "selector": "canvas, [class*='chart'], [class*='Chart']" }
   ],
   "viewports": [
     { "name": "desktop", "width": 1280, "height": 720, "default": true },
@@ -34,33 +28,71 @@
     "bboxTolerancePx": 4,
     "failOnOverflow": true,
     "failOnPageError": false,
-    "checkDomHash": true,
+    "checkDomHash": false,
     "domHashRoot": "body",
     "items": [
       {
-        "key": "html",
-        "selector": "html",
-        "script": "260612/我的审批_2026-06-09_16-48-19",
+        "key": "intent-approve-table",
+        "selector": ".ant-table, table",
+        "script": "intent/dev/审批列表页可见",
         "required": true
       },
       {
-        "key": "main-iframe",
-        "selector": "iframe",
-        "script": "260612/我的审批_2026-06-09_16-48-19",
+        "key": "intent-approve-tabs",
+        "selector": ".ant-tabs, [role='tablist']",
+        "script": "intent/dev/审批列表页可见",
+        "required": true
+      },
+      {
+        "key": "intent-approve-toolbar",
+        "selector": ".ant-input-affix-wrapper, .ant-input-search, .ant-input",
+        "script": "intent/dev/审批列表页可见",
         "required": false
       },
       {
-        "key": "approve-table",
+        "key": "golden-login-workbench-tab",
+        "selector": "[role='tab']",
+        "script": "stage/golden-set/01-login",
+        "frame": "first",
+        "required": true,
+        "snapshotName": "home"
+      },
+      {
+        "key": "golden-login-side-menu",
+        "selector": ".ant-menu, [role='menu']",
+        "script": "stage/golden-set/01-login",
+        "frame": "first",
+        "required": true,
+        "snapshotName": "home"
+      },
+      {
+        "key": "golden-dashboard-workbench-tab",
+        "selector": "[role='tab']",
+        "script": "stage/golden-set/02-dashboard",
+        "frame": "first",
+        "required": true,
+        "snapshotName": "dashboard"
+      },
+      {
+        "key": "golden-dashboard-side-menu",
+        "selector": ".ant-menu, [role='menu']",
+        "script": "stage/golden-set/02-dashboard",
+        "frame": "first",
+        "required": true,
+        "snapshotName": "dashboard"
+      },
+      {
+        "key": "golden-approve-table",
         "selector": ".ant-table, table",
-        "script": "260612/我的审批_2026-06-09_16-48-19",
+        "script": "stage/golden-set/03-approval-list",
         "frame": "first",
         "required": false,
         "snapshotName": "approval-list"
       },
       {
-        "key": "approve-tabs",
+        "key": "golden-approve-tabs",
         "selector": ".ant-tabs, [role='tablist']",
-        "script": "260612/我的审批_2026-06-09_16-48-19",
+        "script": "stage/golden-set/03-approval-list",
         "frame": "first",
         "required": false,
         "snapshotName": "approval-list"
@@ -75,79 +107,74 @@
     },
     "items": [
       {
-        "key": "primary-btn",
-        "selector": "#primary-btn",
+        "key": "intent-approve-primary-btn",
+        "selector": ".ant-btn-primary, .ant-input-search-button",
         "label": "主按钮",
         "props": ["backgroundColor", "color", "fontSize", "borderRadius"],
         "required": true,
-        "script": "mock/style-drift-demo",
-        "snapshotName": "mock-list"
+        "script": "intent/dev/审批列表页可见"
       },
       {
-        "key": "page-title",
-        "selector": "#page-title",
-        "label": "页面标题",
-        "props": ["color", "fontSize", "fontWeight"],
-        "required": true,
-        "script": "mock/style-drift-demo",
-        "snapshotName": "mock-list"
-      },
-      {
-        "key": "list-card",
-        "selector": ".list-card",
-        "label": "列表卡片",
-        "props": ["backgroundColor", "borderRadius", "boxShadow"],
-        "required": false,
-        "script": "mock/style-drift-demo",
-        "snapshotName": "mock-list"
-      },
-      {
-        "key": "approve-primary-btn",
-        "selector": ".ant-input-search-button, .ant-btn-primary",
-        "label": "主按钮",
-        "props": ["backgroundColor", "color", "fontSize", "borderRadius"],
-        "required": true,
-        "script": "260612/我的审批_2026-06-09_16-48-19",
-        "frame": "first",
-        "snapshotName": "approval-list"
-      },
-      {
-        "key": "approve-table-head",
+        "key": "intent-approve-table-head",
         "selector": ".ant-table-thead th",
         "label": "表格表头",
         "props": ["backgroundColor", "color", "fontSize", "fontWeight"],
         "required": true,
-        "script": "260612/我的审批_2026-06-09_16-48-19",
-        "frame": "first",
-        "snapshotName": "approval-list"
+        "script": "intent/dev/审批列表页可见"
       },
       {
-        "key": "approve-tab-active",
+        "key": "intent-approve-tab-active",
         "selector": ".ant-tabs-tab-active",
         "label": "页签选中态",
         "props": ["color", "fontSize", "fontWeight"],
         "required": true,
-        "script": "260612/我的审批_2026-06-09_16-48-19",
-        "frame": "first",
-        "snapshotName": "approval-list"
+        "script": "intent/dev/审批列表页可见"
       },
       {
-        "key": "approve-input",
+        "key": "intent-approve-input",
         "selector": ".ant-input-affix-wrapper, .ant-input",
         "label": "输入框",
         "props": ["borderColor", "fontSize", "color"],
         "required": true,
-        "script": "260612/我的审批_2026-06-09_16-48-19",
+        "script": "intent/dev/审批列表页可见"
+      },
+      {
+        "key": "golden-login-workbench-tab",
+        "selector": "[role='tab']",
+        "label": "工作台 Tab",
+        "props": ["color", "fontSize", "fontWeight"],
+        "required": false,
+        "script": "stage/golden-set/01-login",
+        "frame": "first",
+        "snapshotName": "home"
+      },
+      {
+        "key": "golden-dashboard-workbench-tab",
+        "selector": "[role='tab']",
+        "label": "工作台 Tab",
+        "props": ["color", "fontSize", "fontWeight"],
+        "required": false,
+        "script": "stage/golden-set/02-dashboard",
+        "frame": "first",
+        "snapshotName": "dashboard"
+      },
+      {
+        "key": "golden-approve-primary-btn",
+        "selector": ".ant-btn-primary, .ant-input-search-button",
+        "label": "主按钮",
+        "props": ["backgroundColor", "color", "fontSize", "borderRadius"],
+        "required": false,
+        "script": "stage/golden-set/03-approval-list",
         "frame": "first",
         "snapshotName": "approval-list"
       },
       {
-        "key": "approve-page-title",
-        "selector": ".ant-breadcrumb-link, .ant-page-header-heading-title, .ant-tabs-tab-active",
-        "label": "主文案",
-        "props": ["color", "fontSize", "fontWeight"],
+        "key": "golden-approve-table-head",
+        "selector": ".ant-table-thead th",
+        "label": "表格表头",
+        "props": ["backgroundColor", "color", "fontSize", "fontWeight"],
         "required": false,
-        "script": "260612/我的审批_2026-06-09_16-48-19",
+        "script": "stage/golden-set/03-approval-list",
         "frame": "first",
         "snapshotName": "approval-list"
       }

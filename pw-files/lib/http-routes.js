@@ -3,10 +3,6 @@ const path = require('path');
 const { spawn } = require('child_process');
 const express = require('express');
 const { stripAnsi } = require('./ws-safe');
-const {
-  buildFigmaResultPayload,
-  listFigmaResultDirs,
-} = require('./figma-payload');
 
 function resolveFeishuNotifyReady(resolveRepoRoot) {
   const repoRoot = resolveRepoRoot();
@@ -50,34 +46,6 @@ function resolveFeishuNotifyReady(resolveRepoRoot) {
 
 function registerHttpRoutes(app, deps) {
   const { resolveRepoRoot, sessions } = deps;
-
-  app.get('/api/figma/result', (req, res) => {
-    const repoRoot = resolveRepoRoot();
-    const rel = String(req.query.rel || '').trim();
-    const payload = buildFigmaResultPayload(repoRoot, rel);
-    if (!payload) return res.status(404).json({ ok: false, message: '未找到对比结果' });
-    return res.json(payload);
-  });
-
-  app.get('/api/figma/latest', (req, res) => {
-    const repoRoot = resolveRepoRoot();
-    const root = path.join(repoRoot, 'results', 'figma-compare');
-    const dirs = listFigmaResultDirs(root, false);
-    if (!dirs.length) return res.status(404).json({ ok: false, message: '暂无对比记录' });
-    const payload = buildFigmaResultPayload(repoRoot, `results/figma-compare/${dirs[0].name}`);
-    if (!payload) return res.status(404).json({ ok: false, message: '未找到对比结果' });
-    return res.json(payload);
-  });
-
-  app.get('/api/figma/latest-report', (req, res) => {
-    const repoRoot = resolveRepoRoot();
-    const root = path.join(repoRoot, 'results', 'figma-compare');
-    const dirs = listFigmaResultDirs(root, true);
-    if (!dirs.length) return res.status(404).json({ ok: false, message: '暂无规范对比报告' });
-    const payload = buildFigmaResultPayload(repoRoot, `results/figma-compare/${dirs[0].name}`);
-    if (!payload?.reportUrl) return res.status(404).json({ ok: false, message: '未找到对比报告' });
-    return res.json(payload);
-  });
 
   app.get('/download/spec', (req, res) => {
     const sessionId = req.query.sid;

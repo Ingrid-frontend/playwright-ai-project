@@ -27,7 +27,6 @@
   "exclude": [
     "node_modules",
     "dist",
-    "tests/ai-generated",
     "tests/optimized",
     "tests/raw-recordings",
     "tests/deprecated",

@@ -58,22 +58,6 @@
 
 `specs: "all"` 时只收集与 `playwrightEnv` 匹配的用例。
 
-## 迁移旧目录
-
-```bash
-# 预览
-npm run migrate:test-env-paths
-
-# 执行迁移（legacy dateCategory 目录 → stage/<dateCategory>/）
-npm run migrate:test-env-paths -- --apply
-
-# 仅修正已迁移 spec 内的 import / 截图路径
-npm run migrate:test-env-paths -- --fix-specs-only
-
-# 指定目标 env
-npm run migrate:test-env-paths -- --env=uat --apply
-```
-
 ## 常用命令
 
 ```bash

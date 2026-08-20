@@ -16,36 +16,34 @@ YAML Intent → pw 执行 → 截图 + styleFingerprint(.meta.json)
 | Gate | `config/ui-regression.json` → `gate.mode: style-only` |
 | 基线 | `screenshots-baseline/{scriptKey}/run-chromium-optimized/` |
 
-## 快速开始（Mock，无需登录）
+## 快速开始
 
 ```bash
-# 1. 写入 Golden 基线
-npm run style:seed-mock
+# 1. 跑 intent + gate 对比
+npm run style:run -- --intent=tests/definitions/xxx.yaml
+npm run compare-screenshots -- --gate
 
-# 2. 跑 mock intent + gate 对比
-npm run style:compare:mock
-
-# 3. 打开报告
+# 2. 打开报告
 npm run open-screenshot-report:only
 ```
 
-Studio：`npm run studio` → **YAML 用例** Tab → 选择 `style-drift-mock.yaml` → **样式守护全流程**。
+Studio：`npm run studio` → **YAML 用例** Tab → 选择 `YAML 定义` → **样式守护全流程**。
 
 Studio Tab 与口语试跑说明见 [studio-yaml-and-nl-workflow.md](./studio-yaml-and-nl-workflow.md)。
 
 ## Intent YAML 约定
 
 ```yaml
-scriptKey: mock/style-drift-demo
+scriptKey: your/script-key
 styleChecks:
   - key: primary-btn
     selector: "#primary-btn"
     props: [backgroundColor, color, fontSize, borderRadius]
     required: true
-    snapshotName: mock-list   # 仅在该 snapshot 截图上采集/对比
+    snapshotName: your-snapshot   # 仅在该 snapshot 截图上采集/对比
 steps:
   - action: screenshot
-    snapshotName: mock-list
+    snapshotName: your-snapshot
     state: normal
 ```
 
@@ -98,9 +96,7 @@ npm run compare-screenshots -- --gate
 | 命令 | 作用 |
 |------|------|
 | `style:run` | Intent + pw（需 `--intent=`） |
-| `style:run:mock` | 跑 mock 定义 |
-| `style:seed-mock` | mock 跑完 promote Golden |
-| `style:compare:mock` | mock + gate 对比 |
+| `compare-screenshots -- --gate` | Golden 基线对比 + 门禁 |
 
 ## 报告三档 Triage
 

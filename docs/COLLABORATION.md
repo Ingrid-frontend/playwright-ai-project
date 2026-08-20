@@ -70,10 +70,6 @@ git push
 | 场景 | 命令 |
 |------|------|
 | raw 备份 → optimized | `npm run test:pipeline -- tests/raw-recordings/original/...` |
-| 补全 spec-meta | `npm run migrate:backfill-spec-meta` |
-| 路径加 env 段 | `npm run migrate:test-env-paths` |
-| 按日期整理录制 | `npm run organize-files-by-date` |
-| 重命名录制文件 | `npm run rename-recordings` |
 | 校验 meta 一致性 | `node scripts/verify/verify-spec-meta-flow.cjs` |
 | 追加 UI mask 区域 | `npm run ui-regression:add-mask -- --script=... --region=x,y,w,h` |
 | POM（可选，稳定核心页） | `ENABLE_POM=1 npm run generate-pom -- <raw.spec.ts>` |

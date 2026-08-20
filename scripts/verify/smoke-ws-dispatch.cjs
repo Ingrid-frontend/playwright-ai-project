@@ -97,7 +97,6 @@ const dispatcher = createWsDispatcher({
   cancelRepoPipeline: () => {},
   cancelRepoTest: () => {},
   cancelRepoBatch: () => {},
-  runFigmaCompare: async () => {},
   runAiNativeValidate: async () => {},
   cancelAiValidate: () => {},
   runRepoCompareReport: async () => {},

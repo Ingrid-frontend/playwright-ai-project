@@ -28,7 +28,6 @@ flowchart LR
 |------|------|
 | `tests/raw-recordings/` | **主录制目录**（Codegen / Studio 写入） |
 | `tests/optimized/` | 优化后可执行用例（`npm run test:optimized`） |
-| `tests/ai-generated/` | **Legacy**，仅兼容旧脚本；新用例请用 raw-recordings |
 | `screenshots/<迭代>/<脚本>/run-*-optimized/<timestamp>/` | 每次运行步骤 PNG |
 | `screenshots-baseline/<迭代>/<脚本>/run-*-optimized/` | Golden 基线（无 timestamp） |
 | `results/ui-issues.json` | 结构化 UI 问题清单 |

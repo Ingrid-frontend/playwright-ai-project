@@ -21,7 +21,6 @@ import { clusterDiffRegions } from '../report/image-diff.js';
 import { PNG } from 'pngjs';
 import * as uiIssuesMod from '../report/ui-issues-index.js';
 import * as feishuMod from '../feishu/index.js';
-import * as figmaMod from '../figma/index.js';
 
 function pass(name: string) {
   console.log(`  ✓ ${name}`);
@@ -140,7 +139,6 @@ pass('buildJobFailReasons');
 assert.equal(typeof uiIssuesMod.buildUiIssuesReport, 'function');
 assert.equal(typeof uiIssuesMod.buildPlainLanguageAnalysis, 'function');
 assert.equal(typeof feishuMod.fetchWithRetry, 'function');
-assert.equal(typeof figmaMod.parseFigmaUrl, 'function');
 pass('module barrels');
 
 assert.equal(isDateCategoryDirSegment('260814'), true);

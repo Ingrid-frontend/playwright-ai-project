@@ -10,8 +10,6 @@ const groups: Record<string, { desc: string; cmds: Array<{ name: string; hint: s
     cmds: [
       { name: 'ai:generate', hint: '自然语言生成 Playwright 脚本' },
       { name: 'ai:run', hint: '执行生成的 Playwright 脚本' },
-      { name: 'ai:plan:generate', hint: '生成语义测试计划（旧链路）' },
-      { name: 'ai:plan:run', hint: '执行语义测试计划（旧链路）' },
       { name: 'intent:run', hint: '执行 YAML 测试意图（编译为语义计划）' },
       { name: 'heal:suggest', hint: '自愈建议补丁（人审后可 --apply）' },
       { name: 'trust:report', hint: 'Intent 可信度报告' },
@@ -56,7 +54,6 @@ const groups: Record<string, { desc: string; cmds: Array<{ name: string; hint: s
     cmds: [
       { name: 'analyze-errors', hint: '失败汇总' },
       { name: 'analyze-test', hint: '脚本质检' },
-      { name: 'heal-spec', hint: '失败 selector 修复 POC' },
       { name: 'heal:suggest', hint: 'Intent 自愈建议写回' },
       { name: 'trust:report', hint: '可信度告警' },
       { name: 'mine:cases', hint: '失败包用例挖掘' },

@@ -39,7 +39,6 @@ type CliOptions = {
   analyzeGate: boolean;
   retryOnFail: number;
   workers: number;
-  heal: boolean;
 };
 
 function printHelp(): void {
@@ -59,7 +58,6 @@ function printHelp(): void {
   --analyze-gate                analyze-test 有 error 时失败
   --retry-on-fail=<N>           flake 类失败重跑次数（默认 0）
   --workers=<N>                 批量执行 workers（默认 2）
-  --heal                        失败后尝试 heal-spec（POC）
   -h, --help
 `);
 }
@@ -84,7 +82,6 @@ function parseCli(argv: string[]): CliOptions {
   let analyzeGate = false;
   let retryOnFail = Number(process.env.AUTO_TEST_RETRY_ON_FAIL || '0') || 0;
   let workers = Number(process.env.AUTO_TEST_WORKERS || '2') || 2;
-  let heal = false;
 
   for (const arg of argv) {
     if (arg === '-h' || arg === '--help') {
@@ -151,10 +148,6 @@ function parseCli(argv: string[]): CliOptions {
       workers = Math.max(1, Number(arg.slice('--workers='.length)) || 2);
       continue;
     }
-    if (arg === '--heal') {
-      heal = true;
-      continue;
-    }
   }
 
   return {
@@ -169,7 +162,6 @@ function parseCli(argv: string[]): CliOptions {
     analyzeGate,
     retryOnFail,
     workers,
-    heal,
   };
 }
 function resolveRawRecordingsRoot(cliDir: string | undefined, fromOriginal: boolean): string {
@@ -381,9 +373,6 @@ async function main(): Promise<void> {
 
     if (!testPassed) {
       runAnalyzeErrorsOnFailure();
-      if (opts.heal && lastOptimized) {
-        runCommand(`npx tsx scripts/flow/heal-spec.ts "${lastOptimized}"`, 'Healer POC', true);
-      }
     }
 
     const gateFlag = opts.compareGate ? ' -- --gate' : '';

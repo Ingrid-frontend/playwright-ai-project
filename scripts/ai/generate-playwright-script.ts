@@ -119,7 +119,7 @@ async function main(): Promise<void> {
   }
 
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-  const defaultPath = path.join('tests/ai-generated', `${stamp}-${sanitizeName(caseDescription || recordingPath || 'case')}.generated.ts`);
+  const defaultPath = path.join('tests/raw-recordings', `${stamp}-${sanitizeName(caseDescription || recordingPath || 'case')}.generated.ts`);
   const outPath = path.resolve(getArgValue('out') || defaultPath);
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
   fs.writeFileSync(outPath, `${code}\n`, 'utf-8');

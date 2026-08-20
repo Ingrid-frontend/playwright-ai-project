@@ -57,7 +57,6 @@ function createRepoHandlers(ctx) {
     cancelRepoPipeline,
     cancelRepoTest,
     cancelRepoBatch,
-    runFigmaCompare,
     runIntent,
     listIntentDefinitions,
     getIntentDefinition,
@@ -250,16 +249,6 @@ function createRepoHandlers(ctx) {
 
     'cancel:repo-batch-test': async (_ws, session) => {
       cancelRepoBatch(session);
-    },
-
-    'figma:compare': async (ws, session, _sessionId, msg) => {
-      await runFigmaCompare(ws, session, msg, {
-        resolveRepoRoot,
-        spawn,
-        buildRepoSpawnEnv,
-        getSessionPlaywrightEnv,
-        getSessionAccountProfile,
-      });
     },
 
     'ai:validate': async (ws, session, _sessionId, msg) => {

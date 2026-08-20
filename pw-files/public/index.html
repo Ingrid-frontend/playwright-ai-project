@@ -123,6 +123,9 @@
     max-height: 200px; overflow-y: auto; margin-bottom: 8px;
     border: 1px solid var(--border); border-radius: var(--radius); padding: 8px; background: var(--bg3);
   }
+  #pane-specs .batch-spec-list {
+    max-height: min(420px, 50vh);
+  }
   .batch-spec-item {
     display: flex; align-items: flex-start; gap: 8px; padding: 5px 0;
     font-size: var(--fs-xs); line-height: 1.45; border-bottom: 1px solid var(--border);
@@ -831,14 +834,14 @@
         <div class="tab studio-hidden" onclick="switchTab('diff',this)" hidden aria-hidden="true">
           Diff 对比
         </div>
-        <div class="tab active" onclick="switchTab('figma',this)">
-          设计稿对比
-        </div>
-        <div class="tab" onclick="switchTab('intent-run',this)">
+        <div class="tab active" onclick="switchTab('intent-run',this)">
           YAML 用例
         </div>
         <div class="tab" onclick="switchTab('ego-audit',this)">
           口语试跑
+        </div>
+        <div class="tab" onclick="switchTab('specs',this)">
+          测试用例
         </div>
       </div>
 
@@ -900,62 +903,8 @@
           </div>
         </div>
 
-        <!-- Figma design vs live -->
-        <div class="editor-pane active" id="pane-figma">
-          <div style="flex:1;overflow-y:auto;padding:16px;font-size:var(--fs-sm);line-height:1.8">
-            <div style="display:flex;flex-direction:column;gap:10px;max-width:760px">
-              <div>
-                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">Figma 设计稿链接</label>
-                <input type="text" class="url-input" id="figmaUrlInput" spellcheck="false"
-                  placeholder="https://www.figma.com/design/{fileKey}/{name}?node-id={nodeId}"
-                  style="width:100%;color:var(--text)">
-              </div>
-              <div>
-                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">线上页面 URL（留空则打开当前环境首页）</label>
-                <input type="text" class="url-input" id="figmaLiveUrlInput" spellcheck="false"
-                  placeholder="https://stage.huilianyi.com/ 或相对路径 /xxx"
-                  style="width:100%;color:var(--text)">
-              </div>
-              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-                <button type="button" class="btn btn-run" id="btnFigmaCompare" onclick="startFigmaCompare()" style="flex-shrink:0">
-                  <span class="btn-label">对比</span>
-                </button>
-                <button type="button" class="btn" id="btnFigmaOpenLatest" onclick="openLatestFigmaReport()" style="flex-shrink:0">
-                  打开最近结果
-                </button>
-                <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);font-size:var(--fs-xs);cursor:pointer">
-                  <input type="checkbox" id="figmaRefreshDesign">
-                  强制重新导出设计稿
-                </label>
-                <span class="editor-run-status" id="figmaCompareStatus"></span>
-              </div>
-              <div id="figmaCompareHint" class="sidebar-hint" style="color:var(--text-tertiary)">
-                默认按设计稿规范做语义校验，不强制像素对比。线上页面使用当前环境的登录态（<code>storage/loginState/</code>）；若截到登录页，请先在左侧录制并登录。对比完成后可点「打开报告」查看规范明细。
-              </div>
-              <div id="figmaCompareError" class="sidebar-hint" style="display:none;color:var(--red)"></div>
-              <div id="figmaCompareResult" style="display:none">
-                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
-                  <div>
-                    <div style="color:var(--text-secondary);margin-bottom:4px">设计稿</div>
-                    <img id="figmaDesignImg" alt="design" style="width:100%;border:1px solid var(--border);border-radius:6px;background:#fff">
-                  </div>
-                  <div>
-                    <div style="color:var(--text-secondary);margin-bottom:4px">线上页面</div>
-                    <img id="figmaLiveImg" alt="live" style="width:100%;border:1px solid var(--border);border-radius:6px;background:#fff">
-                  </div>
-                  <div>
-                    <div style="color:var(--text-secondary);margin-bottom:4px">差异图</div>
-                    <img id="figmaDiffImg" alt="diff" style="width:100%;border:1px solid var(--border);border-radius:6px;background:#fff">
-                  </div>
-                </div>
-                <div style="margin-top:10px;color:var(--text)" id="figmaCompareMeta"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <!-- YAML 用例 + Explore + 样式守护 -->
-        <div class="editor-pane" id="pane-intent-run">
+        <div class="editor-pane active" id="pane-intent-run">
           <div style="flex:1;overflow-y:auto;padding:16px;font-size:var(--fs-sm);line-height:1.8">
             <div style="display:flex;flex-direction:column;gap:10px;max-width:760px">
               <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg2)">
@@ -1156,6 +1105,59 @@
           </div>
         </div>
 
+        <!-- 测试用例：选择 optimized spec -->
+        <div class="editor-pane" id="pane-specs">
+          <div style="flex:1;overflow-y:auto;padding:16px;font-size:var(--fs-sm);line-height:1.8">
+            <div style="display:flex;flex-direction:column;gap:10px;max-width:760px">
+              <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg2)">
+                <div style="font-weight:600;color:var(--text);margin-bottom:6px">项目内优化用例 · tests/optimized</div>
+                <ul class="sidebar-hint" style="margin:0;padding-left:18px;line-height:1.7;color:var(--text-secondary)">
+                  <li>在此选择单个或批量用例，再切到右侧「用例 → 运行用例」执行</li>
+                  <li>可载入到编辑器、删除用例、清理截图 run</li>
+                </ul>
+              </div>
+              <div id="repoSpecPickerSection">
+                <select class="url-input" id="repoProfileFilter" style="margin-bottom:8px;width:100%" onchange="onRepoProfileFilterChange()" title="按录制时的账号档案筛选">
+                  <option value="all">全部账号档案</option>
+                </select>
+                <div class="provider-row step-branch-row" role="group" aria-label="运行方式" style="margin-bottom:10px">
+                  <button type="button" class="step-branch-chip active" data-run-sub="single" id="runSubSingle" onclick="setRunSubMode('single', this)">单个</button>
+                  <button type="button" class="step-branch-chip" data-run-sub="batch" id="runSubBatch" onclick="setRunSubMode('batch', this)">批量</button>
+                </div>
+                <div id="runSpecSingle">
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:8px">
+                    <span class="sidebar-hint" style="margin:0">选择用例</span>
+                    <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px;flex-shrink:0" onclick="refreshRepoOptimizedList()">刷新</button>
+                  </div>
+                  <input type="text" class="url-input" id="repoSpecSearch" placeholder="搜索用例路径…" style="margin-bottom:6px;width:100%" spellcheck="false">
+                  <select class="url-input" id="repoOptimizedPick" style="margin-bottom:6px;width:100%;color:var(--text)"></select>
+                  <div style="display:flex;gap:6px;margin-bottom:6px">
+                    <button type="button" class="btn btn-full" style="flex:1" onclick="loadSelectedOptimizedToEditor()">载入到编辑器</button>
+                    <button type="button" class="btn btn-full" id="btnDeleteSpecSingle" style="flex:1;border-color:rgba(248,113,113,.35);color:var(--red)" onclick="deleteSelectedOptimizedSpecs()">删除所选用例</button>
+                  </div>
+                  <div style="display:flex;gap:6px;margin-bottom:6px">
+                    <button type="button" class="btn btn-full" id="btnCleanLatestRunSingle" style="flex:1;font-size:var(--fs-xs)" onclick="cleanSelectedSpecScreenshots('latest')" title="删除 chrome/webkit 最近一次 run 的 timestamp 目录">清理最近 run</button>
+                    <button type="button" class="btn btn-full" id="btnCleanAllScreenshotsSingle" style="flex:1;font-size:var(--fs-xs);border-color:rgba(251,191,36,.35);color:var(--amber,#d97706)" onclick="cleanSelectedSpecScreenshots('all')" title="删除该用例 screenshots/ 目录及 results/diffs 缓存">清理全部截图</button>
+                  </div>
+                </div>
+                <div id="runSpecBatch" class="studio-hidden">
+                  <input type="text" class="url-input" id="repoBatchSpecSearch" placeholder="筛选批量列表…" style="margin-bottom:6px;width:100%" spellcheck="false">
+                  <div class="batch-spec-toolbar">
+                    <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="refreshRepoOptimizedList()">刷新</button>
+                    <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="selectAllBatchSpecs(true)">全选</button>
+                    <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="selectAllBatchSpecs(false)">全不选</button>
+                    <button type="button" class="btn" id="btnDeleteSpecBatch" style="font-size:var(--fs-xs);padding:4px 8px;color:var(--red)" onclick="deleteSelectedOptimizedSpecs()">删除所选</button>
+                    <button type="button" class="btn" id="btnCleanLatestRunBatch" style="font-size:var(--fs-xs);padding:4px 8px" onclick="cleanSelectedSpecScreenshots('latest')" title="清理所选用例最近一次 run">清理最近 run</button>
+                    <button type="button" class="btn" id="btnCleanAllScreenshotsBatch" style="font-size:var(--fs-xs);padding:4px 8px;color:var(--amber,#d97706)" onclick="cleanSelectedSpecScreenshots('all')" title="清理所选用例全部截图">清理全部截图</button>
+                  </div>
+                  <div id="repoBatchSpecList" class="batch-spec-list"></div>
+                  <label class="opt-chip" style="margin:0"><input type="checkbox" id="batchStopOnError"> 遇错停止</label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
       </div>
     </div>
@@ -1259,46 +1261,6 @@
                       <label class="opt-chip on"><input type="checkbox" name="pwBrowserProject" value="optimized-webkit" checked> Safari</label>
                       <label class="opt-chip"><input type="checkbox" name="pwBrowserProject" value="optimized-firefox"> Firefox</label>
                     </div>
-                  </div>
-                </div>
-          
-                <div class="sidebar-section studio-hidden" id="repoSpecPickerSection">
-                  <div class="sidebar-label">测试用例</div>
-                  <select class="url-input" id="repoProfileFilter" style="margin-bottom:8px;width:100%" onchange="onRepoProfileFilterChange()" title="按录制时的账号档案筛选">
-                    <option value="all">全部账号档案</option>
-                  </select>
-                  <div class="provider-row step-branch-row" role="group" aria-label="运行方式" style="margin-bottom:10px">
-                    <button type="button" class="step-branch-chip active" data-run-sub="single" id="runSubSingle" onclick="setRunSubMode('single', this)">单个</button>
-                    <button type="button" class="step-branch-chip" data-run-sub="batch" id="runSubBatch" onclick="setRunSubMode('batch', this)">批量</button>
-                  </div>
-                  <div id="runSpecSingle">
-                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:8px">
-                    <span class="sidebar-hint" style="margin:0">选择用例</span>
-                    <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px;flex-shrink:0" onclick="refreshRepoOptimizedList()">刷新</button>
-                  </div>
-                  <input type="text" class="url-input" id="repoSpecSearch" placeholder="搜索用例路径…" style="margin-bottom:6px;width:100%" spellcheck="false">
-                  <select class="url-input" id="repoOptimizedPick" style="margin-bottom:6px;width:100%;color:var(--text)"></select>
-                    <div style="display:flex;gap:6px;margin-bottom:6px">
-                      <button type="button" class="btn btn-full" style="flex:1" onclick="loadSelectedOptimizedToEditor()">载入到编辑器</button>
-                      <button type="button" class="btn btn-full" id="btnDeleteSpecSingle" style="flex:1;border-color:rgba(248,113,113,.35);color:var(--red)" onclick="deleteSelectedOptimizedSpecs()">删除所选用例</button>
-                    </div>
-                    <div style="display:flex;gap:6px;margin-bottom:6px">
-                      <button type="button" class="btn btn-full" id="btnCleanLatestRunSingle" style="flex:1;font-size:var(--fs-xs)" onclick="cleanSelectedSpecScreenshots('latest')" title="删除 chrome/webkit 最近一次 run 的 timestamp 目录">清理最近 run</button>
-                      <button type="button" class="btn btn-full" id="btnCleanAllScreenshotsSingle" style="flex:1;font-size:var(--fs-xs);border-color:rgba(251,191,36,.35);color:var(--amber,#d97706)" onclick="cleanSelectedSpecScreenshots('all')" title="删除该用例 screenshots/ 目录及 results/diffs 缓存">清理全部截图</button>
-                    </div>
-                  </div>
-                  <div id="runSpecBatch" class="studio-hidden">
-                    <input type="text" class="url-input" id="repoBatchSpecSearch" placeholder="筛选批量列表…" style="margin-bottom:6px;width:100%" spellcheck="false">
-                    <div class="batch-spec-toolbar">
-                      <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="refreshRepoOptimizedList()">刷新</button>
-                      <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="selectAllBatchSpecs(true)">全选</button>
-                      <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="selectAllBatchSpecs(false)">全不选</button>
-                      <button type="button" class="btn" id="btnDeleteSpecBatch" style="font-size:var(--fs-xs);padding:4px 8px;color:var(--red)" onclick="deleteSelectedOptimizedSpecs()">删除所选</button>
-                      <button type="button" class="btn" id="btnCleanLatestRunBatch" style="font-size:var(--fs-xs);padding:4px 8px" onclick="cleanSelectedSpecScreenshots('latest')" title="清理所选用例最近一次 run">清理最近 run</button>
-                      <button type="button" class="btn" id="btnCleanAllScreenshotsBatch" style="font-size:var(--fs-xs);padding:4px 8px;color:var(--amber,#d97706)" onclick="cleanSelectedSpecScreenshots('all')" title="清理所选用例全部截图">清理全部截图</button>
-                    </div>
-                    <div id="repoBatchSpecList" class="batch-spec-list"></div>
-                    <label class="opt-chip" style="margin:0"><input type="checkbox" id="batchStopOnError"> 遇错停止</label>
                   </div>
                 </div>
           
@@ -1448,11 +1410,12 @@
                     <div class="step-bullet">1</div>
                     <div class="step-info">
                       <div class="step-name">选择用例</div>
-                      <div class="step-sub" id="runStepSub1">在「用例」面板选择单个或批量用例</div>
+                      <div class="step-sub" id="runStepSub1">在中间「测试用例」Tab 选择单个或批量用例</div>
                     </div>
                   </div>
                   <div class="step-action-panel active" id="runStep1Panel">
-                    <div class="run-spec-summary" id="runStep1Summary">请在「用例」面板「测试用例」中选择要运行的用例。</div>
+                    <div class="run-spec-summary" id="runStep1Summary">请到中间「测试用例」Tab 选择要运行的用例。</div>
+                    <button type="button" class="btn btn-full" style="margin-top:8px" onclick="switchToSpecsTab()">打开「测试用例」Tab</button>
                   </div>
                   <div class="step-item" id="runStep2" data-run-step="2" role="button" tabindex="0">
                     <div class="step-bullet">2</div>
@@ -1550,9 +1513,7 @@
 let ws = null;
 let state = { recording: false, hasRaw: false, hasOpt: false, hasRun: false };
 const busyState = { optimize: false, run: false, repoPipeline: false, repoCompare: false, repoRerunKeep: false, repoBatch: false, accountLogin: false };
-let figmaCompareSeq = 0;
-let intentRunSeq = 0;
-let intentLoadSeq = 0;
+let intentRunSeq = 0;let intentLoadSeq = 0;
 let intentLoadSilent = false;
 /** 最近一次 Intent 运行，用于自愈写回 */
 let lastIntentBoundary = null;
@@ -1618,9 +1579,9 @@ function getActiveEditorTab() {
   if (document.getElementById('pane-opt')?.classList.contains('active')) return 'opt';
   if (document.getElementById('pane-raw')?.classList.contains('active')) return 'raw';
   if (document.getElementById('pane-diff')?.classList.contains('active')) return 'diff';
-  if (document.getElementById('pane-figma')?.classList.contains('active')) return 'figma';
   if (document.getElementById('pane-intent-run')?.classList.contains('active')) return 'intent-run';
   if (document.getElementById('pane-ego-audit')?.classList.contains('active')) return 'ego-audit';
+  if (document.getElementById('pane-specs')?.classList.contains('active')) return 'specs';
   return 'raw';
 }
 
@@ -1628,12 +1589,12 @@ function getActiveScriptCode() {
   const tab = getActiveEditorTab();
   if (tab === 'opt') return document.getElementById('optCode')?.value?.trim() || '';
   if (tab === 'raw') return document.getElementById('rawCode')?.value?.trim() || '';
-  if (tab === 'intent-run' || tab === 'ego-audit') return '';
+  if (tab === 'intent-run' || tab === 'ego-audit' || tab === 'specs') return '';
   return '';
 }
 
 function syncEditorRunHint() {
-  if (['diff', 'figma', 'intent-run', 'ego-audit'].includes(getActiveEditorTab())) return;
+  if (['diff', 'intent-run', 'ego-audit', 'specs'].includes(getActiveEditorTab())) return;
   if (busyState.run && pendingRunKind !== 'repo') return;
   setEditorRunStatus('', '');
 }
@@ -2450,12 +2411,12 @@ function syncRunStep1Summary() {
     const total = repoState.optimizedSpecs.filter((p) => p && !isDraftOptimizedSpecPath(p)).length;
     el.textContent = n
       ? `已选 ${n} / ${total} 个用例（${getSelectedBrowserProjects().length} 个浏览器）`
-      : '请在「用例」面板批量列表勾选要执行的用例';
+      : '请到中间「测试用例」Tab 批量列表勾选要执行的用例';
     return;
   }
   const spec = document.getElementById('repoOptimizedPick')?.value?.trim();
   if (!spec) {
-    el.textContent = '请在「用例」面板下拉框选择单个测试用例';
+    el.textContent = '请到中间「测试用例」Tab 下拉框选择单个测试用例';
     return;
   }
   el.textContent = `当前：${formatOptimizedSpecLabel(spec)}`;
@@ -2464,7 +2425,7 @@ function syncRunStep1Summary() {
 function filterSpecList(list) {
   const q = (document.getElementById('repoSpecSearch')?.value || '').trim().toLowerCase();
   const bq = (document.getElementById('repoBatchSpecSearch')?.value || '').trim().toLowerCase();
-  const query = workflowMode === 'run' && runSubMode === 'batch' ? bq : q;
+  const query = runSubMode === 'batch' ? bq : q;
   let items = (list || []).map(normalizeSpecEntry);
   const profileFilter = document.getElementById('repoProfileFilter')?.value || 'all';
   if (profileFilter && profileFilter !== 'all') {
@@ -2622,13 +2583,21 @@ function loadBatchResultSpecByIndex(i) {
 function restoreEditorTab() {
   try {
     const saved = sessionStorage.getItem(SS_EDITOR_TAB);
-    if (saved === 'figma' || saved === 'intent-run' || saved === 'ego-audit' || saved === 'ai-validate') {
-      const tab = saved === 'ai-validate' ? 'ego-audit' : saved;
-      const idxMap = { figma: 3, 'intent-run': 4, 'ego-audit': 5 };
-      switchTab(tab, document.querySelectorAll('.tab')[idxMap[tab]]);
-    } else {
-      switchTab('figma', document.querySelectorAll('.tab')[3]);
-    }
+    const name =
+      saved === 'ai-validate'
+        ? 'ego-audit'
+        : saved === 'intent-run' || saved === 'ego-audit' || saved === 'specs'
+          ? saved
+          : 'intent-run';
+    const labelMap = {
+      'intent-run': 'YAML 用例',
+      'ego-audit': '口语试跑',
+      specs: '测试用例',
+    };
+    const tab = Array.from(document.querySelectorAll('.tab')).find((t) =>
+      t.textContent.includes(labelMap[name]),
+    );
+    switchTab(name, tab || document.querySelectorAll('.tab')[2]);
   } catch {
     /* ignore */
   }
@@ -2662,7 +2631,7 @@ let workflowMode = 'new';
 let runSubMode = 'single';
 let currentRunPipelineStep = 1;
 const RUN_STEP_DEFAULTS = {
-  1: '在「用例」面板选择单个或批量用例',
+  1: '在中间「测试用例」Tab 选择单个或批量用例',
   2: '运行所选用例并截取步骤图',
   3: '生成截图对比报告',
 };
@@ -3223,7 +3192,6 @@ function applyWorkflowLayout() {
   document.getElementById('pipelineNew')?.classList.toggle('studio-hidden', !isNew);
   document.getElementById('pipelineRun')?.classList.toggle('studio-hidden', !isRun);
   document.getElementById('pipelineJobs')?.classList.toggle('studio-hidden', !isJobs);
-  document.getElementById('repoSpecPickerSection')?.classList.toggle('studio-hidden', !isRun);
   document.getElementById('accordionRun')?.classList.toggle('studio-hidden', isJobs);
   document.getElementById('jobsWorkspace')?.classList.toggle('studio-hidden', !isJobs);
   document.getElementById('centerEditorWrap')?.classList.toggle('studio-hidden', isJobs);
@@ -3757,7 +3725,6 @@ function setWorkflowMode(mode, el) {
   }
   if (workflowMode === 'run') {
     expandRunPipelineStep(1);
-    refreshRepoOptimizedList();
     restoreEditorTab();
   } else if (workflowMode === 'jobs') {
     refreshTestJobsList();
@@ -4417,7 +4384,7 @@ function syncActionButtons() {
   }
   if (!busyState.run) {
     const tab = getActiveEditorTab();
-    btnRun.disabled = ['diff', 'figma', 'intent-run', 'ego-audit'].includes(tab) || !getActiveScriptCode();
+    btnRun.disabled = ['diff', 'intent-run', 'ego-audit'].includes(tab) || !getActiveScriptCode();
   }
   else if (pendingRunKind === 'repo') btnRun.disabled = true;
   if (btnRecord) btnRecord.disabled = busyState.optimize || busyState.run || busyState.repoPipeline;
@@ -5168,18 +5135,6 @@ function handleMessage(msg) {
       else toast('Promote 失败', 'err');
       loadUiIssuesPanel();
       break;
-    case 'figma:compare:start':
-      if (msg.seq) figmaCompareSeq = msg.seq;
-      setFigmaCompareBusy(true);
-      switchToFigmaTab();
-      log('info', '[figma] 正在导出设计稿并截图对比…');
-      break;
-    case 'figma:compare:done':
-      if (msg.seq && msg.seq < figmaCompareSeq) break;
-      setFigmaCompareBusy(false);
-      switchToFigmaTab();
-      void loadAndRenderFigmaResult(msg);
-      break;
     case 'ai:validate:start':
     case 'ego:nl-run:start':
       if (msg.seq) egoAuditSeq = msg.seq;
@@ -5805,7 +5760,7 @@ function setEditorRunStatus(text, status) {
 
 function syncEditorRunBarVisibility() {
   const bar = document.getElementById('editorRunBar');
-  const noRun = ['diff','figma','intent-run','ego-audit'].some((n) => document.getElementById('pane-' + n)?.classList.contains('active'));
+  const noRun = ['diff','intent-run','ego-audit','specs'].some((n) => document.getElementById('pane-' + n)?.classList.contains('active'));
   if (bar) bar.style.display = noRun ? 'none' : 'block';
 }
 
@@ -5820,24 +5775,14 @@ function switchTab(name, el) {
   syncEditorRunBarVisibility();
   syncEditorRunHint();
   syncActionButtons();
+  if (name === 'specs') refreshRepoOptimizedList();
 }
 
-
-function setFigmaCompareBusy(busy) {
-  const btn = document.getElementById('btnFigmaCompare');
-  const status = document.getElementById('figmaCompareStatus');
-  if (btn) { btn.disabled = busy; btn.style.opacity = busy ? 0.6 : 1; }
-  if (status) {
-    status.textContent = busy ? '对比中…' : '';
-    status.style.display = busy ? '' : 'none';
-  }
+function switchToSpecsTab() {
+  const tab = Array.from(document.querySelectorAll('.tab')).find((t) => t.textContent.includes('测试用例'));
+  if (tab) switchTab('specs', tab);
 }
 
-
-function switchToFigmaTab() {
-  const tab = Array.from(document.querySelectorAll('.tab')).find((t) => t.textContent.includes('设计稿对比'));
-  if (tab) switchTab('figma', tab);
-}
 
 function switchToNlValidateTab() {
   const tab = Array.from(document.querySelectorAll('.tab')).find((t) => t.textContent.includes('口语试跑'));
@@ -6940,199 +6885,6 @@ function renderEgoAuditResult(msg) {
     },
   });
 }
-
-function startFigmaCompare() {
-  const figmaUrl = document.getElementById('figmaUrlInput')?.value?.trim();
-  const targetUrl = document.getElementById('figmaLiveUrlInput')?.value?.trim() || '';
-  if (!figmaUrl) { showToast('请先粘贴 Figma 链接', 'err'); return; }
-  const errEl = document.getElementById('figmaCompareError');
-  const resultBox = document.getElementById('figmaCompareResult');
-  const refreshDesign = document.getElementById('figmaRefreshDesign')?.checked;
-  if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
-  if (resultBox) resultBox.style.display = 'none';
-  setFigmaCompareBusy(true);
-  send('figma:compare', { figmaUrl, targetUrl, refreshDesign: Boolean(refreshDesign) });
-}
-
-function openFigmaReport(url) {
-  if (!url) { showToast('暂无报告', 'err'); return; }
-  const abs = new URL(url, location.origin).href;
-  if (!openCompareReportInNewWindow(abs)) {
-    log('warn', '浏览器拦截了新窗口，请手动打开: ' + abs);
-    showToast('浏览器拦截了新窗口，请手动打开: ' + abs, 'err');
-  }
-}
-
-async function openLatestFigmaReport() {
-  switchToFigmaTab();
-  try {
-    const res = await fetch('/api/figma/latest-report');
-    if (!res.ok) throw new Error('no result');
-    const data = normalizeFigmaMsg(await res.json());
-    if (!data.ok) throw new Error(data.message || 'no result');
-    openFigmaReport(data.reportUrl);
-  } catch {
-    showToast('暂无规范对比报告，请先点击「对比」', 'err');
-  }
-}
-
-function figmaReportBar(msg) {
-  const url = msg.reportUrl;
-  if (!url) return '';
-  const s = msg.summary || {};
-  const stats = s.total != null
-    ? `通过 ${s.pass || 0} / 警告 ${s.warn || 0} / 失败 ${s.fail || 0}`
-    : '规范对比明细';
-  return '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 12px;margin-bottom:12px;border:1px solid rgba(77,159,255,.35);border-radius:8px;background:rgba(77,159,255,.06)">' +
-    '<strong style="color:var(--text)">规范对比报告</strong>' +
-    '<span style="color:var(--text-secondary);font-size:12px">' + escHtml(stats) + '</span>' +
-    '<button type="button" class="btn" style="margin-left:auto;border-color:rgba(77,159,255,.4);color:var(--blue)" onclick="openFigmaReport(\'' + escHtml(url) + '\')">打开报告</button>' +
-    '</div>';
-}
-
-function normalizeFigmaMsg(msg) {
-  const out = { ...msg };
-  if (!out.outRel && out.outDir) {
-    const m = String(out.outDir).match(/results\/figma-compare\/[^/]+$/);
-    if (m) out.outRel = m[0];
-  }
-  if (!out.designUrl && out.outRel) {
-    const rel = String(out.outRel).replace(/^\/+/, '');
-    const base = '/' + rel;
-    out.designUrl = base + '/design.png';
-    out.liveUrl = base + '/live.png';
-    out.diffUrl = base + '/diff.png';
-  }
-  if (Array.isArray(out.crops) && out.outRel) {
-    const base = '/' + String(out.outRel).replace(/^\/+/, '');
-    out.crops = out.crops.map((c) => ({
-      ...c,
-      designUrl: c.designUrl || (c.designCrop ? base + '/' + c.designCrop : undefined),
-      liveUrl: c.liveUrl || (c.liveCrop ? base + '/' + c.liveCrop : undefined),
-      diffUrl: c.diffUrl || (c.diffCrop ? base + '/' + c.diffCrop : undefined),
-    }));
-  }
-  if (out.designUrl || out.difference != null || out.generatedAt) out.ok = true;
-  return out;
-}
-
-async function loadAndRenderFigmaResult(msg) {
-  let data = normalizeFigmaMsg(msg);
-  if (!data.designUrl) {
-    const rel = data.outRel ? String(data.outRel) : '';
-    const urls = [
-      rel ? '/api/figma/result?rel=' + encodeURIComponent(rel) : '',
-      '/api/figma/latest',
-    ].filter(Boolean);
-    for (const url of urls) {
-      try {
-        const res = await fetch(url);
-        if (!res.ok) continue;
-        data = normalizeFigmaMsg(await res.json());
-        if (data.designUrl) break;
-      } catch { /* ignore */ }
-    }
-  }
-  renderFigmaCompareResult(data);
-  if (data.designUrl) showToast('对比完成，结果已展示', 'ok');
-}
-
-function ensureFigmaResultMarkup() {
-  const box = document.getElementById('figmaCompareResult');
-  if (!box || document.getElementById('figmaDesignImg')) return;
-  box.innerHTML = `
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
-      <div>
-        <div style="color:var(--text-secondary);margin-bottom:4px">设计稿</div>
-        <img id="figmaDesignImg" alt="design" style="width:100%;border:1px solid var(--border);border-radius:6px;background:#fff">
-      </div>
-      <div>
-        <div style="color:var(--text-secondary);margin-bottom:4px">线上页面</div>
-        <img id="figmaLiveImg" alt="live" style="width:100%;border:1px solid var(--border);border-radius:6px;background:#fff">
-      </div>
-      <div>
-        <div style="color:var(--text-secondary);margin-bottom:4px">差异图</div>
-        <img id="figmaDiffImg" alt="diff" style="width:100%;border:1px solid var(--border);border-radius:6px;background:#fff">
-      </div>
-    </div>
-    <div style="margin-top:10px;color:var(--text)" id="figmaCompareMeta"></div>`;
-}
-
-function renderFigmaCompareResult(msg) {
-  setFigmaCompareBusy(false);
-  const box = document.getElementById('figmaCompareResult');
-  const hint = document.getElementById('figmaCompareHint');
-  if (hint) hint.style.display = 'none';
-  if (!box) return;
-  if (!msg.ok) {
-    box.style.display = 'block';
-    box.innerHTML = '<div style="color:var(--red)">❌ 对比失败：' + escHtml(msg.message || '请查看日志') + '</div>';
-    return;
-  }
-  box.style.display = 'block';
-
-  const colorFor = (d) => (d >= 0.005 ? 'var(--red)' : d >= 0.001 ? 'var(--amber,#d97706)' : 'var(--green,#16a34a)');
-  const pct = (d) => (Number(d || 0) * 100).toFixed(2);
-
-  // 区块模式：每个区块并排展示 设计稿 | 线上 | 差异
-  if (Array.isArray(msg.crops) && msg.crops.length > 0) {
-    const reportBar = figmaReportBar(msg);
-    const blocks = msg.crops.map((c) => {
-      const color = colorFor(c.difference);
-      const imgs = [
-        { label: '设计稿', url: c.designUrl },
-        { label: '线上', url: c.liveUrl },
-        { label: '差异', url: c.diffUrl },
-      ].map((it) => '<figure style="margin:0;min-width:0">' +
-        '<figcaption style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">' + it.label + '</figcaption>' +
-        '<img src="' + escHtml(it.url || '') + '" style="width:100%;border:1px solid var(--border);border-radius:4px;cursor:zoom-in" ' +
-        'onclick="window.open(\'' + it.url + '\',\'_blank\')" alt="' + it.label + '">' +
-        '</figure>').join('');
-      return '<div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:14px;background:var(--bg2)">' +
-        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">' +
-        '<strong>区块 #' + c.index + '</strong>' +
-        '<span style="color:' + color + ';font-weight:600">差异率 ' + pct(c.difference) + '%</span>' +
-        '</div>' +
-        '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">' + imgs + '</div>' +
-        '</div>';
-    }).join('');
-
-    const diffPct = pct(msg.difference);
-    box.innerHTML =
-      reportBar +
-      '<div style="margin-bottom:10px;color:var(--text)">' +
-      '<strong>整体差异率：' + diffPct + '%</strong>' +
-      (msg.sizeMismatch ? ' <span style="color:var(--text-tertiary)">（设计稿与线上尺寸不一致，已缩放对齐）</span>' : '') +
-      '</div>' +
-      '<div style="margin-bottom:10px;color:var(--text-secondary)">按区块对比，差异率从高到低排序；点击图片可放大。</div>' +
-      blocks +
-      '<div style="margin-top:14px;color:var(--text-secondary);font-size:12px">' +
-      '线上地址：' + escHtml(msg.targetUrl || '') + '</div>';
-    return;
-  }
-
-  // 旧三图模式（兼容无区块数据）
-  const reportBar = figmaReportBar(msg);
-  const cols = [
-    { label: '设计稿', url: msg.designUrl },
-    { label: '线上页面', url: msg.liveUrl },
-  ];
-  if (msg.diffUrl) cols.push({ label: '差异图', url: msg.diffUrl });
-  const imgs = cols.map((it) => '<figure style="margin:0;min-width:0">' +
-    '<figcaption style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">' + it.label + '</figcaption>' +
-    '<img src="' + escHtml(it.url || '') + '" alt="' + it.label + '" style="width:100%;border:1px solid var(--border);border-radius:4px;cursor:zoom-in" ' +
-    'onclick="window.open(\'' + escHtml(it.url || '') + '\',\'_blank\')">' +
-    '</figure>').join('');
-  box.innerHTML = reportBar +
-    '<div style="display:grid;grid-template-columns:repeat(' + cols.length + ',1fr);gap:10px">' + imgs + '</div>' +
-    '<div style="margin-top:10px;color:var(--text)" id="figmaCompareMeta"></div>';
-  const meta = document.getElementById('figmaCompareMeta');
-  if (meta) {
-    const diffPct = pct(msg.difference);
-    const sizeNote = msg.sizeMismatch ? '（设计稿与线上尺寸不一致，差异图按重叠区裁剪）' : '';
-    meta.textContent = `差异率：${diffPct}% ${sizeNote} · ${msg.targetUrl || ''}`;
-  }
-}
 function switchPanel(name, el) {
   document.querySelectorAll('.ptab').forEach(t => t.classList.remove('active'));
   if (el) el.classList.add('active');
@@ -7713,6 +7465,7 @@ switchPanel('log', document.getElementById('ptabLog'));
 if (workflowMode === 'new') openAccordion('accordionRun');
 if (workflowMode === 'run') expandRunPipelineStep(1);
 if (workflowMode === 'jobs') refreshTestJobsList();
+if (getActiveEditorTab() === 'specs') refreshRepoOptimizedList();
 syncWorkflowUi();
 syncActionButtons();
 document.getElementById('repoSpecSearch')?.addEventListener('input', () => {
