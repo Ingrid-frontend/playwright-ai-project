@@ -105,3 +105,23 @@ npm run test:stage -- --project=optimized tests/optimized/stage/golden-set
 # Phase 2
 npm run test:ci
 ```
+
+---
+
+## Phase 4 · AI 扩面（Intent）
+
+在 Golden Set 稳定后，用 Intent YAML 扩相邻场景；**不改手写 3 条 Golden Set**。断言文案人定，`trustLevel: trial`。
+
+| Intent | 文件 | 说明 | 试跑 |
+|--------|------|------|------|
+| 审批列表页可见 | `tests/definitions/stage/approval-list-visible.yaml` | 列表冒烟（对齐 Golden Set） | `intent:run --engine=pw` 全绿 |
+| 审批列表页签可见 | `tests/definitions/stage/approval-tabs-visible.yaml` | 待审批/已审批/筛选 | 全绿 |
+| 审批列表点击首行 | `tests/definitions/stage/approval-click-first-row.yaml` | 点击首行；后续步骤 `optional`（进详情交互未稳定） | 列表断言绿，点击后可选 |
+
+```bash
+npm run intent:run -- --intent=tests/definitions/stage/approval-list-visible.yaml --engine=pw --env=stage
+npm run intent:run -- --intent=tests/definitions/stage/approval-tabs-visible.yaml --engine=pw --env=stage
+npm run intent:run -- --intent=tests/definitions/stage/approval-click-first-row.yaml --engine=pw --env=stage
+```
+
+边界见 `docs/ai-test-boundaries.md`。稳定后再 `promote-baseline`；勿自动把 trial Intent 升为 Golden Set。

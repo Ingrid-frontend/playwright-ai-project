@@ -1,0 +1,44 @@
+name: 审批列表页签可见
+goal: 确认我的审批列表页签与筛选区可见
+env: stage
+entry: /main/approve
+scriptKey: intent/审批列表页签可见
+trustLevel: trial
+reviewRequired: false
+constraints:
+  - 禁止 nth()
+  - 禁止把 @N 写入定义
+steps:
+  - id: step-1
+    action: goto
+    path: /main/approve
+  - id: step-2
+    action: assert
+    kind: text
+    expect: 我的审批
+    evidence: [screenshot]
+  - id: step-3
+    action: assert
+    kind: text
+    expect: 待审批
+    evidence: [screenshot]
+  - id: step-4
+    action: assert
+    kind: text
+    expect: 已审批
+    evidence: [screenshot]
+  - id: step-5
+    action: assert
+    kind: text
+    expect: 筛选
+    evidence: [screenshot]
+  - id: step-6
+    action: screenshot
+    snapshotName: approval-tabs
+    state: normal
+    mode: stable
+assertions:
+  - 我的审批
+  - 待审批
+  - 已审批
+  - 筛选
