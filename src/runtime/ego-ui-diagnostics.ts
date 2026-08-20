@@ -9,32 +9,40 @@
 import {
   resolveStructureCheckItems,
   resolveStyleCheckItems,
+  resolveChangeDetectionSections,
+  enrichStructureItemsWithFingerprints,
   filterCheckItemsBySnapshot,
   loadUiRegressionConfig,
   type StructureCheckItem,
   type StyleCheckItem,
 } from '../../scripts/report/ui-regression-config.js';
+import {
+  BROWSER_COLLECT_SECTIONS,
+  BROWSER_COLLECT_SELECTORS,
+  LEGACY_DOM_FINGERPRINT,
+  finalizeSection,
+  finalizeSelectorProbe,
+  type SectionFingerprint,
+  type SectionRaw,
+  type SelectorProbeRaw,
+} from '../utils/dom-fingerprint.js';
 
 export type SelectorProbe = {
   exists: boolean;
   bbox?: { x: number; y: number; width: number; height: number };
   domHash?: string;
+  structureHash?: string;
+  textHash?: string;
+  resolvedBy?: string;
 };
 
 export type EgoUiDiagnostics = {
   layout?: { horizontalOverflow: boolean; scrollWidth: number; innerWidth: number };
   selectors?: Record<string, SelectorProbe>;
+  sections?: SectionFingerprint[];
   styleFingerprint?: Record<string, Record<string, string>>;
   domHash?: string;
 };
-
-/** 与 screenshot-capture.ts 的 domFingerprintFn 保持一致，否则两引擎的 domHash 不可比 */
-const DOM_FINGERPRINT = `(function(el){
-  var tag=el.tagName;
-  var children=el.children?el.children.length:0;
-  var cls=(el.className&&el.className.toString)?String(el.className).slice(0,120):'';
-  return tag+'|'+children+'|'+cls;
-})`;
 
 const DEFAULT_STYLE_PROPS = [
   'backgroundColor',
@@ -51,14 +59,12 @@ const DEFAULT_STYLE_PROPS = [
 
 export type DiagnosticsPlan = {
   structureItems: StructureCheckItem[];
+  /** 分区哈希采集目标（structureChecks ∪ changeDetection.sections） */
+  sectionItems: StructureCheckItem[];
   styleItems: StyleCheckItem[];
   domHashRoot?: string;
 };
 
-/**
- * 解析当前步骤要采集哪些检查项。snapshot 作用域与 Playwright 侧同规则：
- * 带 snapshotName 的配置项只在匹配的快照上生效。
- */
 export function resolveDiagnosticsPlan(
   scriptKey: string | undefined,
   snapshot?: { snapshotName?: string; state?: string },
@@ -67,10 +73,24 @@ export function resolveDiagnosticsPlan(
   const snapCtx = snapshot?.snapshotName
     ? { snapshotName: snapshot.snapshotName, state: snapshot.state || 'normal' }
     : undefined;
+  const structureItems = cfg.structureChecks?.enabled
+    ? enrichStructureItemsWithFingerprints(
+        scriptKey,
+        filterCheckItemsBySnapshot(resolveStructureCheckItems(scriptKey), snapCtx),
+      )
+    : [];
+  const changeSections = resolveChangeDetectionSections().map((s) => ({
+    key: s.key,
+    selector: s.selector,
+  }));
+  const seen = new Set(structureItems.map((i) => i.key));
+  const sectionItems = [
+    ...structureItems,
+    ...changeSections.filter((s) => !seen.has(s.key)),
+  ];
   return {
-    structureItems: cfg.structureChecks?.enabled
-      ? filterCheckItemsBySnapshot(resolveStructureCheckItems(scriptKey), snapCtx)
-      : [],
+    structureItems,
+    sectionItems,
     styleItems: cfg.styleChecks?.enabled
       ? filterCheckItemsBySnapshot(resolveStyleCheckItems(scriptKey), snapCtx)
       : [],
@@ -79,18 +99,19 @@ export function resolveDiagnosticsPlan(
 }
 
 export function planIsEmpty(plan: DiagnosticsPlan): boolean {
-  return plan.structureItems.length === 0 && plan.styleItems.length === 0;
+  return plan.structureItems.length === 0 && plan.sectionItems.length === 0 && plan.styleItems.length === 0;
 }
 
-/**
- * 生成在页面里执行的采集表达式。
- *
- * frame: 'first' 的配置项在 ego 下按「同文档内查找」降级处理：ego 的 CDP 求值默认
- * 落在主文档，跨 frame 采集需要额外的 isolated world 编排，这里先让主文档命中的
- * 选择器可用，未命中则如实记为 exists:false，由 required 决定严重级别。
- */
 export function buildDiagnosticsExpression(plan: DiagnosticsPlan): string {
-  const structurePayload = plan.structureItems.map((i) => ({ key: i.key, selector: i.selector }));
+  const structurePayload = plan.structureItems.map((i) => ({
+    key: i.key,
+    selector: i.selector,
+    fingerprint: i.fingerprint,
+  }));
+  const sectionPayload = plan.sectionItems.map((i) => ({
+    key: i.key,
+    selector: i.selector,
+  }));
   const stylePayload = plan.styleItems.map((i) => ({
     key: i.key,
     selector: i.selector,
@@ -98,10 +119,13 @@ export function buildDiagnosticsExpression(plan: DiagnosticsPlan): string {
   }));
 
   return `(() => {
-  const fp = ${DOM_FINGERPRINT};
+  ${BROWSER_COLLECT_SECTIONS}
+  ${BROWSER_COLLECT_SELECTORS}
   const structure = ${JSON.stringify(structurePayload)};
+  const sections = ${JSON.stringify(sectionPayload)};
   const styles = ${JSON.stringify(stylePayload)};
   const domHashRoot = ${JSON.stringify(plan.domHashRoot || '')};
+  const legacyFp = ${LEGACY_DOM_FINGERPRINT};
 
   const out = {};
   try {
@@ -115,25 +139,15 @@ export function buildDiagnosticsExpression(plan: DiagnosticsPlan): string {
   if (domHashRoot) {
     try {
       const rootEl = document.querySelector(domHashRoot);
-      if (rootEl) out.domHash = fp(rootEl);
+      if (rootEl) out.domHash = legacyFp(rootEl);
     } catch (e) {}
   }
 
   if (structure.length) {
-    const sel = {};
-    for (const item of structure) {
-      try {
-        const el = document.querySelector(item.selector);
-        if (!el) { sel[item.key] = { exists: false }; continue; }
-        const r = el.getBoundingClientRect();
-        sel[item.key] = {
-          exists: true,
-          bbox: { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) },
-          domHash: fp(el),
-        };
-      } catch (e) { sel[item.key] = { exists: false }; }
-    }
-    out.selectors = sel;
+    out.selectorsRaw = collectSelectorProbes(structure);
+  }
+  if (sections.length) {
+    out.sectionsRaw = collectSections(sections);
   }
 
   if (styles.length) {
@@ -172,8 +186,31 @@ export function buildDiagnosticsExpression(plan: DiagnosticsPlan): string {
 export function parseDiagnostics(raw: unknown): EgoUiDiagnostics | undefined {
   if (typeof raw !== 'string' || !raw.trim()) return undefined;
   try {
-    const parsed = JSON.parse(raw) as EgoUiDiagnostics;
-    return parsed && typeof parsed === 'object' ? parsed : undefined;
+    const parsed = JSON.parse(raw) as {
+      layout?: EgoUiDiagnostics['layout'];
+      domHash?: string;
+      sectionsRaw?: SectionRaw[];
+      selectorsRaw?: Record<string, SelectorProbeRaw>;
+      styleFingerprint?: Record<string, Record<string, string>>;
+    };
+    if (!parsed || typeof parsed !== 'object') return undefined;
+
+    const out: EgoUiDiagnostics = {};
+    if (parsed.layout) out.layout = parsed.layout;
+    if (parsed.domHash) out.domHash = parsed.domHash;
+    if (parsed.sectionsRaw?.length) {
+      out.sections = parsed.sectionsRaw.map(finalizeSection);
+      const first = out.sections[0];
+      if (first?.structureHash) out.domHash = `SEC|${first.structureHash}`;
+    }
+    if (parsed.selectorsRaw) {
+      out.selectors = {};
+      for (const [key, probe] of Object.entries(parsed.selectorsRaw)) {
+        out.selectors[key] = finalizeSelectorProbe(probe);
+      }
+    }
+    if (parsed.styleFingerprint) out.styleFingerprint = parsed.styleFingerprint;
+    return out;
   } catch {
     return undefined;
   }

@@ -175,11 +175,12 @@ export function buildDiffCardHtml(
   </div>`;
 }
 
-const SEV_RANK: Record<UiIssueSeverity, number> = { blocker: 3, warning: 2, noise: 1 };
+const SEV_RANK: Record<UiIssueSeverity, number> = { blocker: 4, warning: 3, noise: 2, info: 1 };
 const SEV_CELL: Record<UiIssueSeverity, string> = {
   blocker: 'hm-red',
   warning: 'hm-yellow',
   noise: 'hm-green',
+  info: 'hm-green',
 };
 
 export function generateHeatmapTabHtml(issues: UiIssue[]): string {

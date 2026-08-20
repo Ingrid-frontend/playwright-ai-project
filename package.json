@@ -68,6 +68,7 @@
     "upload-to-feishu": "tsx scripts/feishu/upload-to-feishu.ts",
     "test-feishu-webhook": "tsx scripts/feishu/test-feishu-webhook.ts",
     "feishu:send-card": "tsx scripts/feishu/send-latest-card.ts",
+    "notify:resend": "tsx scripts/feishu/resend-delivery.ts",
     "run-optimized-tests": "tsx scripts/flow/run-optimized-tests.ts",
     "reset:regression-data": "tsx scripts/flow/reset-regression-data.ts",
     "rerun-regression-keep": "tsx scripts/flow/rerun-regression-keep-screenshots.ts",

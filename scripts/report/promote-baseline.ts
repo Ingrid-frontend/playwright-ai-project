@@ -17,6 +17,8 @@ function printHelp(): void {
   --latest                      自动取最新 run（可配合 --browser）
   --browser=chrome|webkit       浏览器（默认 chrome）
   --step=<file.png>             只提升指定 PNG（可重复）；不传则整 run
+  --expected-revision=<n>       乐观锁：与当前 .baseline-meta.json revision 一致才写入
+  --promoted-by=<name>            记录晋升来源（如 test-job:nightly）
   --revert                      撤销 Golden
   -h, --help
 `);
@@ -29,6 +31,8 @@ function parseArgs(argv: string[]): {
   revert: boolean;
   latest: boolean;
   steps: string[];
+  expectedRevision?: number;
+  promotedBy?: string;
 } {
   let script: string | undefined;
   let run: string | undefined;
@@ -36,6 +40,8 @@ function parseArgs(argv: string[]): {
   let revert = false;
   let latest = false;
   const steps: string[] = [];
+  let expectedRevision: number | undefined;
+  let promotedBy: string | undefined;
 
   for (const arg of argv) {
     if (arg === '-h' || arg === '--help') {
@@ -67,9 +73,18 @@ function parseArgs(argv: string[]): {
       if (step) steps.push(step);
       continue;
     }
+    if (arg.startsWith('--expected-revision=')) {
+      const n = Number.parseInt(arg.slice('--expected-revision='.length).trim(), 10);
+      if (!Number.isNaN(n)) expectedRevision = n;
+      continue;
+    }
+    if (arg.startsWith('--promoted-by=')) {
+      promotedBy = arg.slice('--promoted-by='.length).trim();
+      continue;
+    }
   }
 
-  return { script, run, browser, revert, latest, steps };
+  return { script, run, browser, revert, latest, steps, expectedRevision, promotedBy };
 }
 
 function main(): void {
@@ -98,24 +113,28 @@ function main(): void {
   }
 
   if (opts.steps.length) {
-    const { copied, goldenDir } = promoteStepsToGolden({
+    const { copied, goldenDir, revision } = promoteStepsToGolden({
       scriptKey: opts.script,
       sourceRunTimestamp: runTs,
       browser: opts.browser,
       stepFileNames: opts.steps,
+      expectedRevision: opts.expectedRevision,
+      promotedBy: opts.promotedBy,
     });
-    console.log(`✅ 已提升 Golden：${copied} 张截图（按 step）`);
+    console.log(`✅ 已提升 Golden：${copied} 张截图（按 step），revision=${revision}`);
     console.log(`   目录: ${goldenDir}`);
     return;
   }
 
-  const { copied, goldenDir } = promoteRunToGolden({
+  const { copied, goldenDir, revision } = promoteRunToGolden({
     scriptKey: opts.script,
     sourceRunTimestamp: runTs,
     browser: opts.browser,
+    expectedRevision: opts.expectedRevision,
+    promotedBy: opts.promotedBy,
   });
 
-  console.log(`✅ 已提升 Golden：${copied} 张截图`);
+  console.log(`✅ 已提升 Golden：${copied} 张截图，revision=${revision}`);
   console.log(`   目录: ${goldenDir}`);
 }
 

@@ -7,6 +7,97 @@ export const BASELINE_ROOT = 'screenshots-baseline';
 export const UI_REGRESSION_DIR = 'results/ui-regression';
 export const MANIFEST_PATH = path.join(UI_REGRESSION_DIR, 'baseline-manifest.json');
 export const LAST_GREEN_PATH = path.join(UI_REGRESSION_DIR, 'last-green-run.json');
+export const BASELINE_META_FILE = '.baseline-meta.json';
+export const BASELINE_LOCK_DIR = '.baseline-lock';
+
+export interface BaselineMeta {
+  revision: number;
+  promotedAt: string;
+  promotedBy?: string;
+  sourceRun?: string;
+}
+
+const LOCK_TTL_MS = 10 * 60 * 1000;
+
+function baselineMetaPath(goldenDir: string): string {
+  return path.join(goldenDir, BASELINE_META_FILE);
+}
+
+export function readBaselineMeta(goldenDir: string): BaselineMeta | null {
+  const p = baselineMetaPath(goldenDir);
+  if (!fs.existsSync(p)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(p, 'utf-8')) as BaselineMeta;
+  } catch {
+    return null;
+  }
+}
+
+function writeBaselineMeta(goldenDir: string, meta: BaselineMeta): void {
+  ensureDir(goldenDir);
+  writeJson(baselineMetaPath(goldenDir), meta);
+}
+
+function cleanupStaleLock(lockDir: string): void {
+  if (!fs.existsSync(lockDir)) return;
+  try {
+    const stat = fs.statSync(lockDir);
+    if (Date.now() - stat.mtimeMs > LOCK_TTL_MS) {
+      fs.rmSync(lockDir, { recursive: true, force: true });
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+export function acquireBaselineLock(goldenDir: string, promotedBy?: string): void {
+  const lockDir = path.join(goldenDir, BASELINE_LOCK_DIR);
+  cleanupStaleLock(lockDir);
+  try {
+    fs.mkdirSync(lockDir);
+    fs.writeFileSync(
+      path.join(lockDir, 'info.json'),
+      JSON.stringify({ pid: process.pid, at: new Date().toISOString(), promotedBy: promotedBy || '' }),
+    );
+  } catch {
+    throw new Error(`基线目录被锁定，请稍后重试: ${lockDir}`);
+  }
+}
+
+export function releaseBaselineLock(goldenDir: string): void {
+  const lockDir = path.join(goldenDir, BASELINE_LOCK_DIR);
+  try {
+    if (fs.existsSync(lockDir)) fs.rmSync(lockDir, { recursive: true, force: true });
+  } catch {
+    /* ignore */
+  }
+}
+
+function assertExpectedRevision(goldenDir: string, expectedRevision?: number): number {
+  const cur = readBaselineMeta(goldenDir);
+  const revision = cur?.revision ?? 0;
+  if (expectedRevision !== undefined && expectedRevision !== revision) {
+    throw new Error(
+      `基线 revision 不匹配：当前 ${revision}，期望 ${expectedRevision}。请先拉取最新基线再晋升。`,
+    );
+  }
+  return revision;
+}
+
+function bumpBaselineRevision(
+  goldenDir: string,
+  opts: { promotedBy?: string; sourceRun?: string },
+  prevRevision: number,
+): BaselineMeta {
+  const meta: BaselineMeta = {
+    revision: prevRevision + 1,
+    promotedAt: new Date().toISOString(),
+    promotedBy: opts.promotedBy,
+    sourceRun: opts.sourceRun,
+  };
+  writeBaselineMeta(goldenDir, meta);
+  return meta;
+}
 
 export type ResolvedBaselineKind = 'golden' | 'last-green' | 'oldest';
 
@@ -177,7 +268,9 @@ export function promoteRunToGolden(opts: {
   sourceRunTimestamp: string;
   browser?: string;
   screenshotsRoot?: string;
-}): { copied: number; goldenDir: string } {
+  expectedRevision?: number;
+  promotedBy?: string;
+}): { copied: number; goldenDir: string; revision: number } {
   const screenshotsRoot = opts.screenshotsRoot || 'screenshots';
   const browser = opts.browser || 'chrome';
   const runSegment = browserToRunSegment(browser);
@@ -191,9 +284,11 @@ export function promoteRunToGolden(opts: {
   assertRunEligibleForGolden(sourceDir);
 
   const goldenDir = goldenDirForScript(opts.scriptKey, runSegment);
+  acquireBaselineLock(goldenDir, opts.promotedBy);
+  const prevRevision = assertExpectedRevision(goldenDir, opts.expectedRevision);
+
   const pngs = fs.readdirSync(sourceDir).filter((f) => f.endsWith('.png') && f.startsWith('step-'));
 
-  // 原子操作：先复制到临时目录，再 rename 替换旧基线
   const tmpDir = `${goldenDir}.tmp-${Date.now()}`;
   const bakDir = fs.existsSync(goldenDir) ? `${goldenDir}.bak-${Date.now()}` : null;
   try {
@@ -231,7 +326,12 @@ export function promoteRunToGolden(opts: {
     });
     saveManifest(manifest);
 
-    return { copied, goldenDir };
+    const meta = bumpBaselineRevision(goldenDir, {
+      promotedBy: opts.promotedBy,
+      sourceRun: opts.sourceRunTimestamp,
+    }, prevRevision);
+
+    return { copied, goldenDir, revision: meta.revision };
   } catch (err) {
     // 失败时回滚：恢复备份、清理临时目录
     if (bakDir && fs.existsSync(bakDir) && !fs.existsSync(goldenDir)) {
@@ -241,6 +341,8 @@ export function promoteRunToGolden(opts: {
       try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* 忽略 */ }
     }
     throw err;
+  } finally {
+    releaseBaselineLock(goldenDir);
   }
 }
 
@@ -250,7 +352,9 @@ export function promoteStepsToGolden(opts: {
   browser?: string;
   stepFileNames: string[];
   screenshotsRoot?: string;
-}): { copied: number; goldenDir: string } {
+  expectedRevision?: number;
+  promotedBy?: string;
+}): { copied: number; goldenDir: string; revision: number } {
   const screenshotsRoot = opts.screenshotsRoot || 'screenshots';
   const browser = opts.browser || 'chrome';
   const runSegment = browserToRunSegment(browser);
@@ -269,6 +373,9 @@ export function promoteStepsToGolden(opts: {
   assertStepMetasEligibleForGolden(sourceDir, names);
 
   const goldenDir = goldenDirForScript(opts.scriptKey, runSegment);
+  acquireBaselineLock(goldenDir, opts.promotedBy);
+  const prevRevision = assertExpectedRevision(goldenDir, opts.expectedRevision);
+  try {
   ensureDir(goldenDir);
 
   let copied = 0;
@@ -310,7 +417,15 @@ export function promoteStepsToGolden(opts: {
   });
   saveManifest(manifest);
 
-  return { copied, goldenDir };
+  const meta = bumpBaselineRevision(goldenDir, {
+    promotedBy: opts.promotedBy,
+    sourceRun: opts.sourceRunTimestamp,
+  }, prevRevision);
+
+  return { copied, goldenDir, revision: meta.revision };
+  } finally {
+    releaseBaselineLock(goldenDir);
+  }
 }
 
 export function revertGolden(scriptKey: string, browser?: string): number {

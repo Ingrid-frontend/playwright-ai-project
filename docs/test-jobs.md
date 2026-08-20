@@ -130,6 +130,16 @@ WebSocket 消息：`jobs:list`、`jobs:preview`、`jobs:run`、`jobs:stop`、`jo
 - `TEST_USERNAME` / `TEST_PASSWORD` — 登录
 - `FEISHU_WEBHOOK_URL` / `FEISHU_WEBHOOK_SECRET` — 飞书通知
 
+## 通知投递记录
+
+飞书发送结果写入 `results/notification-deliveries/`（与任务执行解耦，失败可单独重投）：
+
+```bash
+npm run notify:resend -- --list
+npm run notify:resend -- --latest-failed
+npm run notify:resend -- --file=results/notification-deliveries/<file>.json
+```
+
 ## 与 run-optimized-tests 的关系
 
 `npm run run-optimized-tests` 现通过同一 `job-runner` 执行，行为与改造前兼容（含 `--stop`、对比、飞书文档）。

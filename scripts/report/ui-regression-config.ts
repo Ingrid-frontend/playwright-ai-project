@@ -22,6 +22,17 @@ export interface SnapshotViewport {
   enabled?: boolean;
 }
 
+export interface ElementFingerprint {
+  tag: string;
+  stableAttributes: Record<string, string>;
+  textHint: string;
+  xpath: string;
+  fallbackSelectors: string[];
+  baselineRect: { x: number; y: number; width: number; height: number };
+  baselinePageWidth: number;
+  baselinePageHeight: number;
+}
+
 export interface StructureCheckItem {
   key: string;
   selector: string;
@@ -32,6 +43,8 @@ export interface StructureCheckItem {
   /** 仅在该 snapshot 截图上采集/对比；不传则对所有步骤生效 */
   snapshotName?: string;
   state?: string;
+  /** 采集时自动写入，用于 selector 失效后兜底 */
+  fingerprint?: ElementFingerprint;
 }
 
 export interface StyleCheckItem {
@@ -59,6 +72,23 @@ export interface GateConfig {
   mode: 'style-only' | 'pixel' | 'hybrid';
   /** scriptKey 以此前缀开头时，style-only 下 golden/last-green blocker 仍会使 --gate 失败 */
   pixelScriptPrefixes?: string[];
+}
+
+export interface ChangeDetectionSection {
+  key: string;
+  selector: string;
+  watch?: Array<'structure' | 'text' | 'style'>;
+}
+
+export interface ChangeDetectionConfig {
+  enabled: boolean;
+  sections: ChangeDetectionSection[];
+  textNormalize: string[];
+  severity: {
+    contentOnly: 'info' | 'warning' | 'blocker';
+    structureOnly: 'info' | 'warning' | 'blocker';
+    structureAndPixel: 'info' | 'warning' | 'blocker';
+  };
 }
 
 export interface UiRegressionConfig {
@@ -92,6 +122,7 @@ export interface UiRegressionConfig {
   };
   aiReview?: AiReviewConfig;
   diffRegions?: DiffRegionsConfig;
+  changeDetection?: ChangeDetectionConfig;
 }
 
 export interface AiReviewConfig {
@@ -184,6 +215,16 @@ const DEFAULT_CONFIG: UiRegressionConfig = {
     highMinHeight: 40,
     lowMaxPixels: 40,
   },
+  changeDetection: {
+    enabled: false,
+    sections: [],
+    textNormalize: ['num', 'id', 'time', 'money', 'count'],
+    severity: {
+      contentOnly: 'info',
+      structureOnly: 'warning',
+      structureAndPixel: 'blocker',
+    },
+  },
 };
 
 const CONFIG_PATH = path.join(process.cwd(), 'config/ui-regression.json');
@@ -231,6 +272,7 @@ export function loadUiRegressionConfig(): UiRegressionConfig {
         gate: { ...DEFAULT_CONFIG.gate, ...raw.gate },
         aiReview: { ...DEFAULT_CONFIG.aiReview, ...raw.aiReview } as AiReviewConfig,
         diffRegions: { ...DEFAULT_CONFIG.diffRegions, ...raw.diffRegions } as DiffRegionsConfig,
+        changeDetection: { ...DEFAULT_CONFIG.changeDetection, ...raw.changeDetection } as ChangeDetectionConfig,
         viewports: raw.viewports?.length ? raw.viewports : DEFAULT_CONFIG.viewports,
       };
     } catch (e) {
@@ -444,6 +486,74 @@ export function resolveAiReviewConfig(): AiReviewConfig {
 
 export function resolveDiffRegionsConfig(): DiffRegionsConfig {
   return { ...(loadUiRegressionConfig().diffRegions ?? DEFAULT_CONFIG.diffRegions!) };
+}
+
+export function resolveChangeDetectionConfig(): ChangeDetectionConfig {
+  return { ...(loadUiRegressionConfig().changeDetection ?? DEFAULT_CONFIG.changeDetection!) };
+}
+
+/** 变化检测分区：优先 changeDetection.sections；为空时不额外采集（仍可由 structureChecks 派生） */
+export function resolveChangeDetectionSections(): ChangeDetectionSection[] {
+  const cfg = resolveChangeDetectionConfig();
+  if (!cfg.enabled) return [];
+  return Array.isArray(cfg.sections) ? cfg.sections.filter((s) => s?.key && s?.selector) : [];
+}
+
+/** 从 Golden 基线 meta 回填元素指纹，供主 selector 失效时兜底定位 */
+export function loadGoldenSelectorFingerprints(
+  scriptKey: string | undefined,
+): Record<string, ElementFingerprint> {
+  if (!scriptKey) return {};
+  const root = path.join('screenshots-baseline', scriptKey);
+  if (!fs.existsSync(root)) return {};
+  const out: Record<string, ElementFingerprint> = {};
+  const walk = (dir: string) => {
+    let entries: string[] = [];
+    try {
+      entries = fs.readdirSync(dir);
+    } catch {
+      return;
+    }
+    for (const name of entries) {
+      const full = path.join(dir, name);
+      let st: fs.Stats;
+      try {
+        st = fs.statSync(full);
+      } catch {
+        continue;
+      }
+      if (st.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (!name.endsWith('.meta.json')) continue;
+      try {
+        const meta = JSON.parse(fs.readFileSync(full, 'utf-8')) as {
+          selectors?: Record<string, { fingerprint?: ElementFingerprint }>;
+        };
+        for (const [key, probe] of Object.entries(meta.selectors || {})) {
+          if (probe?.fingerprint && !out[key]) out[key] = probe.fingerprint;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+  };
+  walk(root);
+  return out;
+}
+
+export function enrichStructureItemsWithFingerprints(
+  scriptKey: string | undefined,
+  items: StructureCheckItem[],
+): StructureCheckItem[] {
+  if (!items.length) return items;
+  const fps = loadGoldenSelectorFingerprints(scriptKey);
+  if (!Object.keys(fps).length) return items;
+  return items.map((item) => ({
+    ...item,
+    fingerprint: item.fingerprint || fps[item.key],
+  }));
 }
 
 /** 从截图路径解析 scriptKey，如 screenshots/stage/260612/foo/run-chromium-optimized/ts/step.png */

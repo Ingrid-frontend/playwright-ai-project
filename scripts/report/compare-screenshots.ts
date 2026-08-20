@@ -284,6 +284,25 @@ async function main() {
   issuesReport.summary.comparisonNoise = comparisonCounts.noise;
 
   issuesReport.plainLanguageAnalysis = buildPlainLanguageAnalysis(issuesReport);
+
+  const firstScript = testDirComparisons[0]?.testDir;
+  if (firstScript) {
+    const metaPath = path.join(
+      'screenshots-baseline',
+      firstScript,
+      'run-chromium-optimized',
+      '.baseline-meta.json',
+    );
+    if (fs.existsSync(metaPath)) {
+      try {
+        const bm = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as { revision?: number };
+        if (typeof bm.revision === 'number') issuesReport.baselineRevision = bm.revision;
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
   writeUiIssuesReport(issuesReport, issuesOut);
 
   const analysisMdPath = path.join(path.dirname(issuesOut), 'ui-issues-analysis.md');

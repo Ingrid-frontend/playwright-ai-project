@@ -7,12 +7,13 @@ import type { PlainLanguageAnalysis } from './ui-issues-analysis.js';
 import type { UiIssueReview, ReviewSummary } from './ui-issue-review.js';
 
 export type UiIssueCompareKind = 'golden' | 'last-green' | 'cross-browser' | 'run-drift' | 'structure' | 'style-drift';
-export type UiIssueSeverity = 'blocker' | 'warning' | 'noise';
+export type UiIssueSeverity = 'blocker' | 'warning' | 'noise' | 'info';
 
 const SEVERITY_ORDER: Record<UiIssueSeverity, number> = {
-  blocker: 3,
-  warning: 2,
-  noise: 1,
+  blocker: 4,
+  warning: 3,
+  noise: 2,
+  info: 1,
 };
 
 function worstSeverity(a: UiIssueSeverity, b: UiIssueSeverity): UiIssueSeverity {
@@ -56,6 +57,7 @@ export interface UiIssuesReport {
     blocker: number;
     warning: number;
     noise: number;
+    info?: number;
     byCompareKind: Record<string, number>;
     byRoute?: Record<string, number>;
     review?: ReviewSummary;
@@ -68,6 +70,8 @@ export interface UiIssuesReport {
   issues: UiIssue[];
   /** 规则化中文摘要（合并重复行） */
   plainLanguageAnalysis?: PlainLanguageAnalysis;
+  /** 对比时 Golden 基线 revision（来自 .baseline-meta.json） */
+  baselineRevision?: number;
 }
 
 export function severityForDifference(
@@ -254,6 +258,7 @@ export function buildUiIssuesReport(issues: UiIssue[]): UiIssuesReport {
   let blocker = 0;
   let warning = 0;
   let noise = 0;
+  let info = 0;
 
   for (const issue of issues) {
     byCompareKind[issue.compareKind] = (byCompareKind[issue.compareKind] || 0) + 1;
@@ -262,6 +267,7 @@ export function buildUiIssuesReport(issues: UiIssue[]): UiIssuesReport {
     }
     if (issue.severity === 'blocker') blocker++;
     else if (issue.severity === 'warning') warning++;
+    else if (issue.severity === 'info') info++;
     else noise++;
   }
 
@@ -272,6 +278,7 @@ export function buildUiIssuesReport(issues: UiIssue[]): UiIssuesReport {
       blocker,
       warning,
       noise,
+      info: info || undefined,
       byCompareKind,
       byRoute: Object.keys(byRoute).length > 0 ? byRoute : undefined,
     },

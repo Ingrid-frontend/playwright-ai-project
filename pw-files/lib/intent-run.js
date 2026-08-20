@@ -29,16 +29,41 @@ function resolveIntentPath(repoRoot, intentRel) {
 }
 
 function listIntentDefinitions(repoRoot) {
-  const dir = path.join(repoRoot, 'tests', 'definitions');
+  const rootRel = 'tests/definitions';
+  const dir = path.join(repoRoot, rootRel);
   if (!fs.existsSync(dir)) return [];
-  return fs
-    .readdirSync(dir)
-    .filter((name) => /\.ya?ml$/i.test(name))
-    .sort()
-    .map((name) => ({
-      name,
-      path: `tests/definitions/${name}`,
-    }));
+  const out = [];
+  const walk = (relDir) => {
+    const abs = path.join(repoRoot, relDir);
+    let names = [];
+    try {
+      names = fs.readdirSync(abs);
+    } catch {
+      return;
+    }
+    for (const name of names) {
+      if (name.startsWith('.')) continue;
+      const absChild = path.join(abs, name);
+      const relChild = `${relDir}/${name}`.replace(/\\/g, '/');
+      let st;
+      try {
+        st = fs.statSync(absChild);
+      } catch {
+        continue;
+      }
+      if (st.isDirectory()) {
+        walk(relChild);
+        continue;
+      }
+      if (!/\.ya?ml$/i.test(name)) continue;
+      out.push({
+        name: relChild.slice(`${rootRel}/`.length),
+        path: relChild,
+      });
+    }
+  };
+  walk(rootRel);
+  return out.sort((a, b) => a.path.localeCompare(b.path, 'zh'));
 }
 
 function getIntentDefinition(repoRoot, intentRel) {
@@ -84,10 +109,10 @@ function deleteIntentDefinitions(repoRoot, paths = []) {
       skipped.push({ path: rel, reason: '不是 yaml 文件' });
       continue;
     }
-    // 禁止删到 definitions 目录本身或子目录外的路径
+    // 允许 tests/definitions/*.yaml 或 tests/definitions/<subdir>/*.yaml
     const parts = rel.split('/').filter(Boolean);
-    if (parts.length !== 3) {
-      skipped.push({ path: rel, reason: '仅允许 definitions 根下单层文件' });
+    if (parts.length !== 3 && parts.length !== 4) {
+      skipped.push({ path: rel, reason: '仅允许 definitions 根下或一层子目录内的 yaml' });
       continue;
     }
     if (seen.has(rel)) continue;

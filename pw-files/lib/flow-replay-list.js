@@ -157,9 +157,54 @@ function allowedReplayRel(rel) {
   return '';
 }
 
-/** 批量删除流程回放目录（按 outRel） */
+/** 仅允许删 screenshots/<...>/run-*-optimized/<timestamp> 这一层，不碰 baseline / 用例根目录 */
+function resolveLinkedScreenshotRunDirs(repoRoot, runDirAbs) {
+  const candidates = [];
+  const result =
+    readJson(path.join(runDirAbs, 'result.json')) ||
+    readJson(path.join(runDirAbs, 'run', 'result.json'));
+  if (result?.screenshotDir) candidates.push(String(result.screenshotDir));
+  for (const name of ['screenshots-path.txt', path.join('run', 'screenshots-path.txt')]) {
+    const p = path.join(runDirAbs, name);
+    if (!fs.existsSync(p)) continue;
+    try {
+      const line = fs.readFileSync(p, 'utf8').trim().split(/\r?\n/)[0];
+      if (line) candidates.push(line);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const out = [];
+  const seen = new Set();
+  const screenshotsRoot = path.resolve(repoRoot, 'screenshots');
+  for (const raw of candidates) {
+    let abs = String(raw || '').trim();
+    if (!abs) continue;
+    if (!path.isAbsolute(abs)) abs = path.resolve(repoRoot, abs);
+    abs = path.resolve(abs);
+    if (!abs.startsWith(screenshotsRoot + path.sep)) continue;
+    const rel = path.relative(repoRoot, abs).split(path.sep).join('/');
+    if (rel.includes('..') || !rel.startsWith('screenshots/')) continue;
+    if (rel.startsWith('screenshots-baseline/')) continue;
+    const parts = rel.split('/').filter(Boolean);
+    // screenshots / intent / env / name / run-xxx-optimized / timestamp
+    if (parts.length < 6) continue;
+    const runSeg = parts[parts.length - 2];
+    const tsSeg = parts[parts.length - 1];
+    if (!/^run-(chromium|webkit|firefox|safari|edge)-optimized$/i.test(runSeg)) continue;
+    if (!/^\d{4}-\d{2}-\d{2}/.test(tsSeg)) continue;
+    if (seen.has(rel)) continue;
+    seen.add(rel);
+    out.push({ abs, rel });
+  }
+  return out;
+}
+
+/** 批量删除流程回放目录（按 outRel），并清理关联的 intent 截图 run 目录 */
 function deleteFlowReplays(repoRoot, outRels = []) {
   const deleted = [];
+  const deletedScreenshots = [];
   const skipped = [];
   const seen = new Set();
   for (const raw of outRels) {
@@ -192,14 +237,31 @@ function deleteFlowReplays(repoRoot, outRels = []) {
       skipped.push({ outRel: rel, reason: '不是目录' });
       continue;
     }
+
+    const shotDirs = resolveLinkedScreenshotRunDirs(repoRoot, abs);
     try {
       fs.rmSync(abs, { recursive: true, force: true });
       deleted.push(rel);
     } catch (err) {
       skipped.push({ outRel: rel, reason: errText(err) || '删除失败' });
+      continue;
+    }
+
+    for (const shot of shotDirs) {
+      try {
+        if (fs.existsSync(shot.abs)) {
+          fs.rmSync(shot.abs, { recursive: true, force: true });
+          deletedScreenshots.push(shot.rel);
+        }
+      } catch (err) {
+        skipped.push({
+          outRel: rel,
+          reason: `回放已删，截图清理失败 ${shot.rel}: ${errText(err) || '未知错误'}`,
+        });
+      }
     }
   }
-  return { deleted, skipped };
+  return { deleted, deletedScreenshots, skipped };
 }
 
 async function runFlowReplay(ws, session, msg = {}, deps) {

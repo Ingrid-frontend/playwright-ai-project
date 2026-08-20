@@ -56,6 +56,7 @@ const { runRepoPromoteBaseline, runRepoVisualReview } = require('./lib/repo-base
 const { runIntent, listIntentDefinitions, getIntentDefinition, saveIntentDefinition, deleteIntentDefinitions } = require('./lib/intent-run');
 const { applyHealSuggest, sendTrustReport } = require('./lib/intent-boundary');
 const { runStyleDriftFullFlow } = require('./lib/style-drift-run');
+const { runChangeDetectionFullFlow } = require('./lib/change-detection-run');
 const { runEgoAudit } = require('./lib/ego-audit');
 const { runEgoNlFlow } = require('./lib/ego-nl-run');
 const { runEgoExplore } = require('./lib/ego-explore');
@@ -385,6 +386,7 @@ const { sendHello, handleMessage } = createWsDispatcher({
     runRepoRerunKeepScreenshots,
     cancelRepoRerun,
     runStyleDriftFullFlow,
+    runChangeDetectionFullFlow,
   },
   jobs: {
     handleJobsList,

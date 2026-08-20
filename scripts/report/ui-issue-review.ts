@@ -21,9 +21,10 @@ export interface ReviewSummary {
 }
 
 const SEV_RANK: Record<UiIssueSeverity, number> = {
-  blocker: 3,
-  warning: 2,
-  noise: 1,
+  blocker: 4,
+  warning: 3,
+  noise: 2,
+  info: 1,
 };
 
 function stepKey(issue: UiIssue): string {

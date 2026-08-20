@@ -1028,6 +1028,25 @@
                 <span class="editor-run-status" id="styleDriftRunStatus"></span>
               </div>
               <p class="sidebar-hint" id="styleDriftStatus" style="color:var(--text-tertiary);margin:0">运行 YAML 用例 → 截图对比 → 报告三档分类</p>
+
+              <hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
+              <div style="font-weight:600;color:var(--text)">5. 页面变化检测</div>
+              <p class="sidebar-hint" style="color:var(--text-tertiary);margin:0">
+                分区语义哈希 + 结构/文本分级：intent 截图 → compare → 可选晋升 Golden。
+              </p>
+              <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
+                <input type="checkbox" id="changeDetectionGate" checked> Gate 模式
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
+                <input type="checkbox" id="changeDetectionPromote"> 对比通过后晋升 Golden
+              </label>
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <button type="button" class="btn btn-run" id="btnChangeDetectionRunFull" onclick="startChangeDetectionFullFlow()" style="flex-shrink:0">
+                  <span class="btn-label">页面变化检测全流程</span>
+                </button>
+                <span class="editor-run-status" id="changeDetectionRunStatus"></span>
+              </div>
+              <p class="sidebar-hint" id="changeDetectionStatus" style="color:var(--text-tertiary);margin:0">运行 → 结构/文本哈希对比 → 内容更新 vs 界面变更分级</p>
             </div>
           </div>
         </div>
@@ -5201,8 +5220,15 @@ function handleMessage(msg) {
       break;
     case 'replay:delete:done':
       if (msg.ok) {
-        showToast(msg.message || `已删除 ${msg.deleted?.length || 0} 条`, 'ok');
+        const shotN = (msg.deletedScreenshots || []).length;
+        showToast(
+          msg.message || `已删除 ${msg.deleted?.length || 0} 条${shotN ? ` · 截图 ${shotN}` : ''}`,
+          'ok',
+        );
         log('ok', `[replay] ${msg.message || '已删除'}`);
+        if (shotN) {
+          (msg.deletedScreenshots || []).slice(0, 5).forEach((p) => log('dim', `[replay] 已清理截图 ${p}`));
+        }
       } else {
         showToast(msg.message || '删除失败', 'err');
         log('err', `[replay] ${msg.message || '删除失败'}`);
@@ -5332,6 +5358,27 @@ function handleMessage(msg) {
       } else {
         showToast(msg.message || '样式守护失败', 'err');
         log('err', `[style-drift] ${msg.message || '失败'}`);
+      }
+      break;
+    case 'change-detection:run-full:start':
+      setChangeDetectionBusy(true);
+      setStyleDriftBusy(true);
+      switchToIntentRunTab();
+      log('info', `[change-detection] 全流程开始${msg.intent ? ` · ${msg.intent}` : ''}`);
+      break;
+    case 'change-detection:run-full:done':
+      setChangeDetectionBusy(false);
+      setStyleDriftBusy(false);
+      if (msg.ok) {
+        const cs = msg.changeSummary || {};
+        const hint = `content=${cs.contentOnly ?? 0} structure=${cs.structure ?? 0} drift=${cs.selectorDrift ?? 0}`;
+        showToast(`页面变化检测完成 · ${hint}`, 'ok');
+        log('ok', `[change-detection] 完成 · ${hint}`);
+        const statusEl = document.getElementById('changeDetectionStatus');
+        if (statusEl) statusEl.textContent = `完成：${hint} · 报告 results/ui-regression/compare-report.html`;
+      } else {
+        showToast(msg.message || '页面变化检测失败', 'err');
+        log('err', `[change-detection] ${msg.message || '失败'}`);
       }
       break;
     case 'ego:explore:start':
@@ -6028,6 +6075,43 @@ function startStyleDriftFullFlow() {
   if (statusEl) statusEl.textContent = '运行中…';
 }
 
+function setChangeDetectionBusy(busy) {
+  const btn = document.getElementById('btnChangeDetectionRunFull');
+  const status = document.getElementById('changeDetectionRunStatus');
+  if (btn) {
+    btn.disabled = busy;
+    btn.style.opacity = busy ? 0.6 : 1;
+    const label = btn.querySelector('.btn-label');
+    if (label) label.textContent = busy ? '运行中…' : '页面变化检测全流程';
+  }
+  if (status) {
+    status.textContent = busy ? '运行中…' : '';
+    status.style.display = busy ? '' : 'none';
+  }
+}
+
+function startChangeDetectionFullFlow() {
+  const intent = document.getElementById('intentPath')?.value?.trim() || '';
+  if (!intent) {
+    showToast('请先选择或填写 Intent YAML 路径', 'err');
+    return;
+  }
+  const gate = Boolean(document.getElementById('changeDetectionGate')?.checked);
+  const promote = Boolean(document.getElementById('changeDetectionPromote')?.checked);
+  const headed = Boolean(document.getElementById('intentHeaded')?.checked);
+  const engine = document.getElementById('intentEngine')?.value || 'ego';
+  switchToIntentRunTab();
+  setChangeDetectionBusy(true);
+  setStyleDriftBusy(true);
+  if (!send('change-detection:run-full', { intent, gate, promote, headed, engine })) {
+    setChangeDetectionBusy(false);
+    setStyleDriftBusy(false);
+    return;
+  }
+  const statusEl = document.getElementById('changeDetectionStatus');
+  if (statusEl) statusEl.textContent = '运行中…';
+}
+
 function refreshReplayList() {
   if (ws && ws.readyState === 1) send('replay:list', {});
 }
@@ -6148,7 +6232,7 @@ function deleteSelectedReplays() {
     showToast('请先勾选要删除的回放', 'err');
     return;
   }
-  if (!confirm(`确认删除所选 ${outRels.length} 条流程回放？\n将移除对应 results 目录，不可恢复。`)) return;
+  if (!confirm(`确认删除所选 ${outRels.length} 条流程回放？\n将移除对应 results 目录，并清理关联的 screenshots/intent 下该次 run 截图，不可恢复。`)) return;
   send('replay:delete', { outRels });
 }
 
@@ -6158,7 +6242,7 @@ function deleteAllListedReplays() {
     showToast('列表为空', 'err');
     return;
   }
-  if (!confirm(`确认清空当前列表 ${outRels.length} 条流程回放？\n将移除对应 results 目录，不可恢复。`)) return;
+  if (!confirm(`确认清空当前列表 ${outRels.length} 条流程回放？\n将移除对应 results 目录，并清理关联的 screenshots/intent 下该次 run 截图，不可恢复。`)) return;
   send('replay:delete', { outRels });
 }
 

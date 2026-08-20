@@ -206,5 +206,41 @@
     "highMinWidth": 80,
     "highMinHeight": 40,
     "lowMaxPixels": 40
+  },
+  "changeDetection": {
+    "enabled": true,
+    "sections": [
+      {
+        "key": "intent-approve-tabs",
+        "selector": ".ant-tabs, [role='tablist']",
+        "watch": ["structure", "text"]
+      },
+      {
+        "key": "intent-approve-toolbar",
+        "selector": ".ant-input-affix-wrapper, .ant-input-search, .ant-input",
+        "watch": ["structure"]
+      },
+      {
+        "key": "intent-approve-table",
+        "selector": ".ant-table, table",
+        "watch": ["structure"]
+      },
+      {
+        "key": "golden-approve-tabs",
+        "selector": ".ant-tabs, [role='tablist']",
+        "watch": ["structure", "text"]
+      },
+      {
+        "key": "golden-approve-table",
+        "selector": ".ant-table, table",
+        "watch": ["structure"]
+      }
+    ],
+    "textNormalize": ["num", "id", "time", "money", "count"],
+    "severity": {
+      "contentOnly": "info",
+      "structureOnly": "warning",
+      "structureAndPixel": "blocker"
+    }
   }
 }

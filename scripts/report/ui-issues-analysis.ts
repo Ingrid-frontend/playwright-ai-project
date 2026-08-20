@@ -64,9 +64,10 @@ const VERDICT_ZH: Record<ReviewVerdict, string> = {
 };
 
 const SEVERITY_ORDER: Record<UiIssueSeverity, number> = {
-  blocker: 3,
-  warning: 2,
-  noise: 1,
+  blocker: 4,
+  warning: 3,
+  noise: 2,
+  info: 1,
 };
 
 function normalizeStepLabel(stepName: string): string {

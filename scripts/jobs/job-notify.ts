@@ -8,6 +8,7 @@ import {
   cardHeader,
   type JobNotifySummary,
 } from './job-notify-card.js';
+import { writeDeliveryRecord } from './notification-delivery.js';
 
 export type { JobNotifySummary } from './job-notify-card.js';
 
@@ -75,9 +76,23 @@ export async function sendJobFeishuNotification(
   }
 
   const MAX_NOTIFY_ATTEMPTS = 2;
+  const jobId = summary.jobId || 'studio';
+  const counts = readUiIssuesSummaryCounts();
+  const issueCount = counts
+    ? { blocker: counts.blocker, warning: counts.warning }
+    : undefined;
   for (let attempt = 1; attempt <= MAX_NOTIFY_ATTEMPTS; attempt++) {
     try {
       const ok = await sendFeishuNotify(body);
+      writeDeliveryRecord({
+        jobId,
+        channel: 'feishu',
+        attempt,
+        status: ok ? 'success' : 'failed',
+        issueCount,
+        sentAt: new Date().toISOString(),
+        error: ok ? undefined : 'sendFeishuNotify returned false',
+      });
       if (ok) return true;
       if (attempt < MAX_NOTIFY_ATTEMPTS) {
         await new Promise((r) => setTimeout(r, 2000));
@@ -86,6 +101,15 @@ export async function sendJobFeishuNotification(
       return false;
     } catch (error) {
       console.log(`❌ 飞书通知发送异常 (attempt ${attempt}/${MAX_NOTIFY_ATTEMPTS}):`, error);
+      writeDeliveryRecord({
+        jobId,
+        channel: 'feishu',
+        attempt,
+        status: 'failed',
+        issueCount,
+        sentAt: new Date().toISOString(),
+        error: error instanceof Error ? error.message : String(error),
+      });
       if (attempt < MAX_NOTIFY_ATTEMPTS) {
         await new Promise((r) => setTimeout(r, 2000));
         continue;

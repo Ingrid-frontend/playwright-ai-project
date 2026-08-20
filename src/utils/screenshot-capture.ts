@@ -10,11 +10,26 @@ import {
   resolveScreenshotFullPage,
   resolveStructureCheckItems,
   resolveStyleCheckItems,
+  resolveChangeDetectionSections,
+  enrichStructureItemsWithFingerprints,
   filterCheckItemsBySnapshot,
   type SnapshotViewport,
   type StructureCheckItem,
 } from '../../scripts/report/ui-regression-config.js';
 import { collectStyleFingerprint, type StyleFingerprint } from './style-fingerprint.js';
+import {
+  BROWSER_COLLECT_SECTIONS,
+  BROWSER_COLLECT_SELECTORS,
+  LEGACY_DOM_FINGERPRINT,
+  finalizeSection,
+  finalizeSelectorProbe,
+  finalizeTextSection,
+  buildLegacyDomHash,
+  type SectionFingerprint,
+  type TextSection,
+  type SectionRaw,
+  type SelectorProbeRaw,
+} from './dom-fingerprint.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -152,40 +167,54 @@ type SelectorProbe = {
   exists: boolean;
   bbox?: { x: number; y: number; width: number; height: number };
   domHash?: string;
+  structureHash?: string;
+  textHash?: string;
+  resolvedBy?: string;
 };
 
 async function probeSelectorsInContext(
   ctx: Page | Frame,
   items: StructureCheckItem[],
-  fnBody: string,
 ): Promise<Record<string, SelectorProbe>> {
   if (!items.length) return {};
-  return ctx.evaluate(
+  const raw = await ctx.evaluate(
     ({ list, body }) => {
-      const fn = new Function('el', `return (${body})(el)`);
-      const out: Record<string, SelectorProbe> = {};
-      for (const item of list) {
-        const el = document.querySelector(item.selector);
-        if (!el) {
-          out[item.key] = { exists: false };
-          continue;
-        }
-        const r = el.getBoundingClientRect();
-        out[item.key] = {
-          exists: true,
-          bbox: {
-            x: Math.round(r.x),
-            y: Math.round(r.y),
-            width: Math.round(r.width),
-            height: Math.round(r.height),
-          },
-          domHash: fn(el) as string,
-        };
-      }
-      return out;
+      const fn = new Function(`return (${body})`)() as (
+        items: { key: string; selector: string; fingerprint?: unknown }[],
+      ) => Record<string, SelectorProbeRaw>;
+      return fn(list);
     },
-    { list: items.map((i) => ({ key: i.key, selector: i.selector })), body: fnBody },
+    {
+      list: items.map((i) => ({
+        key: i.key,
+        selector: i.selector,
+        fingerprint: i.fingerprint,
+      })),
+      body: BROWSER_COLLECT_SELECTORS,
+    },
   );
+  const out: Record<string, SelectorProbe> = {};
+  for (const [key, probe] of Object.entries(raw)) {
+    out[key] = finalizeSelectorProbe(probe as SelectorProbeRaw);
+  }
+  return out;
+}
+
+async function collectSectionsInContext(
+  ctx: Page | Frame,
+  items: StructureCheckItem[],
+): Promise<SectionFingerprint[]> {
+  if (!items.length) return [];
+  const raw = await ctx.evaluate(
+    ({ list, body }) => {
+      const fn = new Function(`return (${body})`)() as (
+        items: { key: string; selector: string }[],
+      ) => SectionRaw[];
+      return fn(list);
+    },
+    { list: items.map((i) => ({ key: i.key, selector: i.selector })), body: BROWSER_COLLECT_SECTIONS },
+  );
+  return (raw as SectionRaw[]).map(finalizeSection);
 }
 
 async function writeStepDiagnostics(
@@ -209,46 +238,41 @@ async function writeStepDiagnostics(
     layout = undefined;
   }
 
-  let selectors: Record<
-    string,
-    { exists: boolean; bbox?: { x: number; y: number; width: number; height: number }; domHash?: string }
-  > | undefined;
+  let selectors: Record<string, SelectorProbe> | undefined;
+  let sections: SectionFingerprint[] | undefined;
+  let textSections: TextSection[] | undefined;
   let domHash: string | undefined;
   const cfg = loadUiRegressionConfig().structureChecks;
   const snapCtx = snapshot?.snapshotName
     ? { snapshotName: snapshot.snapshotName, state: snapshot.state || 'normal' }
     : undefined;
-  const checkItems = filterCheckItemsBySnapshot(resolveStructureCheckItems(scriptKey), snapCtx);
+  const checkItems = enrichStructureItemsWithFingerprints(
+    scriptKey,
+    filterCheckItemsBySnapshot(resolveStructureCheckItems(scriptKey), snapCtx),
+  );
+  const changeSectionItems: StructureCheckItem[] = resolveChangeDetectionSections().map((s) => ({
+    key: s.key,
+    selector: s.selector,
+  }));
 
-  const domFingerprintFn = `(function(el){
-    var tag=el.tagName;
-    var children=el.children?el.children.length:0;
-    var cls=(el.className&&el.className.toString)?String(el.className).slice(0,120):'';
-    return tag+'|'+children+'|'+cls;
-  })`;
-
-  if (cfg?.domHashRoot) {
-    try {
-      domHash = await page.evaluate(
-        ({ root, fnBody }) => {
-          const el = document.querySelector(root);
-          if (!el) return '';
-          const fn = new Function('el', `return (${fnBody})(el)`);
-          return fn(el) as string;
-        },
-        { root: cfg.domHashRoot, fnBody: domFingerprintFn },
-      );
-    } catch {
-      domHash = undefined;
-    }
-  }
-
-  if (checkItems.length) {
+  if (checkItems.length || changeSectionItems.length) {
     const mainItems = checkItems.filter((i) => (i.frame || 'main') === 'main');
     const frameItems = checkItems.filter((i) => i.frame === 'first');
     selectors = {};
+    sections = [];
+    textSections = [];
     try {
-      Object.assign(selectors, await probeSelectorsInContext(page, mainItems, domFingerprintFn));
+      if (mainItems.length) {
+        Object.assign(selectors, await probeSelectorsInContext(page, mainItems));
+      }
+      const mainSectionKeys = new Set(mainItems.map((i) => i.key));
+      const mainSections = [
+        ...mainItems,
+        ...changeSectionItems.filter((s) => !mainSectionKeys.has(s.key)),
+      ];
+      if (mainSections.length) {
+        sections.push(...(await collectSectionsInContext(page, mainSections)));
+      }
     } catch {
       /* ignore */
     }
@@ -256,7 +280,8 @@ async function writeStepDiagnostics(
       const child = page.frames().find((f) => f !== page.mainFrame());
       if (child) {
         try {
-          Object.assign(selectors, await probeSelectorsInContext(child, frameItems, domFingerprintFn));
+          Object.assign(selectors, await probeSelectorsInContext(child, frameItems));
+          sections.push(...(await collectSectionsInContext(child, frameItems)));
         } catch {
           for (const item of frameItems) {
             selectors[item.key] = { exists: false };
@@ -268,6 +293,43 @@ async function writeStepDiagnostics(
         }
       }
     }
+    const sectionSource = [...checkItems, ...changeSectionItems];
+    for (const sec of sections) {
+      const item = sectionSource.find((i) => i.key === sec.key);
+      if (!item) continue;
+      const raw = await page
+        .evaluate((sel) => {
+          const el = document.querySelector(sel);
+          if (!el) return '';
+          return ((el as HTMLElement).innerText || el.textContent || '').trim().slice(0, 500);
+        }, item.selector)
+        .catch(() => '');
+      if (raw) textSections.push(finalizeTextSection(sec.key, raw));
+    }
+    if (!Object.keys(selectors).length) selectors = undefined;
+    if (!sections.length) sections = undefined;
+    if (!textSections.length) textSections = undefined;
+  }
+
+  if (cfg?.domHashRoot) {
+    try {
+      domHash = await page.evaluate(
+        ({ root, fnBody }) => {
+          const el = document.querySelector(root);
+          if (!el) return '';
+          const fn = new Function('el', `return (${fnBody})(el)`);
+          return fn(el) as string;
+        },
+        { root: cfg.domHashRoot, fnBody: LEGACY_DOM_FINGERPRINT },
+      );
+    } catch {
+      domHash = undefined;
+    }
+  }
+
+  const pageSection = sections?.find((s) => s.key === 'page') || sections?.[0];
+  if (pageSection?.structureHash) {
+    domHash = buildLegacyDomHash(pageSection.structureHash) || domHash;
   }
 
   let styleFingerprint: StyleFingerprint | undefined;
@@ -299,6 +361,8 @@ async function writeStepDiagnostics(
           : {}),
         layout,
         domHash,
+        sections,
+        textSections,
         selectors,
         styleFingerprint,
         consoleErrors: [...bag.consoleErrors],

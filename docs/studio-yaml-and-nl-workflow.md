@@ -28,6 +28,7 @@ Intent YAML + ego 执行        语义步骤（ego / pw）
 2. **编辑并保存**：选择 / 编辑 Intent YAML，**保存定义** 到 `tests/definitions/`
 3. **运行用例**：引擎 playwright / ego；下方为最近流程回放
 4. **样式守护全流程**：用上方同一 YAML → pw 截图 + style 指纹 → Golden 对比（见 [style-drift-workflow.md](./style-drift-workflow.md)）
+5. **页面变化检测全流程**：分区语义哈希 + 结构/文本分级 → compare → 可选晋升 Golden（见 [page-change-detection-design.md](./page-change-detection-design.md)）
 
 已有 YAML 可跳过第 1 步。想先验证「能不能跑通」用 **口语试跑** Tab。
 

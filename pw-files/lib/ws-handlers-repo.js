@@ -81,6 +81,7 @@ function createRepoHandlers(ctx) {
     runRepoRerunKeepScreenshots,
     cancelRepoRerun,
     runStyleDriftFullFlow,
+    runChangeDetectionFullFlow,
   } = ctx;
 
   return {
@@ -291,12 +292,14 @@ function createRepoHandlers(ctx) {
       }
       const result = deleteFlowReplays(repoRoot, outRels);
       const ok = result.deleted.length > 0;
+      const shotN = (result.deletedScreenshots || []).length;
       send(ws, 'replay:delete:done', {
         ok,
         deleted: result.deleted,
+        deletedScreenshots: result.deletedScreenshots || [],
         skipped: result.skipped,
         message: ok
-          ? `已删除 ${result.deleted.length} 条`
+          ? `已删除 ${result.deleted.length} 条回放${shotN ? `，并清理 ${shotN} 个截图 run` : ''}`
           : result.skipped[0]?.reason || '删除失败',
       });
       send(ws, 'replay:list:done', { items: listFlowReplays(repoRoot) });
@@ -398,6 +401,19 @@ function createRepoHandlers(ctx) {
         getSessionAccountProfile,
         runRepoCompareReport,
         runIntent,
+      });
+    },
+
+    'change-detection:run-full': async (ws, session, _sessionId, msg) => {
+      await runChangeDetectionFullFlow(ws, session, msg, {
+        resolveRepoRoot,
+        spawn,
+        buildRepoSpawnEnv,
+        getSessionPlaywrightEnv,
+        getSessionAccountProfile,
+        runRepoCompareReport,
+        runIntent,
+        runRepoPromoteBaseline,
       });
     },
 

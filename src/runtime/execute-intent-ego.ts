@@ -23,6 +23,7 @@ import {
   parseDiagnostics,
   type EgoUiDiagnostics,
 } from './ego-ui-diagnostics.js';
+import { finalizeTextSection } from '../utils/dom-fingerprint.js';
 import { EGO_RESULT_PREFIX, runEgoJson, EgoUnavailableError, EgoUserControllingError } from '../utils/ego-browser.js';
 import {
   extractVisibleTexts,
@@ -317,13 +318,19 @@ function writeShotMeta(
   const snapshot = info.snapshot || '';
   const size = readPngSize(pngPath);
   const diag = info.diagnostics;
+  const textSections = (diag?.sections || []).map((sec) => {
+    const nodes = parseSnapshotText(snapshot);
+    const hint = nodes.find((n) => n.name)?.name || '';
+    return finalizeTextSection(sec.key, hint);
+  });
   const meta = {
     capturedAt: new Date().toISOString(),
     url: info.url || '',
     title: info.title || '',
     pageText: extractVisibleTexts(snapshot).join(' ').slice(0, 800),
-    // 真实 DOM 指纹比可访问性树摘要更贴近结构变化，采不到时回退到 a11y 摘要
     domHash: diag?.domHash || egoDomHash(snapshot),
+    sections: diag?.sections,
+    textSections: textSections.length ? textSections : undefined,
     viewport: info.viewport,
     imageWidth: size?.width,
     imageHeight: size?.height,

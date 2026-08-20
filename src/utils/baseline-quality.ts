@@ -1,10 +1,12 @@
 import fs from 'fs';
 import path from 'path';
 import { isLoginLikeText, isLoginLikeUrl } from './login-detection.js';
+import { isEmptyShellSections } from './dom-fingerprint.js';
 
 export type ScreenshotMeta = {
   domHash?: string;
-  selectors?: Record<string, { exists?: boolean; domHash?: string }>;
+  sections?: Array<{ key: string; structureHash: string; nodeCount: number }>;
+  selectors?: Record<string, { exists?: boolean; domHash?: string; structureHash?: string }>;
   styleFingerprint?: Record<string, Record<string, string>>;
   url?: string;
   title?: string;
@@ -45,7 +47,13 @@ export function evaluateMetaQuality(meta: ScreenshotMeta, fileLabel = 'meta'): B
     (v) => v && v.__missing !== '1' && Object.keys(v).length > 0,
   );
 
-  if (isEmptyShellDomHash(meta.domHash)) {
+  if (meta.sections?.length) {
+    if (isEmptyShellSections(meta.sections as Parameters<typeof isEmptyShellSections>[0])) {
+      if (!(hasStyleFp && existing.length > 0)) {
+        return { file: fileLabel, reason: 'sections 全空，疑似未渲染页面' };
+      }
+    }
+  } else if (isEmptyShellDomHash(meta.domHash)) {
     if (hasStyleFp && existing.length > 0) {
       // iframe 页：主文档 body 空壳，但子 frame 结构与样式已采集
     } else {

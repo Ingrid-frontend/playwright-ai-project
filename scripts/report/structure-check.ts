@@ -13,26 +13,59 @@ import {
   resolveSnapshotContext,
   type StructureCheckItem,
 } from './ui-regression-config.js';
+import { scaleBbox } from '../../src/utils/dom-fingerprint.js';
 import type { UiIssue, UiIssueCompareKind, UiIssueSeverity } from './ui-issues.js';
+
+export interface SectionMeta {
+  key: string;
+  structureHash: string;
+  textHash: string;
+  nodeCount: number;
+  childTags: string;
+}
+
+export interface TextSectionMeta {
+  key: string;
+  text: string;
+  textHash: string;
+  charCount: number;
+}
 
 export interface StepMeta {
   capturedAt?: string;
   viewport?: { name: string; width: number; height: number };
   layout?: { horizontalOverflow?: boolean; scrollWidth?: number; innerWidth?: number };
   domHash?: string;
+  sections?: SectionMeta[];
+  textSections?: TextSectionMeta[];
   snapshotName?: string;
   state?: string;
   styleFingerprint?: Record<string, Record<string, string>>;
   selectors?: Record<
     string,
-    { exists: boolean; bbox?: { x: number; y: number; width: number; height: number }; domHash?: string }
+    {
+      exists: boolean;
+      bbox?: { x: number; y: number; width: number; height: number };
+      domHash?: string;
+      structureHash?: string;
+      textHash?: string;
+      resolvedBy?: string;
+      fingerprint?: StructureCheckItem['fingerprint'];
+    }
   >;
   consoleErrors?: string[];
   pageErrors?: string[];
 }
 
 export interface StructureFinding {
-  type: 'missing-selector' | 'bbox-drift' | 'dom-drift' | 'horizontal-overflow' | 'page-error';
+  type:
+    | 'missing-selector'
+    | 'bbox-drift'
+    | 'dom-drift'
+    | 'selector-drift'
+    | 'content-update'
+    | 'horizontal-overflow'
+    | 'page-error';
   key: string;
   severity: UiIssueSeverity;
   message: string;
@@ -94,6 +127,21 @@ function resolveBaselineMetaPath(
   return null;
 }
 
+function scaledBaseBbox(
+  item: StructureCheckItem,
+  base: { bbox: { x: number; y: number; width: number; height: number }; fingerprint?: StructureCheckItem['fingerprint'] },
+  current: StepMeta,
+  baseline: StepMeta | null,
+): { x: number; y: number; width: number; height: number } {
+  const fp = base.fingerprint || item.fingerprint;
+  if (!fp?.baselinePageWidth || !fp.baselinePageHeight) return base.bbox;
+  const curW = current.viewport?.width || fp.baselinePageWidth;
+  const curH = current.layout?.scrollWidth || current.viewport?.height || fp.baselinePageHeight;
+  const baseW = baseline?.viewport?.width || fp.baselinePageWidth;
+  const baseH = baseline?.layout?.scrollWidth || baseline?.viewport?.height || fp.baselinePageHeight;
+  return scaleBbox(fp.baselineRect, fp.baselinePageWidth, fp.baselinePageHeight, curW, curH);
+}
+
 function checkSelectorItem(
   item: StructureCheckItem,
   current: StepMeta,
@@ -103,7 +151,6 @@ function checkSelectorItem(
   const findings: StructureFinding[] = [];
   if (!current.selectors) return findings;
   const cur = current.selectors[item.key];
-  // 旧 meta 未写入该 key（配置后尚未重跑截图）→ 跳过，避免误报 missing
   if (cur === undefined) return findings;
   const base = baseline?.selectors?.[item.key];
 
@@ -126,10 +173,21 @@ function checkSelectorItem(
     return findings;
   }
 
+  if (cur.resolvedBy && cur.resolvedBy !== 'selector') {
+    findings.push({
+      type: 'selector-drift',
+      key: item.key,
+      severity: 'warning',
+      message: `主选择器失效，已由 ${cur.resolvedBy} 兜底定位: ${item.key}`,
+    });
+  }
+
   if (!base?.exists || !cur.bbox || !base.bbox) return findings;
 
   const cfg = loadUiRegressionConfig().structureChecks;
-  if (cfg?.checkDomHash && cur.domHash && base.domHash && cur.domHash !== base.domHash) {
+  const curHash = cur.structureHash || cur.domHash;
+  const baseHash = base.structureHash || base.domHash;
+  if (cfg?.checkDomHash && curHash && baseHash && curHash !== baseHash) {
     findings.push({
       type: 'dom-drift',
       key: item.key,
@@ -138,7 +196,13 @@ function checkSelectorItem(
     });
   }
 
-  const drift = bboxDrift(cur.bbox, base.bbox);
+  const baseBbox = scaledBaseBbox(
+    item,
+    { bbox: base.bbox, fingerprint: base.fingerprint },
+    current,
+    baseline,
+  );
+  const drift = bboxDrift(cur.bbox, baseBbox);
   if (drift <= tolerance) return findings;
 
   findings.push({
@@ -148,6 +212,50 @@ function checkSelectorItem(
     message: `布局偏移 ${item.key}: ${drift}px（阈值 ${tolerance}px）`,
     driftPx: drift,
   });
+  return findings;
+}
+
+function checkSections(current: StepMeta, baseline: StepMeta | null): StructureFinding[] {
+  const findings: StructureFinding[] = [];
+  if (!current.sections?.length || !baseline?.sections?.length) return findings;
+  const cfg = loadUiRegressionConfig().changeDetection;
+  if (!cfg?.enabled) return findings;
+
+  const watchByKey = new Map(
+    (cfg.sections || []).map((s) => [s.key, s.watch?.length ? s.watch : (['structure', 'text'] as Array<'structure' | 'text' | 'style'>)]),
+  );
+  const onlyConfigured = Boolean(cfg.sections?.length);
+  const baseMap = new Map(baseline.sections.map((s) => [s.key, s]));
+  for (const cur of current.sections) {
+    if (onlyConfigured && !watchByKey.has(cur.key)) continue;
+    const base = baseMap.get(cur.key);
+    if (!base) continue;
+    const watch = watchByKey.get(cur.key) || (['structure', 'text'] as Array<'structure' | 'text' | 'style'>);
+    const watchStructure = watch.includes('structure');
+    const watchText = watch.includes('text');
+    const structureSame = cur.structureHash === base.structureHash;
+    const textSame = cur.textHash === base.textHash;
+    if (watchText && structureSame && !textSame) {
+      findings.push({
+        type: 'content-update',
+        key: cur.key,
+        severity:
+          cfg.severity.contentOnly === 'blocker'
+            ? 'blocker'
+            : cfg.severity.contentOnly === 'warning'
+              ? 'warning'
+              : 'info',
+        message: `内容更新 ${cur.key}（结构未变）`,
+      });
+    } else if (watchStructure && !structureSame) {
+      findings.push({
+        type: 'dom-drift',
+        key: cur.key,
+        severity: cfg.severity.structureOnly === 'blocker' ? 'blocker' : 'warning',
+        message: `分区结构变化 ${cur.key}`,
+      });
+    }
+  }
   return findings;
 }
 
@@ -193,11 +301,14 @@ export function analyzeStepMeta(opts: {
     findings.push(...checkSelectorItem(item, opts.currentMeta, opts.baselineMeta ?? null, tolerance));
   }
 
+  findings.push(...checkSections(opts.currentMeta, opts.baselineMeta ?? null));
+
   if (
     cfg.checkDomHash &&
     opts.baselineMeta?.domHash &&
     opts.currentMeta.domHash &&
-    opts.currentMeta.domHash !== opts.baselineMeta.domHash
+    opts.currentMeta.domHash !== opts.baselineMeta.domHash &&
+    !opts.currentMeta.sections?.length
   ) {
     findings.push({
       type: 'dom-drift',
@@ -241,11 +352,15 @@ export function structureFindingToUiIssue(
       ? 1
       : finding.type === 'dom-drift'
         ? 0.02
-        : finding.type === 'bbox-drift' && finding.driftPx
-        ? Math.min(1, finding.driftPx / 100)
-        : finding.type === 'horizontal-overflow'
-          ? 0.01
-          : 0.005;
+        : finding.type === 'content-update'
+          ? 0.005
+          : finding.type === 'selector-drift'
+            ? 0.015
+            : finding.type === 'bbox-drift' && finding.driftPx
+              ? Math.min(1, finding.driftPx / 100)
+              : finding.type === 'horizontal-overflow'
+                ? 0.01
+                : 0.005;
 
   return {
     issueId: `${ctx.scriptKey}|${ctx.stepNumber}|${ctx.stepName}|${ctx.browser}|structure|${finding.type}|${finding.key}`,
