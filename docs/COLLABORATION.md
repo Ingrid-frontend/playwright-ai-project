@@ -178,6 +178,17 @@ CI/CD 会在以下情况自动运行：
 - 代码审查
 - 使用 Git 的合并工具
 
+## 🤖 AI 与门禁边界（必读）
+
+完整约定见 [ai-test-boundaries.md](./ai-test-boundaries.md)。
+
+摘要：
+
+- AI：生成、探索、自愈（**不改 assert 期望**）
+- 框架：断言、回归、`--gate`
+- 人：定预期、判关键、Promote Golden
+- 关键路径 Intent 设 `reviewRequired: true`；自愈写回用 `heal:suggest --apply`，禁止全自动合并
+
 ## 📚 最佳实践
 
 ### 1. 测试脚本命名

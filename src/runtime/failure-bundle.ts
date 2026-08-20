@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import type { AiTestRunResult, AiTestStepResult } from './execute-ai-test.js';
 import type { SemanticAction } from '../types/ai-test-plan.js';
+import { writeHealSuggestArtifacts } from './heal-suggest.js';
 
 export const FAILURE_BUNDLE_VERSION = 1 as const;
 
@@ -192,7 +193,13 @@ export function formatFailureSummaryMarkdown(bundle: FailureBundle): string {
   if (bundle.artifacts.stdoutLog) lines.push(`- 日志: \`${bundle.artifacts.stdoutLog}\``);
   if (bundle.artifacts.healDir) lines.push(`- 自愈日志: \`${bundle.artifacts.healDir}/\``);
 
-  lines.push('', '### 建议下一步', '- 根据失败步骤与截图调整 Intent YAML 或选择器', '- 将本文粘贴给 AI 时附带 YAML 片段与 heal 日志');
+  lines.push(
+    '',
+    '### 建议下一步',
+    '- 查看同目录 `heal-suggest.md`（仅非 assert 字段）',
+    '- `npm run heal:suggest -- --run=<输出目录> --intent=<yaml> --apply` 人审后写回',
+    '- 根据失败步骤与截图调整 Intent YAML 或选择器',
+  );
   return lines.filter((line) => line !== undefined).join('\n');
 }
 
@@ -202,6 +209,9 @@ export function buildFailureBundle(opts: {
   result: AiTestRunResult & { engine?: 'ego' | 'pw'; intentPath?: string; env?: string; profile?: string; planName?: string };
   healLogs?: HealLogEntry[];
   stdoutLogRel?: string;
+  env?: string;
+  profile?: string;
+  intentPath?: string;
 }): FailureBundle {
   const outputDir = path.resolve(opts.outputDir);
   const outRel = toRepoRel(outputDir) || outputDir.replace(/\\/g, '/');
@@ -216,10 +226,10 @@ export function buildFailureBundle(opts: {
     kind: opts.kind,
     passed: false,
     engine: opts.result.engine,
-    env: opts.env,
-    profile: opts.profile,
+    env: opts.env ?? opts.result.env,
+    profile: opts.profile ?? opts.result.profile,
     planName: opts.result.planName,
-    intentPath: opts.result.intentPath,
+    intentPath: opts.intentPath || opts.result.intentPath,
     outputDir: outRel,
     startedAt: opts.result.startedAt,
     finishedAt: opts.result.finishedAt,
@@ -244,6 +254,9 @@ export function writeFailureBundle(opts: {
   result: AiTestRunResult & { engine?: 'ego' | 'pw'; intentPath?: string; env?: string; profile?: string; planName?: string };
   healLogs?: HealLogEntry[];
   stdoutLogRel?: string;
+  env?: string;
+  profile?: string;
+  intentPath?: string;
 }): FailureBundleWriteResult | undefined {
   if (opts.result.passed) return undefined;
 
@@ -262,6 +275,9 @@ export function writeFailureBundle(opts: {
       const file = path.join(healDir, `${String(i + 1).padStart(2, '0')}-${safeId}.json`);
       fs.writeFileSync(file, `${JSON.stringify(entry, null, 2)}\n`, 'utf-8');
     }
+    writeHealSuggestArtifacts(outputDir, healLogs, {
+      intentPath: opts.intentPath || opts.result.intentPath,
+    });
   }
 
   const bundle = buildFailureBundle({ ...opts, healLogs });

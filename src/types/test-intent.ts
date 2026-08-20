@@ -17,6 +17,11 @@ const ASSERT_KINDS = new Set(['text', 'visible', 'url', 'count']);
 
 export type AssertKind = 'text' | 'visible' | 'url' | 'count';
 
+/** 人设可信度；运行侧会写 suggestedTrustLevel，不覆盖本字段 */
+export type IntentTrustLevel = 'trial' | 'stable' | 'watch';
+
+const TRUST_LEVELS = new Set<IntentTrustLevel>(['trial', 'stable', 'watch']);
+
 export interface TestIntentStep {
   id?: string;
   action: string;
@@ -52,6 +57,10 @@ export interface TestIntent {
   profile?: string;
   entry?: string;
   scriptKey?: string;
+  /** 支付/权限等关键路径：试跑通过后仍须人审再入库 */
+  reviewRequired?: boolean;
+  /** 人设可信度；缺省按 trial 处理 */
+  trustLevel?: IntentTrustLevel;
   styleChecks?: Array<{
     key: string;
     selector: string;
@@ -230,6 +239,11 @@ export function validateTestIntent(value: unknown): TestIntent {
     }
   }
 
+  const trustRaw = assertOptionalString(value.trustLevel, 'trustLevel');
+  if (trustRaw && !TRUST_LEVELS.has(trustRaw as IntentTrustLevel)) {
+    throw new Error(`trustLevel 必须是 trial|stable|watch，收到: ${trustRaw}`);
+  }
+
   return {
     name,
     goal: goal || description,
@@ -238,6 +252,8 @@ export function validateTestIntent(value: unknown): TestIntent {
     profile: assertOptionalString(value.profile, 'profile'),
     entry: assertOptionalString(value.entry, 'entry'),
     scriptKey: assertOptionalString(value.scriptKey, 'scriptKey'),
+    reviewRequired: value.reviewRequired === true,
+    trustLevel: trustRaw as IntentTrustLevel | undefined,
     styleChecks: Array.isArray(value.styleChecks)
       ? (value.styleChecks as TestIntent['styleChecks'])
       : undefined,

@@ -55,9 +55,11 @@ ${issue.detail ? `- 详情: ${issue.detail}` : ''}
 
 判定口径：
 - ui_bug: 布局错位、元素缺失、重叠、明显样式错误
-- likely_noise: 抗锯齿、字体渲染、微小闪烁、动态数据噪声
+- likely_noise: 抗锯齿、字体渲染、微小闪烁、动态数据噪声（角标/时间/头像等）
 - unstable: 更像运行间不稳定/动效，而非确定缺陷
-- needs_human: 信息不足或难以自动判断`;
+- needs_human: 信息不足或难以自动判断
+
+注意：若同时存在结构告警（选择器缺失/布局偏移），不要轻易判 likely_noise。`;
 }
 
 function parseAiReview(text: string): UiIssueReview | null {
@@ -132,6 +134,33 @@ export function canRunAiVisionReview(): boolean {
   return Boolean(process.env.ANTHROPIC_API_KEY?.trim());
 }
 
+/** 规则结论优先：低置信 AI 不覆盖；高置信 ui_bug 不易被降成噪声 */
+export function shouldAcceptAiReview(
+  rule: UiIssueReview | undefined,
+  ai: UiIssueReview,
+): boolean {
+  if (ai.confidence < 0.55) return false;
+  if (!rule) return true;
+
+  if (rule.verdict === 'ui_bug' && rule.confidence >= 0.8) {
+    if (ai.verdict === 'likely_noise' || ai.verdict === 'unstable') {
+      return ai.confidence >= 0.85;
+    }
+  }
+
+  if (ai.verdict === 'ui_bug' && ai.confidence < 0.7) return false;
+
+  if (
+    rule.source === 'rule' &&
+    rule.confidence > ai.confidence + 0.15 &&
+    rule.verdict !== ai.verdict
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 /** 用 Vision 模型覆盖单条规则结论；失败返回 null（保留规则结果） */
 export async function aiReviewIssue(issue: UiIssue): Promise<UiIssueReview | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
@@ -154,8 +183,10 @@ export async function aiReviewIssue(issue: UiIssue): Promise<UiIssueReview | nul
 export async function applyAiReviews(issues: UiIssue[]): Promise<number> {
   let updated = 0;
   for (const issue of issues) {
+    const prev = issue.review;
     const ai = await aiReviewIssue(issue);
     if (!ai) continue;
+    if (!shouldAcceptAiReview(prev, ai)) continue;
     issue.review = ai;
     updated++;
   }

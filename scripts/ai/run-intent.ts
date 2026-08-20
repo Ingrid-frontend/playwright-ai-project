@@ -8,6 +8,7 @@ import { parse as parseYaml } from 'yaml';
 import { compileIntentToPlan } from '../../src/runtime/compile-intent.js';
 import { executeAiTest } from '../../src/runtime/execute-ai-test.js';
 import { executeIntentEgo } from '../../src/runtime/execute-intent-ego.js';
+import { recordIntentTrustRun, resolveIntentKey } from '../../src/runtime/intent-trust.js';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
@@ -71,6 +72,10 @@ function printHelp(): void {
   --heal              强制开启自愈（默认开启；assert 永不自愈）
   --no-heal           关闭自愈
   -h, --help
+
+边界: docs/ai-test-boundaries.md
+自愈建议: npm run heal:suggest -- --run=<out>
+可信度: npm run trust:report
 `);
 }
 
@@ -110,6 +115,11 @@ async function main(): Promise<void> {
   const heal = hasFlag('no-heal') ? false : true;
   const env = getArgValue('env') || intent.env;
   const profile = getArgValue('profile') || intent.profile;
+  const intentAbs = path.resolve(intentPath);
+
+  if (intent.reviewRequired) {
+    console.log('⚠️  reviewRequired=true：试跑/通过后仍须人审再合并');
+  }
 
   console.log(`🛠  engine=${engine} · heal=${heal ? 'on' : 'off'}`);
 
@@ -122,6 +132,7 @@ async function main(): Promise<void> {
           heal,
           constraints: intent.constraints,
           keepTab: hasFlag('keep-tab'),
+          intentPath: intentAbs,
         })
       : await executeAiTest(plan, {
           env,
@@ -130,12 +141,34 @@ async function main(): Promise<void> {
           outputDir,
           heal,
           constraints: intent.constraints,
+          intentPath: intentAbs,
         });
+
+  const healed = result.steps.some((s) => s.healed);
+  const trust = recordIntentTrustRun({
+    intentKey: resolveIntentKey({
+      scriptKey: intent.scriptKey,
+      intentPath: intentAbs,
+      name: intent.name,
+    }),
+    intentPath: path.relative(process.cwd(), intentAbs).replace(/\\/g, '/'),
+    name: intent.name,
+    reviewRequired: intent.reviewRequired,
+    trustLevel: intent.trustLevel,
+    passed: result.passed,
+    healed,
+  });
 
   console.log('');
   console.log(result.passed ? '✅ Intent 测试通过' : '❌ Intent 测试失败');
   console.log(`📁 输出目录: ${result.outputDir}`);
   if (result.replayRel) console.log(`🎬 流程回放: ${result.replayRel}`);
+  console.log(
+    `🏷  trust: 人设=${trust.trustLevel || '—'} · 建议=${trust.suggestedTrustLevel} · 连续通过=${trust.consecutivePass}`,
+  );
+  if (trust.alerts.length) {
+    for (const a of trust.alerts) console.log(`⚠️  ${a}`);
+  }
   for (const step of result.steps) {
     const status = step.passed ? '✅' : step.skipped ? '⏭️' : '❌';
     const healMark = step.healed ? ' [已自愈]' : '';
@@ -146,6 +179,9 @@ async function main(): Promise<void> {
   }
   if (!result.passed && result.failureSummaryRel) {
     console.log(`📋 失败排查包: ${result.failureSummaryRel}`);
+  }
+  if (healed) {
+    console.log(`🩹 自愈建议: ${path.join(result.outputDir, 'heal-suggest.md')}`);
   }
 
   if (hasFlag('compare') && result.passed) {

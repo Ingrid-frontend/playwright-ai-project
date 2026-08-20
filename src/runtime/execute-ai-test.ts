@@ -21,6 +21,7 @@ import {
 } from './pw-page-context.js';
 import { framesFromStepScreenshots, savePlaywrightVideo, writeFlowReplay } from './flow-replay.js';
 import { writeFailureBundle, type HealLogEntry } from './failure-bundle.js';
+import { writeHealSuggestArtifacts } from './heal-suggest.js';
 
 export type StepErrorKind = 'AssertionError' | 'LocatorError' | 'Retryable';
 
@@ -31,6 +32,7 @@ export interface AiTestRunOptions {
   outputDir?: string;
   heal?: boolean;
   constraints?: string[];
+  intentPath?: string;
 }
 
 export interface AiTestStepResult {
@@ -537,16 +539,21 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
     payload: Record<string, unknown>,
     result: AiTestRunResult,
   ): AiTestRunResult => {
+    if (healLogs.length) {
+      writeHealSuggestArtifacts(outputDir, healLogs, { intentPath: options.intentPath });
+    }
     const failure = writeFailureBundle({
       kind: 'intent',
       outputDir,
       env,
       profile,
       healLogs,
+      intentPath: options.intentPath,
       result: {
         ...result,
         engine: 'pw',
         planName: plan.name,
+        intentPath: options.intentPath,
       },
     });
     const out = {
@@ -557,6 +564,7 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
             failureSummaryRel: failure.summaryRel,
           }
         : {}),
+      ...(healLogs.length ? { healSuggest: true } : {}),
     };
     fs.writeFileSync(path.join(outputDir, 'result.json'), `${JSON.stringify(out, null, 2)}\n`, 'utf-8');
     return failure

@@ -24,6 +24,11 @@
 | CJS → ESM | `src/utils/*.ts` 为实现；Studio 仍 `require('*.cjs')` shim |
 | selector bbox 基线 | `promoteRunToGolden` 同步复制 `.meta.json` |
 | flake 仪表盘 | `report:dashboard` 读取 `results/history/test-runs/` 展示 flake 趋势 |
+| AI 职责边界文档 | `docs/ai-test-boundaries.md`；Intent `reviewRequired` / `trustLevel` |
+| 自愈建议补丁 | 运行产物 `heal-suggest.*`；`npm run heal:suggest`（人审 `--apply`） |
+| Intent 可信度 | `results/history/intent-trust/`；`npm run trust:report` |
+| AI 视觉降噪 | Vision 覆盖需过 `shouldAcceptAiReview`；`failOnUiBug` 默认仍 false |
+| 用例挖掘骨架 | `npm run mine:cases` → `results/mined-cases/` |
 | Studio jobs 拆分 | `test-jobs-actions`（任务）与 `test-jobs-spec-actions`（用例文件）分域 |
 | 对比引擎扫描拆分 | PNG 扫描在 `compare-screenshots-scan`；pixelmatch 配对仍在 `compare-screenshots-engine` |
 | 大脚本拆分 | optimize / Figma 报告 / 飞书文档 / auto-test 通知 / 报告 viz 资产按域抽出 |

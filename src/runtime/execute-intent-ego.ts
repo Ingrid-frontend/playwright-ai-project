@@ -10,6 +10,19 @@ import {
 } from '../ai/prompts/resolve-ego-ops.js';
 import type { SemanticAction, SemanticStep, SemanticTestPlan } from '../types/ai-test-plan.js';
 import { getBaseEnvConfig } from '../utils/env-config.js';
+import {
+  resolveScreenshotViewport,
+  resolveMaskSelectors,
+  registerRuntimeStyleChecks,
+  clearRuntimeStyleChecks,
+} from '../../scripts/report/ui-regression-config.js';
+import {
+  resolveDiagnosticsPlan,
+  planIsEmpty,
+  buildDiagnosticsExpression,
+  parseDiagnostics,
+  type EgoUiDiagnostics,
+} from './ego-ui-diagnostics.js';
 import { EGO_RESULT_PREFIX, runEgoJson, EgoUnavailableError, EgoUserControllingError } from '../utils/ego-browser.js';
 import {
   extractVisibleTexts,
@@ -22,6 +35,7 @@ import {
 } from './ego-snapshot.js';
 import { framesFromStepScreenshots, writeFlowReplay } from './flow-replay.js';
 import { writeFailureBundle, type HealLogEntry } from './failure-bundle.js';
+import { writeHealSuggestArtifacts } from './heal-suggest.js';
 import {
   isApprovalFlowAdminPage,
   isEArchiveModulePage,
@@ -71,6 +85,11 @@ function resolveUrl(env: string, pathOrUrl?: string): string | undefined {
 
 function intentScreenshotDir(env: string, planName: string, stamp: string): string {
   return path.join('screenshots', 'intent', env, sanitizeName(planName), 'run-chromium-optimized', stamp);
+}
+
+/** 与 scriptKeyFromScreenshotPath 解析出的键保持一致，用于查 mask/ignoreRegions 配置 */
+function intentScriptKey(env: string, planName: string): string {
+  return `intent/${env}/${sanitizeName(planName)}`;
 }
 
 function stepShotName(index: number, step: SemanticStep): string {
@@ -193,19 +212,80 @@ async function assertInEgo(
   throw new Error(`断言失败: ${lastDetail}`);
 }
 
-async function captureShotWithPage(spaceName: string): Promise<{
+async function captureShotWithPage(
+  spaceName: string,
+  scriptKey?: string,
+  snapshot?: { snapshotName?: string; state?: string },
+): Promise<{
   data?: string;
   url: string;
   title?: string;
   snapshot: string;
+  masked?: number;
+  diagnostics?: EgoUiDiagnostics;
 }> {
-  return egoSession(spaceName, [
+  const vp = resolveScreenshotViewport();
+  const maskSelectors = scriptKey ? resolveMaskSelectors(scriptKey) : [];
+  const plan = resolveDiagnosticsPlan(scriptKey, snapshot);
+  const collectDiag = !planIsEmpty(plan);
+  const raw = await egoSession<{
+    data?: string;
+    url: string;
+    title?: string;
+    snapshot: string;
+    masked?: number;
+    diag?: string;
+  }>(spaceName, [
+    // ego lite 截的是真实窗口，尺寸会随显示器/窗口变化。
+    // 像素比对要求与基线尺寸严格一致，故先把设备指标钉死再截图。
+    `try { await cdp('Emulation.setDeviceMetricsOverride', { width: ${vp.width}, height: ${vp.height}, deviceScaleFactor: ${vp.deviceScaleFactor}, mobile: false }) } catch {}`,
+    // 视口生效后先让布局稳定，再采样式/结构指纹
+    `await wait(0.4)`,
+    // 结构与样式指纹必须在涂黑之前采集，否则读到的颜色全是遮罩的纯黑
+    `let diag = ''`,
+    ...(collectDiag
+      ? [
+          `try { const dev = await cdp('Runtime.evaluate', { expression: ${jsString(buildDiagnosticsExpression(plan))}, returnByValue: true }); diag = (dev && dev.result && dev.result.value) || '' } catch {}`,
+        ]
+      : []),
+    // 与 Playwright 引擎共用同一份 maskSelectors，把业务动态区域涂黑，避免数据变化被判成 UI 衰退
+    `let masked = -1`,
+    ...(maskSelectors.length
+      ? [
+          `try { const mev = await cdp('Runtime.evaluate', { expression: ${jsString(buildMaskExpression(maskSelectors))}, returnByValue: true }); masked = mev && mev.result ? mev.result.value : -2 } catch (e) { masked = -3 }`,
+          // 让涂黑样式完成一帧渲染后再截图
+          `await wait(0.4)`,
+        ]
+      : []),
     `const shot = await cdp('Page.captureScreenshot', { format: 'png' })`,
+    `try { await cdp('Emulation.clearDeviceMetricsOverride') } catch {}`,
     `let snap = ''`,
     `try { snap = await snapshotText() } catch {}`,
     `const info = await pageInfo()`,
-    `const __result = { data: shot && shot.data, snapshot: String(snap || ''), url: info.url || '', title: info.title || '' }`,
+    `const __result = { data: shot && shot.data, snapshot: String(snap || ''), url: info.url || '', title: info.title || '', masked: masked, diag: diag, viewport: { width: ${vp.width}, height: ${vp.height}, deviceScaleFactor: ${vp.deviceScaleFactor} } }`,
   ]);
+  return { ...raw, diagnostics: parseDiagnostics(raw.diag) };
+}
+
+/** 生成在页面内涂黑遮罩元素的表达式，与 screenshot-capture.ts 的实现保持一致 */
+function buildMaskExpression(selectors: string[]): string {
+  return `(() => {
+  const sels = ${JSON.stringify(selectors)};
+  const styleId = 'ui-regression-mask-style';
+  if (!document.getElementById(styleId)) {
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = '[data-ui-regression-mask]{background:#000!important;color:#000!important;border-color:#000!important;box-shadow:none!important}';
+    document.head.appendChild(style);
+  }
+  let n = 0;
+  for (const sel of sels) {
+    try {
+      document.querySelectorAll(sel).forEach((el) => { el.setAttribute('data-ui-regression-mask', '1'); n++; });
+    } catch (e) {}
+  }
+  return n;
+})()`;
 }
 
 function egoDomHash(snapshot: string): string {
@@ -224,19 +304,54 @@ function egoDomHash(snapshot: string): string {
 
 function writeShotMeta(
   pngPath: string,
-  info: { url?: string; title?: string; snapshot?: string },
+  info: {
+    url?: string;
+    title?: string;
+    snapshot?: string;
+    masked?: number;
+    viewport?: { width: number; height: number; deviceScaleFactor: number };
+    diagnostics?: EgoUiDiagnostics;
+  },
+  snapshotCtx?: { snapshotName?: string; state?: string },
 ): string {
   const snapshot = info.snapshot || '';
+  const size = readPngSize(pngPath);
+  const diag = info.diagnostics;
   const meta = {
     capturedAt: new Date().toISOString(),
     url: info.url || '',
     title: info.title || '',
     pageText: extractVisibleTexts(snapshot).join(' ').slice(0, 800),
-    domHash: egoDomHash(snapshot),
+    // 真实 DOM 指纹比可访问性树摘要更贴近结构变化，采不到时回退到 a11y 摘要
+    domHash: diag?.domHash || egoDomHash(snapshot),
+    viewport: info.viewport,
+    imageWidth: size?.width,
+    imageHeight: size?.height,
+    maskedElements: info.masked,
+    layout: diag?.layout,
+    selectors: diag?.selectors,
+    styleFingerprint: diag?.styleFingerprint,
+    // 快照作用域：比对侧据此挑选适用的 structure/style 检查项
+    ...(snapshotCtx?.snapshotName ? { snapshotName: snapshotCtx.snapshotName } : {}),
+    ...(snapshotCtx?.state ? { state: snapshotCtx.state } : {}),
   };
   const metaPath = pngPath.replace(/\.png$/i, '.meta.json');
   fs.writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`, 'utf-8');
   return metaPath;
+}
+
+/** 直接读 PNG IHDR 取宽高，避免为一次尺寸校验引入解码依赖 */
+function readPngSize(pngPath: string): { width: number; height: number } | undefined {
+  try {
+    const fd = fs.openSync(pngPath, 'r');
+    const head = Buffer.alloc(24);
+    fs.readSync(fd, head, 0, 24, 0);
+    fs.closeSync(fd);
+    if (head.toString('ascii', 1, 4) !== 'PNG') return undefined;
+    return { width: head.readUInt32BE(16), height: head.readUInt32BE(20) };
+  } catch {
+    return undefined;
+  }
 }
 
 function writePng(base64: string | undefined, filePath: string): string | undefined {
@@ -477,6 +592,13 @@ export async function executeIntentEgo(
 
   const shotDir = path.resolve(intentScreenshotDir(env, plan.name, stamp));
   fs.mkdirSync(shotDir, { recursive: true });
+  // 用截图路径推导出的 key，与 compare-screenshots 侧 scriptKeyFromScreenshotPath 的结果一致
+  const scriptKey = intentScriptKey(env, plan.name);
+  // Intent YAML 里声明的 styleChecks 需要注册到运行时，否则只有 config 里按 script 匹配的项会生效
+  clearRuntimeStyleChecks();
+  if (plan.styleChecks?.length) {
+    registerRuntimeStyleChecks(scriptKey, plan.styleChecks);
+  }
 
   const spaceName = options.spaceName || `intent:${sanitizeName(plan.name)}`;
   const startedAt = new Date().toISOString();
@@ -486,16 +608,21 @@ export async function executeIntentEgo(
   let fatal: string | undefined;
 
   const persistResult = (payload: Record<string, unknown>, result: AiTestRunResult): AiTestRunResult => {
+    if (healLogs.length) {
+      writeHealSuggestArtifacts(outputDir, healLogs, { intentPath: options.intentPath });
+    }
     const failure = writeFailureBundle({
       kind: 'intent',
       outputDir,
       env,
       profile: options.profile,
       healLogs,
+      intentPath: options.intentPath,
       result: {
         ...result,
         engine: 'ego',
         planName: plan.name,
+        intentPath: options.intentPath,
       },
     });
     const out = {
@@ -509,6 +636,7 @@ export async function executeIntentEgo(
             failureSummaryRel: failure.summaryRel,
           }
         : {}),
+      ...(healLogs.length ? { healSuggest: true } : {}),
     };
     fs.writeFileSync(path.join(outputDir, 'result.json'), `${JSON.stringify(out, null, 2)}\n`);
     fs.writeFileSync(
@@ -552,7 +680,7 @@ export async function executeIntentEgo(
       steps: [],
       error: message,
     };
-    return persistResult(result, result);
+    return persistResult({ ...result }, result);
   }
 
   let pendingMenuSearchValue: string | undefined;
@@ -630,11 +758,15 @@ export async function executeIntentEgo(
         const needsShot =
           workingStep.evidence?.includes('screenshot') || workingStep.action.type === 'screenshot';
         if (needsShot) {
-          const shot = await captureShotWithPage(spaceName);
+          const snapshotCtx =
+            workingStep.action.type === 'screenshot'
+              ? { snapshotName: workingStep.action.snapshotName, state: workingStep.action.state }
+              : undefined;
+          const shot = await captureShotWithPage(spaceName, scriptKey, snapshotCtx);
           const dest = path.join(shotDir, stepShotName(index, workingStep));
           screenshotPath = writePng(shot.data, dest);
           if (screenshotPath) {
-            const metaPath = writeShotMeta(screenshotPath, shot);
+            const metaPath = writeShotMeta(screenshotPath, shot, snapshotCtx);
             const copy = path.join(outputDir, path.basename(dest));
             fs.copyFileSync(screenshotPath, copy);
             fs.copyFileSync(metaPath, path.join(outputDir, path.basename(metaPath)));

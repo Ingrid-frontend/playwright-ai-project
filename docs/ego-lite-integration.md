@@ -54,6 +54,8 @@ npm run intent:run -- --intent=tests/definitions/approval-smoke.yaml
 
 断言由程序判定（Snapshot / 可见文本），**禁止**让模型口头说「我认为成功了」。`assert` 步骤禁止 heal 改写期望文案。
 
+协作边界总览：[ai-test-boundaries.md](./ai-test-boundaries.md)。自愈写回：`npm run heal:suggest`；可信度：`npm run trust:report`。
+
 截图写入：
 
 ```text

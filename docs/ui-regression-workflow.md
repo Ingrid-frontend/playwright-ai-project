@@ -6,6 +6,8 @@ Visual Review Lite（UI State、Diff Region、人审 Approve）见 [visual-revie
 
 Studio **YAML 用例 / 口语试跑** Tab 与工作流见 [studio-yaml-and-nl-workflow.md](./studio-yaml-and-nl-workflow.md)。
 
+**页面变化检测**设计（PageWatch 逆向分析、分区语义哈希、元素指纹）见 [page-change-detection-design.md](./page-change-detection-design.md)。
+
 ## 主路径（推荐）
 
 ```mermaid
@@ -85,6 +87,14 @@ flowchart LR
 - 配置：`config/ui-regression.json` → `styleChecks.items`（按 `script` 匹配）；YAML Intent 可 `registerRuntimeStyleChecks`
 - 作用域：items 可选 `snapshotName` / `state`，仅在该逻辑快照上采集与对比（见 [style-drift-workflow.md](./style-drift-workflow.md)）
 - 容差：`fontSizePx`、`colorDelta`（RGB 距离，默认 3）
+
+## AI 视觉 triage（降噪，非唯一门禁）
+
+- 配置：`config/ui-regression.json` → `aiReview`（默认 `enabled: false`，`failOnUiBug: false`）
+- 规则复审优先；Vision 覆盖时要求足够置信度，且**不会轻易把高置信 `ui_bug` 降成噪声**
+- 硬门禁仍看像素比例 / `style-drift` / structure；AI 结论默认不单独让 CI 红
+
+边界约定见 [ai-test-boundaries.md](./ai-test-boundaries.md)。
 
 ## CI
 
