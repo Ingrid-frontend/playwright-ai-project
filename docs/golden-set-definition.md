@@ -115,7 +115,7 @@ npm run test:ci
 | Intent | 文件 | 说明 | 试跑 |
 |--------|------|------|------|
 | 审批列表页可见 | `tests/definitions/stage/approval-list-visible.yaml` | 列表冒烟（对齐 Golden Set） | `intent:run --engine=pw` 全绿 |
-| 审批列表页签可见 | `tests/definitions/stage/approval-tabs-visible.yaml` | 待审批/已审批/筛选 | 全绿 |
+| 审批列表页签可见 | `tests/definitions/stage/approval-tabs-visible.yaml` | 待审批/我的已办/筛选 | 全绿 |
 | 审批列表点击首行 | `tests/definitions/stage/approval-click-first-row.yaml` | 点击首行；后续步骤 `optional`（进详情交互未稳定） | 列表断言绿，点击后可选 |
 
 ```bash

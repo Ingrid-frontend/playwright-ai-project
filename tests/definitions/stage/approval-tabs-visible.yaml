@@ -25,7 +25,7 @@ steps:
   - id: step-4
     action: assert
     kind: text
-    expect: 已审批
+    expect: 我的已办
     evidence: [screenshot]
   - id: step-5
     action: assert
@@ -40,5 +40,5 @@ steps:
 assertions:
   - 我的审批
   - 待审批
-  - 已审批
+  - 我的已办
   - 筛选
