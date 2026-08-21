@@ -7,6 +7,7 @@ import {
   buildGeneratePlaywrightScriptPrompt,
   buildGeneratePlaywrightScriptSystemPrompt,
 } from '../../src/ai/prompts/generate-playwright-script.js';
+import { buildUiContractContext } from '../../src/ai/ui-contract-context.js';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
@@ -89,6 +90,16 @@ async function main(): Promise<void> {
 
   process.env.AI_TEST_PROVIDER = getArgValue('provider') || process.env.AI_TEST_PROVIDER || '';
 
+  // UI 契约默认启用；--no-contract 可关闭，用于 A/B 对照
+  const contractDisabled = process.argv.includes('--no-contract');
+  const entry = getArgValue('entry');
+  const contract = contractDisabled ? { text: '', route: null } : buildUiContractContext(entry);
+  if (contract.text) {
+    console.log(`📐 已注入 UI 契约：${contract.route?.url}（${contract.text.length} 字符）`);
+  } else if (!contractDisabled) {
+    console.log('📐 未找到匹配的 UI 契约，按通用规则生成');
+  }
+
   console.log('🤖 正在生成 Playwright 脚本...');
   const code = sanitizeGeneratedCode(
     stripCodeFence(
@@ -96,8 +107,9 @@ async function main(): Promise<void> {
         buildGeneratePlaywrightScriptPrompt({
           caseDescription: caseDescription || '根据录制脚本生成可执行 Playwright 脚本',
           env: getArgValue('env') || process.env.PLAYWRIGHT_ENV,
-          entry: getArgValue('entry'),
+          entry,
           recordingCode,
+          uiContract: contract.text,
         }),
         {
           system: buildGeneratePlaywrightScriptSystemPrompt(),

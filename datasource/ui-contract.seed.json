@@ -1,0 +1,1292 @@
+{
+  "generatedAt": "2026-08-21T09:39:07.151Z",
+  "uiLibrary": {
+    "name": "antd",
+    "version": "^3.26.20"
+  },
+  "mainShellInIframe": false,
+  "loginInIframe": true,
+  "i18n": {
+    "entry": "messages(\"<key>\")",
+    "primaryLocale": "zh_CN",
+    "availableLocales": [
+      "en_US",
+      "es_ES",
+      "it_IT",
+      "ja_JP",
+      "ko_KR",
+      "vi_VN",
+      "zh_CN",
+      "zh_TW"
+    ],
+    "note": "stage 登录页实测默认渲染英文，定位前需确认运行时语言或改用 i18n key 对应 locale 的文案"
+  },
+  "routes": [
+    {
+      "key": "login",
+      "url": "/",
+      "containerPath": "containers/login",
+      "inIframe": true,
+      "iframeReason": "登录页实测存在自引用 iframe（?openBySelf=zoom），表单在该 frame 内",
+      "antdComponents": [
+        "Button",
+        "Dropdown",
+        "Icon",
+        "Menu",
+        "Modal",
+        "Spin",
+        "Tabs",
+        "message",
+        "notification"
+      ],
+      "indirectAntdComponents": [
+        "Affix",
+        "Avatar",
+        "Carousel",
+        "Checkbox",
+        "Form",
+        "Input",
+        "Pagination",
+        "Popover",
+        "Radio",
+        "Select",
+        "Switch",
+        "Tag",
+        "Tooltip"
+      ],
+      "virtualized": false,
+      "anchors": [
+        {
+          "i18nKey": "basic-2.key32",
+          "text": "免费体验",
+          "matchText": "免费体验",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "basic-2.key1",
+          "text": "账号登录",
+          "matchText": "账号登录",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "basic-2.key33",
+          "text": "企业登录",
+          "matchText": "企业登录",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "basic-2.key34",
+          "text": "微信登录",
+          "matchText": "微信登录",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "common.error",
+          "text": "哦呼，服务器出了点问题，请联系管理员或稍后再试:(",
+          "matchText": "哦呼，服务器出了点问题，请联系管理员或稍后再试:(",
+          "role": "text",
+          "dynamic": false,
+          "localized": {
+            "en_US": "Oops, service error occurs, please try again later.",
+            "es_ES": "Oh, hay un problema con el servidor, Póngase en contacto con el administrador o vuelva a intentarlo más tarde: ()",
+            "it_IT": "Spiacenti, si verifica un errore di servizio, riprovare più tardi.",
+            "ja_JP": "あれ～、サーバが故障になった、管理人に連絡するかまたは後で再操作ください:(",
+            "ko_KR": "아, 서버에 문제가 생겼네요. 관리자에게 문의하시거나 나중에 다시 시도해주세요 :(",
+            "vi_VN": "Oh-hoo, máy chủ có vấn đề, vui lòng liên hệ với quản trị viên hoặc thử lại sau:(",
+            "zh_TW": "哦呼，服務器出了點問題，請聯系管理員或稍後再試：（"
+          }
+        },
+        {
+          "i18nKey": "basic-2.key129",
+          "text": "根据你的偏好，自动进入“{arg1}”",
+          "matchText": "根据你的偏好，自动进入“",
+          "role": "text",
+          "dynamic": true
+        },
+        {
+          "i18nKey": "basic-2.key101",
+          "text": "您暂未被分配菜单权限，请联系管理员",
+          "matchText": "您暂未被分配菜单权限，请联系管理员",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "basic-2.key67",
+          "text": "登录提示",
+          "matchText": "登录提示",
+          "role": "column",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "basic-2.key134",
+          "text": "当前账号需要进行安全验证，通过验证后才可以登录",
+          "matchText": "当前账号需要进行安全验证，通过验证后才可以登录",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "basic-2.key135",
+          "text": "开始验证",
+          "matchText": "开始验证",
+          "role": "button",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "basic-2.key195",
+          "text": "来自飞书中控的用户",
+          "matchText": "来自飞书中控的用户",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "basic-2.key196",
+          "text": "已在外部浏览器打开，请在外部浏览器继续操作",
+          "matchText": "已在外部浏览器打开，请在外部浏览器继续操作",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "helios.login.title",
+          "text": "汇联易管理系统",
+          "matchText": "汇联易管理系统",
+          "role": "text",
+          "dynamic": false,
+          "localized": {
+            "en_US": "HELIOS",
+            "es_ES": "Sistema de gestión de huilianyi",
+            "it_IT": "HELIOS",
+            "ja_JP": "HELIOS",
+            "ko_KR": "Helios 관리 시스템",
+            "vi_VN": "Hệ thống quản lý liên kết dễ dàng",
+            "zh_TW": "匯聯易管理系統"
+          }
+        },
+        {
+          "i18nKey": "basic-2.key197",
+          "text": "百度智能云",
+          "matchText": "百度智能云",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "helios.login.home.page",
+          "text": "访问官网",
+          "matchText": "访问官网",
+          "role": "text",
+          "dynamic": false,
+          "localized": {
+            "en_US": "HomePage",
+            "es_ES": "Visita al sitio web oficial",
+            "it_IT": "HomePage",
+            "ja_JP": "ホームページ",
+            "ko_KR": "공식 웹사이트 방문",
+            "vi_VN": "Truy cập trang web chính thức",
+            "zh_TW": "訪問官網"
+          }
+        },
+        {
+          "i18nKey": "helios.login.reserve.demonstration",
+          "text": "预约演示",
+          "matchText": "预约演示",
+          "role": "text",
+          "dynamic": false,
+          "localized": {
+            "en_US": "Appointment",
+            "es_ES": "Presentación de citas",
+            "it_IT": "Appuntamento",
+            "ja_JP": "デモを予約",
+            "ko_KR": "데모 예약",
+            "vi_VN": "Đặt lịch Demo",
+            "zh_TW": "預約演示"
+          }
+        },
+        {
+          "i18nKey": "basic-2.key46",
+          "text": "重试",
+          "matchText": "重试",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "helios.login.other.way",
+          "text": "其他登录方式",
+          "matchText": "其他登录方式",
+          "role": "text",
+          "dynamic": false,
+          "localized": {
+            "en_US": "Others",
+            "es_ES": "Otros métodos de inicio de sesión",
+            "it_IT": "Altri",
+            "ja_JP": "その他のログイン方法",
+            "ko_KR": "다른 로그인 방법",
+            "vi_VN": "Phương thức đăng nhập khác",
+            "zh_TW": "其他登入管道"
+          }
+        },
+        {
+          "i18nKey": "common.cancel",
+          "text": "取消",
+          "matchText": "取消",
+          "role": "text",
+          "dynamic": false,
+          "localized": {
+            "en_US": "Cancel",
+            "es_ES": "Cancelación",
+            "it_IT": "Cancellare",
+            "ja_JP": "キャンセル",
+            "ko_KR": "취소",
+            "vi_VN": "Hủy bỏ",
+            "zh_TW": "取消"
+          }
+        },
+        {
+          "i18nKey": "basic-2.key176",
+          "text": "修改密码",
+          "matchText": "修改密码",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "basic-2.key178",
+          "text": "一键登录",
+          "matchText": "一键登录",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "basic-2.key179",
+          "text": "企业微信",
+          "matchText": "企业微信",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "basic-2.key180",
+          "text": "华为账号一键登录",
+          "matchText": "华为账号一键登录",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "basic-2.key35",
+          "text": "二维码登录",
+          "matchText": "二维码登录",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "basic-2.key47",
+          "text": "密码长度不能小于{arg1}位",
+          "matchText": "密码长度不能小于",
+          "role": "text",
+          "dynamic": true
+        },
+        {
+          "i18nKey": "basic-2.key48",
+          "text": "密码长度不能大于{arg1}位",
+          "matchText": "密码长度不能大于{arg1}位",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "basic-2.key49",
+          "text": "密码需要包含数字",
+          "matchText": "密码需要包含数字",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "basic-2.key50",
+          "text": "密码需要包含小写字母",
+          "matchText": "密码需要包含小写字母",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "basic-2.key51",
+          "text": "密码需要包含大写字母",
+          "matchText": "密码需要包含大写字母",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "basic-2.key52",
+          "text": "密码需要包含特殊字符",
+          "matchText": "密码需要包含特殊字符",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "basic-2.key39",
+          "text": "激活已达上限",
+          "matchText": "激活已达上限",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "basic-2.key100",
+          "text": "用户不存在此企业微信",
+          "matchText": "用户不存在此企业微信",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "basic-2.key174",
+          "text": "无法使用此方式登录，可尝试企业登录或咨询同事登录流程",
+          "matchText": "无法使用此方式登录，可尝试企业登录或咨询同事登录流程",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "basic-2.key54",
+          "text": "账号已过期",
+          "matchText": "账号已过期",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "basic-2.key55",
+          "text": "微信安装失败，请联系管理员",
+          "matchText": "微信安装失败，请联系管理员",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "basic-2.key56",
+          "text": "您的账号尚未激活，请激活后再进行使用",
+          "matchText": "您的账号尚未激活，请激活后再进行使用",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "basic-2.key57",
+          "text": "用户名或密码错误",
+          "matchText": "用户名或密码错误",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "basic-2.key123",
+          "text": "此邮箱尚未绑定，请用验证码登录",
+          "matchText": "此邮箱尚未绑定，请用验证码登录",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "basic-2.key124",
+          "text": "此账号尚未验证，请用验证码登录",
+          "matchText": "此账号尚未验证，请用验证码登录",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "basic-2.key60",
+          "text": "用户不存在",
+          "matchText": "用户不存在",
+          "role": "text",
+          "dynamic": false
+        }
+      ],
+      "endpoints": [
+        {
+          "method": "post",
+          "path": "*/proxy/router/api/orgList",
+          "glob": "**/api/orgList",
+          "hits": 1,
+          "fn": "getOrgList",
+          "isList": true,
+          "calledInContainer": true
+        },
+        {
+          "method": "post",
+          "path": "**/router/api/sendVerifyCode",
+          "glob": "**/api/sendVerifyCode",
+          "hits": 1,
+          "fn": "if",
+          "isList": false,
+          "calledInContainer": false
+        },
+        {
+          "method": "get",
+          "path": "**/api/refactor/account/reset_password/init/v4",
+          "glob": "**/api/refactor/account/reset_password/init/v4",
+          "hits": 1,
+          "fn": "if",
+          "isList": false,
+          "calledInContainer": false
+        },
+        {
+          "method": "post",
+          "path": "**/api/refactor/password/rule/topic/v2",
+          "glob": "**/api/refactor/password/rule/topic/v2",
+          "hits": 1,
+          "fn": "if",
+          "isList": false,
+          "calledInContainer": false
+        },
+        {
+          "method": "get",
+          "path": "/api/tenant/protocol/domain",
+          "glob": "**/api/tenant/protocol/domain",
+          "hits": 1,
+          "fn": "getProtocolWithDomain",
+          "isList": false,
+          "calledInContainer": false
+        },
+        {
+          "method": "get",
+          "path": "/api/tenant/protocol/heliosTenant",
+          "glob": "**/api/tenant/protocol/heliosTenant",
+          "hits": 1,
+          "fn": "if",
+          "isList": false,
+          "calledInContainer": false
+        },
+        {
+          "method": "post",
+          "path": "**/api/refactor/wechat/activation/login/check",
+          "glob": "**/api/refactor/wechat/activation/login/check",
+          "hits": 1,
+          "fn": "if",
+          "isList": false,
+          "calledInContainer": false
+        },
+        {
+          "method": "post",
+          "path": "*/auth/api/wechat/logout",
+          "glob": "**/api/wechat/logout",
+          "hits": 1,
+          "fn": "for",
+          "isList": false,
+          "calledInContainer": false
+        },
+        {
+          "method": "post",
+          "path": "*/proxy/api/refactor/switchOrg",
+          "glob": "**/api/refactor/switchOrg",
+          "hits": 1,
+          "fn": "if",
+          "isList": false,
+          "calledInContainer": false
+        }
+      ]
+    },
+    {
+      "key": "approve",
+      "url": "/main/approve",
+      "containerPath": "containers/approve/approve-list",
+      "inIframe": false,
+      "iframeReason": "src/containers/main/main.js 无 iframe，stage 实测 /main/** iframe 数为 0",
+      "antdComponents": [
+        "Badge",
+        "Button",
+        "Checkbox",
+        "Col",
+        "Divider",
+        "Dropdown",
+        "Icon",
+        "Menu",
+        "Modal",
+        "Popover",
+        "Row",
+        "Select",
+        "Switch",
+        "Tag",
+        "Tooltip",
+        "message"
+      ],
+      "indirectAntdComponents": [
+        "Affix",
+        "Alert",
+        "Avatar",
+        "Card",
+        "Collapse",
+        "DatePicker",
+        "Drawer",
+        "Form",
+        "Input",
+        "InputNumber",
+        "Pagination",
+        "Popconfirm",
+        "Progress",
+        "Radio",
+        "Skeleton",
+        "Spin",
+        "Table",
+        "Tabs",
+        "Timeline",
+        "notification"
+      ],
+      "virtualized": true,
+      "anchors": [
+        {
+          "i18nKey": "request-4.key2561",
+          "text": "待审批-全部",
+          "matchText": "待审批-全部",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "request-4.key22",
+          "text": "已审批",
+          "matchText": "已审批",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "request-4.key859",
+          "text": "待审批-对公业务",
+          "matchText": "待审批-对公业务",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "request-4.key860",
+          "text": "待审批-员工业务",
+          "matchText": "待审批-员工业务",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "request-4.key2562",
+          "text": "对公业务",
+          "matchText": "对公业务",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "request-4.key2563",
+          "text": "员工业务",
+          "matchText": "员工业务",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "request-4.key1864",
+          "text": "抄送我",
+          "matchText": "抄送我",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "request-4.key2026",
+          "text": "操作历史",
+          "matchText": "操作历史",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "common.document.code",
+          "text": "单号",
+          "matchText": "单号",
+          "role": "text",
+          "dynamic": false,
+          "localized": {
+            "en_US": "Document Number",
+            "es_ES": "Número único",
+            "it_IT": "Numero del documento",
+            "ja_JP": "伝票番号",
+            "ko_KR": "서류 번호",
+            "vi_VN": "Số đơn",
+            "zh_TW": "單號"
+          }
+        },
+        {
+          "i18nKey": "expense-1.key1414",
+          "text": "表格查询{arg1}条",
+          "matchText": "表格查询",
+          "role": "text",
+          "dynamic": true
+        },
+        {
+          "i18nKey": "common.applicant",
+          "text": "申请人",
+          "matchText": "申请人",
+          "role": "text",
+          "dynamic": false,
+          "localized": {
+            "en_US": "Applicant",
+            "es_ES": "Solicitantes",
+            "it_IT": "Richiedente",
+            "ja_JP": "申請者",
+            "ko_KR": "신청자",
+            "vi_VN": "Ứng viên",
+            "zh_TW": "申請人"
+          }
+        },
+        {
+          "i18nKey": "request-1.key793",
+          "text": "待离职员工",
+          "matchText": "待离职员工",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "request-1.key794",
+          "text": "离职员工",
+          "matchText": "离职员工",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "request-4.key481",
+          "text": "单据部门",
+          "matchText": "单据部门",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "common.amount",
+          "text": "金额",
+          "matchText": "金额",
+          "role": "text",
+          "dynamic": false,
+          "localized": {
+            "en_US": "Amount",
+            "es_ES": "Importe",
+            "it_IT": "Quantità",
+            "ja_JP": "金額",
+            "ko_KR": "금액",
+            "vi_VN": "Số lượng",
+            "zh_TW": "金額"
+          }
+        },
+        {
+          "i18nKey": "request-4.key652",
+          "text": "单据公司",
+          "matchText": "单据公司",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "common.submit.date",
+          "text": "提交日期",
+          "matchText": "提交日期",
+          "role": "text",
+          "dynamic": false,
+          "localized": {
+            "en_US": "Submission Date",
+            "es_ES": "Fecha de presentación",
+            "it_IT": "Data di presentazione",
+            "ja_JP": "提出日",
+            "ko_KR": "제출 일자",
+            "vi_VN": "Ngày gửi",
+            "zh_TW": "提交日期"
+          }
+        },
+        {
+          "i18nKey": "request-4.key217",
+          "text": "供应商",
+          "matchText": "供应商",
+          "role": "column",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "request-4.key1706",
+          "text": "支持对公申请单、对公支付单、合同（单相对方）",
+          "matchText": "支持对公申请单、对公支付单、合同（单相对方）",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "common.sequence",
+          "text": "序号",
+          "matchText": "序号",
+          "role": "column",
+          "dynamic": false,
+          "localized": {
+            "en_US": "No.",
+            "es_ES": "Número de serie",
+            "it_IT": "Sequenza",
+            "ja_JP": "No.",
+            "ko_KR": "순번",
+            "vi_VN": "Số sê-ri",
+            "zh_TW": "序號"
+          }
+        },
+        {
+          "i18nKey": "request-4.key1022",
+          "text": "(代理{arg1}审批)",
+          "matchText": "(代理",
+          "role": "text",
+          "dynamic": true
+        },
+        {
+          "i18nKey": "common.user.id",
+          "text": "工号",
+          "matchText": "工号",
+          "role": "column",
+          "dynamic": false,
+          "localized": {
+            "en_US": "Employee ID",
+            "es_ES": "Número de trabajo",
+            "it_IT": "User ID",
+            "ja_JP": "従業員番号",
+            "ko_KR": "작업번호",
+            "vi_VN": "Số công việc",
+            "zh_TW": "工號"
+          }
+        },
+        {
+          "i18nKey": "request-4.key13",
+          "text": "事由",
+          "matchText": "事由",
+          "role": "column",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "common.currency",
+          "text": "币种",
+          "matchText": "币种",
+          "role": "column",
+          "dynamic": false,
+          "localized": {
+            "en_US": "Currency",
+            "es_ES": "Moneda",
+            "it_IT": "Valuta",
+            "ja_JP": "通貨",
+            "ko_KR": "통화",
+            "vi_VN": "Tiền tệ",
+            "zh_TW": "幣種"
+          }
+        },
+        {
+          "i18nKey": "common.document.name",
+          "text": "单据名称",
+          "matchText": "单据名称",
+          "role": "column",
+          "dynamic": false,
+          "localized": {
+            "en_US": "Document Name",
+            "es_ES": "Nombre del documento",
+            "it_IT": "Nome del documento",
+            "ja_JP": "伝票名",
+            "ko_KR": "서류 이름",
+            "vi_VN": "Tên tài liệu",
+            "zh_TW": "單據名稱"
+          }
+        },
+        {
+          "i18nKey": "common.remark",
+          "text": "备注",
+          "matchText": "备注",
+          "role": "column",
+          "dynamic": false,
+          "localized": {
+            "en_US": "Remark",
+            "es_ES": "Nota",
+            "it_IT": "Osservazione",
+            "ja_JP": "備考",
+            "ko_KR": "비고",
+            "vi_VN": "Ghi chú",
+            "zh_TW": "備註"
+          }
+        },
+        {
+          "i18nKey": "request-4.key14",
+          "text": "本币金额",
+          "matchText": "本币金额",
+          "role": "column",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "finance-10.key47",
+          "text": "本币币种",
+          "matchText": "本币币种",
+          "role": "column",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "request-4.key653",
+          "text": "单据公司编码",
+          "matchText": "单据公司编码",
+          "role": "column",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "request-4.key796",
+          "text": "单据部门编码",
+          "matchText": "单据部门编码",
+          "role": "column",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "request-4.key15",
+          "text": "自选审批",
+          "matchText": "自选审批",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "request-4.key18",
+          "text": "节点名称",
+          "matchText": "节点名称",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "request-4.key752",
+          "text": "是否暂挂",
+          "matchText": "是否暂挂",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "common.select",
+          "text": "请选择",
+          "matchText": "请选择",
+          "role": "text",
+          "dynamic": false,
+          "localized": {
+            "en_US": "Select",
+            "es_ES": "Por favor, elija",
+            "it_IT": "Selezionare",
+            "ja_JP": "選択してください",
+            "ko_KR": "선택하세요",
+            "vi_VN": "Vui lòng chọn",
+            "zh_TW": "請選擇"
+          }
+        },
+        {
+          "i18nKey": "common.yes",
+          "text": "是",
+          "matchText": "是",
+          "role": "text",
+          "dynamic": false,
+          "localized": {
+            "en_US": "Yes",
+            "es_ES": "Sí.",
+            "it_IT": "Si",
+            "ja_JP": "はい",
+            "ko_KR": "예",
+            "vi_VN": "Vâng",
+            "zh_TW": "是"
+          }
+        },
+        {
+          "i18nKey": "common.no",
+          "text": "否",
+          "matchText": "否",
+          "role": "text",
+          "dynamic": false,
+          "localized": {
+            "en_US": "No",
+            "es_ES": "No",
+            "it_IT": "No",
+            "ja_JP": "いいえ",
+            "ko_KR": "아니요",
+            "vi_VN": "Không",
+            "zh_TW": "否"
+          }
+        },
+        {
+          "i18nKey": "request-4.key782",
+          "text": "是否加急",
+          "matchText": "是否加急",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "request-1.key172",
+          "text": "事由",
+          "matchText": "事由",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "request-4.key231",
+          "text": "成本中心",
+          "matchText": "成本中心",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "common.total.selected",
+          "text": "已选 {arg1} 条",
+          "matchText": "已选",
+          "role": "text",
+          "dynamic": true,
+          "localized": {
+            "en_US": "Selected: {arg1}",
+            "es_ES": "Se ha seleccionado la barra {arg1}",
+            "it_IT": "Selected: {arg1}",
+            "ja_JP": " {arg1} 件を選択した",
+            "ko_KR": "{arg1}개 항목이 선택됨",
+            "vi_VN": "{arg1} đã chọn",
+            "zh_TW": "已選{arg1}條"
+          }
+        }
+      ],
+      "endpoints": [
+        {
+          "method": "post",
+          "path": "*/api/approvals/pendingApproval",
+          "glob": "**/api/approvals/pendingApproval",
+          "hits": 1,
+          "fn": "getPendingApproveList",
+          "isList": true,
+          "calledInContainer": true
+        },
+        {
+          "method": "post",
+          "path": "*/api/approvals/approved",
+          "glob": "**/api/approvals/approved",
+          "hits": 1,
+          "fn": "getApprovedList",
+          "isList": true,
+          "calledInContainer": true
+        },
+        {
+          "method": "get",
+          "path": "*/api/approvals/filters/count",
+          "glob": "**/api/approvals/filters/count",
+          "hits": 1,
+          "fn": "getWaitForApprove",
+          "isList": false,
+          "calledInContainer": true
+        },
+        {
+          "method": "post",
+          "path": "*/api/approvals/copiedToMe/count",
+          "glob": "**/api/approvals/copiedToMe/count",
+          "hits": 1,
+          "fn": "getCopiedApproveCount",
+          "isList": false,
+          "calledInContainer": true
+        },
+        {
+          "method": "post",
+          "path": "*/brms/api/rule/approval/batch/node/name",
+          "glob": "**/api/rule/approval/batch/node/name",
+          "hits": 1,
+          "fn": "getApproveNodeName",
+          "isList": false,
+          "calledInContainer": true
+        },
+        {
+          "method": "post",
+          "path": "*/api/approvals/passing/history",
+          "glob": "**/api/approvals/passing/history",
+          "hits": 1,
+          "fn": "getReturnNodeList",
+          "isList": true,
+          "calledInContainer": false
+        },
+        {
+          "method": "get",
+          "path": "*/api/common/document/base/query",
+          "glob": "**/api/common/document/base/query",
+          "hits": 1,
+          "fn": "queryDocumentInfo",
+          "isList": true,
+          "calledInContainer": false
+        },
+        {
+          "method": "post",
+          "path": "*/api/approval/history/query/list",
+          "glob": "**/api/approval/history/query/list",
+          "hits": 1,
+          "fn": "getBatchHistoryList",
+          "isList": true,
+          "calledInContainer": false
+        },
+        {
+          "method": "post",
+          "path": "*/api/approval/document/process/info/list",
+          "glob": "**/api/approval/document/process/info/list",
+          "hits": 1,
+          "fn": "getProcessInfoList",
+          "isList": true,
+          "calledInContainer": false
+        },
+        {
+          "method": "post",
+          "path": "*/api/approval/history/page",
+          "glob": "**/api/approval/history/page",
+          "hits": 1,
+          "fn": "getApprovalHistoryList",
+          "isList": true,
+          "calledInContainer": false
+        },
+        {
+          "method": "post",
+          "path": "*/api/approvals/batchfilters/v4",
+          "glob": "**/api/approvals/batchfilters/v4",
+          "hits": 1,
+          "fn": "getApproveList",
+          "isList": true,
+          "calledInContainer": false
+        },
+        {
+          "method": "post",
+          "path": "*/api/approvals/copiedToMe",
+          "glob": "**/api/approvals/copiedToMe",
+          "hits": 1,
+          "fn": "getCopiedApproveList",
+          "isList": true,
+          "calledInContainer": false
+        },
+        {
+          "method": "post",
+          "path": "*/api/approval/history/record",
+          "glob": "**/api/approval/history/record",
+          "hits": 1,
+          "fn": "getOperationList",
+          "isList": true,
+          "calledInContainer": false
+        },
+        {
+          "method": "get",
+          "path": "*/api/approval/node/apportionment/permission",
+          "glob": "**/api/approval/node/apportionment/permission",
+          "hits": 2,
+          "fn": "getNodeApportionConfig",
+          "isList": false,
+          "calledInContainer": false
+        },
+        {
+          "method": "get",
+          "path": "*/api/approvals/signature",
+          "glob": "**/api/approvals/signature",
+          "hits": 2,
+          "fn": "getSignature",
+          "isList": false,
+          "calledInContainer": false
+        },
+        {
+          "method": "post",
+          "path": "*/api/finance/audit/edit",
+          "glob": "**/api/finance/audit/edit",
+          "hits": 2,
+          "fn": "editSave",
+          "isList": false,
+          "calledInContainer": false
+        },
+        {
+          "method": "get",
+          "path": "*/api/approvals/custom/form",
+          "glob": "**/api/approvals/custom/form",
+          "hits": 1,
+          "fn": "getDocumentType",
+          "isList": false,
+          "calledInContainer": false
+        },
+        {
+          "method": "get",
+          "path": "*/api/approvals/custom/form/v2",
+          "glob": "**/api/approvals/custom/form/v2",
+          "hits": 1,
+          "fn": "getDocumentTypev2",
+          "isList": false,
+          "calledInContainer": false
+        },
+        {
+          "method": "get",
+          "path": "*/api/approvals/custom/form/v3",
+          "glob": "**/api/approvals/custom/form/v3",
+          "hits": 1,
+          "fn": "getDocumentTypev3",
+          "isList": false,
+          "calledInContainer": false
+        },
+        {
+          "method": "get",
+          "path": "*/api/approval/history/get/record/custom/form/name",
+          "glob": "**/api/approval/history/get/record/custom/form/name",
+          "hits": 1,
+          "fn": "getHistoryDocumentType",
+          "isList": false,
+          "calledInContainer": false
+        }
+      ]
+    },
+    {
+      "key": "home",
+      "url": "/main/home",
+      "containerPath": "containers/home/home",
+      "inIframe": false,
+      "iframeReason": "src/containers/main/main.js 无 iframe，stage 实测 /main/** iframe 数为 0",
+      "antdComponents": [
+        "Icon"
+      ],
+      "indirectAntdComponents": [
+        "Button",
+        "Carousel",
+        "Col",
+        "DatePicker",
+        "Form",
+        "Input",
+        "Modal",
+        "Popconfirm",
+        "Popover",
+        "Progress",
+        "Radio",
+        "Row",
+        "Select",
+        "Spin",
+        "Table",
+        "Tag",
+        "message",
+        "notification"
+      ],
+      "virtualized": false,
+      "anchors": [
+        {
+          "i18nKey": "basic-1.key278",
+          "text": "管理员首页",
+          "matchText": "管理员首页",
+          "role": "text",
+          "dynamic": false
+        },
+        {
+          "i18nKey": "basic-1.key48",
+          "text": "编辑企业信息",
+          "matchText": "编辑企业信息",
+          "role": "text",
+          "dynamic": false
+        }
+      ],
+      "endpoints": [
+        {
+          "method": "get",
+          "path": "*/api/home/page/statistics/service/open",
+          "glob": "**/api/home/page/statistics/service/open",
+          "hits": 1,
+          "fn": "getOpenServiceData",
+          "isList": false,
+          "calledInContainer": true
+        },
+        {
+          "method": "put",
+          "path": "*/api/user/other/setting",
+          "glob": "**/api/user/other/setting",
+          "hits": 1,
+          "fn": "setExampleStatus",
+          "isList": false,
+          "calledInContainer": true
+        },
+        {
+          "method": "get",
+          "path": "*/api/carbon/personal/overview",
+          "glob": "**/api/carbon/personal/overview",
+          "hits": 1,
+          "fn": "setExampleStatus",
+          "isList": false,
+          "calledInContainer": true
+        },
+        {
+          "method": "get",
+          "path": "*/api/carbon/admin/overview",
+          "glob": "**/api/carbon/admin/overview",
+          "hits": 1,
+          "fn": "setExampleStatus",
+          "isList": false,
+          "calledInContainer": true
+        },
+        {
+          "method": "get",
+          "path": "*/api/carbon/personal/year",
+          "glob": "**/api/carbon/personal/year",
+          "hits": 1,
+          "fn": "setExampleStatus",
+          "isList": false,
+          "calledInContainer": true
+        },
+        {
+          "method": "get",
+          "path": "*/api/carbon/admin/year",
+          "glob": "**/api/carbon/admin/year",
+          "hits": 1,
+          "fn": "setExampleStatus",
+          "isList": false,
+          "calledInContainer": true
+        },
+        {
+          "method": "get",
+          "path": "*/api/ant/forest/exists/bind",
+          "glob": "**/api/ant/forest/exists/bind",
+          "hits": 1,
+          "fn": "setExampleStatus",
+          "isList": false,
+          "calledInContainer": true
+        },
+        {
+          "method": "post",
+          "path": "*/api/ant/forest/unbind/user",
+          "glob": "**/api/ant/forest/unbind/user",
+          "hits": 1,
+          "fn": "setExampleStatus",
+          "isList": false,
+          "calledInContainer": true
+        },
+        {
+          "method": "get",
+          "path": "*/api/ant/forest/user/energy",
+          "glob": "**/api/ant/forest/user/energy",
+          "hits": 1,
+          "fn": "setExampleStatus",
+          "isList": false,
+          "calledInContainer": true
+        },
+        {
+          "method": "get",
+          "path": "*/api/carbon/enabled",
+          "glob": "**/api/carbon/enabled",
+          "hits": 1,
+          "fn": "setExampleStatus",
+          "isList": false,
+          "calledInContainer": true
+        },
+        {
+          "method": "get",
+          "path": "*/api/home/page/statistics/qty",
+          "glob": "**/api/home/page/statistics/qty",
+          "hits": 2,
+          "fn": "getData",
+          "isList": false,
+          "calledInContainer": false
+        },
+        {
+          "method": "get",
+          "path": "*/api/home/page/statistics/body/qty",
+          "glob": "**/api/home/page/statistics/body/qty",
+          "hits": 1,
+          "fn": "getHomeBodyData",
+          "isList": false,
+          "calledInContainer": false
+        },
+        {
+          "method": "get",
+          "path": "*/api/home/page/statistics/other",
+          "glob": "**/api/home/page/statistics/other",
+          "hits": 1,
+          "fn": "getApplicationData",
+          "isList": false,
+          "calledInContainer": false
+        },
+        {
+          "method": "get",
+          "path": "*/api/home/page/statistics/check/invoice",
+          "glob": "**/api/home/page/statistics/check/invoice",
+          "hits": 1,
+          "fn": "getCheckInvoiceData",
+          "isList": false,
+          "calledInContainer": false
+        },
+        {
+          "method": "get",
+          "path": "*/api/home/page/statistics/ocr",
+          "glob": "**/api/home/page/statistics/ocr",
+          "hits": 1,
+          "fn": "getOCRData",
+          "isList": false,
+          "calledInContainer": false
+        }
+      ]
+    }
+  ]
+}

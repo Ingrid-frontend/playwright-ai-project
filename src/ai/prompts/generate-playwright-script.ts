@@ -3,6 +3,7 @@ export interface GeneratePlaywrightScriptInput {
   env?: string;
   entry?: string;
   recordingCode?: string;
+  uiContract?: string;
 }
 
 export function buildGeneratePlaywrightScriptSystemPrompt(): string {
@@ -13,6 +14,7 @@ export function buildGeneratePlaywrightScriptSystemPrompt(): string {
 2. 代码运行在已经初始化好的浏览器 page 上：登录态已注入，**外层会先 page.goto(入口或 '/')**，脚本从当前已打开的业务页开始写。
 3. 可以直接使用变量 page、expect。
 4. 生成的代码必须自己处理等待和 iframe：
+   - 若用户消息含「UI 契约」，iframe / role / 等待接口一律以契约为准，不要再用下面的双路径 fallback。
    - 每个点击、输入、断言前，先使用 waitFor({ state: 'visible' }) 或 expect(...).toBeVisible()。
    - 不要依赖外层环境做延时，延时逻辑必须写在脚本里。
    - **侧栏/顶部菜单**（如「我的审批」「首页」）通常在主 page 上，优先：
@@ -54,6 +56,16 @@ export function buildGeneratePlaywrightScriptPrompt(input: GeneratePlaywrightScr
 
   if (input.env) lines.push(`目标环境：${input.env}`);
   if (input.entry) lines.push(`入口路径或 URL：${input.entry}`);
+
+  if (input.uiContract?.trim()) {
+    lines.push('');
+    lines.push(input.uiContract.trim());
+    lines.push('');
+    lines.push(
+      '以上 UI 契约由前端源码静态索引生成。若它与通用规则冲突（例如是否需要 frameLocator、能否用 getByRole 定位表格行），一律以契约为准。',
+    );
+  }
+
   if (input.recordingCode?.trim()) {
     lines.push('');
     lines.push('以下是已有录制脚本，仅用于理解业务步骤，不要复制其中的脆弱选择器：');
