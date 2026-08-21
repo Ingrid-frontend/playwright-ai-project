@@ -84,6 +84,10 @@ function createRepoHandlers(ctx) {
     cancelRepoRerun,
     runStyleDriftFullFlow,
     runChangeDetectionFullFlow,
+    runUiAudit,
+    cancelUiAudit,
+    sendUiAuditStatus,
+    openExistingUiAuditReport,
   } = ctx;
 
   return {
@@ -134,16 +138,19 @@ function createRepoHandlers(ctx) {
         return;
       }
       const accountProfile = msg.accountProfile != null ? String(msg.accountProfile).trim() : null;
+      const allEnvs = Boolean(msg.allEnvs);
+      const envFilter = allEnvs ? undefined : getSessionPlaywrightEnv(session);
       const optimizedSpecEntries = listOptimizedSpecEntries(repoRoot, {
-        limit: msg.limit ?? 40,
-        env: getSessionPlaywrightEnv(session),
+        limit: msg.limit ?? (allEnvs ? 200 : 40),
+        env: envFilter,
         accountProfile: accountProfile || undefined,
       });
       send(ws, 'repo:list-optimized:done', {
         optimizedSpecs: optimizedSpecEntries.map((e) => e.rel),
         optimizedSpecEntries,
+        allEnvs,
         profileCounts: specMeta.summarizeProfileCounts(
-          listOptimizedSpecEntries(repoRoot, { limit: 200, env: getSessionPlaywrightEnv(session) }),
+          listOptimizedSpecEntries(repoRoot, { limit: 200, env: envFilter }),
         ),
         repoRoot,
       });
@@ -417,6 +424,26 @@ function createRepoHandlers(ctx) {
         runIntent,
         runRepoPromoteBaseline,
       });
+    },
+
+    'ui-audit:run': async (ws, session, _sessionId, msg) => {
+      await runUiAudit(ws, session, msg, {
+        resolveRepoRoot,
+        spawn,
+        buildRepoSpawnEnv,
+      });
+    },
+
+    'ui-audit:open': async (ws) => {
+      openExistingUiAuditReport(ws, resolveRepoRoot);
+    },
+
+    'ui-audit:status': async (ws) => {
+      sendUiAuditStatus(ws, resolveRepoRoot());
+    },
+
+    'cancel:ui-audit': async (_ws, session) => {
+      cancelUiAudit(session);
     },
 
     'cancel:intent-run': async (_ws, session) => {

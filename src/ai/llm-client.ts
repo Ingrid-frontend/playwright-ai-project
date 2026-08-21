@@ -21,7 +21,7 @@ function envValue(...keys: string[]): string | undefined {
   return undefined;
 }
 
-function buildChatCompletionsUrl(baseUrl: string | undefined, defaultBase: string): string {
+export function buildChatCompletionsUrl(baseUrl: string | undefined, defaultBase: string): string {
   const base = (baseUrl || defaultBase).replace(/\/$/, '');
   if (base.endsWith('/chat/completions')) return base;
   if (base.endsWith('/v1') || base.endsWith('/v3')) return `${base}/chat/completions`;

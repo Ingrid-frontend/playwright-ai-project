@@ -1196,6 +1196,31 @@
           <button type="button" class="btn btn-full" id="btnHubOpenCustomer" onclick="openExistingCustomerReport()" style="border-color:rgba(52,211,153,.4);color:var(--green,#34d399)">打开客户报告</button>
           <button type="button" class="btn btn-full" id="btnHubCustomer" onclick="regenerateCustomerReport()" style="margin-top:8px">重新生成客户报告并打开</button>
           <div id="compareUiIssuesSummary" class="sidebar-hint" style="margin-top:10px;display:none"></div>
+          <hr style="border:none;border-top:1px solid var(--border,#2a3142);margin:14px 0 10px" />
+          <p class="sidebar-hint" style="margin:0 0 8px">
+            <strong style="color:var(--purple,#a78bfa)">AI UI 审计（Layer 1）</strong><br />
+            不依赖基线：直接读 screenshots/ 的截图 + .meta.json，逐张做结构化 UI 缺陷分析，报告内在截图上画标注框。
+          </p>
+          <div class="field" style="margin:0 0 8px">
+            <label class="field-label" for="uiAuditLimit">审计张数上限</label>
+            <input class="control-input" id="uiAuditLimit" type="number" min="1" max="100" value="12" />
+          </div>
+          <div class="field" style="margin:0 0 8px">
+            <label class="field-label" for="uiAuditScript">脚本过滤（可选，模糊匹配 scriptKey）</label>
+            <input class="control-input" id="uiAuditScript" placeholder="如 审批列表页可见" />
+          </div>
+          <label class="sidebar-hint" style="display:flex;align-items:center;gap:6px;margin:0 0 4px;cursor:pointer">
+            <input type="checkbox" id="uiAuditGate" />
+            <span>Gate 模式：发现 🔴 阻断级缺陷时标记失败</span>
+          </label>
+          <label class="sidebar-hint" style="display:flex;align-items:center;gap:6px;margin:0 0 8px;cursor:pointer">
+            <input type="checkbox" id="uiAuditMock" />
+            <span>强制 mock 规则分析（不调用 AI，用于自检）</span>
+          </label>
+          <button type="button" class="btn btn-full" id="btnUiAuditRun" onclick="startUiAudit()" style="border-color:rgba(167,139,250,.45);color:var(--purple,#a78bfa)"><span class="btn-label">运行 AI UI 审计</span></button>
+          <button type="button" class="btn btn-full" id="btnUiAuditOpen" onclick="openExistingUiAuditReport()" style="margin-top:8px">打开已有审计报告</button>
+          <button type="button" class="btn btn-full" id="btnUiAuditCancel" style="font-size:var(--fs-sm);padding:6px 10px;margin-top:6px" disabled onclick="send('cancel:ui-audit')">取消审计</button>
+          <div id="uiAuditStatus" class="sidebar-hint" style="margin-top:8px;display:none"></div>
           <div class="field" style="margin-top:12px">
             <label class="field-label" for="promoteScriptKey">Promote Golden</label>
             <input class="control-input" id="promoteScriptKey" placeholder="脚本键 如 260612/我的审批_…" />
@@ -1883,6 +1908,7 @@ function syncCompareHubButtons() {
 function refreshCompareReportStatus() {
   send('repo:compare-report:status', {});
   loadUiIssuesPanel();
+  refreshUiAuditStatus();
 }
 
 let promoteGoldenPending = null;
@@ -5437,6 +5463,39 @@ function handleMessage(msg) {
         log('err', `[change-detection] ${msg.message || '失败'}`);
       }
       break;
+    case 'ui-audit:run:start':
+      setUiAuditBusy(true);
+      log('info', `[ui-audit] 开始审计 · limit=${msg.limit}${msg.script ? ` · script=${msg.script}` : ''} · ${msg.mode === 'ai' ? 'AI 视觉分析' : 'mock 规则分析'}`);
+      break;
+    case 'ui-audit:run:done': {
+      setUiAuditBusy(false);
+      renderUiAuditStatus(msg);
+      if (!msg.ok) {
+        if (msg.cancelled) {
+          log('warn', '[ui-audit] 已取消');
+        } else {
+          showToast(msg.message || 'AI UI 审计失败', 'err');
+        }
+        break;
+      }
+      const s = msg.summary || {};
+      const hint = `🟢 ${s.pass ?? 0} 🟡 ${s.review ?? 0} 🔴 ${s.fail ?? 0} ⚪ ${s.skipped ?? 0}`;
+      log(msg.gateBlocked ? 'err' : 'ok', `[ui-audit] ${msg.openedExisting ? '已打开报告' : '完成'} · ${hint}`);
+      showToast(
+        msg.gateBlocked ? `Gate 拦截：发现 ${s.fail} 处 UI 衰退` : `AI UI 审计完成 · ${hint}`,
+        msg.gateBlocked ? 'err' : 'ok',
+      );
+      if (msg.openPath) {
+        const url = new URL(msg.openPath, location.origin).href;
+        if (!openCompareReportInNewWindow(url)) {
+          log('warn', '浏览器拦截了新窗口，请从上方链接手动打开: ' + url);
+        }
+      }
+      break;
+    }
+    case 'ui-audit:status':
+      renderUiAuditStatus(msg);
+      break;
     case 'ego:explore:start':
       if (msg.seq) exploreSeq = msg.seq;
       setExploreBusy(true);
@@ -6197,10 +6256,79 @@ function startChangeDetectionFullFlow() {
   }
 }
 
+function setUiAuditBusy(busy) {
+  const btn = document.getElementById('btnUiAuditRun');
+  const btnOpen = document.getElementById('btnUiAuditOpen');
+  const btnCancel = document.getElementById('btnUiAuditCancel');
+  if (btn) {
+    btn.disabled = busy;
+    btn.style.opacity = busy ? 0.6 : 1;
+    const label = btn.querySelector('.btn-label');
+    if (label) label.textContent = busy ? '审计中…' : '运行 AI UI 审计';
+  }
+  if (btnOpen) btnOpen.disabled = busy;
+  if (btnCancel) btnCancel.disabled = !busy;
+}
+
+/** 四态结论徽章：🟢 通过 / 🟡 待复核 / 🔴 衰退 / ⚪ 未审计 */
+function renderUiAuditStatus(msg) {
+  const el = document.getElementById('uiAuditStatus');
+  if (!el) return;
+  const s = msg && msg.summary;
+  if (!s) {
+    if (msg && msg.hasReport === false) {
+      el.style.display = 'block';
+      el.textContent = '暂无审计报告，点击「运行 AI UI 审计」生成。';
+    } else {
+      el.style.display = 'none';
+      el.textContent = '';
+    }
+    return;
+  }
+  const url = msg.openPath ? new URL(msg.openPath, location.origin).href : '';
+  const modeLabel = s.mode === 'ai' ? 'AI 视觉分析' : 'mock 规则分析';
+  const parts = [
+    `<span style="color:var(--green,#34d399)">🟢 ${s.pass ?? 0}</span>`,
+    `<span style="color:var(--amber)">🟡 ${s.review ?? 0}</span>`,
+    `<span style="color:var(--red,#f87171)">🔴 ${s.fail ?? 0}</span>`,
+    `<span style="opacity:.7">⚪ ${s.skipped ?? 0}</span>`,
+  ].join(' · ');
+  let html = `${parts}<br /><span style="opacity:.7">共 ${s.total ?? 0} 步 · ${modeLabel}</span>`;
+  if (url) {
+    html += `<br /><a href="${escHtml(url)}" target="_blank" rel="noopener" style="color:var(--blue)">在新窗口打开审计报告</a>`;
+  }
+  if ((s.skipped ?? 0) > 0 && s.mode !== 'ai') {
+    html += `<br /><span style="color:var(--amber)">${s.skipped} 步缺少判定依据未审计；配置 AI_API_KEY 可启用 AI 视觉分析</span>`;
+  }
+  el.style.display = 'block';
+  el.innerHTML = html;
+}
+
+function startUiAudit() {
+  openReportHub('compare');
+  const limit = Math.max(1, Math.min(100, Number(document.getElementById('uiAuditLimit')?.value) || 12));
+  const script = document.getElementById('uiAuditScript')?.value?.trim() || '';
+  const gate = Boolean(document.getElementById('uiAuditGate')?.checked);
+  const mock = Boolean(document.getElementById('uiAuditMock')?.checked);
+  setUiAuditBusy(true);
+  if (!send('ui-audit:run', { limit, script, gate, mock })) {
+    setUiAuditBusy(false);
+  }
+}
+
+function openExistingUiAuditReport() {
+  openReportHub('compare');
+  setUiAuditBusy(true);
+  if (!send('ui-audit:open', {})) setUiAuditBusy(false);
+}
+
+function refreshUiAuditStatus() {
+  if (ws && ws.readyState === 1) send('ui-audit:status', {});
+}
+
 function refreshReplayList() {
   if (ws && ws.readyState === 1) send('replay:list', {});
 }
-
 function replayScriptCandidates(it) {
   const out = String(it.outRel || '').replace(/\\/g, '/').replace(/\/$/, '');
   const rels = [];

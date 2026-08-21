@@ -33,6 +33,10 @@ export interface TextSectionMeta {
 
 export interface StepMeta {
   capturedAt?: string;
+  /** 截图时的页面地址（sidecar 实际已写入，供 AI 审计等下游消费） */
+  url?: string;
+  /** 截图时的页面标题 */
+  title?: string;
   viewport?: { name: string; width: number; height: number };
   /** 实际截图像素尺寸，viewport 缺失时用于换算基线 bbox */
   imageWidth?: number;

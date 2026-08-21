@@ -57,6 +57,12 @@ const { runIntent, listIntentDefinitions, getIntentDefinition, saveIntentDefinit
 const { applyHealSuggest, sendTrustReport } = require('./lib/intent-boundary');
 const { runStyleDriftFullFlow } = require('./lib/style-drift-run');
 const { runChangeDetectionFullFlow } = require('./lib/change-detection-run');
+const {
+  runUiAudit,
+  cancelUiAudit,
+  sendUiAuditStatus,
+  openExistingUiAuditReport,
+} = require('./lib/ui-audit-run');
 const { runEgoAudit } = require('./lib/ego-audit');
 const { runEgoNlFlow } = require('./lib/ego-nl-run');
 const { runEgoExplore } = require('./lib/ego-explore');
@@ -391,6 +397,10 @@ const { sendHello, handleMessage } = createWsDispatcher({
     cancelRepoRerun,
     runStyleDriftFullFlow,
     runChangeDetectionFullFlow,
+    runUiAudit,
+    cancelUiAudit,
+    sendUiAuditStatus,
+    openExistingUiAuditReport,
   },
   jobs: {
     handleJobsList,
