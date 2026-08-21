@@ -226,7 +226,7 @@ const DEFAULT_CONFIG: UiRegressionConfig = {
     includeAA: false,
   },
   autoPromote: {
-    maxDiffRatio: 0.005,
+    maxDiffRatio: 0.001,
     seedIfMissing: true,
   },
   aiReview: {

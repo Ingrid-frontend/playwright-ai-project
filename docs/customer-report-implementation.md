@@ -69,6 +69,24 @@ npx tsx scripts/verify/probe-change-nature.ts         # 逐区域性质探针
 
 ## 6. 已知维护陷阱
 
-1. **autoPromote 会吃掉小差异**：`flow-shared.ts` 的 `autoPromote.maxDiffRatio` 默认 0.005，会把 0.1–0.5% 的差异自动覆盖进基线。需要人工把关时设 `AUTO_PROMOTE_BASELINE=0`
+1. **autoPromote 会吃掉小差异**：生效阈值 = 环境变量 `AUTO_PROMOTE_MAX_DIFF` ?? 配置 `autoPromote.maxDiffRatio`（**现为 0.001，原为 0.005**）?? 硬编码兜底 0.005（`scripts/flow/flow-shared.ts:221`）。阈值压到 0.001 是为了让 0.1–0.5% 的轻微差异先以「需关注（attention）」状态浮到结论栏、由人确认后再决定是否固化基线，而不是被自动晋升静默吞掉。完全关闭自动固化：设 `AUTO_PROMOTE_BASELINE=0`（同文件 `:196`）。
 2. **未检测占比偏高**（当前 25/41）：多为 before/skipped 过程截图与未固化基线，需要按业务重要性逐步 promote
 3. `verify-customer-report-html.ts` 的断言与文案强耦合，改首屏措辞时同步更新正则
+
+## 7. 总结结论状态（summary verdict）
+
+`buildCoverageStats` 产出的 `verdict` 有四种，对应结论栏左边框配色与首屏大字（详见 `customer-report-render.ts` 的 `verdictClass` / `customer-report-assets.ts` 的 `.verdict.*`）：
+
+| verdict | 触发条件 | 左边框色 | 首屏大字示例 |
+|---|---|---|---|
+| `regress` | `regressSteps > 0`，存在明显衰退 | 红 `#e03131` | 发现 N 个 UI 问题需要处理 |
+| `attention` | 无衰退但 `minorSteps > 0`，仅轻微变化 | 琥珀 `#f08c00` | 存在 N 处轻微变化，建议人工确认 |
+| `pass` | 无衰退且无轻微变化 | 绿 `#2f9e44` | 本次未发现 UI 衰退 |
+| `insufficient_coverage` | `comparedSteps === 0`，无有效对比 | 琥珀（unknown） | 本次无有效对比，无法给出结论 |
+
+要点：
+
+- **轻微变化不再被算作绿色「通过」**。此前 minor-only 场景落到 `pass`，结论栏仍是绿色、只在副标题里加一句括号说明，容易被误读为「完全没问题」。现独立为琥珀色 `attention`，明确提示「需人工确认」。
+- 渲染层三处同步改动：`customer-report-render.ts` 的 `verdictClass` 新增 `watch` 分支（minor-only 走 `watch`）；`customer-report-assets.ts` 新增 `.verdict.watch`（左边框 + 标题色 `#a37200`）；`compare-report-viz.ts` 的 `OverviewData.coverage.verdict` 类型放开 `'attention'`。
+- **CI 安全**：`--gate` 读取的是 `issuesReport` 的 `blocker` 严重度，**不读** `coverage.verdict`。因此 `attention` 不会造成 CI 误判失败——只有真实 `regress`（blocker）才会卡门禁。本次新增的 `attention` 状态对工程报告与 CI 均无副作用。
+- **与 autoPromote 的配合**：`maxDiffRatio` 从 0.005 降到 0.001（§6 陷阱 1），使轻微差异先以 `attention` 浮出、而非被自动晋升吞掉；确认接受后再手动固化基线。

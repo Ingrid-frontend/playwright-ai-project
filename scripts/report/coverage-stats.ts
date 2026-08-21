@@ -63,7 +63,7 @@ export interface CoverageStats {
   regressSteps: number;
   /** (passSteps + minorSteps) / comparedSteps；无对比项时为 0 */
   passRate: number;
-  verdict: 'pass' | 'regress' | 'insufficient_coverage';
+  verdict: 'pass' | 'attention' | 'regress' | 'insufficient_coverage';
   verdictLabel: string;
   slots: CoverageSlot[];
 }
@@ -334,8 +334,8 @@ export function buildCoverageStats(
     verdict = 'insufficient_coverage';
     verdictLabel = '无可检测步骤';
   } else if (minorSteps > 0) {
-    verdict = 'pass';
-    verdictLabel = `未发现 UI 衰退（${minorSteps} 处轻微变化，可忽略）`;
+    verdict = 'attention';
+    verdictLabel = `存在 ${minorSteps} 处轻微变化，建议人工确认`;
   } else {
     verdict = 'pass';
     verdictLabel = '未发现 UI 衰退';

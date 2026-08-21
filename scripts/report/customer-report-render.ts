@@ -306,18 +306,20 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
          ${model.minorGroups.map((g, i) => renderIssueGroup(g, i)).join('')}`
       : '';
   const verdictClass =
-    c.regressSteps > 0 ? 'bad' : c.comparedSteps === 0 ? 'unknown' : 'good';
+    c.regressSteps > 0 ? 'bad' : c.minorSteps > 0 ? 'watch' : c.comparedSteps === 0 ? 'unknown' : 'good';
   const headline =
     c.regressSteps > 0
       ? `发现 ${model.regressionGroups.length} 个 UI 问题需要处理`
-      : c.comparedSteps === 0
-        ? '本次无有效对比，无法给出结论'
-        : '本次未发现 UI 衰退';
+      : c.minorSteps > 0
+        ? `存在 ${c.minorSteps} 处轻微变化，建议人工确认`
+        : c.comparedSteps === 0
+          ? '本次无有效对比，无法给出结论'
+          : '本次未发现 UI 衰退';
   const subline =
     c.regressSteps > 0
       ? `影响 ${c.regressSteps} 个检测步骤${c.minorSteps > 0 ? `；另有 ${c.minorSteps} 步为位置偏移等无害差异，无需处理` : ''}`
       : c.minorSteps > 0
-        ? `${c.minorSteps} 步存在位置偏移或字体渲染差异，已逐像素核对内容一致`
+        ? `${c.minorSteps} 步存在位置偏移或字体渲染差异，已逐像素核对内容一致，建议人工确认是否接受`
         : `已对比 ${c.comparedSteps} 个步骤，与验收基线一致`;
 
   return `<!DOCTYPE html>

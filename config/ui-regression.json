@@ -192,7 +192,7 @@
     "fullPage": false
   },
   "autoPromote": {
-    "maxDiffRatio": 0.005,
+    "maxDiffRatio": 0.001,
     "seedIfMissing": true
   },
   "crossBrowser": {

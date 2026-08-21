@@ -41,6 +41,8 @@ body {
 .verdict.unknown { border-left-color: var(--amber); }
 .verdict.bad .verdict-title { color: #c92a2a; }
 .verdict.good .verdict-title { color: #2b8a3e; }
+.verdict.watch { border-left-color: var(--amber); }
+.verdict.watch .verdict-title { color: #a37200; }
 .verdict-foot {
   margin-top: 12px;
   padding-top: 10px;

@@ -274,7 +274,7 @@ export interface OverviewData {
     passSteps: number;
     regressSteps: number;
     passRate: number;
-    verdict: 'pass' | 'regress' | 'insufficient_coverage';
+    verdict: 'pass' | 'attention' | 'regress' | 'insufficient_coverage';
     verdictLabel: string;
   };
 }
