@@ -1,0 +1,89 @@
+{
+  "capturedAt": "2026-08-21T04:04:16.026Z",
+  "url": "https://dev.huilianyi.com/main/approve",
+  "title": "我的审批 - 汇联易dev | 一站式商旅及费用报销SaaS解决方案",
+  "pageText": "上海汇联易测试 工作台 消费平台 财务管理 数据分析 AI能力中心 e档案 系统管理 99+ DEV管理员 图标: search 搜索菜单 合同 首页 账本 我的单据 私车公用 我的供应商 二次审批单 报销单 申请单 预提单 申请单关闭 借款单 待还款 对公申请单 对公支付单 对公收款 付款申请单 外部数据支付单 预算单 我的外部员工 我的审批 99+ 我的代理 扫码寄单 自动报销设置 第三方应用 物料领用 低代码页面 Mock待办平台 自定义表单 组件库 我的审批 审批设置 待审批-全部 ( 99+ ) 我的已办 抄送我 操作历史 待审批 图标: down 全部业务类型 图标: down 筛选 CD208529721579 图标: close-circle 图标: search 单号 搜索 清除外露筛选值 图标: down 申请人 单号 图标: caret-up 图标: caret-down 提交日期 图标: caret-up 图标: caret-down 单据名称 单据公司 事由 金额 图标: caret-up 图标: caret-down 单据部门 本币金额 图标: caret-up 图标: caret-down DEV管理员 CD2085297215794155522 2026-08-06 Agent发布申请单 上海汇联易测试 - 0 .00 CNY 接口自动化测试部 0 .00 CNY 操作 通过 驳回 共1条 图标: left 1 图标: right 10 条/页 图标: down  工作台 消费平台 财务管理 数据分析 AI能力中心 e档案 系统管理 搜索菜单 合同 首页 账本 我的单据 私车公用 我的供应商 二次审批单 报销单 申请单 预提单 申请单关闭 借款单 待还款 对公申请单 对公支付单 对公收款 付款申请单 外部数据支付单 预算单 我的外部员工 我",
+  "domHash": "SEC|0baf4d93744717ec",
+  "sections": [
+    {
+      "key": "intent-approve-tabs",
+      "structureHash": "0baf4d93744717ec",
+      "textHash": "a1ca0a2df1ba04ae",
+      "nodeCount": 46,
+      "childTags": "DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "intent-approve-toolbar",
+      "structureHash": "76afb338c6e0590a",
+      "textHash": "e3b0c44298fc1c14",
+      "nodeCount": 8,
+      "childTags": "SPAN,INPUT,SPAN"
+    },
+    {
+      "key": "intent-approve-table",
+      "structureHash": "c86255de2f190eae",
+      "textHash": "df772a3bb6967094",
+      "nodeCount": 250,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "golden-approve-tabs",
+      "structureHash": "0baf4d93744717ec",
+      "textHash": "a1ca0a2df1ba04ae",
+      "nodeCount": 46,
+      "childTags": "DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "golden-approve-table",
+      "structureHash": "c86255de2f190eae",
+      "textHash": "df772a3bb6967094",
+      "nodeCount": 250,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV,DIV,DIV,DIV"
+    }
+  ],
+  "textSections": [
+    {
+      "key": "intent-approve-tabs",
+      "text": "工作台 消费平台 财务管理 数据分析 AI能力中心 e档案 系统管理",
+      "textHash": "e6fbca2f1568af36",
+      "charCount": 34
+    },
+    {
+      "key": "intent-approve-toolbar",
+      "text": "工作台 消费平台 财务管理 数据分析 AI能力中心 e档案 系统管理",
+      "textHash": "e6fbca2f1568af36",
+      "charCount": 34
+    },
+    {
+      "key": "intent-approve-table",
+      "text": "工作台 消费平台 财务管理 数据分析 AI能力中心 e档案 系统管理",
+      "textHash": "e6fbca2f1568af36",
+      "charCount": 34
+    },
+    {
+      "key": "golden-approve-tabs",
+      "text": "工作台 消费平台 财务管理 数据分析 AI能力中心 e档案 系统管理",
+      "textHash": "e6fbca2f1568af36",
+      "charCount": 34
+    },
+    {
+      "key": "golden-approve-table",
+      "text": "工作台 消费平台 财务管理 数据分析 AI能力中心 e档案 系统管理",
+      "textHash": "e6fbca2f1568af36",
+      "charCount": 34
+    }
+  ],
+  "viewport": {
+    "width": 1280,
+    "height": 720,
+    "deviceScaleFactor": 1
+  },
+  "imageWidth": 1280,
+  "imageHeight": 720,
+  "maskedElements": -1,
+  "layout": {
+    "horizontalOverflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280
+  }
+}

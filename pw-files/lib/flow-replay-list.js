@@ -31,23 +31,74 @@ function detectEngine(dirAbs, dirName, result) {
   return 'ego';
 }
 
+function readScriptFile(abs, repoRoot, kindHint) {
+  let text = '';
+  try {
+    text = fs.readFileSync(abs, 'utf8');
+  } catch {
+    return null;
+  }
+  if (!text.trim()) return null;
+  if (text.length > 80_000) text = `${text.slice(0, 80_000)}\n…`;
+  const rel = path.relative(repoRoot, abs).replace(/\\/g, '/');
+  const kind =
+    kindHint ||
+    (rel.endsWith('.ts') ? 'ts' : rel.endsWith('.js') ? 'js' : rel.endsWith('.json') ? 'json' : 'yaml');
+  return { scriptRel: rel, scriptKind: kind, scriptText: text };
+}
+
+/** Studio Intent 跑完只落 intent.json；按 name/scriptKey 回查 definitions */
+function resolveDefinitionYaml(repoRoot, intent) {
+  if (!intent || typeof intent !== 'object') return null;
+  const name = String(intent.name || '').trim();
+  const scriptKey = String(intent.scriptKey || '').trim().replace(/\\/g, '/');
+  const candidates = [];
+  if (scriptKey) {
+    const tail = scriptKey.replace(/^intent\//, '');
+    if (tail) {
+      candidates.push(`tests/definitions/${tail}.yaml`);
+      const base = path.posix.basename(tail);
+      if (base && base !== tail) {
+        candidates.push(`tests/definitions/${base}.yaml`);
+        candidates.push(`tests/definitions/dev/${base}.yaml`);
+        candidates.push(`tests/definitions/stage/${base}.yaml`);
+      }
+    }
+  }
+  if (name) {
+    candidates.push(
+      `tests/definitions/${name}.yaml`,
+      `tests/definitions/dev/${name}.yaml`,
+      `tests/definitions/stage/${name}.yaml`,
+    );
+  }
+  const seen = new Set();
+  for (const rel of candidates) {
+    if (!rel || seen.has(rel)) continue;
+    seen.add(rel);
+    const abs = path.join(repoRoot, rel);
+    if (fs.existsSync(abs) && fs.statSync(abs).isFile()) return abs;
+  }
+  return null;
+}
+
 function findScript(dirAbs, repoRoot) {
   const names = ['script.ego.js', 'intent.preview.yaml', 'generated.ts', 'intent.yaml'];
   for (const name of names) {
-    const abs = path.join(dirAbs, name);
-    if (!fs.existsSync(abs)) continue;
-    let text = '';
-    try {
-      text = fs.readFileSync(abs, 'utf8');
-    } catch {
-      text = '';
-    }
-    if (text.length > 80_000) text = `${text.slice(0, 80_000)}\n…`;
-    return {
-      scriptRel: path.relative(repoRoot, abs).replace(/\\/g, '/'),
-      scriptKind: name.endsWith('.ts') ? 'ts' : name.endsWith('.js') ? 'js' : 'yaml',
-      scriptText: text,
-    };
+    const hit = readScriptFile(path.join(dirAbs, name), repoRoot);
+    if (hit) return hit;
+  }
+
+  const intentAbs = path.join(dirAbs, 'intent.json');
+  const intent = fs.existsSync(intentAbs) ? readJson(intentAbs) : null;
+  const defAbs = resolveDefinitionYaml(repoRoot, intent);
+  if (defAbs) {
+    const hit = readScriptFile(defAbs, repoRoot, 'yaml');
+    if (hit) return hit;
+  }
+  if (intent) {
+    const hit = readScriptFile(intentAbs, repoRoot, 'json');
+    if (hit) return hit;
   }
   return { scriptRel: '', scriptKind: '', scriptText: '' };
 }

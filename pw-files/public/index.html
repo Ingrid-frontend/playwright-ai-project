@@ -6208,7 +6208,12 @@ function replayScriptCandidates(it) {
   if (it.engine === 'pw') {
     if (out) rels.push(`${out}/generated.ts`);
   } else if (out) {
-    rels.push(`${out}/script.ego.js`, `${out}/intent.preview.yaml`, `${out}/intent.yaml`);
+    rels.push(
+      `${out}/script.ego.js`,
+      `${out}/intent.preview.yaml`,
+      `${out}/intent.yaml`,
+      `${out}/intent.json`,
+    );
   }
   return [...new Set(rels.map((r) => String(r).replace(/\\/g, '/').replace(/^\.\//, '')).filter(Boolean))];
 }
@@ -6370,7 +6375,16 @@ async function openReplayScript(index) {
     showToast('未找到对应脚本文件', 'err');
     return;
   }
-  const kind = script.kind === 'ts' ? 'Playwright 脚本' : script.kind === 'yaml' ? 'Intent YAML' : script.kind === 'js' ? 'Ego 脚本' : '脚本';
+  const kind =
+    script.kind === 'ts'
+      ? 'Playwright 脚本'
+      : script.kind === 'yaml'
+        ? 'Intent YAML'
+        : script.kind === 'js'
+          ? 'Ego 脚本'
+          : script.kind === 'json'
+            ? 'Intent 定义'
+            : '脚本';
   const titleEl = document.getElementById('replayScriptModalTitle');
   const pathEl = document.getElementById('replayScriptPath');
   const textEl = document.getElementById('replayScriptText');

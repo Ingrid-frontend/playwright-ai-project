@@ -102,7 +102,8 @@ async function main(): Promise<void> {
 
   if (engine === 'pw') ensureBrowsersPath();
 
-  const raw = parseYaml(expandRepoRootInYaml(fs.readFileSync(intentPath, 'utf-8')));
+  const rawYaml = expandRepoRootInYaml(fs.readFileSync(intentPath, 'utf-8'));
+  const raw = parseYaml(rawYaml);
   const { intent, plan } = compileIntentToPlan(raw);
 
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
@@ -111,6 +112,12 @@ async function main(): Promise<void> {
   fs.mkdirSync(outputDir, { recursive: true });
   fs.writeFileSync(path.join(outputDir, 'plan.json'), `${JSON.stringify(plan, null, 2)}\n`, 'utf-8');
   fs.writeFileSync(path.join(outputDir, 'intent.json'), `${JSON.stringify(intent, null, 2)}\n`, 'utf-8');
+  // 供 Studio「查看脚本」直接打开；与 ego-studio 的 intent.preview.yaml 对齐
+  fs.writeFileSync(
+    path.join(outputDir, 'intent.yaml'),
+    rawYaml.endsWith('\n') ? rawYaml : `${rawYaml}\n`,
+    'utf-8',
+  );
 
   const heal = hasFlag('no-heal') ? false : true;
   const env = getArgValue('env') || intent.env;
