@@ -1,0 +1,213 @@
+name: 汇联易-我的审批搜索功能巡检
+goal: 在待审批列表验证关键字搜索、空结果与 Tab 切换
+description: >-
+  自 EgoLite approve_monitor 改写为 Studio Intent。
+  无「共N条」精确计数与 equals_baseline；搜索框覆盖填写代替清空。
+env: dev
+entry: /main/approve
+scriptKey: intent/dev/审批列表页筛选测试
+trustLevel: trial
+reviewRequired: false
+preconditions:
+  - 已登录且有审批权限
+  - 待审批列表存在申请人含 DEV管理员 的单据
+  - 存在单号 CD2085297215794155522（或同前缀单据）
+constraints:
+  - 禁止 nth()
+  - 禁止把 @N 写入定义
+assertions:
+  - 我的审批
+  - 待审批
+steps:
+  - id: step-1
+    action: goto
+    path: /main/approve
+    optional: false
+
+  - id: step-2
+    action: assert
+    kind: text
+    expect: 我的审批
+    optional: false
+    evidence:
+      - screenshot
+
+  - id: step-3
+    action: assert
+    kind: text
+    expect: 待审批
+    optional: false
+    evidence:
+      - screenshot
+
+  - id: step-4
+    action: fill
+    description: 申请人搜索输入框
+    value: DEV管理员
+    optional: false
+  - id: step-5
+    action: click
+    description: 搜索
+    optional: false
+  - id: step-6
+    action: wait
+    timeoutMs: 1500
+    optional: true
+  - id: step-7
+    action: assert
+    kind: text
+    expect: DEV管理员
+    optional: false
+    evidence:
+      - screenshot
+
+  - id: step-8
+    action: fill
+    description: 申请人搜索输入框
+    value: CD2085297215794155522
+    optional: false
+  - id: step-9
+    action: click
+    description: 搜索
+    optional: false
+  - id: step-10
+    action: wait
+    timeoutMs: 1500
+    optional: true
+  - id: step-11
+    action: assert
+    kind: text
+    expect: CD2085297215794155522
+    optional: false
+    evidence:
+      - screenshot
+
+  - id: step-12
+    action: fill
+    description: 申请人搜索输入框
+    value: CD208529721579
+    optional: false
+  - id: step-13
+    action: click
+    description: 搜索
+    optional: false
+  - id: step-14
+    action: wait
+    timeoutMs: 1500
+    optional: true
+  - id: step-15
+    action: assert
+    kind: text
+    expect: CD208529721579
+    optional: false
+    evidence:
+      - screenshot
+
+  - id: step-16
+    action: fill
+    description: 申请人搜索输入框
+    value: ZZZnonsense_xyz
+    optional: false
+  - id: step-17
+    action: click
+    description: 搜索
+    optional: false
+  - id: step-18
+    action: wait
+    timeoutMs: 1500
+    optional: true
+  - id: step-19
+    action: assert
+    kind: text
+    expect: 暂无数据
+    optional: false
+    evidence:
+      - screenshot
+
+  - id: step-20
+    action: fill
+    description: 申请人搜索输入框
+    value: Agent
+    optional: false
+  - id: step-21
+    action: click
+    description: 搜索
+    optional: false
+  - id: step-22
+    action: wait
+    timeoutMs: 1500
+    optional: true
+  - id: step-23
+    action: assert
+    kind: text
+    expect: 暂无数据
+    optional: false
+    evidence:
+      - screenshot
+
+  - id: step-24
+    action: click
+    description: 筛选
+    optional: true
+  - id: step-25
+    action: click
+    description: 申请单
+    optional: true
+  - id: step-26
+    action: click
+    description: 待决
+    optional: true
+  - id: step-27
+    action: screenshot
+    snapshotName: filter-biz-status
+    state: normal
+    mode: fast
+    optional: true
+
+  - id: step-28
+    action: click
+    description: 我的已办
+    optional: false
+  - id: step-29
+    action: wait
+    timeoutMs: 1500
+    optional: true
+  - id: step-30
+    action: assert
+    kind: text
+    expect: 我的已办
+    optional: false
+    evidence:
+      - screenshot
+
+  - id: step-31
+    action: click
+    description: 抄送我
+    optional: false
+  - id: step-32
+    action: wait
+    timeoutMs: 1500
+    optional: true
+  - id: step-33
+    action: assert
+    kind: text
+    expect: 抄送我
+    optional: false
+    evidence:
+      - screenshot
+
+  - id: step-34
+    action: click
+    description: 操作历史
+    optional: false
+  - id: step-35
+    action: wait
+    timeoutMs: 1500
+    optional: true
+  - id: step-36
+    action: assert
+    kind: text
+    expect: 操作历史
+    optional: false
+    evidence:
+      - screenshot
