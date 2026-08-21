@@ -19,18 +19,30 @@ test.describe('Golden Set · 我的审批列表', () => {
 
     await step('打开审批列表', async () => {
       await page.goto('/main/approve', { waitUntil: 'load', timeout: 60_000 });
-      await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+      // 列表主数据源是 getPendingApproveList()，等它比等 networkidle 精确
+      await page
+        .waitForResponse(
+          (resp) => resp.url().includes('/api/approvals/pendingApproval') && resp.status() === 200,
+          { timeout: 20_000 },
+        )
+        .catch(() => {});
       await assertNotLoginLikePage(page, 'golden-set approval-list');
     });
 
     await step('断言列表信号', async () => {
-      await page.locator('iframe').first().waitFor({ state: 'attached', timeout: 30_000 });
-      const app = page.frameLocator('iframe').first();
+      // /main/** 的内容不在 iframe 内（src/containers/main/main.js 无 iframe，stage 实测 iframe 数为 0），
+      // 因此直接用 page 定位，不再 frameLocator。
+      await expect(page.getByText(/我的审批|待审批/).first()).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator('.ant-table').first()).toBeVisible({ timeout: 20_000 });
 
-      await expect(app.getByText(/我的审批|待审批/).first()).toBeVisible({ timeout: 20_000 });
-      await expect(app.locator('.ant-table, table, [role="tablist"]').first()).toBeVisible({
-        timeout: 20_000,
-      });
+      // antd v3 表格无 role=row，且走虚拟滚动，只断言视口内至少渲染出一行
+      const dataRows = page.locator('.ant-table-tbody tr').filter({ visible: true });
+      await expect
+        .poll(async () => await dataRows.count().catch(() => 0), {
+          timeout: 20_000,
+          message: '待审批列表未渲染出数据行',
+        })
+        .toBeGreaterThan(0);
 
       await waitForPostInteractionPaint(page);
       await visualTest(page, { dir: runDir, name: 'approval-list', state: 'normal', step: 1 });
