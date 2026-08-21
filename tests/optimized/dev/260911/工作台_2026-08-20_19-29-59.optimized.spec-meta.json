@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "playwrightEnv": "dev",
+  "accountProfile": "default",
+  "loginAccount": null,
+  "loginUserId": "178510",
+  "storageStateRel": "storage/loginState/dev.json",
+  "recordedAt": "2026-08-20T11:30:00.845Z",
+  "recordSource": "studio",
+  "rawOriginalRel": "tests/raw-recordings/original/dev/260911/工作台_2026-08-20_19-29-59.spec.ts",
+  "optimizedRel": "tests/optimized/dev/260911/工作台_2026-08-20_19-29-59.optimized.spec.ts"
+}

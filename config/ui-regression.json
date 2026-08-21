@@ -28,18 +28,21 @@
         "key": "intent-approve-table",
         "selector": ".ant-table, table",
         "script": "intent/dev/审批列表页可见",
+        "frame": "first",
         "required": true
       },
       {
         "key": "intent-approve-tabs",
         "selector": ".ant-tabs, [role='tablist']",
         "script": "intent/dev/审批列表页可见",
+        "frame": "first",
         "required": true
       },
       {
         "key": "intent-approve-toolbar",
         "selector": ".ant-input-affix-wrapper, .ant-input-search, .ant-input",
         "script": "intent/dev/审批列表页可见",
+        "frame": "first",
         "required": false
       },
       {
@@ -105,7 +108,8 @@
         "label": "主按钮",
         "props": ["backgroundColor", "color", "fontSize", "borderRadius"],
         "required": true,
-        "script": "intent/dev/审批列表页可见"
+        "script": "intent/dev/审批列表页可见",
+        "frame": "first"
       },
       {
         "key": "intent-approve-table-head",
@@ -113,7 +117,8 @@
         "label": "表格表头",
         "props": ["backgroundColor", "color", "fontSize", "fontWeight"],
         "required": true,
-        "script": "intent/dev/审批列表页可见"
+        "script": "intent/dev/审批列表页可见",
+        "frame": "first"
       },
       {
         "key": "intent-approve-tab-active",
@@ -121,7 +126,8 @@
         "label": "页签选中态",
         "props": ["color", "fontSize", "fontWeight"],
         "required": true,
-        "script": "intent/dev/审批列表页可见"
+        "script": "intent/dev/审批列表页可见",
+        "frame": "first"
       },
       {
         "key": "intent-approve-input",
@@ -129,7 +135,8 @@
         "label": "输入框",
         "props": ["borderColor", "fontSize", "color"],
         "required": true,
-        "script": "intent/dev/审批列表页可见"
+        "script": "intent/dev/审批列表页可见",
+        "frame": "first"
       },
       {
         "key": "golden-login-workbench-tab",
@@ -185,7 +192,8 @@
     "fullPage": false
   },
   "autoPromote": {
-    "maxDiffRatio": 0.005
+    "maxDiffRatio": 0.005,
+    "seedIfMissing": true
   },
   "crossBrowser": {
     "blockerRatio": 0.03,

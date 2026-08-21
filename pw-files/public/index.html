@@ -1191,6 +1191,10 @@
           <button type="button" class="btn btn-full" id="btnHubOpenCompare" onclick="openExistingCompareReport()" style="border-color:rgba(77,159,255,.35);color:var(--blue)">打开已有对比报告</button>
           <button type="button" class="btn btn-full" id="btnHubCompare" onclick="regenerateCompareReport()" style="margin-top:8px">从 screenshots 重新生成并打开</button>
           <button type="button" class="btn btn-full" id="btnHubCompareCancel" style="font-size:var(--fs-sm);padding:6px 10px;margin-top:6px" disabled onclick="send('cancel:repo-compare')">取消生成</button>
+          <hr style="border:none;border-top:1px solid var(--border,#2a3142);margin:14px 0 10px" />
+          <p class="sidebar-hint" id="customerHubHint" style="margin:0 0 8px">客户版 UI 衰退检测报告（结论 / 衰退明细 / 检测范围）。</p>
+          <button type="button" class="btn btn-full" id="btnHubOpenCustomer" onclick="openExistingCustomerReport()" style="border-color:rgba(52,211,153,.4);color:var(--green,#34d399)">打开客户报告</button>
+          <button type="button" class="btn btn-full" id="btnHubCustomer" onclick="regenerateCustomerReport()" style="margin-top:8px">重新生成客户报告并打开</button>
           <div id="compareUiIssuesSummary" class="sidebar-hint" style="margin-top:10px;display:none"></div>
           <div class="field" style="margin-top:12px">
             <label class="field-label" for="promoteScriptKey">Promote Golden</label>
@@ -1565,7 +1569,9 @@ const repoState = {
   profileCounts: {},
   rawFingerprintAtPipeline: '',
   lastCompareReportUrl: '',
+  lastCustomerReportUrl: '',
   compareHasReport: false,
+  compareHasCustomerReport: false,
   compareHasScreenshots: false,
 };
 const testJobsState = {
@@ -1805,6 +1811,7 @@ function syncCompareChecklists() {
 function applyCompareReportStatus(msg) {
   if (!msg) return;
   repoState.compareHasReport = Boolean(msg.hasReport);
+  repoState.compareHasCustomerReport = Boolean(msg.hasCustomerReport);
   repoState.compareHasScreenshots = Boolean(msg.hasScreenshots);
   if (msg.openPath) {
     try {
@@ -1813,14 +1820,28 @@ function applyCompareReportStatus(msg) {
       repoState.lastCompareReportUrl = msg.openPath;
     }
   }
+  if (msg.customerOpenPath) {
+    try {
+      repoState.lastCustomerReportUrl = new URL(msg.customerOpenPath, location.origin).href;
+    } catch {
+      repoState.lastCustomerReportUrl = msg.customerOpenPath;
+    }
+  }
   const hint = document.getElementById('compareHubHint');
   if (hint) {
     const parts = [];
     if (msg.hasReport) parts.push('已有对比报告');
+    if (msg.hasCustomerReport) parts.push('已有客户报告');
     if (msg.hasScreenshots) parts.push('screenshots/ 有截图可重新生成');
     if (msg.uiIssues) parts.push(`UI blocker ${msg.uiIssues.blocker}`);
     if (!parts.length) parts.push('screenshots/ 暂无 PNG');
     hint.textContent = `无需执行用例：${parts.join('；')}。`;
+  }
+  const customerHint = document.getElementById('customerHubHint');
+  if (customerHint) {
+    customerHint.textContent = msg.hasCustomerReport
+      ? '客户版 UI 衰退检测报告已生成，可直接打开。'
+      : '客户版 UI 衰退检测报告（结论 / 衰退明细 / 检测范围）。';
   }
   syncCompareHubButtons();
 }
@@ -1829,6 +1850,8 @@ function syncCompareHubButtons() {
   const openBtn = document.getElementById('btnHubOpenCompare');
   const regenBtn = document.getElementById('btnHubCompare');
   const cancelBtn = document.getElementById('btnHubCompareCancel');
+  const openCustomerBtn = document.getElementById('btnHubOpenCustomer');
+  const regenCustomerBtn = document.getElementById('btnHubCustomer');
   const busy = busyState.repoCompare;
   if (openBtn) {
     openBtn.disabled = busy;
@@ -1841,6 +1864,18 @@ function syncCompareHubButtons() {
     regenBtn.title = repoState.compareHasScreenshots
       ? '根据 screenshots/ 重新生成对比报告'
       : 'screenshots/ 下未检测到 PNG，请确认截图目录';
+  }
+  if (openCustomerBtn) {
+    openCustomerBtn.disabled = busy;
+    openCustomerBtn.title = repoState.compareHasCustomerReport
+      ? '打开 results/ui-regression-customer.html'
+      : '暂无客户报告，请先重新生成';
+  }
+  if (regenCustomerBtn) {
+    regenCustomerBtn.disabled = busy;
+    regenCustomerBtn.title = repoState.compareHasScreenshots
+      ? '运行 report:customer 并打开客户报告'
+      : 'screenshots/ 下未检测到 PNG';
   }
   if (cancelBtn) cancelBtn.disabled = !busy;
 }
@@ -2395,6 +2430,21 @@ function regenerateCompareReport() {
   syncWorkflowUi();
   syncCompareHubButtons();
   send('repo:open-compare-report', { regenerate: true });
+}
+
+function openExistingCustomerReport() {
+  openReportHub('compare');
+  busyState.repoCompare = true;
+  syncCompareHubButtons();
+  send('repo:open-customer-report', { regenerate: false });
+}
+
+function regenerateCustomerReport() {
+  openReportHub('compare');
+  busyState.repoCompare = true;
+  syncWorkflowUi();
+  syncCompareHubButtons();
+  send('repo:open-customer-report', { regenerate: true });
 }
 
 function syncDirtyTabBadges() {
@@ -5368,7 +5418,7 @@ function handleMessage(msg) {
       break;
     case 'change-detection:run-full:start':
       setChangeDetectionBusy(true);
-      setStyleDriftBusy(true);
+      setStyleDriftBusy(true, { showRunningLabel: false });
       switchToIntentRunTab();
       log('info', `[change-detection] 全流程开始${msg.intent ? ` · ${msg.intent}` : ''}`);
       break;
@@ -5473,6 +5523,35 @@ function handleMessage(msg) {
         }
       } else {
         if (msg.cancelled) showToast('对比报告处理已取消', 'err');
+      }
+      break;
+    }
+    case 'repo:customer-report:start':
+      busyState.repoCompare = true;
+      syncCompareHubButtons();
+      log('info', '[repo] 正在生成客户报告…');
+      break;
+    case 'repo:customer-report:done': {
+      busyState.repoCompare = false;
+      syncWorkflowUi();
+      syncCompareHubButtons();
+      refreshCompareReportStatus();
+      if (msg.ok && msg.openPath) {
+        const url = new URL(msg.openPath, location.origin).href;
+        repoState.lastCustomerReportUrl = url;
+        const hint = document.getElementById('customerHubHint');
+        if (hint) {
+          const label = msg.openedExisting ? '已打开客户报告' : '客户报告已生成';
+          hint.innerHTML = `${label}：<a href="${escHtml(url)}" target="_blank" rel="noopener" style="color:var(--green,#34d399)">在新窗口打开</a>`;
+        }
+        if (openCompareReportInNewWindow(url)) {
+          showToast(msg.openedExisting ? '已打开客户报告' : '已生成并打开客户报告', 'ok');
+        } else {
+          log('warn', '浏览器拦截了新窗口，请手动打开: ' + url);
+          showToast('无法打开新窗口，请从报告中心链接打开', 'err');
+        }
+      } else if (msg.cancelled) {
+        showToast('客户报告处理已取消', 'err');
       }
       break;
     }
@@ -6047,18 +6126,21 @@ function cancelIntentRun() {
   showToast('已请求取消 Intent', 'err');
 }
 
-function setStyleDriftBusy(busy) {
+function setStyleDriftBusy(busy, opts = {}) {
+  const showRunningLabel = opts.showRunningLabel !== false;
   const btn = document.getElementById('btnStyleDriftRunFull');
   const status = document.getElementById('styleDriftRunStatus');
   if (btn) {
     btn.disabled = busy;
     btn.style.opacity = busy ? 0.6 : 1;
     const label = btn.querySelector('.btn-label');
-    if (label) label.textContent = busy ? '运行中…' : '样式守护全流程';
+    if (label) {
+      label.textContent = busy && showRunningLabel ? '运行中…' : '样式守护全流程';
+    }
   }
   if (status) {
-    status.textContent = busy ? '运行中…' : '';
-    status.style.display = busy ? '' : 'none';
+    status.textContent = '';
+    status.style.display = 'none';
   }
 }
 
@@ -6077,8 +6159,6 @@ function startStyleDriftFullFlow() {
     setStyleDriftBusy(false);
     return;
   }
-  const statusEl = document.getElementById('styleDriftStatus');
-  if (statusEl) statusEl.textContent = '运行中…';
 }
 
 function setChangeDetectionBusy(busy) {
@@ -6091,8 +6171,8 @@ function setChangeDetectionBusy(busy) {
     if (label) label.textContent = busy ? '运行中…' : '页面变化检测全流程';
   }
   if (status) {
-    status.textContent = busy ? '运行中…' : '';
-    status.style.display = busy ? '' : 'none';
+    status.textContent = '';
+    status.style.display = 'none';
   }
 }
 
@@ -6108,14 +6188,13 @@ function startChangeDetectionFullFlow() {
   const engine = document.getElementById('intentEngine')?.value || 'ego';
   switchToIntentRunTab();
   setChangeDetectionBusy(true);
-  setStyleDriftBusy(true);
+  // 仅禁用样式守护按钮，避免两个区块同时刷「运行中…」
+  setStyleDriftBusy(true, { showRunningLabel: false });
   if (!send('change-detection:run-full', { intent, gate, promote, headed, engine })) {
     setChangeDetectionBusy(false);
     setStyleDriftBusy(false);
     return;
   }
-  const statusEl = document.getElementById('changeDetectionStatus');
-  if (statusEl) statusEl.textContent = '运行中…';
 }
 
 function refreshReplayList() {
@@ -6175,6 +6254,7 @@ function renderReplayList(items) {
               <input type="checkbox" class="replay-pick" data-out-rel="${escHtml(outRel)}" onchange="syncReplayDeleteBar()">
             </label>
             <code>${escHtml(it.engine || '')}</code>
+            <code style="color:var(--teal)" title="环境">${escHtml(it.env || '—')}</code>
             <span style="flex:1;min-width:140px;color:var(--text)">${escHtml(it.title || it.outRel || '')}</span>
             <span style="color:${color};font-size:var(--fs-xs)">${escHtml(mark)}</span>
             <button type="button" class="btn btn-run" style="font-size:var(--fs-xs);padding:2px 8px" data-script-index="${i}" onclick="runReplayScript(this.dataset.scriptIndex)">运行</button>

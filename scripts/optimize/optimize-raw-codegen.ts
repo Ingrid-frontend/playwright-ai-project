@@ -51,6 +51,8 @@ function isCriticalStep(label: string): boolean {
     '登录', '注册', '支付', '下单', '确认', '发送',
     '新增', '编辑', '修改', '更新', '导入', '导出',
     '取 消', '取消',
+    // 顶栏模块切换：加载慢时 4s skip 会误跳过，后续侧栏步骤必挂
+    '工作台', '首页', '系统管理', '消费平台', '财务管理',
   ];
   return criticalKeywords.some((kw) => label.includes(kw));
 }
@@ -249,10 +251,16 @@ function generateActionsCode(ctx: CodegenCtx, actions: Action[], runDirVariable:
 
   actions.forEach((action) => {
     if (action.type === 'goto') {
+      const gotoUrl = action.url === '/' || action.url === '' ? '/main/home' : (action.url || '/');
+      const appReadyWait = ctx.hasIframe
+        ? `await page.locator('iframe').first().waitFor({ state: 'attached', timeout: ${wait.iframeAttachedMs} }).catch(() => {});
+    await page.frameLocator('iframe').first().getByRole('tab', { name: '工作台' }).waitFor({ state: 'visible', timeout: ${wait.expectVisibleIframeMs} }).catch(() => {});`
+        : '';
       code += `  await step('导航到页面', async () => {
-    console.log('🌐 导航到: ${action.url}');
-    await page.goto('${action.url}', { waitUntil: 'load' });
+    console.log('🌐 导航到: ${gotoUrl}');
+    await page.goto('${gotoUrl}', { waitUntil: 'load' });
     ${ctx.options.waitLoad ? `await page.waitForLoadState('networkidle', { timeout: ${wait.networkIdleGotoMs} }).catch(() => {});` : ''}
+    ${appReadyWait}
     await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-导航到页面.png\`));
   });
 
@@ -311,10 +319,10 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
   const hasGotoAction = ${actions.some(action => action.type === 'goto')};
   
   if (!hasGotoAction) {
-    // 如果没有页面导航，添加一个默认的
+    // 如果没有页面导航，添加一个默认的（/main/home，避免恢复到上次业务路由）
     await step('导航到首页', async () => {
-      console.log('🌐 导航到: / (基于 baseURL)');
-      await page.goto('/', { waitUntil: 'load' });
+      console.log('🌐 导航到: /main/home (基于 baseURL)');
+      await page.goto('/main/home', { waitUntil: 'load' });
       await takeStepScreenshot(page, path.join(runDir, \`step-1-导航到首页.png\`));
     });
   }

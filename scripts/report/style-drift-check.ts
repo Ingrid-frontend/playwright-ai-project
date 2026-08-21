@@ -60,7 +60,8 @@ export function compareStyleFingerprints(
     const label = itemLabel(item);
 
     if (!cur || cur.__missing === '1') {
-      if (item.required === true) {
+      // 基线同样缺失时不是衰退，只是检查项在页面上从未命中
+      if (item.required === true && base && base.__missing !== '1') {
         findings.push({
           key: item.key,
           label,

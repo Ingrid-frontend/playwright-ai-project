@@ -64,6 +64,8 @@ const { runNlToIntent } = require('./lib/nl-to-intent');
 const {
   openRepoCompareReport,
   runRepoCompareReport,
+  openRepoCustomerReport,
+  runRepoCustomerReport,
 } = require('./lib/compare-report-actions');
 const { runRepoRerunKeepScreenshots } = require('./lib/repo-rerun-keep');
 const {
@@ -378,6 +380,8 @@ const { sendHello, handleMessage } = createWsDispatcher({
     cancelEgoExplore,
     runRepoCompareReport,
     openRepoCompareReport,
+    openRepoCustomerReport,
+    runRepoCustomerReport,
     sendCompareReportStatus,
     runRepoPromoteBaseline,
     runRepoVisualReview,

@@ -74,7 +74,7 @@ export function normalizeScreenshotToCssViewport(
   if (!fs.existsSync(filePath)) {
     return { width: 0, height: 0, cropped: false };
   }
-  let png = PNG.sync.read(fs.readFileSync(filePath));
+  let png: PNG = PNG.sync.read(fs.readFileSync(filePath));
   const wantW = viewport.width;
   const wantH = viewport.height;
   let cropped = false;
@@ -330,6 +330,61 @@ async function writeStepDiagnostics(
   const pageSection = sections?.find((s) => s.key === 'page') || sections?.[0];
   if (pageSection?.structureHash) {
     domHash = buildLegacyDomHash(pageSection.structureHash) || domHash;
+  }
+
+  // 汇联易等 iframe 壳页：主文档 body 常为 BODY|1|，真实 UI 在首个子 frame
+  const shellMain =
+    !domHash ||
+    !String(domHash).trim() ||
+    /^BODY\|1\|\|$/i.test(String(domHash).trim());
+  const sectionsEmpty =
+    !sections?.length || sections.every((s) => !s.structureHash || s.nodeCount <= 0);
+  if (shellMain || sectionsEmpty) {
+    const child = page.frames().find((f) => f !== page.mainFrame());
+    if (child) {
+      try {
+        if (sectionsEmpty && changeSectionItems.length) {
+          const frameSecs = await collectSectionsInContext(child, changeSectionItems);
+          const useful = frameSecs.filter((s) => s.structureHash && s.nodeCount > 0);
+          if (useful.length) {
+            sections = useful;
+            if (!textSections) textSections = [];
+            for (const sec of useful) {
+              const item = changeSectionItems.find((i) => i.key === sec.key);
+              if (!item) continue;
+              const raw = await child
+                .evaluate((sel) => {
+                  const el = document.querySelector(sel);
+                  if (!el) return '';
+                  return ((el as HTMLElement).innerText || el.textContent || '').trim().slice(0, 500);
+                }, item.selector)
+                .catch(() => '');
+              if (raw) textSections.push(finalizeTextSection(sec.key, raw));
+            }
+            if (!textSections.length) textSections = undefined;
+          }
+        }
+        if (shellMain) {
+          const iframePage = await collectSectionsInContext(child, [
+            { key: 'page', selector: 'body' },
+          ]);
+          const iframeSec = iframePage[0];
+          if (iframeSec?.structureHash && iframeSec.nodeCount > 0) {
+            domHash = buildLegacyDomHash(iframeSec.structureHash) || domHash;
+            if (!sections?.some((s) => s.key === 'page')) {
+              sections = [iframeSec, ...(sections || [])];
+            }
+          } else if (sections?.length) {
+            const best = sections.find((s) => s.structureHash && s.nodeCount > 0);
+            if (best?.structureHash) {
+              domHash = buildLegacyDomHash(best.structureHash) || domHash;
+            }
+          }
+        }
+      } catch {
+        /* frame 可能未就绪 */
+      }
+    }
   }
 
   let styleFingerprint: StyleFingerprint | undefined;

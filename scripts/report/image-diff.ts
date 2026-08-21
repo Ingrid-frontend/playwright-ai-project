@@ -3,8 +3,21 @@ import path from 'path';
 import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
 import { resolveIgnoreRegions, resolveDiffRegionsConfig } from './ui-regression-config.js';
+import { classifyRegionNature, type ChangeNature } from './change-nature.js';
 
 export type DiffRegionSeverity = 'high' | 'medium' | 'low';
+
+/**
+ * 区域聚类算法版本。
+ * v1 的 regions 因缺少 diffMask 而退化为整页框，缓存必须失效重算。
+ */
+export const DIFF_REGIONS_VERSION = 2;
+
+/**
+ * 区域性质识别版本。
+ * v3 起每个区域带 nature（位移/渲染/内容），缓存需重算。
+ */
+export const DIFF_NATURE_VERSION = 7;
 
 export interface DiffRegion {
   x: number;
@@ -14,6 +27,11 @@ export interface DiffRegion {
   pixels: number;
   ratio: number;
   severity: DiffRegionSeverity;
+  /** 变化性质：区分「内容真的变了」与「只是挪了位置/渲染不同」 */
+  nature?: ChangeNature;
+  /** nature 为 shifted 时的位移量 */
+  shiftX?: number;
+  shiftY?: number;
 }
 
 export interface ImageDiffResult {
@@ -67,6 +85,8 @@ interface PreparedPair {
   croppedImg1: PNG;
   croppedImg2: PNG;
   diff: PNG;
+  /** 仅含差异像素的掩码（透明底 + 红点），用于区域聚类与标注叠加 */
+  mask: PNG;
   width: number;
   height: number;
   sizeMismatch: boolean;
@@ -125,8 +145,9 @@ async function prepareImagePair(img1Path: string, img2Path: string): Promise<Pre
 
   const { croppedImg1, croppedImg2 } = cropToOverlap(img1, img2, width, height);
   const diff = new PNG({ width, height });
+  const mask = new PNG({ width, height });
 
-  return { croppedImg1, croppedImg2, diff, width, height, sizeMismatch };
+  return { croppedImg1, croppedImg2, diff, mask, width, height, sizeMismatch };
 }
 
 /** 将 ignoreRegions 涂黑，降低动态区误报（按行批量 fill 替代逐像素循环） */
@@ -154,15 +175,46 @@ function runPixelmatch(
   prepared: PreparedPair,
   threshold: number,
   includeAA: boolean,
+  opts?: { buildDisplay?: boolean },
 ): number {
-  return pixelmatch(
+  // 用 diffMask 输出「透明底 + 红点」的纯差异掩码：未变化像素 alpha=0。
+  // 若沿用 pixelmatch 默认输出（淡化原图 + 红点），白底页面的未变化像素 R≈255，
+  // 会让后续按 R>128 判定的聚类与叠加把整页误判为差异。
+  const count = pixelmatch(
     prepared.croppedImg1.data,
     prepared.croppedImg2.data,
-    prepared.diff.data,
+    prepared.mask.data,
     prepared.width,
     prepared.height,
-    { threshold, includeAA },
+    { threshold, includeAA, diffMask: true },
   );
+  if (opts?.buildDisplay !== false) buildDisplayDiff(prepared);
+  return count;
+}
+
+/** 由掩码还原「淡化原图 + 红色差异点」的展示用 diff 图（对齐 pixelmatch 默认观感） */
+function buildDisplayDiff(prepared: PreparedPair): void {
+  const { croppedImg1, mask, diff } = prepared;
+  const alpha = 0.1;
+  for (let i = 0; i < diff.data.length; i += 4) {
+    if (mask.data[i + 3]! > 0) {
+      diff.data[i] = mask.data[i]!;
+      diff.data[i + 1] = mask.data[i + 1]!;
+      diff.data[i + 2] = mask.data[i + 2]!;
+      diff.data[i + 3] = 255;
+      continue;
+    }
+    const r = croppedImg1.data[i]!;
+    const g = croppedImg1.data[i + 1]!;
+    const b = croppedImg1.data[i + 2]!;
+    const a = croppedImg1.data[i + 3]!;
+    const val = 255 + (r * 0.29889531 + g * 0.58662247 + b * 0.11448223 - 255) * alpha * (a / 255);
+    const v = Math.max(0, Math.min(255, Math.round(val)));
+    diff.data[i] = v;
+    diff.data[i + 1] = v;
+    diff.data[i + 2] = v;
+    diff.data[i + 3] = 255;
+  }
 }
 
 export function clusterDiffRegions(
@@ -176,51 +228,80 @@ export function clusterDiffRegions(
   const totalPixels = width * height;
   if (totalPixels <= 0) return [];
 
-  const visited = new Uint8Array(totalPixels);
-  const regions: DiffRegion[] = [];
-  const dx = [-1, 0, 1, -1, 1, -1, 0, 1];
-  const dy = [-1, -1, -1, 0, 0, 1, 1, 1];
+  // 先把差异像素落到网格里，再对相邻网格做连通域。
+  // 逐像素连通域会把每个文字笔画拆成独立区域，输出几百个 1~2px 的框，
+  // 对报告读者毫无定位价值；网格聚合能得到「头部一条」「表格某行」这种可指认的块。
+  const grid = Math.max(1, Math.floor(cfg.gridSize ?? 16));
+  const minRegionPixels = Math.max(1, Math.floor(cfg.minRegionPixels ?? 12));
+  const minCellDensity = Math.max(0, cfg.minCellDensity ?? 0.06);
+  const cols = Math.ceil(width / grid);
+  const rows = Math.ceil(height / grid);
+  const cellPixels = new Int32Array(cols * rows);
+  const cellMinX = new Int32Array(cols * rows).fill(width);
+  const cellMinY = new Int32Array(cols * rows).fill(height);
+  const cellMaxX = new Int32Array(cols * rows).fill(-1);
+  const cellMaxY = new Int32Array(cols * rows).fill(-1);
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      const idx = y * width + x;
-      if (visited[idx]) continue;
-      if (data[idx * 4]! <= 128) continue;
+      if (!isDiffPixel(data, (y * width + x) * 4)) continue;
+      const ci = Math.floor(y / grid) * cols + Math.floor(x / grid);
+      cellPixels[ci]!++;
+      if (x < cellMinX[ci]!) cellMinX[ci] = x;
+      if (y < cellMinY[ci]!) cellMinY[ci] = y;
+      if (x > cellMaxX[ci]!) cellMaxX[ci] = x;
+      if (y > cellMaxY[ci]!) cellMaxY[ci] = y;
+    }
+  }
 
-      let minX = x;
-      let minY = y;
-      let maxX = x;
-      let maxY = y;
+  // 稀疏格多为字体渲染/抗锯齿抖动，若保留会把满页零散噪点串成一个巨框
+  const minCellPixels = Math.max(1, Math.ceil(grid * grid * minCellDensity));
+  for (let i = 0; i < cellPixels.length; i++) {
+    if (cellPixels[i]! > 0 && cellPixels[i]! < minCellPixels) cellPixels[i] = 0;
+  }
+
+  const visited = new Uint8Array(cols * rows);
+  const regions: DiffRegion[] = [];
+  const dcx = [-1, 0, 1, -1, 1, -1, 0, 1];
+  const dcy = [-1, -1, -1, 0, 0, 1, 1, 1];
+
+  for (let cy = 0; cy < rows; cy++) {
+    for (let cx = 0; cx < cols; cx++) {
+      const start = cy * cols + cx;
+      if (visited[start] || cellPixels[start]! <= 0) continue;
+
+      let minX = cellMinX[start]!;
+      let minY = cellMinY[start]!;
+      let maxX = cellMaxX[start]!;
+      let maxY = cellMaxY[start]!;
       let pixels = 0;
-      const qx = [x];
-      const qy = [y];
-      visited[idx] = 1;
+      const queue = [start];
+      visited[start] = 1;
 
-      while (qx.length) {
-        const cx = qx.pop()!;
-        const cy = qy.pop()!;
-        pixels++;
-        if (cx < minX) minX = cx;
-        if (cy < minY) minY = cy;
-        if (cx > maxX) maxX = cx;
-        if (cy > maxY) maxY = cy;
+      while (queue.length) {
+        const ci = queue.pop()!;
+        pixels += cellPixels[ci]!;
+        if (cellMinX[ci]! < minX) minX = cellMinX[ci]!;
+        if (cellMinY[ci]! < minY) minY = cellMinY[ci]!;
+        if (cellMaxX[ci]! > maxX) maxX = cellMaxX[ci]!;
+        if (cellMaxY[ci]! > maxY) maxY = cellMaxY[ci]!;
+        const gx = ci % cols;
+        const gy = (ci - gx) / cols;
         for (let k = 0; k < 8; k++) {
-          const nx = cx + dx[k]!;
-          const ny = cy + dy[k]!;
-          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
-          const nidx = ny * width + nx;
-          if (visited[nidx]) continue;
-          if (data[nidx * 4]! <= 128) continue;
+          const nx = gx + dcx[k]!;
+          const ny = gy + dcy[k]!;
+          if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+          const nidx = ny * cols + nx;
+          if (visited[nidx] || cellPixels[nidx]! <= 0) continue;
           visited[nidx] = 1;
-          qx.push(nx);
-          qy.push(ny);
+          queue.push(nidx);
         }
       }
 
-      if (pixels < 8) continue;
+      if (pixels < minRegionPixels) continue;
       const w = maxX - minX + 1;
       const h = maxY - minY + 1;
-      const ratio = totalPixels > 0 ? pixels / totalPixels : 0;
+      const ratio = pixels / totalPixels;
       let severity: DiffRegionSeverity = 'medium';
       if (pixels < cfg.lowMaxPixels) severity = 'low';
       else if (ratio >= cfg.highRatio || (w >= cfg.highMinWidth && h >= cfg.highMinHeight)) {
@@ -234,21 +315,64 @@ export function clusterDiffRegions(
   return regions.slice(0, 40);
 }
 
-async function writeOverlayPng(prepared: PreparedPair, outputPath: string): Promise<void> {
-  const { width, height, croppedImg2, diff } = prepared;
+/** 掩码差异像素：alpha>0 即为 pixelmatch 标注的差异点；兼容无 alpha 的历史输入 */
+function isDiffPixel(data: Buffer | Uint8Array, offset: number): boolean {
+  const a = data[offset + 3]!;
+  if (a === 0) return false;
+  return data[offset]! > 128;
+}
+
+async function writeOverlayPng(
+  prepared: PreparedPair,
+  outputPath: string,
+  regions: DiffRegion[],
+): Promise<void> {
+  const { width, height, croppedImg2, mask } = prepared;
   const out = new PNG({ width, height });
   for (let i = 0; i < croppedImg2.data.length; i += 4) {
     out.data[i] = croppedImg2.data[i]!;
     out.data[i + 1] = croppedImg2.data[i + 1]!;
     out.data[i + 2] = croppedImg2.data[i + 2]!;
     out.data[i + 3] = 255;
-    if (diff.data[i]! > 128) {
+    if (isDiffPixel(mask.data, i)) {
       out.data[i] = 255;
       out.data[i + 1] = Math.floor(out.data[i + 1]! * 0.35);
       out.data[i + 2] = Math.floor(out.data[i + 2]! * 0.35);
     }
   }
+  // 给聚类出的区域描边，读者不必逐像素找红点即可定位改动范围
+  for (const region of regions) {
+    if (region.severity === 'low') continue;
+    drawRegionBox(out, region, width, height);
+  }
   await writePNG(out, outputPath);
+}
+
+function drawRegionBox(out: PNG, region: DiffRegion, width: number, height: number): void {
+  const pad = 3;
+  const x0 = Math.max(0, region.x - pad);
+  const y0 = Math.max(0, region.y - pad);
+  const x1 = Math.min(width - 1, region.x + region.w - 1 + pad);
+  const y1 = Math.min(height - 1, region.y + region.h - 1 + pad);
+  const thickness = 2;
+  const paint = (x: number, y: number) => {
+    if (x < 0 || y < 0 || x >= width || y >= height) return;
+    const i = (y * width + x) * 4;
+    out.data[i] = 255;
+    out.data[i + 1] = 32;
+    out.data[i + 2] = 32;
+    out.data[i + 3] = 255;
+  };
+  for (let t = 0; t < thickness; t++) {
+    for (let x = x0; x <= x1; x++) {
+      paint(x, y0 + t);
+      paint(x, y1 - t);
+    }
+    for (let y = y0; y <= y1; y++) {
+      paint(x0 + t, y);
+      paint(x1 - t, y);
+    }
+  }
 }
 
 export async function compareImages(
@@ -261,7 +385,7 @@ export async function compareImages(
 
   try {
     const prepared = await prepareImagePair(img1Path, img2Path);
-    const numDiffPixels = runPixelmatch(prepared, threshold, includeAA);
+    const numDiffPixels = runPixelmatch(prepared, threshold, includeAA, { buildDisplay: false });
     const totalPixels = prepared.width * prepared.height;
     const difference = totalPixels > 0 ? numDiffPixels / totalPixels : 0;
 
@@ -295,7 +419,16 @@ export async function compareImagesWithDiff(
     const difference = totalPixels > 0 ? numDiffPixels / totalPixels : 0;
 
     const shouldWrite = writeDiffImage && difference > 0;
-    const regions = difference > 0 ? clusterDiffRegions(prepared.diff) : [];
+    const regions = difference > 0 ? clusterDiffRegions(prepared.mask) : [];
+    // 回读原图判断每个区域的变化性质，把「位移/渲染」与「内容变化」分开
+    for (const region of regions) {
+      const info = classifyRegionNature(prepared.croppedImg1, prepared.croppedImg2, region);
+      region.nature = info.nature;
+      if (info.nature === 'shifted') {
+        region.shiftX = info.shiftX;
+        region.shiftY = info.shiftY;
+      }
+    }
     const outDir = path.dirname(diffOutputPath);
     let overlayPath: string | undefined;
     if (!fs.existsSync(outDir)) {
@@ -305,7 +438,7 @@ export async function compareImagesWithDiff(
     if (shouldWrite) {
       await writePNG(prepared.diff, diffOutputPath);
       overlayPath = diffOutputPath.replace(/\.png$/i, '-overlay.png');
-      await writeOverlayPng(prepared, overlayPath);
+      await writeOverlayPng(prepared, overlayPath, regions);
     } else if (fs.existsSync(diffOutputPath)) {
       try {
         fs.unlinkSync(diffOutputPath);
@@ -326,6 +459,8 @@ export async function compareImagesWithDiff(
       pixelmatchThreshold: threshold,
       includeAA,
       regions,
+      regionsVersion: DIFF_REGIONS_VERSION,
+      natureVersion: DIFF_NATURE_VERSION,
     });
 
     return {
@@ -353,6 +488,10 @@ export interface DiffMeta {
   pixelmatchThreshold?: number;
   includeAA?: boolean;
   regions?: DiffRegion[];
+  /** 聚类算法版本；与 DIFF_REGIONS_VERSION 不符时缓存失效 */
+  regionsVersion?: number;
+  /** 变化性质识别版本；与 DIFF_NATURE_VERSION 不符时缓存失效 */
+  natureVersion?: number;
 }
 
 function diffMetaPath(diffOutputPath: string): string {
@@ -390,7 +529,11 @@ export function isDiffCacheValid(
         if (meta.includeAA !== expected.includeAA) return false;
       }
       if (meta.difference <= 0) return true;
-      if (resolveDiffRegionsConfig().enabled && !meta.regions) return false;
+      if (resolveDiffRegionsConfig().enabled) {
+        if (!meta.regions) return false;
+        if ((meta.regionsVersion ?? 1) !== DIFF_REGIONS_VERSION) return false;
+        if ((meta.natureVersion ?? 0) !== DIFF_NATURE_VERSION) return false;
+      }
       return fs.existsSync(diffOutputPath);
     }
     if (!fs.existsSync(diffOutputPath)) return false;

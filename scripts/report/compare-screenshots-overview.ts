@@ -1,7 +1,9 @@
 import { countComparisonSeverities } from './ui-issues-index.js';
 import type { OverviewData } from './compare-report-viz.js';
+import { buildCoverageStats, type CoverageStats } from './coverage-stats.js';
 
 export { countComparisonSeverities };
+export type { CoverageStats };
 
 const DIST_BUCKETS = [
   { range: '0-0.1%', max: 0.1 },
@@ -15,6 +17,28 @@ export function buildOverviewData(
     testDir: string;
     comparisons: Array<{
       stepNumber: number;
+      optimizedScreenshots?: Array<{
+        path: string;
+        relativePath: string;
+        timestamp: string;
+        date: string;
+        displayTimestamp: string;
+        type: 'pom' | 'optimized';
+        stepName: string;
+        browser?: string;
+        route?: string;
+      }>;
+      baselineComparisons?: Array<{
+        difference?: number;
+        compareKind?: string;
+        image1Path?: string;
+        image2Path?: string;
+        browser?: string;
+        overlayImagePath?: string;
+        diffImagePath?: string;
+        regions?: unknown;
+        sizeMismatch?: boolean;
+      }>;
       optimizedComparisons?: Array<{
         difference?: number;
         compareKind?: string;
@@ -36,6 +60,7 @@ export function buildOverviewData(
     generatedAt?: string;
   },
 ): OverviewData {
+  const coverage = buildCoverageStats(testDirComparisons as Parameters<typeof buildCoverageStats>[0]);
   const counts = countComparisonSeverities(testDirComparisons);
   let maxDiffValue = -1;
   let maxDiff: OverviewData['maxDiff'] = null;
@@ -74,10 +99,10 @@ export function buildOverviewData(
   }));
 
   return {
-    total: counts.total,
-    blocker: counts.blocker,
-    warning: counts.warning,
-    noise: counts.noise,
+    total: coverage.expectedSteps,
+    blocker: coverage.regressSteps,
+    warning: 0,
+    noise: coverage.passSteps,
     totalSteps: opts.totalSteps,
     totalScreenshots: opts.totalScreenshots,
     totalExecutions: opts.totalExecutions,
@@ -85,5 +110,6 @@ export function buildOverviewData(
     avgDiff,
     distribution,
     generatedAt: opts.generatedAt ?? new Date().toLocaleString('zh-CN', { hour12: false }),
+    coverage,
   };
 }

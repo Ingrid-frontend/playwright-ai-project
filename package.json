@@ -52,6 +52,7 @@
     "generate-pom": "tsx scripts/generate-pom.ts",
     "analyze-test": "tsx scripts/analyze/analyze-test.ts",
     "compare-screenshots": "tsx scripts/report/compare-screenshots.ts",
+    "report:customer": "tsx scripts/report/compare-screenshots-customer.ts",
     "style:run": "tsx scripts/ai/run-intent.ts --engine=pw",
     "check-baseline-pr": "tsx scripts/report/check-baseline-pr.ts",
     "promote-baseline": "tsx scripts/report/promote-baseline.ts",

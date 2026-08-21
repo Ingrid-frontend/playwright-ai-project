@@ -1,7 +1,7 @@
 import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { browserToRunSegment, recordLastGreenRun } from '../report/baseline-manager.js';
+import { browserToRunSegment, hasGoldenBaseline, recordLastGreenRun } from '../report/baseline-manager.js';
 import { loadUiRegressionConfig, resolveDefaultBrowsers } from '../report/ui-regression-config.js';
 import {
   getLegacyEnvDefault,
@@ -196,6 +196,27 @@ export function tryAutoPromoteBaseline(
   if (process.env.AUTO_PROMOTE_BASELINE === '0') return;
 
   const cfg = loadUiRegressionConfig();
+  const seedIfMissing = cfg.autoPromote?.seedIfMissing !== false;
+  const browsers = resolveDefaultBrowsers();
+
+  if (seedIfMissing) {
+    let seededAny = false;
+    for (const browser of browsers) {
+      if (hasGoldenBaseline(scriptKey, browser)) continue;
+      const ts = findLatestRunTimestamp(scriptKey, browser);
+      if (!ts) continue;
+      const ok = runCommand(
+        `npm run promote-baseline -- --script=${scriptKey} --run=${ts} --browser=${browser} --only-if-missing --promoted-by=auto-seed-first-run`,
+        `首次自动 seed Golden（${browser}）`,
+        true,
+      );
+      if (ok) seededAny = true;
+    }
+    if (seededAny && browsers.every((b) => hasGoldenBaseline(scriptKey, b) || !findLatestRunTimestamp(scriptKey, b))) {
+      return;
+    }
+  }
+
   const maxDiff = Number(
     process.env.AUTO_PROMOTE_MAX_DIFF ?? cfg.autoPromote?.maxDiffRatio ?? 0.005,
   );
@@ -218,7 +239,7 @@ export function tryAutoPromoteBaseline(
     return;
   }
 
-  for (const browser of resolveDefaultBrowsers()) {
+  for (const browser of browsers) {
     const ts = findLatestRunTimestamp(scriptKey, browser);
     if (!ts) continue;
     runCommand(

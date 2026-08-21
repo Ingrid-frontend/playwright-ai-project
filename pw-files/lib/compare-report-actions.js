@@ -3,8 +3,10 @@ const path = require('path');
 const { send, logLine, stripAnsi } = require('./ws-safe');
 const {
   COMPARE_REPORT_REL,
+  CUSTOMER_REPORT_REL,
   repoHasScreenshotPng,
   sendCompareReportReady,
+  sendCustomerReportReady,
 } = require('./compare-report-status');
 
 async function openRepoCompareReport(ws, session, { regenerate = false } = {}, deps) {
@@ -91,4 +93,92 @@ async function runRepoCompareReport(ws, session, deps) {
   sendCompareReportReady(ws, { openedExisting: false });
 }
 
-module.exports = { openRepoCompareReport, runRepoCompareReport };
+async function openRepoCustomerReport(ws, session, { regenerate = false } = {}, deps) {
+  const { resolveRepoRoot } = deps;
+  const repoRoot = resolveRepoRoot();
+  if (!fs.existsSync(path.join(repoRoot, 'playwright.config.ts'))) {
+    send(ws, 'error', { message: '未找到项目根，无法打开客户报告' });
+    send(ws, 'repo:customer-report:done', { ok: false });
+    return;
+  }
+
+  const absReport = path.join(repoRoot, CUSTOMER_REPORT_REL);
+  if (!regenerate && fs.existsSync(absReport)) {
+    sendCustomerReportReady(ws, { openedExisting: true });
+    return;
+  }
+
+  if (!repoHasScreenshotPng(path.join(repoRoot, 'screenshots'))) {
+    send(ws, 'error', {
+      message: 'screenshots/ 下无 PNG，无法生成客户报告',
+    });
+    send(ws, 'repo:customer-report:done', { ok: false });
+    return;
+  }
+
+  await runRepoCustomerReport(ws, session, deps);
+}
+
+async function runRepoCustomerReport(ws, session, deps) {
+  const { resolveRepoRoot, spawn, buildRepoSpawnEnv } = deps;
+  const repoRoot = resolveRepoRoot();
+  if (!fs.existsSync(path.join(repoRoot, 'playwright.config.ts'))) {
+    send(ws, 'error', { message: '未找到项目根，无法生成客户报告' });
+    send(ws, 'repo:customer-report:done', { ok: false });
+    return;
+  }
+
+  session.repoCompareCancelled = false;
+  send(ws, 'repo:customer-report:start', {});
+  logLine(ws, '[repo] 运行 report:customer…', 'info');
+
+  const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const proc = spawn(npmCmd, ['run', 'report:customer'], {
+    cwd: repoRoot,
+    env: buildRepoSpawnEnv(session),
+    shell: false,
+  });
+  session.repoCompareProc = proc;
+  proc.stdout.on('data', (d) => {
+    const t = stripAnsi(d.toString());
+    if (t.trim()) logLine(ws, t.trimEnd(), 'dim');
+  });
+  proc.stderr.on('data', (d) => {
+    const t = stripAnsi(d.toString());
+    if (t.trim()) logLine(ws, t.trimEnd(), 'warn');
+  });
+
+  const exitCode = await new Promise((resolve) => {
+    proc.on('close', resolve);
+  });
+  session.repoCompareProc = null;
+
+  if (session.repoCompareCancelled) {
+    logLine(ws, '[repo] 客户报告生成已取消', 'warn');
+    send(ws, 'repo:customer-report:done', { ok: false, cancelled: true });
+    return;
+  }
+  if (exitCode !== 0) {
+    send(ws, 'error', { message: `report:customer 退出码 ${exitCode}` });
+    send(ws, 'repo:customer-report:done', { ok: false, exitCode });
+    return;
+  }
+
+  const absReport = path.join(repoRoot, CUSTOMER_REPORT_REL);
+  if (!fs.existsSync(absReport)) {
+    send(ws, 'error', {
+      message: '未生成 results/ui-regression-customer.html',
+    });
+    send(ws, 'repo:customer-report:done', { ok: false });
+    return;
+  }
+
+  sendCustomerReportReady(ws, { openedExisting: false });
+}
+
+module.exports = {
+  openRepoCompareReport,
+  runRepoCompareReport,
+  openRepoCustomerReport,
+  runRepoCustomerReport,
+};

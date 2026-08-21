@@ -3,6 +3,7 @@ const path = require('path');
 const { send, logLine } = require('./ws-safe');
 
 const COMPARE_REPORT_REL = path.join('results', 'screenshot-comparison.html');
+const CUSTOMER_REPORT_REL = path.join('results', 'ui-regression-customer.html');
 
 function repoHasScreenshotPng(dir) {
   if (!fs.existsSync(dir)) return false;
@@ -34,9 +35,18 @@ function compareReportOpenPath() {
   return `/repo-report/${COMPARE_REPORT_REL.split(path.sep).join('/')}`;
 }
 
+function customerReportOpenPath() {
+  return `/repo-report/${CUSTOMER_REPORT_REL.split(path.sep).join('/')}`;
+}
+
 function sendCompareReportReady(ws, extra = {}) {
   send(ws, 'repo:compare-report:done', { ok: true, openPath: compareReportOpenPath(), ...extra });
   logLine(ws, `[repo] 对比报告就绪: ${compareReportOpenPath()}`, 'ok');
+}
+
+function sendCustomerReportReady(ws, extra = {}) {
+  send(ws, 'repo:customer-report:done', { ok: true, openPath: customerReportOpenPath(), ...extra });
+  logLine(ws, `[repo] 客户报告就绪: ${customerReportOpenPath()}`, 'ok');
 }
 
 function readUiIssuesSummary(repoRoot) {
@@ -52,18 +62,23 @@ function readUiIssuesSummary(repoRoot) {
 
 function getCompareReportStatus(repoRoot) {
   const absReport = path.join(repoRoot, COMPARE_REPORT_REL);
+  const absCustomer = path.join(repoRoot, CUSTOMER_REPORT_REL);
   const hasReport = fs.existsSync(absReport);
+  const hasCustomerReport = fs.existsSync(absCustomer);
   const hasScreenshots = repoHasScreenshotPng(path.join(repoRoot, 'screenshots'));
   return {
     hasReport,
+    hasCustomerReport,
     hasScreenshots,
     openPath: hasReport ? compareReportOpenPath() : null,
+    customerOpenPath: hasCustomerReport ? customerReportOpenPath() : null,
     reportRel: COMPARE_REPORT_REL,
+    customerReportRel: CUSTOMER_REPORT_REL,
     uiIssues: readUiIssuesSummary(repoRoot),
   };
 }
 
-/** 仅允许通过 Studio 暴露仓库内 results/ 与 screenshots/（对比报告 HTML 引用 ../screenshots） */
+/** 仅允许通过 Studio 暴露仓库内 results/、screenshots/、screenshots-baseline/ */
 function resolveRepoPublicReadFile(repoRoot, urlRel) {
   const rel = decodeURIComponent(String(urlRel || '').replace(/\\/g, '/')).replace(/^\/+/, '');
   if (!rel || rel.split('/').some((s) => !s || s === '..')) return null;
@@ -72,7 +87,7 @@ function resolveRepoPublicReadFile(repoRoot, urlRel) {
   if (!abs.startsWith(root + path.sep)) return null;
   const fromRoot = path.relative(root, abs).replace(/\\/g, '/');
   const top = fromRoot.split('/')[0];
-  if (top !== 'results' && top !== 'screenshots') return null;
+  if (top !== 'results' && top !== 'screenshots' && top !== 'screenshots-baseline') return null;
   return abs;
 }
 
@@ -98,11 +113,14 @@ function sendCompareReportStatus(ws, repoRoot) {
 
 module.exports = {
   COMPARE_REPORT_REL,
+  CUSTOMER_REPORT_REL,
   repoHasScreenshotPng,
   compareReportOpenPath,
+  customerReportOpenPath,
   readUiIssuesSummary,
   getCompareReportStatus,
   sendCompareReportReady,
+  sendCustomerReportReady,
   resolveRepoPublicReadFile,
   sendRepoUiIssues,
   sendCompareReportStatus,

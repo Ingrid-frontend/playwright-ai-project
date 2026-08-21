@@ -1,7 +1,6 @@
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
-import type { ImageComparison } from './image-diff.js';
 import {
   COMPARE_CONCURRENCY,
   COMPARE_INCREMENTAL,
@@ -21,104 +20,48 @@ import {
   attachIssueReviews,
 } from './ui-issues-index.js';
 import { applyTriageToReport } from './issue-triage.js';
-import { appendHistorySnapshot, loadStepTrends, type StepTrendPoint } from './ui-regression-history.js';
+import { appendHistorySnapshot } from './ui-regression-history.js';
 import {
-  generateHeatmapTabHtml,
   generateOverviewPanel,
   generateSummaryTableHtml,
-  generateVisualReviewTabHtml,
 } from './compare-report-viz.js';
 import {
   collectAllUiIssues,
-  createCountHelpers,
   createDiffCardRenderer,
-  formatDateGroupTitle,
-  groupImageComparisonsByCalendarDay,
-  compareScreenshotSubsectionNames,
-  createScreenshotSectionRenderer,
-  createDiffStepRenderer,
   generateIssuesTabHtml as renderIssuesTabHtml,
   getTotalExecutions,
-  buildScriptContents,
-  buildIterationMap,
-  sortIterationScripts,
   buildSummaryRows,
 } from './compare-screenshots-render.js';
 import { buildOverviewData, countComparisonSeverities } from './compare-screenshots-overview.js';
 import {
-  buildIterationTabs,
-  buildIterationPanes,
-  buildScriptTabRows,
   collectBrowserFilterList,
   buildBrowserFilterRow,
   getBrowserIcon,
   renderCompareReportHtml,
 } from './compare-screenshots-report.js';
 import { discoverScriptScanTargets } from './compare-screenshots-scan.js';
-import {
-  extractStepNameFromPath,
-  getMenuNameByRoute,
-  scriptDirTimestampMs,
-} from './compare-screenshots-utils.js';
-
-let currentStepTrends: Record<string, StepTrendPoint[]> = {};
+import { extractStepNameFromPath } from './compare-screenshots-utils.js';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
 const POM_ENABLED = process.env.ENABLE_POM === '1';
-
-/**
- * 「有差异」Tab：默认仅展示差异比例 ≥ 0.3%（difference ≥ 0.003）的对比。
- * 低于约 0.3% 的像素差在整页截图上通常可忽略，故不收录；更严/更松可用 PLAYWRIGHT_DIFF_ONLY_TAB_MIN_RATIO。
- * 设为 0 则任意 difference>0 都进该 Tab。
- */
-const DIFF_ONLY_TAB_MIN_RATIO = (() => {
-  const v = process.env.PLAYWRIGHT_DIFF_ONLY_TAB_MIN_RATIO;
-  if (v !== undefined && v !== '' && !Number.isNaN(Number.parseFloat(v))) {
-    return Number.parseFloat(v);
-  }
-  return 0.003;
-})();
-
-function passesDiffOnlyTabFilter(difference: number): boolean {
-  if (!(difference > 0)) return false;
-  if (DIFF_ONLY_TAB_MIN_RATIO <= 0) return true;
-  return difference >= DIFF_ONLY_TAB_MIN_RATIO;
-}
-
-function runDriftComparisons(comparisons: ImageComparison[] | undefined): ImageComparison[] {
-  return (comparisons || []).filter((c) => c.compareKind === 'run-drift');
-}
-const countHelpers = createCountHelpers({ runDriftComparisons, passesDiffOnlyTabFilter });
-const screenshotRenderer = createScreenshotSectionRenderer({ getMenuNameByRoute });
 const diffRenderer = createDiffCardRenderer({ getBrowserIcon });
-
-const diffStepRenderer = createDiffStepRenderer({
-  runDriftComparisons,
-  passesDiffOnlyTabFilter,
-  extractStepNameFromPath,
-  compareScreenshotSubsectionNames,
-  groupImageComparisonsByCalendarDay,
-  formatDateGroupTitle,
-  generateDiffCard: diffRenderer.generateDiffCard,
-  getCurrentStepTrends: (key) => currentStepTrends[key],
-});
 
 function generateHTML(
   testDirComparisons: TestDirComparisons[],
   _pomDirName: string,
-  optDirName: string,
+  _optDirName: string,
   _hasPomData: boolean,
   _hasOptimizedData: boolean,
   uiIssues: UiIssue[] = [],
   analysisHtml: string = '',
 ): string {
-  currentStepTrends = loadStepTrends();
   const crossBrowserOn = isCompareCrossBrowserEnabled();
-  const heatmapHtml = generateHeatmapTabHtml(uiIssues);
-
-  const allComparisons = testDirComparisons.flatMap(tdc => tdc.comparisons);
-  const totalScreenshotCount = allComparisons.reduce((sum, c) => sum + c.optimizedScreenshots.length, 0);
+  const allComparisons = testDirComparisons.flatMap((tdc) => tdc.comparisons);
+  const totalScreenshotCount = allComparisons.reduce(
+    (sum, c) => sum + c.optimizedScreenshots.length,
+    0,
+  );
   const totalExecCount = getTotalExecutions(allComparisons, POM_ENABLED);
 
   const overviewData = buildOverviewData(testDirComparisons, {
@@ -131,67 +74,20 @@ function generateHTML(
   const summaryRows = buildSummaryRows(testDirComparisons, extractStepNameFromPath);
   const summaryHtml = generateSummaryTableHtml(summaryRows);
 
-  const iterationMap = buildIterationMap(testDirComparisons);
-  sortIterationScripts(iterationMap, scriptDirTimestampMs);
-  const iterations = Array.from(iterationMap.keys());
-  const firstIteration = iterations[0];
-
-  const totalCrossBrowser = crossBrowserOn ? countHelpers.getTotalCrossBrowserComparisons(testDirComparisons) : 0;
-  const hasCrossBrowserData = totalCrossBrowser > 0;
-  const browserList = collectBrowserFilterList(allComparisons, hasCrossBrowserData);
-
-  const optimizedByIteration = buildIterationPanes(iterations, (iter) =>
-    buildScriptContents(iter, (tdc) => tdc.comparisons.map((comp) => screenshotRenderer.generateOptimizedStep(comp, optDirName)).join(''), undefined, iterationMap),
-  );
-
-  const optimizedDiffByIteration = buildIterationPanes(iterations, (iter) =>
-    buildScriptContents(
-      iter,
-      (tdc) =>
-        tdc.comparisons
-          .map((comp) => diffStepRenderer.generateDiffStep(comp, 'optimized') + diffStepRenderer.generateCrossBrowserDiffStep(comp))
-          .join(''),
-      (tdc) => {
-        const c = countHelpers.getRunDriftDiffCountsForScript(tdc);
-        const x = countHelpers.getCrossBrowserDiffCountsForScript(tdc);
-        return `data-diff-all="${c.all + x.all}" data-diff-only="${c.only + x.only}"`;
-      },
-      iterationMap,
-    ),
-  );
-
-  const diffOnlyByIteration = buildIterationPanes(iterations, (iter) =>
-    buildScriptContents(
-      iter,
-      (tdc) =>
-        tdc.comparisons
-          .map((comp) => diffStepRenderer.generateDiffStep(comp, 'all', true) + diffStepRenderer.generateCrossBrowserDiffStep(comp, true))
-          .join(''),
-      (tdc) => {
-        const c = countHelpers.getDiffOnlyTabCountsForScript(tdc);
-        return `data-diff-all="${c.all}" data-diff-only="${c.only}"`;
-      },
-      iterationMap,
-    ),
-  );
+  const totalCrossBrowser = crossBrowserOn
+    ? allComparisons.reduce((n, c) => n + (c.crossBrowserComparisons?.length || 0), 0)
+    : 0;
+  const browserList = collectBrowserFilterList(allComparisons, totalCrossBrowser > 0);
 
   return renderCompareReportHtml({
     overviewHtml,
-    iterationTabs: buildIterationTabs(iterations),
-    scriptTabRows: buildScriptTabRows(iterations, firstIteration, iterationMap),
     browserFilterRow: buildBrowserFilterRow(browserList),
-    crossBrowserOn,
-    optimizedByIteration,
-    optimizedDiffByIteration,
-    diffOnlyByIteration,
-    heatmapHtml,
     summaryHtml,
     analysisHtml,
     issuesHtml: renderIssuesTabHtml(uiIssues, {
       isCompareCrossBrowserEnabled,
       renderInlineDiffThumb: diffRenderer.renderInlineDiffThumb,
     }),
-    visualReviewHtml: generateVisualReviewTabHtml(uiIssues),
   });
 }
 

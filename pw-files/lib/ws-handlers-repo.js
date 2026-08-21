@@ -73,6 +73,8 @@ function createRepoHandlers(ctx) {
     cancelEgoExplore,
     runRepoCompareReport,
     openRepoCompareReport,
+    openRepoCustomerReport,
+    runRepoCustomerReport,
     sendCompareReportStatus,
     runRepoPromoteBaseline,
     runRepoVisualReview,
@@ -482,6 +484,23 @@ function createRepoHandlers(ctx) {
         { regenerate: Boolean(msg.regenerate) },
         { resolveRepoRoot, spawn, buildRepoSpawnEnv },
       );
+    },
+
+    'repo:open-customer-report': async (ws, session, _sessionId, msg) => {
+      await openRepoCustomerReport(
+        ws,
+        session,
+        { regenerate: Boolean(msg.regenerate) },
+        { resolveRepoRoot, spawn, buildRepoSpawnEnv },
+      );
+    },
+
+    'repo:customer-report': async (ws, session) => {
+      await runRepoCustomerReport(ws, session, {
+        resolveRepoRoot,
+        spawn,
+        buildRepoSpawnEnv,
+      });
     },
 
     'repo:compare-report:status': async (ws) => {

@@ -304,10 +304,12 @@ export function gateShouldFail(report: UiIssuesReport): boolean {
           (i.compareKind === 'structure' && i.structureType === 'missing-selector')),
     );
     if (styleBlockers.length > 0) return true;
+    // 纯像素 golden/last-green；带 structureType 的是结构告警挂在基线上，不算像素门禁
     const pixelBlockers = active.filter(
       (i) =>
         i.severity === 'blocker' &&
         (i.compareKind === 'golden' || i.compareKind === 'last-green') &&
+        !i.structureType &&
         scriptKeyHitsPixelGate(i.scriptKey),
     );
     return pixelBlockers.length > 0;

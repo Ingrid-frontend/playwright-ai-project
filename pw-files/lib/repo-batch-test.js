@@ -266,6 +266,16 @@ async function runRepoBatchTest(ws, session, msg, deps) {
         }
       } else {
         logLine(ws, `[batch] 完成: ${specRel}`, 'ok');
+        try {
+          const { seedGoldenIfMissingAfterSuccess } = require('./repo-seed-golden');
+          seedGoldenIfMissingAfterSuccess(ws, deps, {
+            session,
+            specRelative: specRel,
+            projects: testProjects,
+          });
+        } catch (e) {
+          logLine(ws, `[batch] Golden seed 未执行: ${e?.message || e}`, 'dim');
+        }
       }
     }
     if (stoppedEarly || session.repoBatchCancelled) break;

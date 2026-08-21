@@ -119,10 +119,30 @@ export interface UiRegressionConfig {
   };
   autoPromote?: {
     maxDiffRatio: number;
+    /** 尚无 Golden 时，首次成功 run 自动晋升（默认 true） */
+    seedIfMissing?: boolean;
   };
   aiReview?: AiReviewConfig;
   diffRegions?: DiffRegionsConfig;
   changeDetection?: ChangeDetectionConfig;
+  customerReport?: CustomerReportConfig;
+}
+
+/** 客户版报告的分级口径，与工程 gate 阈值解耦 */
+export interface CustomerReportConfig {
+  /** 差异占比低于该值且无显著差异块时判为「一致」，默认 0.0005 */
+  identicalRatio: number;
+  /** 判为「明显衰退」的差异占比下限，默认 0.005 */
+  majorRatio: number;
+  /** 单个差异块达到该像素数即判「明显衰退」（哪怕总占比很小），默认 1500 */
+  majorRegionPixels: number;
+  /** 单个差异块同时达到该宽高即判「明显衰退」，默认 160x60 */
+  majorRegionMinWidth: number;
+  majorRegionMinHeight: number;
+  /** 忽略贴近视口右/下边缘的窄长条（滚动条），默认开启 */
+  ignoreScrollbarRegions: boolean;
+  /** 判定为滚动条的最大条宽（px），默认 24 */
+  scrollbarMaxThickness: number;
 }
 
 export interface AiReviewConfig {
@@ -151,6 +171,12 @@ export interface DiffRegionsConfig {
   highMinWidth: number;
   highMinHeight: number;
   lowMaxPixels: number;
+  /** 聚类网格边长（px）：同格及相邻格的差异像素归并成一个区域，默认 16 */
+  gridSize?: number;
+  /** 单个区域最少差异像素数，低于该值直接丢弃，默认 12 */
+  minRegionPixels?: number;
+  /** 网格内差异像素密度下限（0~1）：低于该值视为反锯齿噪声，不参与聚类，默认 0.06 */
+  minCellDensity?: number;
 }
 
 export interface PixelmatchOptions {
@@ -201,6 +227,7 @@ const DEFAULT_CONFIG: UiRegressionConfig = {
   },
   autoPromote: {
     maxDiffRatio: 0.005,
+    seedIfMissing: true,
   },
   aiReview: {
     enabled: false,
@@ -214,6 +241,18 @@ const DEFAULT_CONFIG: UiRegressionConfig = {
     highMinWidth: 80,
     highMinHeight: 40,
     lowMaxPixels: 40,
+    gridSize: 16,
+    minRegionPixels: 12,
+    minCellDensity: 0.06,
+  },
+  customerReport: {
+    identicalRatio: 0.0005,
+    majorRatio: 0.005,
+    majorRegionPixels: 1500,
+    majorRegionMinWidth: 160,
+    majorRegionMinHeight: 60,
+    ignoreScrollbarRegions: true,
+    scrollbarMaxThickness: 24,
   },
   changeDetection: {
     enabled: false,
@@ -272,6 +311,7 @@ export function loadUiRegressionConfig(): UiRegressionConfig {
         gate: { ...DEFAULT_CONFIG.gate, ...raw.gate },
         aiReview: { ...DEFAULT_CONFIG.aiReview, ...raw.aiReview } as AiReviewConfig,
         diffRegions: { ...DEFAULT_CONFIG.diffRegions, ...raw.diffRegions } as DiffRegionsConfig,
+        customerReport: { ...DEFAULT_CONFIG.customerReport, ...raw.customerReport } as CustomerReportConfig,
         changeDetection: { ...DEFAULT_CONFIG.changeDetection, ...raw.changeDetection } as ChangeDetectionConfig,
         viewports: raw.viewports?.length ? raw.viewports : DEFAULT_CONFIG.viewports,
       };
@@ -490,6 +530,10 @@ export function resolveDiffRegionsConfig(): DiffRegionsConfig {
 
 export function resolveChangeDetectionConfig(): ChangeDetectionConfig {
   return { ...(loadUiRegressionConfig().changeDetection ?? DEFAULT_CONFIG.changeDetection!) };
+}
+
+export function resolveCustomerReportConfig(): CustomerReportConfig {
+  return { ...DEFAULT_CONFIG.customerReport!, ...(loadUiRegressionConfig().customerReport ?? {}) };
 }
 
 /** 变化检测分区：优先 changeDetection.sections；为空时不额外采集（仍可由 structureChecks 派生） */

@@ -6,7 +6,7 @@ import {
   stepFileNameFromScreenshot,
   type ResolvedBaselineKind,
 } from './baseline-manager.js';
-import { resolveBaselineStrategy } from './ui-regression-config.js';
+import { resolveBaselineStrategy, resolveCompareRunDrift } from './ui-regression-config.js';
 import {
   compareImagesWithDiff,
   type ImageComparison,
@@ -74,14 +74,19 @@ function resolveBaselinePath(
     return oldest.path;
   };
 
+  const allowOldest = strategy === 'oldest' || resolveCompareRunDrift();
   const order: ResolvedBaselineKind[] =
     strategy === 'golden'
       ? ['golden']
       : strategy === 'last-green'
         ? ['last-green']
         : strategy === 'oldest'
-          ? ['oldest']
-          : ['golden', 'last-green', 'oldest'];
+          ? allowOldest
+            ? ['oldest']
+            : []
+          : allowOldest
+            ? ['golden', 'last-green', 'oldest']
+            : ['golden', 'last-green'];
 
   for (const kind of order) {
     if (kind === 'golden') {

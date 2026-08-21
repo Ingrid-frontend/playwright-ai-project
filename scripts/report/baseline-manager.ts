@@ -51,6 +51,7 @@ function cleanupStaleLock(lockDir: string): void {
 }
 
 export function acquireBaselineLock(goldenDir: string, promotedBy?: string): void {
+  ensureDir(goldenDir);
   const lockDir = path.join(goldenDir, BASELINE_LOCK_DIR);
   cleanupStaleLock(lockDir);
   try {
@@ -59,8 +60,14 @@ export function acquireBaselineLock(goldenDir: string, promotedBy?: string): voi
       path.join(lockDir, 'info.json'),
       JSON.stringify({ pid: process.pid, at: new Date().toISOString(), promotedBy: promotedBy || '' }),
     );
-  } catch {
-    throw new Error(`基线目录被锁定，请稍后重试: ${lockDir}`);
+  } catch (err) {
+    const code = err && typeof err === 'object' && 'code' in err ? String((err as { code?: string }).code) : '';
+    if (code === 'EEXIST') {
+      throw new Error(`基线目录被锁定，请稍后重试: ${lockDir}`);
+    }
+    throw new Error(
+      `无法创建基线锁 ${lockDir}: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 }
 
@@ -149,6 +156,13 @@ export function browserToRunSegment(browser: string): string {
   if (b === 'webkit') return 'run-webkit-optimized';
   if (b === 'firefox') return 'run-firefox-optimized';
   return 'run-chromium-optimized';
+}
+
+/** 是否已有可对比的 Golden 基线（至少一张 step PNG） */
+export function hasGoldenBaseline(scriptKey: string, browser = 'chrome'): boolean {
+  const dir = goldenDirForScript(scriptKey, browserToRunSegment(browser));
+  if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return false;
+  return fs.readdirSync(dir).some((f) => f.endsWith('.png') && f.startsWith('step-'));
 }
 
 function browserRunPrefix(browser: string): string {
@@ -468,6 +482,73 @@ export function resolveScreenshotPath(
   return path.join(screenshotsRoot, scriptKey, runSegment, runTimestamp, stepFileName);
 }
 
+/** step-01-foo.png / step-2-foo.png → foo */
+export function stepSemanticKey(stepFileName: string): string | null {
+  const base = path.basename(stepFileName);
+  const m = base.match(/^step-(\d+)-(.+)\.png$/i);
+  return m ? m[2]! : null;
+}
+
+function stepOrdinal(stepFileName: string): number | null {
+  const m = path.basename(stepFileName).match(/^step-(\d+)-/i);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * 在目录中解析步骤 PNG：精确名 → 语义后缀（忽略 step 序号）→ snapshotName__state。
+ * 多匹配且无法用序号消歧时返回 null（计为未检测，不瞎选）。
+ */
+export function findStepPngInDir(dir: string, stepFileName: string): string | null {
+  if (!dir || !fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return null;
+  const wantName = path.basename(stepFileName);
+  const exact = path.join(dir, wantName);
+  if (fs.existsSync(exact)) return exact;
+
+  const semantic = stepSemanticKey(wantName);
+  if (!semantic) return null;
+
+  const pngs = fs.readdirSync(dir).filter((f) => f.endsWith('.png') && /^step-\d+-/i.test(f));
+  const bySemantic = pngs.filter((f) => stepSemanticKey(f) === semantic);
+  if (bySemantic.length === 1) return path.join(dir, bySemantic[0]!);
+  if (bySemantic.length > 1) {
+    const wantOrd = stepOrdinal(wantName);
+    if (wantOrd != null) {
+      const sameOrd = bySemantic.filter((f) => stepOrdinal(f) === wantOrd);
+      if (sameOrd.length === 1) return path.join(dir, sameOrd[0]!);
+    }
+    console.warn(
+      `[baseline] 多基线匹配跳过: dir=${dir} want=${wantName} hits=${bySemantic.join(',')}`,
+    );
+    return null;
+  }
+
+  const snapSep = semantic.indexOf('__');
+  if (snapSep > 0) {
+    const snapshotName = semantic.slice(0, snapSep);
+    const rest = semantic.slice(snapSep + 2);
+    const state = rest.includes('__') ? rest.slice(0, rest.indexOf('__')) : rest || 'normal';
+    for (const name of fs.readdirSync(dir)) {
+      if (!name.endsWith('.meta.json')) continue;
+      try {
+        const meta = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf-8')) as {
+          snapshotName?: string;
+          state?: string;
+        };
+        if (meta.snapshotName === snapshotName && (meta.state || 'normal') === state) {
+          const pngPath = path.join(dir, name.replace(/\.meta\.json$/i, '.png'));
+          if (fs.existsSync(pngPath)) return pngPath;
+        }
+      } catch {
+        /* skip */
+      }
+    }
+  }
+
+  return null;
+}
+
 export function getLastGreenScreenshotPath(
   screenshotsRoot: string,
   scriptKey: string,
@@ -477,14 +558,13 @@ export function getLastGreenScreenshotPath(
   const map = loadLastGreenMap();
   const entry = map[scriptKey]?.[browser];
   if (!entry) return null;
-  const p = resolveScreenshotPath(
+  const runDir = path.join(
     screenshotsRoot,
     scriptKey,
     entry.runSegment,
     entry.runTimestamp,
-    stepFileName,
   );
-  return fs.existsSync(p) ? p : null;
+  return findStepPngInDir(runDir, stepFileName);
 }
 
 export function getGoldenScreenshotPath(
@@ -493,8 +573,7 @@ export function getGoldenScreenshotPath(
   stepFileName: string,
 ): string | null {
   const runSegment = browserToRunSegment(browser);
-  const p = goldenFilePath(scriptKey, runSegment, stepFileName);
-  return fs.existsSync(p) ? p : null;
+  return findStepPngInDir(goldenDirForScript(scriptKey, runSegment), stepFileName);
 }
 
 export function getGoldenBySnapshot(

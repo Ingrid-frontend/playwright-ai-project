@@ -267,6 +267,16 @@ export interface OverviewData {
   avgDiff: string;
   distribution: { range: string; count: number; pct: number }[];
   generatedAt: string;
+  coverage?: {
+    expectedSteps: number;
+    comparedSteps: number;
+    uncoveredSteps: number;
+    passSteps: number;
+    regressSteps: number;
+    passRate: number;
+    verdict: 'pass' | 'regress' | 'insufficient_coverage';
+    verdictLabel: string;
+  };
 }
 
 export function formatIssuePassRate(summary: {
@@ -274,31 +284,54 @@ export function formatIssuePassRate(summary: {
   blocker: number;
   warning: number;
   noise: number;
-}): { passPct: string; passCount: number; blockPct: string; warnPct: string } {
+  coverage?: OverviewData['coverage'];
+}): { passPct: string; passCount: number; blockPct: string; warnPct: string; uncoveredCount: number } {
+  if (summary.coverage && summary.coverage.expectedSteps > 0) {
+    const c = summary.coverage;
+    return {
+      passPct: ((c.passRate) * 100).toFixed(1),
+      passCount: c.passSteps,
+      blockPct: ((c.regressSteps / c.expectedSteps) * 100).toFixed(1),
+      warnPct: ((c.uncoveredSteps / c.expectedSteps) * 100).toFixed(1),
+      uncoveredCount: c.uncoveredSteps,
+    };
+  }
   const { total, blocker, warning } = summary;
   if (total <= 0) {
-    return { passPct: '100.0', passCount: 0, blockPct: '0.0', warnPct: '0.0' };
+    return { passPct: '0.0', passCount: 0, blockPct: '0.0', warnPct: '0.0', uncoveredCount: 0 };
   }
-  // 通过 = 全部对比中未达 warning/blocker 的项（含无差异与 noise），不用 noise/问题条数
   const passCount = Math.max(0, total - blocker - warning);
   return {
     passPct: ((passCount / total) * 100).toFixed(1),
     passCount,
     blockPct: ((blocker / total) * 100).toFixed(1),
     warnPct: ((warning / total) * 100).toFixed(1),
+    uncoveredCount: 0,
   };
 }
 
 export function generateOverviewPanel(data: OverviewData): string {
-  const { passPct, passCount, blockPct, warnPct } = formatIssuePassRate(data);
-  const total = data.total;
+  const { passPct, passCount, blockPct, warnPct, uncoveredCount } = formatIssuePassRate(data);
+  const cov = data.coverage;
+  const total = cov?.expectedSteps ?? data.total;
+  const regress = cov?.regressSteps ?? data.blocker;
+  const uncovered = cov?.uncoveredSteps ?? uncoveredCount;
+  const compared = cov?.comparedSteps ?? Math.max(0, total - uncovered);
 
-  // Ring chart via conic-gradient
-  const blockDeg = total > 0 ? (data.blocker / total) * 360 : 0;
-  const warnDeg = total > 0 ? (data.warning / total) * 360 : 0;
-  const ringBg = data.total === 0
-    ? '#28a745'
-    : `conic-gradient(#dc3545 0deg ${blockDeg}deg, #ffc107 ${blockDeg}deg ${blockDeg + warnDeg}deg, #28a745 ${blockDeg + warnDeg}deg 360deg)`;
+  const regressDeg = total > 0 ? (regress / total) * 360 : 0;
+  const uncoverDeg = total > 0 ? (uncovered / total) * 360 : 0;
+  const ringBg =
+    total === 0
+      ? '#adb5bd'
+      : `conic-gradient(#dc3545 0deg ${regressDeg}deg, #ffc107 ${regressDeg}deg ${regressDeg + uncoverDeg}deg, #28a745 ${regressDeg + uncoverDeg}deg 360deg)`;
+
+  const verdictLabel = cov?.verdictLabel || (regress > 0 ? `发现 ${regress} 处衰退` : '通过');
+  const ringLabel =
+    cov?.verdict === 'insufficient_coverage'
+      ? '覆盖率'
+      : cov?.verdict === 'regress'
+        ? '通过率'
+        : '通过率';
 
   const distRows = data.distribution
     .map(
@@ -316,24 +349,29 @@ export function generateOverviewPanel(data: OverviewData): string {
     : '<span class="ov-meta-val" style="color:#28a745">0%</span>';
 
   return `
-  <div class="ov-panel">
+  <div class="ov-panel" style="flex-direction:column">
+    <div class="ov-verdict" style="margin-bottom:4px;padding:10px 14px;border-radius:6px;background:${cov?.verdict === 'pass' ? '#e8f5e9' : cov?.verdict === 'regress' ? '#ffebee' : '#fff8e1'};font-size:15px;font-weight:600">
+      ${esc(verdictLabel)}
+      <span style="font-weight:400;color:#666;margin-left:12px">已检测 ${compared} / ${total} 步骤 · 未检测 ${uncovered}</span>
+    </div>
+    <div style="display:flex;gap:24px;flex-wrap:wrap;width:100%">
     <div class="ov-left">
-      <div class="ov-ring-wrap" title="通过 ${passPct}% · Blocker ${blockPct}% · Warning ${warnPct}%">
+      <div class="ov-ring-wrap" title="通过 ${passCount} · 衰退 ${regress} · 未检测 ${uncovered}（分母=应检测 ${total}）">
         <div class="ov-ring" style="background:${ringBg}">
           <span class="ov-ring-pct">${passPct}%</span>
-          <span class="ov-ring-label">通过率</span>
+          <span class="ov-ring-label">${ringLabel}</span>
         </div>
       </div>
       <div class="ov-stat-grid">
-        <div class="ov-stat"><span class="ov-stat-num ov-red">${data.blocker}</span><span class="ov-stat-lbl">Blocker</span><span class="ov-stat-sub">${blockPct}%</span></div>
-        <div class="ov-stat"><span class="ov-stat-num ov-yellow">${data.warning}</span><span class="ov-stat-lbl">Warning</span><span class="ov-stat-sub">${warnPct}%</span></div>
+        <div class="ov-stat"><span class="ov-stat-num ov-red">${regress}</span><span class="ov-stat-lbl">衰退</span><span class="ov-stat-sub">${blockPct}%</span></div>
+        <div class="ov-stat"><span class="ov-stat-num ov-yellow">${uncovered}</span><span class="ov-stat-lbl">未检测</span><span class="ov-stat-sub">${warnPct}%</span></div>
         <div class="ov-stat"><span class="ov-stat-num ov-green">${passCount}</span><span class="ov-stat-lbl">通过</span><span class="ov-stat-sub">${passPct}%</span></div>
-        <div class="ov-stat"><span class="ov-stat-num">${data.total}</span><span class="ov-stat-lbl">总对比</span></div>
+        <div class="ov-stat"><span class="ov-stat-num">${total}</span><span class="ov-stat-lbl">应检测</span></div>
       </div>
     </div>
     <div class="ov-right">
       <div class="ov-dist-section">
-        <div class="ov-dist-heading">差异分布</div>
+        <div class="ov-dist-heading">差异分布（已对比）</div>
         ${distRows}
       </div>
       <div class="ov-meta-row">
@@ -354,6 +392,7 @@ export function generateOverviewPanel(data: OverviewData): string {
           <span class="ov-meta-val">${esc(data.generatedAt)}</span>
         </div>
       </div>
+    </div>
     </div>
   </div>`;
 }

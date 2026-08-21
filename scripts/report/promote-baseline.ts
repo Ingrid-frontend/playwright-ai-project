@@ -4,9 +4,10 @@
  * 用法:
  *   npm run promote-baseline -- --script 260612/xxx --run 2026-05-21T10-46-34-813Z
  *   npm run promote-baseline -- --script 260612/xxx --latest
+ *   npm run promote-baseline -- --script 260612/xxx --latest --only-if-missing
  *   npm run promote-baseline -- --script 260612/xxx --latest --step=step-2-approval-list__normal.png
  */
-import { findLatestRunTimestamp, promoteRunToGolden, promoteStepsToGolden, revertGolden } from './baseline-manager.js';
+import { findLatestRunTimestamp, hasGoldenBaseline, promoteRunToGolden, promoteStepsToGolden, revertGolden } from './baseline-manager.js';
 
 function printHelp(): void {
   console.log(`用法: npm run promote-baseline -- [选项]
@@ -15,6 +16,7 @@ function printHelp(): void {
   --script=<iteration/script>   脚本键
   --run=<timestamp>             运行目录名
   --latest                      自动取最新 run（可配合 --browser）
+  --only-if-missing             已有 Golden 则跳过（用于首次自动 seed）
   --browser=chrome|webkit       浏览器（默认 chrome）
   --step=<file.png>             只提升指定 PNG（可重复）；不传则整 run
   --expected-revision=<n>       乐观锁：与当前 .baseline-meta.json revision 一致才写入
@@ -30,6 +32,7 @@ function parseArgs(argv: string[]): {
   browser: string;
   revert: boolean;
   latest: boolean;
+  onlyIfMissing: boolean;
   steps: string[];
   expectedRevision?: number;
   promotedBy?: string;
@@ -39,6 +42,7 @@ function parseArgs(argv: string[]): {
   let browser = 'chrome';
   let revert = false;
   let latest = false;
+  let onlyIfMissing = false;
   const steps: string[] = [];
   let expectedRevision: number | undefined;
   let promotedBy: string | undefined;
@@ -54,6 +58,10 @@ function parseArgs(argv: string[]): {
     }
     if (arg === '--latest') {
       latest = true;
+      continue;
+    }
+    if (arg === '--only-if-missing') {
+      onlyIfMissing = true;
       continue;
     }
     if (arg.startsWith('--script=')) {
@@ -84,7 +92,7 @@ function parseArgs(argv: string[]): {
     }
   }
 
-  return { script, run, browser, revert, latest, steps, expectedRevision, promotedBy };
+  return { script, run, browser, revert, latest, onlyIfMissing, steps, expectedRevision, promotedBy };
 }
 
 function main(): void {
@@ -99,6 +107,11 @@ function main(): void {
   if (opts.revert) {
     const n = revertGolden(opts.script, opts.browser);
     console.log(`✅ 已撤销 Golden：删除 ${n} 个基线 PNG（${opts.script} / ${opts.browser}）`);
+    return;
+  }
+
+  if (opts.onlyIfMissing && hasGoldenBaseline(opts.script, opts.browser)) {
+    console.log(`ℹ️  已有 Golden，跳过晋升: ${opts.script} / ${opts.browser}`);
     return;
   }
 
@@ -131,7 +144,7 @@ function main(): void {
     sourceRunTimestamp: runTs,
     browser: opts.browser,
     expectedRevision: opts.expectedRevision,
-    promotedBy: opts.promotedBy,
+    promotedBy: opts.promotedBy || (opts.onlyIfMissing ? 'auto-seed-first-run' : undefined),
   });
 
   console.log(`✅ 已提升 Golden：${copied} 张截图，revision=${revision}`);

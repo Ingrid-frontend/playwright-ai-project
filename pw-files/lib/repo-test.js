@@ -183,6 +183,19 @@ async function runRepoTest(ws, session, msg, deps) {
     testResultsDir: 'test-results',
   });
   logLine(ws, `[repo] 截图目录: ${path.join(repoRoot, 'screenshots')}`, 'dim');
+
+  if (exitCode === 0 && failed === 0) {
+    try {
+      const { seedGoldenIfMissingAfterSuccess } = require('./repo-seed-golden');
+      seedGoldenIfMissingAfterSuccess(ws, deps, {
+        session,
+        specRelative: specRel,
+        projects: testProjects,
+      });
+    } catch (e) {
+      logLine(ws, `[repo] Golden seed 未执行: ${e?.message || e}`, 'dim');
+    }
+  }
 }
 
 module.exports = { runRepoTest };

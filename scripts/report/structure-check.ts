@@ -34,6 +34,9 @@ export interface TextSectionMeta {
 export interface StepMeta {
   capturedAt?: string;
   viewport?: { name: string; width: number; height: number };
+  /** 实际截图像素尺寸，viewport 缺失时用于换算基线 bbox */
+  imageWidth?: number;
+  imageHeight?: number;
   layout?: { horizontalOverflow?: boolean; scrollWidth?: number; innerWidth?: number };
   domHash?: string;
   sections?: SectionMeta[];
@@ -135,10 +138,8 @@ function scaledBaseBbox(
 ): { x: number; y: number; width: number; height: number } {
   const fp = base.fingerprint || item.fingerprint;
   if (!fp?.baselinePageWidth || !fp.baselinePageHeight) return base.bbox;
-  const curW = current.viewport?.width || fp.baselinePageWidth;
-  const curH = current.layout?.scrollWidth || current.viewport?.height || fp.baselinePageHeight;
-  const baseW = baseline?.viewport?.width || fp.baselinePageWidth;
-  const baseH = baseline?.layout?.scrollWidth || baseline?.viewport?.height || fp.baselinePageHeight;
+  const curW = current.viewport?.width || current.imageWidth || fp.baselinePageWidth;
+  const curH = current.viewport?.height || current.imageHeight || fp.baselinePageHeight;
   return scaleBbox(fp.baselineRect, fp.baselinePageWidth, fp.baselinePageHeight, curW, curH);
 }
 

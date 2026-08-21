@@ -262,13 +262,12 @@ function updateOptimizedBrowserEmptyStates(effectiveBrowser) {
 
 function updateReportTabsForBrowser(effectiveBrowser) {
   const optimizedTab = document.querySelector('.tab[data-report-tab="optimized"]');
-  if (optimizedTab) {
-    optimizedTab.style.display = effectiveBrowser === 'cross' ? 'none' : '';
-  }
+  if (!optimizedTab) return;
+  optimizedTab.style.display = effectiveBrowser === 'cross' ? 'none' : '';
   if (effectiveBrowser === 'cross') {
     const activeContent = document.querySelector('.tab-content.active');
     if (activeContent && activeContent.id === 'optimized-content') {
-      switchTab('optimized-diff');
+      switchTab('summary');
     }
   }
 }
