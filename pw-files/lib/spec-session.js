@@ -55,9 +55,9 @@ function createSpecSessionHelpers(deps) {
     }
   }
 
-  async function ensureAccountLoginForProfile(ws, session, profileId) {
+  async function ensureAccountLoginForProfile(ws, session, profileId, envOverride) {
     const repoRoot = resolveRepoRoot();
-    const envId = getSessionPlaywrightEnv(session);
+    const envId = envOverride || getSessionPlaywrightEnv(session);
     const profile = repoEnv.resolveAccountProfile(repoRoot, envId, profileId);
     const storageRel = repoEnv.resolveStorageStateRel(repoRoot, envId, profile);
     if (repoEnv.storageExists(repoRoot, storageRel)) {
@@ -67,7 +67,7 @@ function createSpecSessionHelpers(deps) {
     const savedProfile = session.accountProfile;
     session.accountProfile = profile;
     try {
-      await runAccountLogin(ws, session);
+      await runAccountLogin(ws, session, envOverride);
       const ok = repoEnv.storageExists(repoRoot, storageRel);
       return { ok, profile, skipped: false };
     } finally {

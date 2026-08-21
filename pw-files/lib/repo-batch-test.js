@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { send, logLine, stripAnsi, errText } = require('./ws-safe');
 
-async function executeRepoSpecForBatch(ws, session, specRel, headed, projects, profileOverride, deps) {
+async function executeRepoSpecForBatch(ws, session, specRel, headed, projects, profileOverride, deps, runtimeEnv) {
   const {
     resolveRepoRoot,
     assertAllowedOptimizedSpec,
@@ -45,7 +45,25 @@ async function executeRepoSpecForBatch(ws, session, specRel, headed, projects, p
   }
   if (!isDraftOptimizedPath(specRel)) {
     try {
-      assertSpecEnvMatch(specRel, getSessionPlaywrightEnv(session), repoRoot);
+      const match = assertSpecEnvMatch(
+        specRel,
+        runtimeEnv || getSessionPlaywrightEnv(session),
+        repoRoot,
+      );
+      if (match && match.ok === false) {
+        const err =
+          match.specEnv && match.runtimeEnv
+            ? `用例环境「${match.specEnv}」与当前运行环境「${match.runtimeEnv}」不一致: ${specRel}`
+            : `用例环境与当前运行环境不一致: ${specRel}`;
+        return {
+          exitCode: 1,
+          passed: 0,
+          failed: 1,
+          total: 1,
+          error: err,
+          failures: [{ title: specRel, location: specRel, status: 'error', message: err, hint: '批量执行会按用例环境自动切换；若仍失败请检查路径与登录态。' }],
+        };
+      }
     } catch (e) {
       const err = errText(e);
       return {
@@ -79,7 +97,7 @@ async function executeRepoSpecForBatch(ws, session, specRel, headed, projects, p
 
   const proc = spawn(process.execPath, args, {
     cwd: repoRoot,
-    env: buildRepoSpawnEnv(session, profileOverride),
+    env: buildRepoSpawnEnv(session, profileOverride, runtimeEnv),
   });
   session.repoTestProc = proc;
 
@@ -182,101 +200,147 @@ async function runRepoBatchTest(ws, session, msg, deps) {
   let stoppedEarly = false;
 
   const repoRootForBatch = resolveRepoRoot();
-  const batchEntries = specs.map((rel) => ({
-    rel,
-    ...specMeta.enrichOptimizedSpecEntry(repoRootForBatch, rel),
-  }));
-  const profileGroups = specMeta.groupEntriesByAccountProfile(batchEntries);
-
-  let globalIndex = 0;
-  for (const [profile, groupEntries] of profileGroups) {
-    if (session.repoBatchCancelled) break;
-    if (profile && profile !== specMeta.UNKNOWN_PROFILE) {
-      logLine(ws, `[batch] 账号组 ${profile}（${groupEntries.length} 个用例）`, 'info');
-      const loginReady = await ensureAccountLoginForProfile(ws, session, profile);
-      if (!loginReady.ok) {
-        for (const entry of groupEntries) {
-          const err = `账号档案 ${profile} 登录失败`;
-          const item = {
-            specRelative: entry.rel,
-            exitCode: 1,
-            passed: 0,
-            failed: 1,
-            total: 1,
-            error: err,
-            failures: [{ title: entry.rel, location: entry.rel, status: 'error', message: err, hint: '请先在侧栏完成该档案登录' }],
-          };
-          results.push(item);
-          send(ws, 'repo:batch-test:progress', {
-            index: globalIndex,
-            total: specs.length,
-            specRelative: entry.rel,
-            phase: 'done',
-            ...item,
-          });
-          globalIndex++;
-        }
-        if (stopOnError) {
-          stoppedEarly = true;
-          break;
-        }
-        continue;
-      }
+  const batchEntries = specs.map((rel) => {
+    const entry = { rel, ...specMeta.enrichOptimizedSpecEntry(repoRootForBatch, rel) };
+    if (!entry.playwrightEnv) {
+      entry.playwrightEnv = getSessionPlaywrightEnv(session);
     }
+    return entry;
+  });
+  const envGroups = specMeta.groupEntriesByPlaywrightEnv(batchEntries);
+  const sessionEnv = getSessionPlaywrightEnv(session);
+  let globalIndex = 0;
+  for (const [envId, envEntries] of envGroups) {
+    if (session.repoBatchCancelled) break;
+    const runtimeEnv = envId && envId !== 'unknown' ? envId : sessionEnv;
+    logLine(ws, `[batch] 环境组 ${runtimeEnv}（${envEntries.length} 个用例）· 切换登录态/baseURL`, 'info');
+    send(ws, 'repo:batch-test:progress', {
+      index: globalIndex,
+      total: specs.length,
+      phase: 'env',
+      playwrightEnv: runtimeEnv,
+      specRelative: null,
+    });
 
-    const profileOverride =
-      profile && profile !== specMeta.UNKNOWN_PROFILE ? profile : undefined;
-
-    for (const entry of groupEntries) {
+    const profileGroups = specMeta.groupEntriesByAccountProfile(envEntries);
+    for (const [profile, groupEntries] of profileGroups) {
       if (session.repoBatchCancelled) break;
-      const specRel = entry.rel;
-      const i = globalIndex;
-      send(ws, 'repo:batch-test:progress', {
-        index: i,
-        total: specs.length,
-        specRelative: specRel,
-        phase: 'running',
-        accountProfile: entry.accountProfile || null,
-      });
-      const r = await executeRepoSpecForBatch(ws, session, specRel, headed, testProjects, profileOverride, deps);
-      const item = { specRelative: specRel, accountProfile: entry.accountProfile || null, ...r };
-      results.push(item);
-      send(ws, 'repo:batch-test:progress', {
-        index: i,
-        total: specs.length,
-        specRelative: specRel,
-        phase: 'done',
-        exitCode: r.exitCode,
-        passed: r.passed,
-        failed: r.failed,
-        total: r.total,
-        cancelled: Boolean(r.cancelled),
-        error: r.error || null,
-        failures: r.failures || [],
-        accountProfile: entry.accountProfile || null,
-      });
-      globalIndex++;
-      if (r.cancelled) break;
-      const failedRun = r.exitCode !== 0 || (r.failed != null && r.failed > 0);
-      if (failedRun) {
-        logLine(ws, `[batch] 失败: ${specRel}`, 'warn');
-        if (stopOnError) {
-          stoppedEarly = true;
-          break;
-        }
-      } else {
-        logLine(ws, `[batch] 完成: ${specRel}`, 'ok');
-        try {
-          const { seedGoldenIfMissingAfterSuccess } = require('./repo-seed-golden');
-          seedGoldenIfMissingAfterSuccess(ws, deps, {
-            session,
-            specRelative: specRel,
-            projects: testProjects,
-          });
-        } catch (e) {
-          logLine(ws, `[batch] Golden seed 未执行: ${e?.message || e}`, 'dim');
+      if (profile && profile !== specMeta.UNKNOWN_PROFILE) {
+        logLine(ws, `[batch] 账号组 ${runtimeEnv}/${profile}（${groupEntries.length} 个用例）`, 'info');
+        const loginReady = await ensureAccountLoginForProfile(ws, session, profile, runtimeEnv);
+        if (!loginReady.ok) {
+          for (const entry of groupEntries) {
+            const err = `账号档案 ${runtimeEnv}/${profile} 登录失败`;
+            const item = {
+              specRelative: entry.rel,
+              playwrightEnv: runtimeEnv,
+              accountProfile: entry.accountProfile || null,
+              exitCode: 1,
+              passed: 0,
+              failed: 1,
+              total: 1,
+              error: err,
+              failures: [
+                {
+                  title: entry.rel,
+                  location: entry.rel,
+                  status: 'error',
+                  message: err,
+                  hint: '请先在侧栏完成该档案登录',
+                },
+              ],
+            };
+            results.push(item);
+            send(ws, 'repo:batch-test:progress', {
+              index: globalIndex,
+              total: specs.length,
+              specRelative: entry.rel,
+              phase: 'done',
+              playwrightEnv: runtimeEnv,
+              ...item,
+            });
+            globalIndex++;
+          }
+          if (stopOnError) {
+            stoppedEarly = true;
+            break;
+          }
+          continue;
         }
       }
+
+      const profileOverride =
+        profile && profile !== specMeta.UNKNOWN_PROFILE ? profile : undefined;
+
+      for (const entry of groupEntries) {
+        if (session.repoBatchCancelled) break;
+        const specRel = entry.rel;
+        const i = globalIndex;
+        send(ws, 'repo:batch-test:progress', {
+          index: i,
+          total: specs.length,
+          specRelative: specRel,
+          phase: 'running',
+          playwrightEnv: runtimeEnv,
+          accountProfile: entry.accountProfile || null,
+        });
+        const r = await executeRepoSpecForBatch(
+          ws,
+          session,
+          specRel,
+          headed,
+          testProjects,
+          profileOverride,
+          deps,
+          runtimeEnv,
+        );
+        const item = {
+          specRelative: specRel,
+          playwrightEnv: runtimeEnv,
+          accountProfile: entry.accountProfile || null,
+          ...r,
+        };
+        results.push(item);
+        send(ws, 'repo:batch-test:progress', {
+          index: i,
+          total: specs.length,
+          specRelative: specRel,
+          phase: 'done',
+          exitCode: r.exitCode,
+          passed: r.passed,
+          failed: r.failed,
+          total: r.total,
+          cancelled: Boolean(r.cancelled),
+          error: r.error || null,
+          failures: r.failures || [],
+          playwrightEnv: runtimeEnv,
+          accountProfile: entry.accountProfile || null,
+        });
+        globalIndex++;
+        if (r.cancelled) break;
+        const failedRun = r.exitCode !== 0 || (r.failed != null && r.failed > 0);
+        if (failedRun) {
+          logLine(ws, `[batch] 失败: [${runtimeEnv}] ${specRel}`, 'warn');
+          if (stopOnError) {
+            stoppedEarly = true;
+            break;
+          }
+        } else {
+          logLine(ws, `[batch] 完成: [${runtimeEnv}] ${specRel}`, 'ok');
+          try {
+            const { seedGoldenIfMissingAfterSuccess } = require('./repo-seed-golden');
+            seedGoldenIfMissingAfterSuccess(ws, deps, {
+              session,
+              specRelative: specRel,
+              projects: testProjects,
+              playwrightEnv: runtimeEnv,
+            });
+          } catch (e) {
+            logLine(ws, `[batch] Golden seed 未执行: ${e?.message || e}`, 'dim');
+          }
+        }
+      }
+      if (stoppedEarly || session.repoBatchCancelled) break;
     }
     if (stoppedEarly || session.repoBatchCancelled) break;
   }

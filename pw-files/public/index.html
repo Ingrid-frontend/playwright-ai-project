@@ -135,6 +135,10 @@
     padding: 6px 0 2px; margin-top: 4px; border-top: 1px dashed var(--border);
   }
   .batch-spec-group:first-child { border-top: none; margin-top: 0; padding-top: 0; }
+  .batch-spec-group-sub {
+    font-size: var(--fs-xs); font-weight: 500; color: var(--muted);
+    padding: 4px 0 2px 8px; margin-top: 2px;
+  }
   .batch-progress { font-size: var(--fs-xs); color: var(--teal); margin-bottom: 8px; min-height: 1.2em; }
   .test-job-list { display: flex; flex-direction: column; gap: 8px; max-height: 220px; overflow-y: auto; }
   .test-job-list.jobs-panel-list { max-height: none; flex: 1; min-height: 120px; padding: 0 16px 16px; }
@@ -3145,9 +3149,8 @@ function applyEnvChanged(msg) {
   if (!msg.hasStorage && msg.storageState) {
     showToast(`${msg.env}: 未找到登录态文件`, 'err');
   }
-  if (Array.isArray(msg.optimizedSpecs) || Array.isArray(msg.optimizedSpecEntries)) {
-    applyOptimizedSpecListFromServer(msg);
-  }
+  // 侧栏切环境时服务端可能只回当前 env 列表；批量需全环境，统一再拉一次
+  refreshRepoOptimizedList();
   updateStudioStatusBar();
 }
 
@@ -3201,10 +3204,29 @@ function formatOptimizedSpecPath(relativePath) {
   return p.startsWith(OPTIMIZED_SPEC_PREFIX) ? p.slice(OPTIMIZED_SPEC_PREFIX.length) : p;
 }
 
+function inferPlaywrightEnvFromRel(rel) {
+  const short = formatOptimizedSpecPath(rel);
+  const seg = String(short || '').split('/')[0] || '';
+  if (seg && (envState.environments || []).some((e) => e.id === seg)) return seg;
+  if (seg && /^(dev|stage|uat|prod|stage\d+)$/i.test(seg)) return seg;
+  return envState.current || 'stage';
+}
+
 function normalizeSpecEntry(item) {
-  if (item && typeof item === 'object' && item.rel) return item;
+  if (item && typeof item === 'object' && item.rel) {
+    const e = { ...item };
+    if (!e.playwrightEnv) e.playwrightEnv = inferPlaywrightEnvFromRel(e.rel);
+    if (!e.accountProfile) e.accountProfile = 'unknown';
+    return e;
+  }
   const rel = String(item || '');
-  return { rel, accountProfile: 'unknown', loginAccount: null, hasMeta: false };
+  return {
+    rel,
+    playwrightEnv: inferPlaywrightEnvFromRel(rel),
+    accountProfile: 'unknown',
+    loginAccount: null,
+    hasMeta: false,
+  };
 }
 
 function getSpecRel(item) {
@@ -3257,7 +3279,13 @@ function fillRepoOptimizedSelect(list) {
   if (!sel) return;
   const prev = sel.value;
   sel.innerHTML = '';
-  const items = filterSpecList((list || []).filter((p) => getSpecRel(p) && !isDraftOptimizedSpecPath(getSpecRel(p))));
+  const curEnv = envState.current || '';
+  const items = filterSpecList(
+    (list || [])
+      .map(normalizeSpecEntry)
+      .filter((p) => getSpecRel(p) && !isDraftOptimizedSpecPath(getSpecRel(p)))
+      .filter((p) => !curEnv || p.playwrightEnv === curEnv),
+  );
   if (!items.length) {
     const o = document.createElement('option');
     o.value = '';
@@ -3282,6 +3310,8 @@ function fillRepoOptimizedSelect(list) {
 function refreshRepoOptimizedList() {
   const accountProfile = document.getElementById('repoProfileFilter')?.value;
   send('repo:list-optimized', {
+    allEnvs: true,
+    limit: 200,
     accountProfile: accountProfile && accountProfile !== 'all' ? accountProfile : undefined,
   });
 }
@@ -3921,45 +3951,60 @@ function fillRepoBatchChecklist(list) {
   if (!box) return;
   const checked = new Set(getSelectedBatchSpecs());
   box.innerHTML = '';
-  const items = filterSpecList((list || []).filter((p) => getSpecRel(p) && !isDraftOptimizedSpecPath(getSpecRel(p))));
+  const items = filterSpecList(
+    (list || []).filter((p) => getSpecRel(p) && !isDraftOptimizedSpecPath(getSpecRel(p))),
+  ).map(normalizeSpecEntry);
   if (!items.length) {
     box.innerHTML = '<p class="sidebar-hint" style="margin:0">（暂无用例，请点刷新）</p>';
     return;
   }
-  const groups = new Map();
-  for (const item of items) {
-    const e = normalizeSpecEntry(item);
-    const prof = e.accountProfile || 'unknown';
-    if (!groups.has(prof)) groups.set(prof, []);
-    groups.get(prof).push(e);
+  const byEnv = new Map();
+  for (const e of items) {
+    const env = e.playwrightEnv || 'unknown';
+    if (!byEnv.has(env)) byEnv.set(env, []);
+    byEnv.get(env).push(e);
   }
-  const sortedGroups = [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  const envGroups = [...byEnv.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   let idx = 0;
-  for (const [profile, entries] of sortedGroups) {
-    if (sortedGroups.length > 1) {
-      const hdr = document.createElement('div');
-      hdr.className = 'batch-spec-group';
-      hdr.textContent = profile === 'unknown' ? '未知账号档案' : `账号档案: ${profile}`;
-      box.appendChild(hdr);
+  for (const [envId, envEntries] of envGroups) {
+    const envHdr = document.createElement('div');
+    envHdr.className = 'batch-spec-group';
+    envHdr.textContent = `环境: ${envId}（${envEntries.length}）`;
+    box.appendChild(envHdr);
+
+    const byProf = new Map();
+    for (const e of envEntries) {
+      const prof = e.accountProfile || 'unknown';
+      if (!byProf.has(prof)) byProf.set(prof, []);
+      byProf.get(prof).push(e);
     }
-    entries.forEach((e) => {
-      const rel = e.rel;
-      const row = document.createElement('div');
-      row.className = 'batch-spec-item';
-      const id = `batchSpec_${idx}_${rel.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 40)}`;
-      idx++;
-      const cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.id = id;
-      cb.value = rel;
-      cb.checked = checked.size ? checked.has(rel) : true;
-      const label = document.createElement('label');
-      label.htmlFor = id;
-      label.textContent = formatOptimizedSpecLabel(e);
-      row.appendChild(cb);
-      row.appendChild(label);
-      box.appendChild(row);
-    });
+    const profGroups = [...byProf.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    for (const [profile, entries] of profGroups) {
+      if (profGroups.length > 1) {
+        const hdr = document.createElement('div');
+        hdr.className = 'batch-spec-group-sub';
+        hdr.textContent = profile === 'unknown' ? '未知账号档案' : `账号档案: ${profile}`;
+        box.appendChild(hdr);
+      }
+      entries.forEach((e) => {
+        const rel = e.rel;
+        const row = document.createElement('div');
+        row.className = 'batch-spec-item';
+        const id = `batchSpec_${idx}_${rel.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 40)}`;
+        idx++;
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.id = id;
+        cb.value = rel;
+        cb.checked = checked.size ? checked.has(rel) : true;
+        const label = document.createElement('label');
+        label.htmlFor = id;
+        label.textContent = formatOptimizedSpecLabel(e);
+        row.appendChild(cb);
+        row.appendChild(label);
+        box.appendChild(row);
+      });
+    }
   }
 }
 
@@ -4971,10 +5016,16 @@ function handleMessage(msg) {
       break;
     case 'repo:batch-test:progress': {
       const prog = document.getElementById('batchProgressText');
-      if (msg.phase === 'running') {
+      if (msg.phase === 'env') {
+        const envLabel = msg.playwrightEnv || '';
+        setRunStepSub(2, `切换环境 ${envLabel}…`);
+        if (prog) prog.textContent = `切换环境 / 登录态：${envLabel}`;
+        log('info', `[batch] 切换环境 ${envLabel}`);
+      } else if (msg.phase === 'running') {
+        const envTag = msg.playwrightEnv ? `[${msg.playwrightEnv}] ` : '';
         const prof = msg.accountProfile && msg.accountProfile !== 'unknown' ? ` [${msg.accountProfile}]` : '';
-        setRunStepSub(2, `正在执行 ${msg.index + 1}/${msg.total}…${prof}`);
-        if (prog) prog.textContent = `正在执行：${formatOptimizedSpecLabel(msg.specRelative || '')}${prof}`;
+        setRunStepSub(2, `正在执行 ${msg.index + 1}/${msg.total}… ${envTag}${prof}`.trim());
+        if (prog) prog.textContent = `正在执行：${envTag}${formatOptimizedSpecLabel(msg.specRelative || '')}${prof}`;
       } else if (msg.phase === 'done') {
         const ok = !msg.cancelled && msg.exitCode === 0 && !(msg.failed > 0);
         if (prog) {

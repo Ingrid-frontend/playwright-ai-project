@@ -242,6 +242,16 @@ function writeRawSpecMetaFromSession(repoRoot?: any, rawRel?: any, sessionMeta?:
   return meta;
 }
 
+function groupEntriesByPlaywrightEnv(entries?: any) {
+  const groups = new Map<string, any[]>();
+  for (const entry of entries || []) {
+    const env = String(entry?.playwrightEnv || '').trim() || 'unknown';
+    if (!groups.has(env)) groups.set(env, []);
+    groups.get(env)!.push(entry);
+  }
+  return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+}
+
 function groupEntriesByAccountProfile(entries?: any) {
   const groups = new Map<string, any[]>();
   for (const entry of entries) {
@@ -262,5 +272,5 @@ function summarizeProfileCounts(entries?: any) {
 }
 
 export {
-  META_VERSION, UNKNOWN_PROFILE, maskUsername, specMetaPathForRel, readSpecMetaFile, writeSpecMetaFile, deleteSpecMetaFile, parseSpecMetaBlockFromCode, buildSpecMeta, buildSpecMetaFromSession, appendSpecMetaHeaderToCode, mapProcessedToOriginalRel, resolveOptimizedSpecMeta, enrichOptimizedSpecEntry, copyRawMetaToOptimized, writeRawSpecMetaFromSession, groupEntriesByAccountProfile, summarizeProfileCounts,
+  META_VERSION, UNKNOWN_PROFILE, maskUsername, specMetaPathForRel, readSpecMetaFile, writeSpecMetaFile, deleteSpecMetaFile, parseSpecMetaBlockFromCode, buildSpecMeta, buildSpecMetaFromSession, appendSpecMetaHeaderToCode, mapProcessedToOriginalRel, resolveOptimizedSpecMeta, enrichOptimizedSpecEntry, copyRawMetaToOptimized, writeRawSpecMetaFromSession, groupEntriesByPlaywrightEnv, groupEntriesByAccountProfile, summarizeProfileCounts,
 };

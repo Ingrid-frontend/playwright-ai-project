@@ -140,15 +140,15 @@ function createAccountEnvActions(deps) {
     }
   }
 
-  function runAccountLogin(ws, session) {
+  function runAccountLogin(ws, session, envOverride) {
     const repoRoot = resolveRepoRoot();
     const cli = getRepoPlaywrightCli(repoRoot);
     if (!cli) {
       send(ws, 'error', { message: '未找到 @playwright/test，请在项目根执行 npm install' });
       return Promise.resolve();
     }
-    const envId = getSessionPlaywrightEnv(session);
-    const profile = getSessionAccountProfile(session, repoRoot);
+    const envId = envOverride || getSessionPlaywrightEnv(session);
+    const profile = repoEnv.resolveAccountProfile(repoRoot, envId, session.accountProfile);
     const storageRel = repoEnv.resolveStorageStateRel(repoRoot, envId, profile);
 
     logLine(ws, `[account] 正在登录 ${envId} / ${profile}…`, 'info');
@@ -168,7 +168,7 @@ function createAccountEnvActions(deps) {
         {
           cwd: repoRoot,
           env: {
-            ...buildRepoSpawnEnv(session),
+            ...buildRepoSpawnEnv(session, undefined, envOverride),
             PLAYWRIGHT_REFRESH_STORAGE: '1',
           },
           stdio: ['ignore', 'pipe', 'pipe'],

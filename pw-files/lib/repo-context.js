@@ -97,12 +97,12 @@ function fixPlaywrightBrowsersEnv(env) {
   return env;
 }
 
-function buildRepoSpawnEnv(session, profileOverride) {
+function buildRepoSpawnEnv(session, profileOverride, envOverride) {
   const env = { ...process.env };
-  const id = getSessionPlaywrightEnv(session);
+  const id = envOverride || getSessionPlaywrightEnv(session);
   if (id) env.PLAYWRIGHT_ENV = id;
   const repoRoot = resolveRepoRoot();
-  const prof = profileOverride || getSessionAccountProfile(session, repoRoot);
+  const prof = profileOverride || repoEnv.resolveAccountProfile(repoRoot, id, session.accountProfile);
   if (prof) env.PLAYWRIGHT_ACCOUNT = prof;
   return fixPlaywrightBrowsersEnv(env);
 }

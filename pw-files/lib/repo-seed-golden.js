@@ -53,7 +53,7 @@ function seedGoldenIfMissingAfterSuccess(ws, deps, opts) {
       const exitCode = await new Promise((resolve) => {
         const proc = spawnImpl(npmCmd, args, {
           cwd: repoRoot,
-          env: buildRepoSpawnEnv(opts.session),
+          env: buildRepoSpawnEnv(opts.session, undefined, opts.playwrightEnv),
           shell: false,
         });
         proc.stdout.on('data', (d) => {
