@@ -3550,6 +3550,7 @@ function onJobRunEnvChange() {
   previewSelectedJobEnv();
   const job = testJobsState.jobs.find((j) => j.id === jobId);
   if (job) renderJobsWorkspace(job, { skipPreview: true });
+  renderTestJobsList(testJobsState.jobs, { skipWorkspace: true });
 }
 
 function onJobRunProfileChange() {
@@ -3560,12 +3561,33 @@ function onJobRunProfileChange() {
   previewSelectedJobEnv();
   const job = testJobsState.jobs.find((j) => j.id === jobId);
   if (job) renderJobsWorkspace(job, { skipPreview: true });
+  renderTestJobsList(testJobsState.jobs, { skipWorkspace: true });
 }
 
 function formatJobSpecsLabel(job) {
   if (job.specs === 'all') return `全部 · ${job.specCount ?? 0} 个`;
   if (!job.specCount) return '请在下方选用例';
   return `${job.specCount} 个用例`;
+}
+
+function formatJobCardEnvSpecLine(job) {
+  const configEnv = String(job.playwrightEnv || 'stage');
+  const runEnv = getJobRunEnv(job);
+  const configCount = job.specCount;
+  const preview = testJobsState.preview;
+  const live = Boolean(preview?.ok && preview.jobId === job.id);
+  const envShown = live || testJobsState.runEnvByJobId[job.id] ? runEnv : configEnv;
+  const envLabel =
+    envShown !== configEnv
+      ? `环境: ${envShown}（配置 ${configEnv}）`
+      : `环境: ${envShown}`;
+  const runCount = live ? preview.specCount : configCount;
+  const overridden = live && (preview.envOverridden || preview.specsOverridden);
+  const specLabel =
+    overridden && configCount != null && runCount !== configCount
+      ? `用例: ${runCount} 个（配置 ${configCount}）`
+      : `用例: ${runCount ?? '—'} 个`;
+  return `${envLabel} · ${specLabel}`;
 }
 
 function renderJobsWorkspace(job, opts = {}) {
@@ -3728,7 +3750,7 @@ function onBackgroundJobsFinished(prevJobs, newJobs) {
   }
 }
 
-function renderTestJobsList(jobs) {
+function renderTestJobsList(jobs, opts = {}) {
   testJobsState.jobs = jobs || [];
   const root = document.getElementById('testJobsList');
   if (!root) return;
@@ -3746,7 +3768,7 @@ function renderTestJobsList(jobs) {
       return `
       <div class="test-job-card${running ? ' running' : ''}${selected}" data-job-id="${id}" onclick="selectTestJob('${id}')">
         <div class="job-title">${id}${running ? ' 🟢' : ''}${disabled}</div>
-        <div class="job-meta">${esc(job.description || '—')}<br>环境: ${esc(job.playwrightEnv || 'stage')} · 用例: ${esc(String(job.specCount ?? '—'))} 个<br>调度: ${esc(formatJobSchedule(job))}<br>最近: ${esc(formatJobLatestRun(job))}</div>
+        <div class="job-meta">${esc(job.description || '—')}<br>${esc(formatJobCardEnvSpecLine(job))}<br>调度: ${esc(formatJobSchedule(job))}<br>最近: ${esc(formatJobLatestRun(job))}</div>
         <div class="job-actions" onclick="event.stopPropagation()">
           <button type="button" class="btn" style="font-size:var(--fs-xs);padding:3px 6px" onclick="runTestJob('${id}', false)" ${running ? 'disabled' : ''}>前台</button>
           <button type="button" class="btn" style="font-size:var(--fs-xs);padding:3px 6px" onclick="runTestJob('${id}', true)" ${running ? 'disabled' : ''}>后台</button>
@@ -3759,7 +3781,7 @@ function renderTestJobsList(jobs) {
   const selected = testJobsState.selectedJobId
     ? jobs.find((j) => j.id === testJobsState.selectedJobId)
     : null;
-  if (selected) renderJobsWorkspace(selected);
+  if (selected && !opts.skipWorkspace) renderJobsWorkspace(selected);
   const anyRunning = jobs.some((j) => j.running);
   if (anyRunning && !testJobsState.pollTimer) startTestJobsPolling();
   if (!anyRunning) stopTestJobsPolling();
@@ -5211,6 +5233,7 @@ function handleMessage(msg) {
         if (job) {
           populateJobsRunProfileSelect(job, msg);
           renderJobsWorkspace(job, { skipPreview: true });
+          renderTestJobsList(testJobsState.jobs, { skipWorkspace: true });
         }
       }
       break;
