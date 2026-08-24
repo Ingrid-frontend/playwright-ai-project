@@ -197,13 +197,13 @@ export async function smartFill(locator: Locator, text: string, stepName: string
   throw new Error(`smartFill 三级重试均失败: ${stepName}`);
 }
 
-export async function step(name: string, fn: () => Promise<void>): Promise<void> {
-  console.log(`\n👉 ${name}`);
-  try {
-    await fn();
-    console.log(`✅ ${name} 完成`);
-  } catch (error: any) {
-    console.log(`❌ ${name} 失败: ${error?.message ?? String(error)}`);
-    throw error;
-  }
-}
+export {
+  bindStepCapture,
+  captureStepState,
+  regressionScreenshotEnabled,
+  step,
+  unbindStepCapture,
+  type StepCaptureCtx,
+  type StepOpts,
+  type StepState,
+} from './optimized-step';

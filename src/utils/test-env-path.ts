@@ -277,12 +277,24 @@ function rewriteOptimizedSpecImports(code?: any, optimizedRel?: any, repoRoot?: 
       `import { test, expect } from '${paths.fixtures}';`,
     )
     .replace(
+      /^import \{ waitForPostInteractionPaint, withScreenshotRunSegment \} from ['"][^'"]+['"];/m,
+      `import { waitForPostInteractionPaint, withScreenshotRunSegment } from '${paths.screenshot}';`,
+    )
+    .replace(
       /^import \{ takeStepScreenshot, waitForPostInteractionPaint, withScreenshotRunSegment \} from ['"][^'"]+['"];/m,
-      `import { takeStepScreenshot, waitForPostInteractionPaint, withScreenshotRunSegment } from '${paths.screenshot}';`,
+      `import { waitForPostInteractionPaint, withScreenshotRunSegment } from '${paths.screenshot}';`,
+    )
+    .replace(
+      /^import \{ (bindStepCapture, captureStepState, step, maybePause, smartClick(?:, smartFill)?) \} from ['"][^'"]+['"];/m,
+      `import { $1 } from '${paths.optimizedActions}';`,
+    )
+    .replace(
+      /^import \{ (step, bindStepCapture, captureStepState, maybePause, smartClick(?:, smartFill)?) \} from ['"][^'"]+['"];/m,
+      `import { $1 } from '${paths.optimizedActions}';`,
     )
     .replace(
       /^import \{ (step, maybePause, smartClick(?:, smartFill)?) \} from ['"][^'"]+['"];/m,
-      `import { $1 } from '${paths.optimizedActions}';`,
+      `import { bindStepCapture, $1 } from '${paths.optimizedActions}';`,
     )
     .replace(
       /\/\/ 截图根目录；Chrome\/WebKit 子目录由 [^ ]+ 按引擎自动设置/,

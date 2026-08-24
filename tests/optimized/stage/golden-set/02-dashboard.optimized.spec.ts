@@ -6,8 +6,8 @@ import fs from 'fs';
 import path from 'path';
 import { test, expect } from '../../fixtures';
 import { assertNotLoginLikePage } from '../../../../src/utils/login-detection';
-import { visualTest, withScreenshotRunSegment } from '../../../../src/utils/screenshot';
-import { step } from '../../../utils/optimized-actions';
+import { withScreenshotRunSegment } from '../../../../src/utils/screenshot';
+import { bindStepCapture, step } from '../../../utils/optimized-actions';
 
 test.describe('Golden Set · 工作台首页', () => {
   test('首页布局可见', async ({ page }) => {
@@ -16,6 +16,7 @@ test.describe('Golden Set · 工作台首页', () => {
     const screenshotDir = withScreenshotRunSegment('screenshots/stage/golden-set/02-dashboard');
     fs.mkdirSync(screenshotDir, { recursive: true });
     const runDir = path.join(screenshotDir, new Date().toISOString().replace(/[:.]/g, '-'));
+    bindStepCapture({ page, runDir });
 
     await step('打开工作台首页', async () => {
       await page.goto('/main/home', { waitUntil: 'load', timeout: 60_000 });
@@ -31,8 +32,6 @@ test.describe('Golden Set · 工作台首页', () => {
       await expect(app.getByRole('menuitem', { name: /我的审批|我的单据|报销单/ }).first()).toBeVisible({
         timeout: 30_000,
       });
-
-      await visualTest(page, { dir: runDir, name: 'dashboard', state: 'normal', step: 1 });
-    });
+    }, { snapshot: 'dashboard', state: 'normal' });
   });
 });

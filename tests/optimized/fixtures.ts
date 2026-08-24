@@ -30,4 +30,6 @@ export const test = base.extend<OptimizedFixtures>({
   ],
 });
 
+/** RUN_MODE=smoke 或 SCREENSHOT_CAPTURE=0 时 step() 不截图；OPTIMIZE_SCREENSHOT=after-only 跳过 before */
+
 export { expect } from '@playwright/test';

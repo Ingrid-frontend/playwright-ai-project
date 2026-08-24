@@ -73,7 +73,9 @@ function isBaselineKind(kind?: string): boolean {
 }
 
 /** before / skipped / action 类中间态截图：可用于排查，但不作为验收结论 */
-export function isProcessOnlyStep(stepName: string): boolean {
+export function isProcessOnlyStep(stepName: string, metaState?: string): boolean {
+  const state = String(metaState || '').toLowerCase();
+  if (state === 'before' || state === 'skipped') return true;
   return /-(before|skipped)(__|$)/i.test(String(stepName || ''));
 }
 
@@ -271,7 +273,7 @@ export function buildCoverageStats(
         const browser = shot.browser || 'chrome';
         const hit = findBaselineComp(comp.baselineComparisons, shot);
         const pageTitle = pageTitleFromStep(shot.stepName, tdc.testDir);
-        const processOnly = isProcessOnlyStep(shot.stepName);
+        const processOnly = isProcessOnlyStep(shot.stepName, shot.route);
         if (!hit) {
           slots.push({
             scriptKey: tdc.testDir,

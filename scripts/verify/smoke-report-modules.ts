@@ -226,6 +226,8 @@ assert.equal(major.status, 'regress');
 assert.equal(classifyDifference(0, []).status, 'pass');
 assert.ok(isProcessOnlyStep('step-4-action-before__main_home'));
 assert.ok(!isProcessOnlyStep('step-4-工作台-after__main_home'));
+assert.ok(isProcessOnlyStep('dashboard', 'before'));
+assert.ok(!isProcessOnlyStep('approval-list', 'normal'));
 pass('classifyDifference 三档分级');
 
 // 缺少区域明细时（旧缓存）不得把真实衰退悄悄降级

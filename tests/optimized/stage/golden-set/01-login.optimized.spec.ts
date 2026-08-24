@@ -8,8 +8,8 @@ import { test, expect } from '../../fixtures';
 import { env } from '../../../../playwright.config';
 import { getLoginCredentials } from '../../../../src/utils/credentials';
 import { isLoginLikePage } from '../../../../src/utils/login-detection';
-import { visualTest, withScreenshotRunSegment } from '../../../../src/utils/screenshot';
-import { step } from '../../../utils/optimized-actions';
+import { withScreenshotRunSegment } from '../../../../src/utils/screenshot';
+import { bindStepCapture, step } from '../../../utils/optimized-actions';
 
 test.describe('Golden Set · 登录', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
@@ -21,6 +21,7 @@ test.describe('Golden Set · 登录', () => {
     const screenshotDir = withScreenshotRunSegment('screenshots/stage/golden-set/01-login');
     fs.mkdirSync(screenshotDir, { recursive: true });
     const runDir = path.join(screenshotDir, new Date().toISOString().replace(/[:.]/g, '-'));
+    bindStepCapture({ page, runDir });
 
     await step('打开登录页', async () => {
       await page.goto('/', { waitUntil: 'load', timeout: 60_000 });
@@ -51,7 +52,6 @@ test.describe('Golden Set · 登录', () => {
       const app = page.frameLocator('iframe').first();
       await expect(app.getByRole('tab', { name: '工作台' })).toBeVisible({ timeout: 30_000 });
       await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
-      await visualTest(page, { dir: runDir, name: 'home', state: 'normal', step: 1 });
-    });
+    }, { snapshot: 'home', state: 'normal' });
   });
 });

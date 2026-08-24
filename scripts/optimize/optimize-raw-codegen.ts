@@ -1,4 +1,4 @@
-import { getGenWait, getScreenshotMode } from './optimize-raw-wait.js';
+import { getGenWait } from './optimize-raw-wait.js';
 import { isKeyAction, type OptimizeOptions } from './optimize-raw-passes.js';
 
 export interface Action {
@@ -55,12 +55,6 @@ function isCriticalStep(label: string): boolean {
     '工作台', '首页', '系统管理', '消费平台', '财务管理',
   ];
   return criticalKeywords.some((kw) => label.includes(kw));
-}
-
-function beforeScreenshotLine(stepIndex: number, fileLabel: string, runDirVariable: string): string {
-  if (getScreenshotMode() === 'after-only') return '';
-  return `    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-before.png\`));
-`;
 }
 
 function optimizeLocator(locator: string): string {
@@ -142,7 +136,7 @@ function generateActionCode(ctx: CodegenCtx, action: Action, stepIndex: number, 
       await expect(locator).toBeVisible({ timeout: ${wait.skipGuardVisibleMs} });
     } catch {
       console.log('ℹ️  ${label}：元素未出现（非关键步骤），跳过本步');
-      await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-skipped.png\`), { mode: 'stable' });
+      await captureStepState('skipped', '${label}', '${fileLabel}');
       return;
     }
 `;
@@ -155,11 +149,10 @@ function generateActionCode(ctx: CodegenCtx, action: Action, stepIndex: number, 
   switch (action.type) {
     case 'click':
       return `  await step('${label}', async () => {
-${beforeScreenshotLine(stepIndex, fileLabel, runDirVariable)}    ${buildLocatorDeclaration(ctx, action, locatorCode)}
+    ${buildLocatorDeclaration(ctx, action, locatorCode)}
 ${skipGuard}${visibleLine}    await smartClick(locator, '${label}');
     await page.waitForLoadState('networkidle', { timeout: ${wait.networkIdleAfterMs} }).catch(() => {});
     await waitForPostInteractionPaint(page);
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { mode: 'stable' });
   });
 
 `;
@@ -167,18 +160,17 @@ ${skipGuard}${visibleLine}    await smartClick(locator, '${label}');
     case 'type': {
       const text = action.text || '';
       return `  await step('${label}', async () => {
-${beforeScreenshotLine(stepIndex, fileLabel, runDirVariable)}    ${buildLocatorDeclaration(ctx, action, locatorCode)}
+    ${buildLocatorDeclaration(ctx, action, locatorCode)}
 ${skipGuard}${visibleLine}    await smartFill(locator, "${text}", '${label}');
     await page.waitForLoadState('networkidle', { timeout: ${wait.networkIdleAfterMs} }).catch(() => {});
     await waitForPostInteractionPaint(page);
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { mode: 'stable' });
   });
 
 `;
     }
     case 'check':
       return `  await step('${label}', async () => {
-${beforeScreenshotLine(stepIndex, fileLabel, runDirVariable)}    ${buildLocatorDeclaration(ctx, action, locatorCode)}
+    ${buildLocatorDeclaration(ctx, action, locatorCode)}
 ${skipGuard}${visibleLine}    try {
       await locator.waitFor({ state: 'visible', timeout: ${locatorVisibleTimeout} });
     } catch (e) {
@@ -193,13 +185,12 @@ ${skipGuard}${visibleLine}    try {
     }
     await page.waitForLoadState('networkidle', { timeout: ${wait.networkIdleAfterMs} }).catch(() => {});
     await waitForPostInteractionPaint(page);
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { mode: 'stable' });
   });
 
 `;
     case 'selectOption':
       return `  await step('${label}', async () => {
-${beforeScreenshotLine(stepIndex, fileLabel, runDirVariable)}    ${buildLocatorDeclaration(ctx, action, locatorCode)}
+    ${buildLocatorDeclaration(ctx, action, locatorCode)}
 ${skipGuard}${visibleLine}    try {
       await locator.waitFor({ state: 'visible', timeout: ${locatorVisibleTimeout} });
     } catch (e) {
@@ -214,13 +205,12 @@ ${skipGuard}${visibleLine}    try {
     }
     await page.waitForLoadState('networkidle', { timeout: ${wait.networkIdleAfterMs} }).catch(() => {});
     await waitForPostInteractionPaint(page);
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { mode: 'stable' });
   });
 
 `;
     case 'press':
       return `  await step('${label}', async () => {
-${beforeScreenshotLine(stepIndex, fileLabel, runDirVariable)}    ${buildLocatorDeclaration(ctx, action, locatorCode)}
+    ${buildLocatorDeclaration(ctx, action, locatorCode)}
 ${skipGuard}${visibleLine}    try {
       await locator.waitFor({ state: 'visible', timeout: ${locatorVisibleTimeout} });
     } catch (e) {
@@ -235,7 +225,6 @@ ${skipGuard}${visibleLine}    try {
     }
     await page.waitForLoadState('networkidle', { timeout: ${wait.networkIdleAfterMs} }).catch(() => {});
     await waitForPostInteractionPaint(page);
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-${fileLabel}-after.png\`), { mode: 'stable' });
   });
 
 `;
@@ -261,8 +250,7 @@ function generateActionsCode(ctx: CodegenCtx, actions: Action[], runDirVariable:
     await page.goto('${gotoUrl}', { waitUntil: 'load' });
     ${ctx.options.waitLoad ? `await page.waitForLoadState('networkidle', { timeout: ${wait.networkIdleGotoMs} }).catch(() => {});` : ''}
     ${appReadyWait}
-    await takeStepScreenshot(page, path.join(${runDirVariable}, \`step-${stepIndex}-导航到页面.png\`));
-  });
+  }, { snapshot: '导航到页面', state: 'normal' });
 
 `;
       stepIndex++;
@@ -292,6 +280,8 @@ export function generateTemplateCode(input: {
   const needsFill = actions.some((a) => a.type === 'fill');
   const actionImports = [
     'step',
+    'bindStepCapture',
+    'captureStepState',
     'maybePause',
     ...(needsClick ? ['smartClick'] : []),
     ...(needsFill ? ['smartFill'] : []),
@@ -300,7 +290,7 @@ export function generateTemplateCode(input: {
   const template = `import { test, expect } from '${imp.fixtures}';
 import fs from 'fs';
 import path from 'path';
-import { takeStepScreenshot, waitForPostInteractionPaint, withScreenshotRunSegment } from '${imp.screenshot}';
+import { waitForPostInteractionPaint, withScreenshotRunSegment } from '${imp.screenshot}';
 import { ${actionImports.join(', ')} } from '${imp.optimizedActions}';
 
 ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testName}', async ({ page }) => {
@@ -314,6 +304,7 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const runDir = path.join(screenshotDir, timestamp);
+  bindStepCapture({ page, runDir });
 
   // 检查是否有页面导航操作
   const hasGotoAction = ${actions.some(action => action.type === 'goto')};
@@ -323,8 +314,7 @@ ${testUseLines.length > 0 ? testUseLines.join('\n') + '\n\n' : ''}test('${testNa
     await step('导航到首页', async () => {
       console.log('🌐 导航到: /main/home (基于 baseURL)');
       await page.goto('/main/home', { waitUntil: 'load' });
-      await takeStepScreenshot(page, path.join(runDir, \`step-1-导航到首页.png\`));
-    });
+    }, { snapshot: '导航到首页', state: 'normal' });
   }
 
   ${generateActionsCode(ctx, actions, 'runDir')}

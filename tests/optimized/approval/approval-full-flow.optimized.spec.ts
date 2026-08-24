@@ -6,9 +6,9 @@ import fs from 'fs';
 import path from 'path';
 import { test } from '../fixtures';
 import { ApprovalListPage } from '../../../approval-flow/pages/approval-list.page';
-import { step } from '../../utils/optimized-actions';
+import { bindStepCapture, step } from '../../utils/optimized-actions';
 import { assertNotLoginLikePage } from '../../../src/utils/login-detection';
-import { visualTest, waitForPostInteractionPaint, withScreenshotRunSegment } from '../../../src/utils/screenshot';
+import { waitForPostInteractionPaint, withScreenshotRunSegment } from '../../../src/utils/screenshot';
 
 /**
  * 审批列表全流程（Studio 可选）。
@@ -32,18 +32,20 @@ test.describe('Golden Set · 审批列表全流程', () => {
     test.setTimeout(90_000);
     const approval = new ApprovalListPage(page);
 
+    const screenshotDir = withScreenshotRunSegment('screenshots/stage/golden-set/approval-full-flow');
+    fs.mkdirSync(screenshotDir, { recursive: true });
+    const runDir = path.join(screenshotDir, new Date().toISOString().replace(/[:.]/g, '-'));
+    bindStepCapture({ page, runDir });
+
     await step('打开审批列表', async () => {
       await approval.goto();
       await approval.expectLoaded();
       await assertNotLoginLikePage(page, 'approval-full-flow load');
-    });
+    }, { capture: false });
 
-    const screenshotDir = withScreenshotRunSegment('screenshots/stage/golden-set/approval-full-flow');
-    fs.mkdirSync(screenshotDir, { recursive: true });
-    const runDir = path.join(screenshotDir, new Date().toISOString().replace(/[:.]/g, '-'));
-
-    await waitForPostInteractionPaint(page);
-    await visualTest(page, { dir: runDir, name: 'approval-list', state: 'normal', step: 1 });
+    await step('列表加载验收', async () => {
+      await waitForPostInteractionPaint(page);
+    }, { snapshot: 'approval-list', state: 'normal' });
 
     await step('切换到「我的已办」页签', async () => {
       await approval.switchTab('我的已办');
