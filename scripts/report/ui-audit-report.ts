@@ -8,6 +8,9 @@ export interface AuditStepReport {
   stepNumber?: number;
   /** 报告 HTML 所在目录到截图的相对路径 */
   screenshotRel: string;
+  /** 报告 HTML 所在目录到 Figma 设计稿图的相对路径 */
+  figmaRel?: string;
+  figmaUrl?: string;
   /** 截图真实像素尺寸，用于把 bbox 换算成百分比 */
   imageWidth: number;
   imageHeight: number;
@@ -125,12 +128,35 @@ function renderCard(step: AuditStepReport): string {
         ? '<span class="src ai">AI 视觉</span>'
         : '<span class="src err">分析失败</span>';
 
+  const figmaBadge = step.figmaRel
+    ? '<span class="src figma">Figma 基准</span>'
+    : '';
+
   const title = `${step.stepNumber != null ? `#${step.stepNumber} ` : ''}${step.stepName}`;
 
   const sub =
     result.verdict === 'skipped'
-      ? `${escapeHtml(step.scriptKey)} · 未审计 ${sourceBadge}`
-      : `${escapeHtml(step.scriptKey)} · 健康分 ${result.score} ${sourceBadge}`;
+      ? `${escapeHtml(step.scriptKey)} · 未审计 ${sourceBadge}${figmaBadge}`
+      : `${escapeHtml(step.scriptKey)} · 健康分 ${result.score} ${sourceBadge}${figmaBadge}`;
+
+  const shotHtml = step.figmaRel
+    ? `<div class="compare">
+      <div>
+        <div class="cap">Figma 设计稿</div>
+        <div class="shot"><img src="${escapeHtml(step.figmaRel)}" loading="lazy" /></div>
+      </div>
+      <div>
+        <div class="cap">实际页面</div>
+        <div class="shot">
+          <img src="${escapeHtml(step.screenshotRel)}" loading="lazy" />
+          ${renderOverlay(step)}
+        </div>
+      </div>
+    </div>`
+    : `<div class="shot">
+      <img src="${escapeHtml(step.screenshotRel)}" loading="lazy" />
+      ${renderOverlay(step)}
+    </div>`;
 
   return `<div class="card ${result.verdict}">
     <div class="head">
@@ -138,10 +164,7 @@ function renderCard(step: AuditStepReport): string {
       <span class="badge ${result.verdict}">${VERDICT_LABEL[result.verdict]}</span>
     </div>
     <div class="sub">${sub}</div>
-    <div class="shot">
-      <img src="${escapeHtml(step.screenshotRel)}" loading="lazy" />
-      ${renderOverlay(step)}
-    </div>
+    ${shotHtml}
     <ul class="issues">${issuesHtml}</ul>
   </div>`;
 }
@@ -189,7 +212,9 @@ export function renderAuditReportHtml(
  .badge.fail{background:#fdecec;color:#e5484d}.badge.skipped{background:#f0f1f3;color:#888}
  .sub{color:#888;font-size:12px;margin:4px 0 8px;word-break:break-all}
  .src{background:#eef0f3;color:#555;padding:1px 6px;border-radius:4px;font-size:11px;margin-left:4px}
- .src.ai{background:#eef4ff;color:#0a66c2}.src.err{background:#fdecec;color:#e5484d}
+ .src.ai{background:#eef4ff;color:#0a66c2}.src.err{background:#fdecec;color:#e5484d}.src.figma{background:#f3e8ff;color:#7c3aed}
+ .compare{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+ .cap{font-size:11px;color:#888;padding:4px 6px;background:#f7f8fa;line-height:1.4}
  .shot{position:relative;line-height:0;border:1px solid #eee;border-radius:6px;overflow:hidden;background:#fafafa}
  .shot img{width:100%;display:block}
  .overlay{position:absolute;inset:0}
@@ -206,7 +231,7 @@ export function renderAuditReportHtml(
  .empty{background:#fff;border:1px dashed #ccc;border-radius:10px;padding:32px;text-align:center;color:#888}
 </style></head>
 <body>
- <div class="top"><h1>AI UI 审计报告（Layer 1 单图审计）</h1><div class="time">${escapeHtml(when)}${modeText}</div></div>
+ <div class="top"><h1>AI UI 审计报告</h1><div class="time">${escapeHtml(when)}${modeText}</div></div>
  <div class="stats">
    <div class="stat p">🟢 通过 ${counts.pass}</div>
    <div class="stat r">🟡 待确认 ${counts.review}</div>

@@ -10,6 +10,7 @@ export type AuditIssueType =
   | 'component'
   | 'missing-element'
   | 'console'
+  | 'design-mismatch'
   | 'other';
 
 /** 三态结论：不再只有 通过/失败。skipped = 缺少判定依据，未做有效审计 */
@@ -41,6 +42,8 @@ export interface AuditResult {
   issues: AuditIssue[];
   /** mock=规则推断，ai=视觉模型，error=分析失败 */
   source: 'mock' | 'ai' | 'error';
+  /** 本步是否实际用上了 Figma 双图对比 */
+  baseline?: 'none' | 'figma';
 }
 
 const ISSUE_TYPES = new Set<AuditIssueType>([
@@ -52,6 +55,7 @@ const ISSUE_TYPES = new Set<AuditIssueType>([
   'component',
   'missing-element',
   'console',
+  'design-mismatch',
   'other',
 ]);
 

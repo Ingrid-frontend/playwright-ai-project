@@ -95,6 +95,8 @@ async function runUiAudit(ws, session, msg = {}, deps) {
   const args = ['run', 'ui-audit', '--', `--limit=${limit}`];
   if (scriptFilter) args.push(`--script=${scriptFilter}`);
   if (gate) args.push('--gate');
+  const figmaUrl = String(msg.figma || '').trim();
+  if (figmaUrl) args.push(`--figma=${figmaUrl}`);
 
   const env = buildRepoSpawnEnv(session);
   if (mockOnly) env.AI_AUDIT_MOCK = '1';
@@ -105,7 +107,7 @@ async function runUiAudit(ws, session, msg = {}, deps) {
   send(ws, 'ui-audit:run:start', { limit, script: scriptFilter, gate, mode: usingAi ? 'ai' : 'mock' });
   logLine(
     ws,
-    `[ui-audit] 开始审计 · limit=${limit}${scriptFilter ? ` · script=${scriptFilter}` : ''} · ${usingAi ? 'AI 视觉分析' : 'mock 规则分析'}`,
+    `[ui-audit] 开始审计 · limit=${limit}${scriptFilter ? ` · script=${scriptFilter}` : ''}${figmaUrl ? ' · Figma 基准' : ''} · ${usingAi ? 'AI 视觉分析' : 'mock 规则分析'}`,
     'info',
   );
   if (!usingAi && !mockOnly) {

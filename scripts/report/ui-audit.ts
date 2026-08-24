@@ -9,6 +9,8 @@ import {
   relativeAssetPath,
   type AuditStepReport,
 } from './ui-audit-report.js';
+import { resolveFigmaBaseline } from './figma-baseline.js';
+import { applyAuditRules, resolveAuditRule } from './ui-audit-rules.js';
 
 // 必须在读取任何 AI_* 环境变量前加载，否则 .env 里配好的 Key 会被漏掉、永远降级 mock
 dotenv.config({ path: path.join(process.cwd(), '.env') });
@@ -19,6 +21,8 @@ interface Args {
   out: string;
   gate: boolean;
   script?: string;
+  figma?: string;
+  figmaImage?: string;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -36,6 +40,8 @@ function parseArgs(argv: string[]): Args {
     out: get('out') || path.join('results', 'ui-audit'),
     gate: argv.includes('--gate'),
     script: get('script'),
+    figma: get('figma'),
+    figmaImage: get('figma-image'),
   };
 }
 
@@ -133,6 +139,8 @@ async function main(): Promise<void> {
       console.log('   ⚠️  未检测到 AI_API_KEY，将自动降级');
     }
   }
+  if (args.figma) console.log(`   Figma URL: ${args.figma}`);
+  if (args.figmaImage) console.log(`   Figma 本地图: ${args.figmaImage}`);
 
   const candidates = collectCandidates(rootDir, args.script).slice(0, args.limit);
   if (candidates.length === 0) {
@@ -153,11 +161,30 @@ async function main(): Promise<void> {
     const imageWidth = size?.width ?? meta.imageWidth ?? meta.viewport?.width ?? 0;
     const imageHeight = size?.height ?? meta.imageHeight ?? meta.viewport?.height ?? 0;
 
-    const result = await auditStep(cand.pngPath, meta, {
+    const figma = await resolveFigmaBaseline({
       scriptKey: cand.scriptKey,
       stepName: cand.stepName,
       stepNumber: cand.stepNumber,
+      cliFigmaUrl: args.figma,
+      cliFigmaImage: args.figmaImage,
+      cacheDir: path.join(outDir, 'figma-cache'),
     });
+
+    const auditRule = resolveAuditRule(cand.scriptKey, cand.stepName, cand.stepNumber);
+
+    const rawResult = await auditStep(
+      cand.pngPath,
+      meta,
+      {
+        scriptKey: cand.scriptKey,
+        stepName: cand.stepName,
+        stepNumber: cand.stepNumber,
+        figmaUrl: figma?.url,
+        expect: auditRule?.expect,
+      },
+      { figmaImagePath: figma?.imagePath },
+    );
+    const result = applyAuditRules(rawResult, auditRule);
 
     // 复制截图到报告目录，保证报告可独立分享
     const assetName = `${String(index + 1).padStart(2, '0')}-${path.basename(cand.pngPath)}`;
@@ -168,11 +195,25 @@ async function main(): Promise<void> {
       /* 复制失败不影响审计结论 */
     }
 
+    let figmaRel: string | undefined;
+    if (figma?.imagePath) {
+      const figmaName = `${String(index + 1).padStart(2, '0')}-figma${path.extname(figma.imagePath) || '.png'}`;
+      const figmaPath = path.join(assetDir, figmaName);
+      try {
+        fs.copyFileSync(figma.imagePath, figmaPath);
+        figmaRel = relativeAssetPath(outDir, figmaPath);
+      } catch {
+        /* 复制失败不影响审计结论 */
+      }
+    }
+
     steps.push({
       scriptKey: cand.scriptKey,
       stepName: cand.stepName,
       stepNumber: cand.stepNumber,
       screenshotRel: relativeAssetPath(outDir, assetPath),
+      figmaRel,
+      figmaUrl: figma?.url,
       imageWidth,
       imageHeight,
       viewportWidth: meta.viewport?.width ?? imageWidth,
@@ -193,11 +234,12 @@ async function main(): Promise<void> {
       result.verdict === 'skipped'
         ? '未审计（缺少判定依据）'
         : `分 ${result.score}，问题 ${result.issues.length}`;
-    console.log(`  ${icon} ${cand.scriptKey} / ${cand.stepName} — ${detail}`);
+    console.log(`  ${icon} ${cand.scriptKey} / ${cand.stepName} — ${detail}${figmaRel ? ' · Figma' : ''}`);
   }
 
+  const figmaCount = steps.filter((s) => s.figmaRel).length;
   const html = renderAuditReportHtml(steps, {
-    mode: mock ? 'mock 规则分析' : 'AI 视觉分析',
+    mode: `${mock ? 'mock 规则分析' : 'AI 视觉分析'}${figmaCount ? ` · Figma 基准 ${figmaCount}` : ''}`,
   });
   const htmlPath = path.join(outDir, 'index.html');
   fs.writeFileSync(htmlPath, html, 'utf-8');
@@ -210,11 +252,14 @@ async function main(): Promise<void> {
     review: steps.filter((s) => s.result.verdict === 'review').length,
     fail: steps.filter((s) => s.result.verdict === 'fail').length,
     skipped: steps.filter((s) => s.result.verdict === 'skipped').length,
+    figma: figmaCount,
     steps: steps.map((s) => ({
       scriptKey: s.scriptKey,
       stepName: s.stepName,
       verdict: s.result.verdict,
       score: s.result.score,
+      baseline: s.result.baseline,
+      figmaUrl: s.figmaUrl,
       issues: s.result.issues,
     })),
   };

@@ -185,6 +185,103 @@ async function main(): Promise<void> {
   );
   console.log('✅ 无判定依据时正确标记为未审计，未产生假绿');
 
+  const { parseFigmaUrl, matchFigmaMapping } = await import('../report/figma-baseline.js');
+  const parsed = parseFigmaUrl('https://www.figma.com/design/AbCd1234/My-File?node-id=12-34');
+  assert.ok(parsed, '应能解析带 node-id 的 Figma URL');
+  assert.equal(parsed.fileKey, 'AbCd1234');
+  assert.equal(parsed.nodeId, '12:34');
+  assert.equal(parseFigmaUrl('https://www.figma.com/design/AbCd1234/My-File'), null, '缺 node-id 应拒绝');
+  const mapped = matchFigmaMapping(
+    [{ script: 'verify/self-test', figmaUrl: 'https://www.figma.com/design/AbCd1234/x?node-id=1-2' }],
+    'verify/self-test',
+    '自测页面',
+    1,
+  );
+  assert.ok(mapped, '应按 script 匹配到 Figma 映射');
+  console.log('✅ Figma URL 解析与配置匹配正确');
+
+  const figmaHtml = renderAuditReportHtml([{ ...steps[0], figmaRel: steps[0].screenshotRel }]);
+  assert.ok(figmaHtml.includes('Figma 设计稿'), '有 Figma 基准时应并排展示设计稿');
+  console.log('✅ 报告在有 Figma 基准时展示设计稿对照');
+
+  const mockWithFigma = await auditStep(
+    pngPath,
+    JSON.parse(fs.readFileSync(emptyMetaPath, 'utf-8')),
+    { scriptKey: 'verify/self-test', stepName: '无信号页面' },
+    { figmaImagePath: pngPath },
+  );
+  assert.equal(mockWithFigma.verdict, 'skipped', 'mock 有 Figma 图但仍无规则信号时保持 skipped');
+  assert.ok(
+    mockWithFigma.issues.some((i: { description: string }) => i.description.includes('Figma')),
+    'mock 应提示 Figma 基准未被对比',
+  );
+  console.log('✅ mock + Figma 不会把无信号步骤谎报为通过');
+
+  const { applyAuditRules: applyRules, resolveAuditRule } = await import('../report/ui-audit-rules.js');
+
+  const actionRule = resolveAuditRule(
+    'dev/260911/工作台_2026-08-20_19-29-59',
+    'action-skipped',
+    5,
+  );
+  assert.ok(actionRule, '无 step 的全局规则应命中 action-skipped');
+  const actionFiltered = applyRules(
+    {
+      score: 82,
+      verdict: 'review',
+      source: 'ai',
+      issues: [
+        {
+          id: 'o1',
+          type: 'occlusion',
+          severity: 'noise',
+          selector: '',
+          bbox: null,
+          description: '右侧悬浮AI入口贴视口右边缘，图标被部分裁切',
+          confidence: 0.35,
+        },
+      ],
+    },
+    actionRule,
+  );
+  assert.equal(actionFiltered.issues.length, 0, '悬浮 AI 裁切应被 dropPatterns 过滤');
+
+  const filtered = applyRules(
+    {
+      score: 85,
+      verdict: 'review',
+      source: 'ai',
+      issues: [
+        {
+          id: 'n1',
+          type: 'truncation',
+          severity: 'noise',
+          selector: '',
+          bbox: null,
+          description: '单号截断',
+          confidence: 0.5,
+        },
+        {
+          id: 'w1',
+          type: 'occlusion',
+          severity: 'warning',
+          selector: '',
+          bbox: null,
+          description: '右下角悬浮圆形按钮压在分页“跳至”输入框上',
+          confidence: 0.5,
+        },
+      ],
+    },
+    {
+      script: '260911',
+      dropNoiseBelow: 0.55,
+      dropPatterns: ['跳至', '悬浮圆形'],
+    },
+  );
+  assert.equal(filtered.issues.length, 0, '应过滤低置信 noise/warning 与 dropPatterns');
+  assert.equal(filtered.verdict, 'pass', '过滤后应恢复 pass');
+  console.log('✅ 业务白名单后处理可过滤低置信 noise/warning');
+
   // 清理
   fs.rmSync(reportDir, { recursive: true, force: true });
 

@@ -7,6 +7,8 @@ export interface AuditStepContext {
   stepNumber?: number;
   /** 业务期望（可选），来自 Test Spec 或配置 */
   expect?: string[];
+  /** 已提供 Figma 设计稿图时填写，供双图对比 */
+  figmaUrl?: string;
 }
 
 /** 严格 JSON 输出契约 —— 单独抽出便于自测断言 */
@@ -15,7 +17,7 @@ export const AUDIT_RESULT_CONTRACT = `{
   "verdict": "pass" | "review" | "fail",
   "issues": [
     {
-      "type": "overflow|occlusion|truncation|layout|whitespace|component|missing-element|console|other",
+      "type": "overflow|occlusion|truncation|layout|whitespace|component|missing-element|console|design-mismatch|other",
       "severity": "blocker|warning|noise",
       "selector": "CSS 选择器或空字符串",
       "bbox": { "x": 数字, "y": 数字, "width": 数字, "height": 数字 },
@@ -25,11 +27,25 @@ export const AUDIT_RESULT_CONTRACT = `{
   ]
 }`;
 
-export function buildAuditSystemPrompt(): string {
-  return `你是资深 UI 审查工程师，负责判断一张页面截图是否存在**有意义的 UI 缺陷**。
+export function buildAuditSystemPrompt(opts?: { hasFigma?: boolean }): string {
+  const figmaRules = opts?.hasFigma
+    ? `
+你会收到两张图：第一张是 **Figma 设计稿（基准）**，第二张是 **实际页面截图**。
+以设计稿为基准判断实际页面是否存在有意义的偏差。额外类型：
+- design-mismatch：相对设计稿的结构/层级/关键区块缺失或明显错位（不是像素级差异）
 
+对比规则：
+- 以设计稿的布局结构、组件有无、信息层级为准
+- 不要把动态数据（时间、数字、头像、真实列表内容）与设计稿占位数据的差异当缺陷
+- 不要做像素级对比，不要因抗锯齿、字体微调报问题
+- 设计稿可能不含真实数据或登录态，这不是缺陷
+`
+    : `
 你会收到四部分输入：截图、DOM 摘要、元素几何信息、测试步骤上下文。
+`;
 
+  return `你是资深 UI 审查工程师，负责判断一张页面截图是否存在**有意义的 UI 缺陷**。
+${figmaRules}
 只报告以下真实缺陷类型：
 - overflow：内容溢出容器或横向溢出视口
 - occlusion：元素被遮挡、重叠
@@ -39,12 +55,13 @@ export function buildAuditSystemPrompt(): string {
 - component：控件渲染异常（表格空、按钮变形、图片裂图）
 - missing-element：应存在的关键元素缺失
 - console：运行时报错导致的渲染问题
-
+${opts?.hasFigma ? '- design-mismatch：相对 Figma 设计稿的结构/关键区块明显偏离\n' : ''}
 严格禁止：
 1. 不做审美评价（配色好不好看、间距美不美）
 2. 不猜测业务逻辑正确性
 3. 不把正常的动态数据（时间、数字、头像）当缺陷
 4. 没有把握就不报，或用低 confidence + severity=noise
+5. 【业务白名单】里列出的项一律不报；与 Figma 一致且用户声明为设计如此的，不报 design-mismatch / layout
 
 bbox 必须使用**截图视口坐标系**（左上角为原点，单位 px）。无法定位时 bbox 用 null。
 
@@ -111,8 +128,11 @@ export function buildAuditUserPrompt(meta: StepMeta, ctx: AuditStepContext): str
           .join('\n')
       : '无';
 
+  const expectLines = ctx.expect && ctx.expect.length > 0 ? ctx.expect : [];
   const expectSection =
-    ctx.expect && ctx.expect.length > 0 ? ctx.expect.map((e) => `- ${e}`).join('\n') : '（未声明）';
+    expectLines.length > 0
+      ? `（含业务白名单，下列项不算缺陷）\n${expectLines.map((e) => `- ${e}`).join('\n')}`
+      : '（未声明）';
 
   return `【测试步骤】
 - 脚本: ${ctx.scriptKey}
@@ -132,5 +152,13 @@ ${buildDomSection(meta)}
 【运行时错误】
 ${errSection}
 
-请审查截图，按约定 JSON 输出审计结果。注意 bbox 使用视口坐标系（视口宽 ${vp?.width ?? imgW}px）。`;
+${
+    ctx.figmaUrl
+      ? `【Figma 设计稿】
+- 地址: ${ctx.figmaUrl}
+- 图1 = 设计稿（基准），图2 = 实际页面。只报相对设计稿的有意义偏差。
+
+`
+      : ''
+  }请审查截图${ctx.figmaUrl ? '并对照设计稿' : ''}，按约定 JSON 输出审计结果。注意 bbox 使用视口坐标系（视口宽 ${vp?.width ?? imgW}px）。`;
 }

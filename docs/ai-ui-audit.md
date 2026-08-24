@@ -9,11 +9,11 @@
 | `compare-screenshots`（pixelmatch） | 无基线 → 无法判断；像素没变但 UI 已坏 → 漏检 |
 | `ui-issue-ai-review`（Claude Vision） | 只复审 pixelmatch **已标记**的 issue，需要基线 + diff 图 |
 
-这一层解决的是「**UI 有没有发生有意义的衰退**」：不依赖基线，对**单张截图**做结构化审计。
+这一层解决的是「**UI 有没有发生有意义的衰退**」：默认对**单张截图**做结构化审计；若提供 Figma 设计稿，则以设计稿为基准做双图对比。
 
 两层关系：
 
-- **Layer 1（本模块）**：AI 单图审计 —— 无基线也能发现溢出、遮挡、截断、错位、元素缺失
+- **Layer 1（本模块）**：AI 审计 —— 无截图基线也能发现溢出、遮挡、截断、错位、元素缺失；有 Figma 稿时再对照设计稿
 - **Layer 2（既有）**：pixelmatch 精确变更检测 —— 回答「哪里变了」，作为辅助输入而非最终裁判
 
 ## 数据来源：复用既有 sidecar
@@ -43,7 +43,12 @@ scripts/report/
 ├── ui-audit-prompt.ts     # 4 段式 prompt + 严格 JSON 输出契约
 ├── ui-audit-analyzer.ts   # mock 规则分析 + Claude Vision 调用 + 降级
 ├── ui-audit-report.ts     # HTML 报告 + bbox 标注框
-└── ui-audit.ts            # 入口：扫描 png+meta 配对 → 分析 → 报告
+├── ui-audit.ts            # 入口：扫描 png+meta 配对 → 分析 → 报告
+└── figma-baseline.ts      # Figma URL 解析 / 配置匹配 / 导出图拉取
+
+config/
+└── figma-baselines.json   # 可选：script/step → Figma URL 映射
+└── ui-audit-rules.json    # 可选：script/step → 业务白名单（不算缺陷）
 
 scripts/verify/
 └── verify-ui-audit.ts     # 全链路验证（无需 API Key）
@@ -67,7 +72,13 @@ npm run ui-audit -- --limit=8
 # 4) 只审计某个脚本
 npm run ui-audit -- --script=审批列表页可见
 
-# 5) CI 卡口：存在「需修复」时退出码 1
+# 5) 带 Figma 设计稿基准（需 FIGMA_ACCESS_TOKEN；URL 请加引号）
+npm run ui-audit -- --figma="https://www.figma.com/design/xxx/name?node-id=12-34"
+
+# 6) 用本地导出的设计稿图（无 Token / 自检）
+npm run ui-audit -- --figma-image=path/to/design.png
+
+# 7) CI 卡口：存在「需修复」时退出码 1
 npm run ui-audit -- --gate
 ```
 
@@ -79,6 +90,8 @@ npm run ui-audit -- --gate
 | `--limit` | `12` | 最多审计多少张（按 mtime 倒序，优先最近） |
 | `--out` | `results/ui-audit` | 报告输出目录 |
 | `--script` | — | 按 scriptKey 子串过滤 |
+| `--figma` | — | Figma 设计稿 URL（需含 `node-id`），本轮所有步骤共用 |
+| `--figma-image` | — | 本地设计稿 PNG，不调 Figma API，便于自检 |
 | `--gate` | 关 | 有 `fail` 时退出码 1 |
 
 ### 环境变量
@@ -92,6 +105,7 @@ npm run ui-audit -- --gate
 | `AI_BASE_URL` | → `AI_TEST_OPENAI_BASE_URL` → `OPENAI_API_BASE` → `OPENAI_BASE_URL` | 接口根地址，默认 `https://api.openai.com` |
 | `AI_VISION_MODEL` | → `AI_MODEL` → `AI_TEST_MODEL` → `OPENAI_MODEL` | 视觉模型，默认 `gpt-4o-mini` |
 | `AI_AUDIT_MOCK` | — | `1` 强制 mock；`0` 强制真跑 |
+| `FIGMA_ACCESS_TOKEN` | → `FIGMA_TOKEN` → `FIGMA_API_TOKEN` | 拉取 Figma 节点导出图；未配置则忽略 `--figma` / 映射，仍走单图审计 |
 
 **回退链的用意**：项目 `.env` 里若已配了 `AI_TEST_OPENAI_*`（供 `src/ai/llm-client.ts` 用），
 审计模块直接复用，不必再配一份。只想给审计单独指定模型/网关时，才设 `AI_*` 覆盖。
@@ -125,6 +139,7 @@ npm run studio          # 默认 http://localhost:3001
 |---|---|
 | 审计张数上限 | `--limit` |
 | 脚本过滤 | `--script` |
+| Figma 设计稿 URL | `--figma` |
 | Gate 模式 | `--gate` |
 | 强制 mock 规则分析 | `AI_AUDIT_MOCK=1` |
 | 运行 AI UI 审计 | `npm run ui-audit` |
@@ -216,7 +231,70 @@ results/ui-audit/
 |---|---|
 | 有基线，想知道「哪里变了」 | `npm run compare-screenshots` |
 | 有基线 + diff，想复审「变化是否真缺陷」 | `ui-issue-ai-review`（既有） |
-| **无基线**，想知道「这一屏 UI 是否已坏」 | **`npm run ui-audit`（本模块）** |
+| **无截图基线**，想知道「这一屏 UI 是否已坏」 | **`npm run ui-audit`（本模块）** |
+| **有 Figma 设计稿**，想知道「实现是否偏离设计」 | **`npm run ui-audit -- --figma=...`（本模块）** |
+
+## Figma 设计稿基准
+
+默认行为不变：不传设计稿时仍是单图审计。
+
+提供设计稿的三种方式（优先级从高到低）：
+
+1. `--figma-image=<png>`：本地导出图，不调 Figma API
+2. `--figma=<url>` / Studio 输入框：本轮所有步骤共用同一节点
+3. `config/figma-baselines.json`：按 `script` 子串匹配，可再按 `step` 收窄
+
+```json
+{
+  "mappings": [
+    {
+      "script": "intent/dev/审批列表页可见",
+      "figmaUrl": "https://www.figma.com/design/FILEKEY/name?node-id=12-34"
+    }
+  ]
+}
+```
+
+约束：
+
+- URL 必须带 `node-id`（指向具体 Frame/节点，不能只给文件链接）
+- 需要 `FIGMA_ACCESS_TOKEN`（Figma 个人 Access Token）才能拉导出图
+- Token 缺失、URL 无法解析、接口失败 → 打警告并回退单图审计，不中断
+- mock 模式看不了图：即使给了 Figma，无规则信号时仍是 ⚪ skipped，不会假绿
+- 对比只报结构/层级/关键区块的有意义偏差，不把动态数据与设计稿占位差异当缺陷
+
+## 业务白名单（修正误报）
+
+AI 把「设计如此 / 规范允许」报成 `truncation` / `layout` / `overflow` / `occlusion` 时，在 `config/ui-audit-rules.json` 声明**不算缺陷**：
+
+```json
+{
+  "rules": [
+    {
+      "script": "approve",
+      "step": "返",
+      "expect": [
+        "单号列省略号截断是列宽规范，不要报 truncation",
+        "行左侧角标与展开按钮布局与 Figma 一致，不要报 layout",
+        "右侧 AI 入口贴边裁切是产品设计，不要报 overflow",
+        "开发/调试悬浮钮不计入 occlusion"
+      ],
+      "dropNoiseBelow": 0.55
+    }
+  ]
+}
+```
+
+| 字段 | 作用 |
+|---|---|
+| `script` | 匹配 `scriptKey` 子串 |
+| `step` | 可选，匹配步骤名/步号 |
+| `expect` | 写入 prompt【业务期望】，让模型别报 |
+| `dropNoiseBelow` | 后处理：丢弃低于该置信度的 `noise` / `warning`（`blocker` 不丢） |
+| `dropTypes` | 后处理：丢弃指定类型 |
+| `dropPatterns` | 后处理：描述含子串则丢弃 |
+
+开发工具悬浮钮：白名单 + 截图前用 `config/ui-regression.json` 的 `maskSelectors` 遮掉更干净。
 
 ## 后续演进
 
@@ -224,3 +302,15 @@ results/ui-audit/
 - **P2**：把 Layer 2 的 `changedBox` 作为 bbox 提示注入 prompt，提升定位精度
 - **P3**：Test Intent → 动态生成 Playwright 脚本
 - **P4**：把审计结论接入飞书通知与 CI 卡口
+
+## Change Log
+
+### 2026-08-24
+
+- AI UI 审计支持可选 Figma 设计稿基准：`--figma` / `--figma-image` / `config/figma-baselines.json` / Studio 输入框
+- 有稿时视觉模型收两张图（设计稿 + 实际页），并增加 `design-mismatch` 类型
+- 无稿、无 Token、拉取失败时回退原单图审计，不中断
+- mock 模式即使给了 Figma 也不改 skipped 结论，避免假绿
+- `config/ui-audit-rules.json`：业务白名单 + `dropNoiseBelow` 后处理误报
+- 是否影响旧逻辑：否（默认仍是单图审计）
+- 是否影响默认行为：否

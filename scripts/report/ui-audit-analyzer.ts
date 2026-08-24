@@ -240,10 +240,26 @@ function parseAuditJson(text: string): unknown {
   }
 }
 
+function visionContent(
+  images: { label?: string; image: ImagePart }[],
+  userPrompt: string,
+): Array<Record<string, unknown>> {
+  const content: Array<Record<string, unknown>> = [];
+  for (const item of images) {
+    if (item.label) content.push({ type: 'text', text: item.label });
+    content.push({
+      type: 'image_url',
+      image_url: { url: `data:${item.image.mediaType};base64,${item.image.data}` },
+    });
+  }
+  content.push({ type: 'text', text: userPrompt });
+  return content;
+}
+
 async function callVision(
   system: string,
   userPrompt: string,
-  image: ImagePart,
+  images: { label?: string; image: ImagePart }[],
   config: VisionConfig,
 ): Promise<string> {
   const res = await fetchWithRetry(config.url, {
@@ -254,7 +270,7 @@ async function callVision(
     },
     body: JSON.stringify({
       model: config.model,
-      max_tokens: 1500,
+      max_tokens: images.length > 1 ? 2000 : 1500,
       temperature: 0,
       stream: false,
       // 部分兼容网关支持该字段强制 JSON；不支持时会忽略，prompt 里也已约定纯 JSON 输出
@@ -263,13 +279,7 @@ async function callVision(
         { role: 'system', content: system },
         {
           role: 'user',
-          content: [
-            {
-              type: 'image_url',
-              image_url: { url: `data:${image.mediaType};base64,${image.data}` },
-            },
-            { type: 'text', text: userPrompt },
-          ],
+          content: visionContent(images, userPrompt),
         },
       ],
     }),
@@ -288,66 +298,76 @@ async function callVision(
   return json.choices?.[0]?.message?.content || '';
 }
 
+function withInfo(result: AuditResult, description: string): AuditResult {
+  return {
+    ...result,
+    issues: [
+      ...result.issues,
+      {
+        id: `uia-info-${result.issues.length + 1}`,
+        type: 'other',
+        severity: 'info',
+        selector: '',
+        bbox: null,
+        description,
+        confidence: 1,
+      },
+    ],
+  };
+}
+
 /**
  * 审计单张截图。mock 模式或无 key 时走规则推断；
  * AI 调用失败时降级为 mock 结果并附带一条 info 说明，不中断整体流程。
+ * 传入 figmaImagePath 时走双图对比（Figma 为基准）。
  */
 export async function auditStep(
   screenshotPath: string,
   meta: StepMeta,
   ctx: AuditStepContext,
+  opts?: { figmaImagePath?: string },
 ): Promise<AuditResult> {
-  if (shouldUseMock()) return mockAnalyze(meta);
+  const figmaPath = opts?.figmaImagePath;
+  if (shouldUseMock()) {
+    const fallback = mockAnalyze(meta);
+    return figmaPath
+      ? withInfo(fallback, '已提供 Figma 基准但 mock 无法对比，请启用 AI 视觉')
+      : fallback;
+  }
 
   const config = resolveVisionConfig();
-  if (!config) return mockAnalyze(meta);
+  if (!config) {
+    const fallback = mockAnalyze(meta);
+    return figmaPath
+      ? withInfo(fallback, '已提供 Figma 基准但当前无视觉模型，已降级为规则分析')
+      : fallback;
+  }
 
   const image = readImageAsBase64(screenshotPath);
   if (!image) {
-    const fallback = mockAnalyze(meta);
-    return {
-      ...fallback,
-      issues: [
-        ...fallback.issues,
-        {
-          id: `uia-img-${fallback.issues.length + 1}`,
-          type: 'other',
-          severity: 'info',
-          selector: '',
-          bbox: null,
-          description: '截图不可读或超出大小限制，已降级为规则分析',
-          confidence: 1,
-        },
-      ],
-    };
+    return withInfo(mockAnalyze(meta), '截图不可读或超出大小限制，已降级为规则分析');
   }
+
+  const figmaImage = figmaPath ? readImageAsBase64(figmaPath) : null;
+  const hasFigma = Boolean(figmaImage);
+  const visionImages = hasFigma && figmaImage
+    ? [
+        { label: '【图1 · Figma 设计稿】', image: figmaImage },
+        { label: '【图2 · 实际页面截图】', image },
+      ]
+    : [{ image }];
 
   try {
     const text = await callVision(
-      buildAuditSystemPrompt(),
+      buildAuditSystemPrompt({ hasFigma }),
       buildAuditUserPrompt(meta, ctx),
-      image,
+      visionImages,
       config,
     );
-    return normalizeAuditResult(parseAuditJson(text), 'ai');
+    return { ...normalizeAuditResult(parseAuditJson(text), 'ai'), baseline: hasFigma ? 'figma' : 'none' };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.log(`⚠️  AI 审计失败 (${ctx.stepName}): ${msg.slice(0, 140)}`);
-    const fallback = mockAnalyze(meta);
-    return {
-      ...fallback,
-      issues: [
-        ...fallback.issues,
-        {
-          id: `uia-err-${fallback.issues.length + 1}`,
-          type: 'other',
-          severity: 'info',
-          selector: '',
-          bbox: null,
-          description: `AI 审计失败，已降级为规则分析: ${msg.slice(0, 80)}`,
-          confidence: 1,
-        },
-      ],
-    };
+    return withInfo(mockAnalyze(meta), `AI 审计失败，已降级为规则分析: ${msg.slice(0, 80)}`);
   }
 }
