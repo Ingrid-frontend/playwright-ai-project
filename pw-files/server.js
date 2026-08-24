@@ -63,6 +63,13 @@ const {
   sendUiAuditStatus,
   openExistingUiAuditReport,
 } = require('./lib/ui-audit-run');
+const {
+  sendApprovalFlowStatus,
+  sendApprovalFlowTestList,
+  runApprovalFlowProbe,
+  runApprovalFlowTests,
+  cancelApprovalFlow,
+} = require('./lib/approval-flow-run');
 const { runEgoAudit } = require('./lib/ego-audit');
 const { runEgoNlFlow } = require('./lib/ego-nl-run');
 const { runEgoExplore } = require('./lib/ego-explore');
@@ -401,6 +408,10 @@ const { sendHello, handleMessage } = createWsDispatcher({
     cancelUiAudit,
     sendUiAuditStatus,
     openExistingUiAuditReport,
+    sendApprovalFlowStatus,
+    runApprovalFlowProbe,
+    runApprovalFlowTests,
+    cancelApprovalFlow,
   },
   jobs: {
     handleJobsList,

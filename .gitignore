@@ -36,6 +36,7 @@ feishu-config.json
 datasource/accounts.json
 # 全量 UI 契约由 npm run index:frontend 生成；仓库只提交 datasource/ui-contract.seed.json
 datasource/ui-contract.json
+approval-flow/datasource/live-snapshot.json
 
 # Login state files (contains sensitive tokens)
 storage/loginState/*.json

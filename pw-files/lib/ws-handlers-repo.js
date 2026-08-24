@@ -2,6 +2,13 @@ const fs = require('fs');
 const path = require('path');
 const { listFlowReplays, runFlowReplay, deleteFlowReplays } = require('./flow-replay-list');
 const { runReplaySummary } = require('./replay-summary');
+const {
+  sendApprovalFlowStatus,
+  sendApprovalFlowTestList,
+  runApprovalFlowProbe,
+  runApprovalFlowTests,
+  cancelApprovalFlow,
+} = require('./approval-flow-run');
 
 function createRepoHandlers(ctx) {
   const {
@@ -444,6 +451,48 @@ function createRepoHandlers(ctx) {
 
     'cancel:ui-audit': async (_ws, session) => {
       cancelUiAudit(session);
+    },
+
+    'approval-flow:status': async (ws, session, _sessionId, msg) => {
+      sendApprovalFlowStatus(ws, session, {
+        resolveRepoRoot,
+        getSessionPlaywrightEnv,
+        getSessionAccountProfile,
+        buildRepoSpawnEnv,
+      }, msg);
+    },
+
+    'approval-flow:list-tests': async (ws, session, _sessionId, msg) => {
+      sendApprovalFlowTestList(ws, session, {
+        resolveRepoRoot,
+        getSessionPlaywrightEnv,
+        getSessionAccountProfile,
+        buildRepoSpawnEnv,
+      }, msg);
+    },
+
+    'approval-flow:probe': async (ws, session, _sessionId, msg) => {
+      await runApprovalFlowProbe(ws, session, msg, {
+        resolveRepoRoot,
+        spawn,
+        getSessionPlaywrightEnv,
+        getSessionAccountProfile,
+        buildRepoSpawnEnv,
+      });
+    },
+
+    'approval-flow:run': async (ws, session, _sessionId, msg) => {
+      await runApprovalFlowTests(ws, session, msg, {
+        resolveRepoRoot,
+        spawn,
+        getSessionPlaywrightEnv,
+        getSessionAccountProfile,
+        buildRepoSpawnEnv,
+      });
+    },
+
+    'cancel:approval-flow': async (_ws, session) => {
+      cancelApprovalFlow(session);
     },
 
     'cancel:intent-run': async (_ws, session) => {

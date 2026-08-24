@@ -1,0 +1,20 @@
+{
+  "name": "huilianyi-approval-flow",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "汇联易 · 审批列表页 全流程 Playwright 自动测试（类 /Users/hly/workplace/2026/0911/test 结构）",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "test:debug": "playwright test --debug",
+    "test:list": "playwright test --list",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.0",
+    "@types/node": "^20.19.43",
+    "dotenv": "^17.3.1"
+  }
+}
