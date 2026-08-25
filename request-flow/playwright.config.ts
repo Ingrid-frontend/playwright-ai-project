@@ -7,6 +7,7 @@ import { dirname } from 'node:path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 dotenv.config({ path: path.resolve(__dirname, '.env'), quiet: true });
+dotenv.config({ path: path.resolve(__dirname, '../.env'), quiet: true });
 
 const baseURL = process.env.BASE_URL || 'https://dev.huilianyi.com';
 

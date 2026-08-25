@@ -1,14 +1,18 @@
 import type { Page, Request, Response } from '@playwright/test';
+import { sendApiFailuresToFeishu } from '../../request-flow/utils/feishu-api-failure';
+import { requestToCurl } from '../../request-flow/utils/request-curl';
 
 export type ApiFailureKind = 'http' | 'business' | 'requestfailed';
 
 export type ApiFailure = {
   kind: ApiFailureKind;
   url: string;
+  fullUrl?: string;
   method: string;
   status?: number;
   bodySummary?: string;
   errorText?: string;
+  curl?: string;
 };
 
 export type ApiGuardOptions = {
@@ -130,8 +134,10 @@ export class ApiGuard {
     this.failures.push({
       kind: 'requestfailed',
       url: pathnameOf(url),
+      fullUrl: url,
       method: request.method(),
       errorText: failure,
+      curl: requestToCurl(request),
     });
   };
 
@@ -187,16 +193,27 @@ export class ApiGuard {
     await this.flush();
     if (this.failures.length === 0) return;
 
+    await sendApiFailuresToFeishu(this.failures, label);
+
     const lines = this.failures.map((f, i) => {
       const status = f.status != null ? ` status=${f.status}` : '';
       const body = f.bodySummary ? ` body=${f.bodySummary}` : '';
       const err = f.errorText ? ` error=${f.errorText}` : '';
-      return `  ${i + 1}. [${f.kind}] ${f.method} ${f.url}${status}${err}${body}`;
+      const curl = f.curl ? `\n     ${f.curl.split('\n').join('\n     ')}` : '';
+      return `  ${i + 1}. [${f.kind}] ${f.method} ${f.url}${status}${err}${body}${curl}`;
     });
 
     throw new Error(
       `${label} 监听发现 ${this.failures.length} 个失败接口：\n${lines.join('\n')}`
     );
+  }
+
+  private pushFailure(request: Request, failure: ApiFailure): void {
+    this.failures.push({
+      ...failure,
+      fullUrl: request.url(),
+      curl: requestToCurl(request),
+    });
   }
 
   private shouldWatch(url: string): boolean {
@@ -241,7 +258,7 @@ export class ApiGuard {
 
     if (status >= this.options.failStatusFrom) {
       if (status === 400 && /请求速度过快|"9960"/.test(bodySummary || '')) return;
-      this.failures.push({
+      this.pushFailure(request, {
         kind: 'http',
         url: shortUrl,
         method,
@@ -252,7 +269,7 @@ export class ApiGuard {
     }
 
     if (businessMsg && status >= 200 && status < 300) {
-      this.failures.push({
+      this.pushFailure(request, {
         kind: 'business',
         url: shortUrl,
         method,
