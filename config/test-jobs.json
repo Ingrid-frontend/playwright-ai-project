@@ -55,6 +55,25 @@
         "feishuNotify": true,
         "writeFeishuBitable": false
       }
+    },
+    {
+      "id": "approval-flow-write",
+      "enabled": false,
+      "description": "审批写操作（stage，APPROVAL_ENABLE_WRITE=1）；定时由 .github/workflows/approval-flow-write.yml 执行，本地可 npm run approval:test:write",
+      "schedule": "0 3 * * 1",
+      "timezone": "Asia/Shanghai",
+      "playwrightEnv": "stage",
+      "specs": "all",
+      "steps": {
+        "login": true,
+        "compare": false,
+        "compareGate": false,
+        "recordLastGreen": false,
+        "feishuNotify": true,
+        "createFeishuDoc": false,
+        "writeFeishuBitable": false
+      },
+      "notifyOn": ["failure"]
     }
   ]
 }

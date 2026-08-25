@@ -3,6 +3,20 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const { send, logLine, stripAnsi, errText } = require('./ws-safe');
 const { getEnvEntryResolved } = require('./repo-context');
+const {
+  logPlaywrightFailureReport,
+  parsePlaywrightFailures,
+  headedFailurePlaceholder,
+} = require('./failure-report');
+
+const catalogCheckMod = (() => {
+  try {
+    return require(path.join(__dirname, '../../approval-flow/utils/catalog-check.cjs'));
+  } catch {
+    return null;
+  }
+})();
+const checkCatalogAgainstSnapshot = catalogCheckMod?.checkCatalogAgainstSnapshot || null;
 
 const FLOW_DIR = 'approval-flow';
 const CONFIG_REL = path.join(FLOW_DIR, 'playwright.config.ts');
@@ -90,6 +104,10 @@ function listApprovalFlowTests(repoRoot, specRel, spawnEnv = process.env) {
   return { spec, tests: parsePlaywrightListOutput(out), error: '' };
 }
 
+function approvalFlowReportOpenPath() {
+  return 'approval-flow/playwright-report/index.html';
+}
+
 function snapshotSummary(snapshot) {
   const frame = pickSnapshotFrame(snapshot);
   if (!frame) return null;
@@ -121,6 +139,10 @@ function getApprovalFlowStatus(repoRoot, session, deps, msg = {}) {
   const resolved = getEnvEntryResolved(repoRoot, envId, profile);
   const storage = resolveStorage(repoRoot, envId);
   const snapshot = readSnapshot(repoRoot);
+  const catalogCheck =
+    snapshot && checkCatalogAgainstSnapshot
+      ? checkCatalogAgainstSnapshot(snapshot)
+      : { ok: true, warnings: snapshot ? [] : ['未探活，跳过 catalog 校验'] };
   const hasConfig = fs.existsSync(path.join(repoRoot, CONFIG_REL));
   const specs = listApprovalFlowSpecs(repoRoot);
   const spec = String(msg.spec || DEFAULT_SPEC).trim() || DEFAULT_SPEC;
@@ -135,6 +157,8 @@ function getApprovalFlowStatus(repoRoot, session, deps, msg = {}) {
     configRel: CONFIG_REL,
     snapshotRel: snapshot ? SNAPSHOT_REL : '',
     snapshot: snapshotSummary(snapshot),
+    catalogCheck,
+    reportOpenPath: `/repo-report/${approvalFlowReportOpenPath()}`,
     frontendRepoDefault: DEFAULT_FRONTEND_REPO,
     specs,
     defaultSpec: DEFAULT_SPEC,
@@ -260,32 +284,122 @@ async function runApprovalFlowTests(ws, session, msg, deps) {
 
   const args = ['playwright', 'test', '--config', configRel, spec];
   if (grep) args.push('--grep', grep);
+  const headless = mode === 'headless';
   if (mode === 'headed') args.push('--headed');
   else if (mode === 'debug') args.push('--debug');
   else if (mode === 'ui') args.push('--ui');
-  else if (mode === 'headless') {
-    /* default */
-  }
+  else if (headless) args.push('--reporter=json');
 
   send(ws, 'approval-flow:run:start', { env: envId, mode, spec, grep });
   logLine(ws, `[approval-flow] 运行用例 · mode=${mode} · ${spec}${grep ? ` · grep=${grep}` : ''}`, 'info');
 
-  const result = await streamProc(ws, session, 'approvalFlowProc', 'approvalFlowCancelled', 'approval-flow/test', npx, args, {
-    spawn: deps.spawn,
-    cwd: repoRoot,
-    env: spawnEnv,
+  session.approvalFlowCancelled = false;
+  let proc;
+  try {
+    proc = deps.spawn(npx, args, { cwd: repoRoot, env: spawnEnv, shell: false });
+  } catch (e) {
+    send(ws, 'error', { message: `用例启动失败: ${errText(e)}` });
+    send(ws, 'approval-flow:run:done', { ok: false, mode, spec, grep, env: envId });
+    return;
+  }
+  session.approvalFlowProc = proc;
+
+  let stdout = '';
+  proc.stdout.on('data', (d) => {
+    const raw = d.toString();
+    stdout += raw;
+    if (!headless) {
+      const t = stripAnsi(raw);
+      if (t.trim()) logLine(ws, t.trimEnd(), 'dim');
+    }
+  });
+  proc.stderr.on('data', (d) => {
+    const t = stripAnsi(d.toString());
+    if (t.trim()) logLine(ws, t.trimEnd(), 'warn');
   });
 
+  const startTime = Date.now();
+  const exitCode = await new Promise((resolve) => proc.on('close', resolve));
+  session.approvalFlowProc = null;
+
+  if (session.approvalFlowCancelled) {
+    logLine(ws, '[approval-flow/test] 已取消', 'warn');
+    send(ws, 'approval-flow:run:done', {
+      ok: false,
+      cancelled: true,
+      mode,
+      spec,
+      grep,
+      env: envId,
+    });
+    return;
+  }
+
+  const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+  const specRelative = path.join(FLOW_DIR, 'tests', spec).replace(/\\/g, '/');
+  let passed = 0;
+  let failed = 0;
+  let total = 0;
+  let failures = [];
+
+  if (headless) {
+    try {
+      const result = JSON.parse(stdout);
+      const s = result.stats || {};
+      const expected = Number(s.expected) || 0;
+      const unexpected = Number(s.unexpected) || 0;
+      const skipped = Number(s.skipped) || 0;
+      const flaky = Number(s.flaky) || 0;
+      passed = expected + flaky;
+      failed = unexpected;
+      total = expected + unexpected + skipped + flaky;
+      if (exitCode !== 0 || failed > 0) {
+        failures = logPlaywrightFailureReport(ws, result, session, exitCode);
+      } else {
+        session.lastRunFailures = [];
+      }
+    } catch {
+      passed = exitCode === 0 ? 1 : 0;
+      failed = exitCode === 0 ? 0 : 1;
+      total = 1;
+      if (exitCode !== 0) {
+        failures = parsePlaywrightFailures({ suites: [] }, session, exitCode);
+        session.lastRunFailures = failures;
+      }
+    }
+  } else {
+    logLine(ws, '[approval-flow] 有界面模式已结束，请在浏览器窗口查看结果', 'info');
+    passed = exitCode === 0 ? 1 : 0;
+    failed = exitCode === 0 ? 0 : 1;
+    total = 1;
+    if (exitCode !== 0) {
+      failures = headedFailurePlaceholder(specRelative);
+      session.lastRunFailures = failures;
+    }
+  }
+
+  const ok = exitCode === 0 && failed === 0;
   send(ws, 'approval-flow:run:done', {
-    ...result,
+    ok,
+    exitCode,
+    cancelled: false,
     mode,
     spec,
     grep,
     env: envId,
-    reportHint: 'approval-flow/playwright-report/index.html',
+    passed,
+    failed,
+    total,
+    duration,
+    failures,
+    specRelative,
+    runMode: mode,
+    playwrightReportDir: 'approval-flow/playwright-report',
+    reportHint: approvalFlowReportOpenPath(),
+    reportOpenPath: `/repo-report/${approvalFlowReportOpenPath()}`,
   });
-  if (result.ok) logLine(ws, '[approval-flow] 用例通过', 'ok');
-  else if (!result.cancelled) send(ws, 'error', { message: `用例退出码 ${result.exitCode}` });
+  if (ok) logLine(ws, '[approval-flow] 用例通过', 'ok');
+  else send(ws, 'error', { message: `用例退出码 ${exitCode}` });
 }
 
 function cancelApprovalFlow(session) {

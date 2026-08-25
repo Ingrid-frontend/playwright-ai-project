@@ -221,6 +221,9 @@ function createAccountEnvActions(deps) {
       send(ws, 'error', { message: `未知环境: ${envId}` });
       return;
     }
+    if (session.playwrightEnv === entry.id) {
+      return;
+    }
     session.playwrightEnv = entry.id;
     const cfg = repoEnv.getEnvAccountConfig(repoRoot, entry.id);
     session.accountProfile = cfg?.defaultProfile || 'default';

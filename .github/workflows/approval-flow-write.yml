@@ -1,0 +1,72 @@
+name: Approval Flow (Write)
+
+on:
+  schedule:
+    # UTC 19:00 Mon ≈ 北京时间周二 03:00
+    - cron: '0 19 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  write:
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Cache Playwright Browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Login (storage state)
+        run: npm run login
+        env:
+          PLAYWRIGHT_ENV: stage
+          TEST_USERNAME: ${{ secrets.TEST_USERNAME }}
+          TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+
+      - name: Run approval-flow write tests
+        run: npm run approval:test:write
+        env:
+          PLAYWRIGHT_ENV: stage
+          STORAGE_STATE: storage/loginState/stage.json
+          APPROVAL_ENABLE_WRITE: '1'
+          TEST_USERNAME: ${{ secrets.TEST_USERNAME }}
+          TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+
+      - name: Upload approval-flow report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: approval-flow-write-report-${{ github.run_id }}
+          path: approval-flow/playwright-report/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Feishu notify on failure
+        if: failure() && secrets.FEISHU_WEBHOOK_URL != ''
+        run: npx tsx scripts/flow/notify-failure.ts
+        env:
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          FEISHU_WEBHOOK_SECRET: ${{ secrets.FEISHU_WEBHOOK_SECRET }}
+          FEISHU_MODE: text
+        continue-on-error: true

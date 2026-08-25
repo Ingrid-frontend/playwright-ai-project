@@ -28,6 +28,8 @@ export const FILTER_LABELS = {
   filter: '筛选',
   docNo: '单号',
   applicant: '申请人',
+  company: '单据公司',
+  submitDate: '提交日期',
   reason: '事由',
   search: '搜索',
   clearExposed: '清除外露筛选值',
@@ -35,11 +37,19 @@ export const FILTER_LABELS = {
   addCondition: '添加条件',
 } as const;
 
+/** 筛选条下方外露 ComboTrigger（dev 实机：单号 / 申请人 / 单据公司 / 提交日期） */
+export const EXPOSED_FILTER_FIELDS = [
+  FILTER_LABELS.docNo,
+  FILTER_LABELS.applicant,
+  FILTER_LABELS.company,
+  FILTER_LABELS.submitDate,
+] as const;
+
 export const LIST_API_RE = /\/api\/approvals\/(pendingApproval|approved|copiedToMe)(?:\?|$)/;
 
 export const TABS = {
   pending: '待审批-全部',
-  approved: '我的已办',
+  approved: '已审批',
   cc: '抄送我',
   history: '操作历史',
 } as const;

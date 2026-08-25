@@ -1,0 +1,73 @@
+name: Approval Flow (Readonly)
+
+on:
+  pull_request:
+    paths:
+      - 'approval-flow/**'
+      - 'pw-files/lib/approval-flow-run.js'
+      - 'scripts/verify/verify-approval-catalog.cjs'
+      - '.github/workflows/approval-flow-stage.yml'
+  push:
+    branches: [main, develop]
+    paths:
+      - 'approval-flow/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  readonly:
+    timeout-minutes: 45
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Cache Playwright Browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Verify approval catalog (snapshot)
+        run: npm run approval:verify-catalog
+        continue-on-error: true
+
+      - name: Login (storage state)
+        run: npm run login
+        env:
+          PLAYWRIGHT_ENV: stage
+          TEST_USERNAME: ${{ secrets.TEST_USERNAME }}
+          TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+
+      - name: Run approval-flow readonly tests
+        run: npm run approval:test:readonly
+        env:
+          PLAYWRIGHT_ENV: stage
+          STORAGE_STATE: storage/loginState/stage.json
+          TEST_USERNAME: ${{ secrets.TEST_USERNAME }}
+          TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+
+      - name: Upload approval-flow report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: approval-flow-report-${{ github.run_id }}
+          path: approval-flow/playwright-report/
+          retention-days: 14
+          if-no-files-found: ignore

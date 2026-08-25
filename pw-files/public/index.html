@@ -346,6 +346,8 @@
   .btn-run { border-color: rgba(0,217,126,.4); color: var(--green); }
   .btn-run:hover { background: rgba(0,217,126,.08); }
 
+  .btn-preset-active { border-color: rgba(77,159,255,.55); color: var(--blue); background: rgba(77,159,255,.1); }
+
   .btn-report { border-color: rgba(77,159,255,.4); color: var(--blue); }
   .btn-report:hover { background: rgba(77,159,255,.08); }
 
@@ -1178,25 +1180,38 @@
                   style="width:100%;color:var(--text)">
               </div>
 
-              <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer">
+              <div>
+                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">执行模式</label>
+                <select class="url-input" id="approvalFlowMode" style="width:100%;color:var(--text);margin-bottom:8px">
+                  <option value="headless">无头（headless，默认）</option>
+                  <option value="headed">有头（headed，可见浏览器）</option>
+                  <option value="debug">调试（debug，逐步）</option>
+                  <option value="ui">UI 模式（Playwright UI）</option>
+                </select>
+              </div>
+
+              <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer;margin-bottom:8px">
                 <input type="checkbox" id="approvalWriteEnabled">
                 <span>开启写操作（通过 / 驳回，设置 APPROVAL_ENABLE_WRITE=1）</span>
               </label>
 
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+                <span style="color:var(--text-secondary);font-size:var(--fs-xs)">快捷选例：</span>
+                <button type="button" class="btn" id="btnApprovalPresetPreview" onclick="applyApprovalFlowPreset('preview')">快速预览</button>
+                <button type="button" class="btn" id="btnApprovalPresetReadOnly" onclick="applyApprovalFlowPreset('readOnly')">完整只读</button>
+                <button type="button" class="btn" id="btnApprovalPresetFilter" onclick="applyApprovalFlowPreset('filterAll')">筛选用例</button>
+              </div>
+
               <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
                 <button type="button" class="btn" id="btnApprovalProbe" onclick="startApprovalFlowProbe()">实机探活</button>
-                <button type="button" class="btn btn-run" id="btnApprovalPreview" onclick="startApprovalFlowRun('preview')">
-                  <span class="btn-label">快速预览（1条）</span>
+                <button type="button" class="btn btn-run" id="btnApprovalRunSelected" onclick="runSelectedApprovalFlow()">
+                  <span class="btn-label">运行</span>
                 </button>
-                <button type="button" class="btn" id="btnApprovalReadOnly" onclick="startApprovalFlowRun('readOnly')">完整只读（4条）</button>
-                <button type="button" class="btn" id="btnApprovalFilter" onclick="startApprovalFlowRun('filterAll')">筛选用例（4条）</button>
-                <button type="button" class="btn btn-run" id="btnApprovalRunSelected" onclick="runSelectedApprovalFlow('headless')">运行所选</button>
-                <button type="button" class="btn" id="btnApprovalDebug" onclick="startApprovalFlowRun('debug')">调试</button>
-                <button type="button" class="btn" id="btnApprovalUi" onclick="startApprovalFlowRun('ui')">UI 模式</button>
                 <button type="button" class="btn" id="btnApprovalCancel" style="display:none" onclick="cancelApprovalFlowRun()">取消</button>
+                <button type="button" class="btn" id="btnApprovalOpenReport" style="display:none" onclick="openApprovalFlowReport()">打开报告</button>
               </div>
-              <p class="sidebar-hint" id="approvalFlowHint" style="margin:0;color:var(--text-tertiary)">
-                先在上方下拉框选用例文件 / 单条用例；快捷按钮会覆盖当前选择。快速预览 ≈ 1 条；完整只读 = full-flow 4 条串行；筛选用例 = filter.spec 全部。
+              <p class="sidebar-hint" id="approvalFlowHint" style="margin:8px 0 0;color:var(--text-tertiary)">
+                快捷选例会同步「用例文件 / 用例 / 执行模式」（按钮高亮 = 已套用），不会自动跑；确认后点绿色「运行」。
               </p>
               <pre id="approvalFlowSnapshot" class="url-input" readonly spellcheck="false"
                 style="display:none;width:100%;min-height:120px;resize:vertical;color:var(--text);line-height:1.5;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;margin:0"></pre>
@@ -1227,6 +1242,7 @@
           <button type="button" class="btn" onclick="copyFailureFull()">复制完整排查包</button>
           <button type="button" class="btn" onclick="copyFailureForAi()">复制给 AI 改用例</button>
           <button type="button" class="btn" onclick="openFailureSpec()">打开用例</button>
+          <button type="button" class="btn" id="btnFailureOpenReport" style="display:none" onclick="openFailureReport()">打开报告</button>
         </div>
         <div id="failureDiagnosticsList"></div>
       </div>
@@ -1980,9 +1996,12 @@ function syncCompareHubButtons() {
 
 function refreshCompareReportStatus() {
   send('repo:compare-report:status', {});
-  loadUiIssuesPanel();
-  refreshUiAuditStatus();
-  refreshApprovalFlowStatus();
+  const compareActive = document.getElementById('pane-compare')?.classList.contains('active');
+  if (compareActive) loadUiIssuesPanel();
+  if (compareActive) refreshUiAuditStatus();
+  if (document.getElementById('pane-approval-flow')?.classList.contains('active')) {
+    refreshApprovalFlowStatus();
+  }
 }
 
 let promoteGoldenPending = null;
@@ -2077,7 +2096,9 @@ function formatFailureSummaryText(bundle) {
   const head =
     bundle.kind === 'intent' || bundle.kind === 'nl-run'
       ? '【Intent 执行失败摘要】'
-      : '【Playwright 执行失败摘要】';
+      : bundle.kind === 'approval-flow'
+        ? '【审批流程执行失败摘要】'
+        : '【Playwright 执行失败摘要】';
   const lines = [
     head,
     `用例: ${bundle.specRelative || '（批量）'}`,
@@ -2349,7 +2370,9 @@ function renderFailureDiagnosticsPanel(bundle) {
         ? `批量执行失败（${bundle.batchLabel}）`
         : bundle.kind === 'intent' || bundle.kind === 'nl-run'
           ? 'Intent 执行失败'
-          : '执行失败';
+          : bundle.kind === 'approval-flow'
+            ? '审批流程执行失败'
+            : '执行失败';
   }
   summary.textContent = bundle.kind === 'batch'
     ? `共 ${failCount} 条失败明细；${s.failed} 个用例未通过。可点击下方按钮复制，或在批量表中逐条复制。`
@@ -2375,6 +2398,11 @@ function renderFailureDiagnosticsPanel(bundle) {
     .join('');
   if (items.length > 5) {
     list.innerHTML += `<p class="failure-item-meta">另有 ${items.length - 5} 条，请使用「复制完整排查包」</p>`;
+  }
+  const reportBtn = document.getElementById('btnFailureOpenReport');
+  if (reportBtn) {
+    const showReport = bundle.kind === 'approval-flow' && bundle.artifacts?.playwrightReportDir;
+    reportBtn.style.display = showReport ? '' : 'none';
   }
 }
 
@@ -2419,6 +2447,34 @@ function openFailureSpec() {
   switchTab('opt', document.querySelectorAll('.tab')[1]);
 }
 
+function openFailureReport() {
+  if (lastFailureBundle?.kind === 'approval-flow') {
+    openApprovalFlowReport();
+    return;
+  }
+  const dir = lastFailureBundle?.artifacts?.playwrightReportDir;
+  if (!dir) {
+    showToast('无报告路径', 'err');
+    return;
+  }
+  window.open(`/repo-report/${dir.replace(/^\/+/, '')}/index.html`, '_blank', 'noopener');
+}
+
+let lastApprovalFlowRun = null;
+
+function openApprovalFlowReport() {
+  const path = lastApprovalFlowRun?.reportOpenPath
+    || `/repo-report/approval-flow/playwright-report/index.html`;
+  window.open(path, '_blank', 'noopener');
+}
+
+function updateApprovalFlowReportBtn(msg) {
+  const btn = document.getElementById('btnApprovalOpenReport');
+  if (!btn) return;
+  const show = Boolean(msg && (msg.mode === 'headless' || msg.reportOpenPath) && !msg.cancelled);
+  btn.style.display = show ? '' : 'none';
+}
+
 function copyBatchFailureByIndex(i) {
   const r = runState.lastBatchResults?.[i];
   if (!r) return;
@@ -2460,6 +2516,35 @@ function handleRunFailureFromMsg(msg) {
     return;
   }
   const bundle = buildFailureBundleFromRunDone(msg);
+  renderFailureDiagnosticsPanel(bundle);
+}
+
+function buildApprovalFlowFailureBundle(msg) {
+  const specRel = msg.specRelative || (msg.spec ? `approval-flow/tests/${msg.spec}` : '');
+  return buildFailureBundle({
+    kind: 'approval-flow',
+    specRelative: specRel,
+    playwrightEnv: msg.env || envState.current,
+    runMode: `mode=${msg.mode || ''}`,
+    summary: {
+      passed: msg.passed ?? (msg.ok ? 1 : 0),
+      failed: msg.failed ?? (msg.ok ? 0 : 1),
+      total: msg.total ?? 1,
+      duration: msg.duration ?? '',
+      exitCode: msg.exitCode ?? (msg.ok ? 0 : 1),
+    },
+    failures: msg.failures || [],
+    playwrightReportDir: msg.playwrightReportDir || 'approval-flow/playwright-report',
+  });
+}
+
+function handleApprovalFlowFailureFromMsg(msg) {
+  if (msg.ok || msg.cancelled) {
+    hideFailureDiagnosticsPanel();
+    return;
+  }
+  const bundle = buildApprovalFlowFailureBundle(msg);
+  if (!bundle.failures?.length && msg.exitCode == null) return;
   renderFailureDiagnosticsPanel(bundle);
 }
 
@@ -3197,6 +3282,7 @@ function setPlaywrightEnv(envId, opts = {}) {
 function applyEnvChanged(msg) {
   const prev = envState.current;
   const next = msg.env || prev;
+  const envChanged = prev !== next;
   envState.current = next;
   if (msg.accountProfile) accountState.current = msg.accountProfile;
   try {
@@ -3216,14 +3302,17 @@ function applyEnvChanged(msg) {
   }
   renderEnvChips();
   const baseURL = msg.baseURL || entry?.baseURL;
-  if (baseURL) applyEnvToTargetUrl(baseURL, prev !== next ? prev : null);
+  if (baseURL) applyEnvToTargetUrl(baseURL, envChanged ? prev : null);
   if (!msg.hasStorage && msg.storageState) {
     showToast(`${msg.env}: 未找到登录态文件`, 'err');
   }
-  // 侧栏切环境时服务端可能只回当前 env 列表；批量需全环境，统一再拉一次
-  refreshRepoOptimizedList();
+  if (envChanged) {
+    refreshRepoOptimizedList();
+  }
   updateStudioStatusBar();
-  refreshApprovalFlowStatus();
+  if (envChanged && document.getElementById('pane-approval-flow')?.classList.contains('active')) {
+    refreshApprovalFlowStatus();
+  }
 }
 
 function restorePlaywrightEnvFromStorage() {
@@ -4546,7 +4635,6 @@ function connectWS() {
     setTimeout(refreshCompareReportStatus, 300);
     setTimeout(refreshIntentList, 400);
     setTimeout(refreshReplayList, 450);
-    setTimeout(refreshApprovalFlowStatus, 500);
   };
   ws.onmessage = (e) => handleMessage(JSON.parse(e.data));
   ws.onclose = () => {
@@ -4896,7 +4984,9 @@ function handleMessage(msg) {
       renderEnvChips();
       const entry = envState.environments.find((e) => e.id === initial);
       if (entry?.baseURL) applyEnvToTargetUrl(entry.baseURL, null);
-      if (ws && ws.readyState === 1) send('env:set', { env: initial });
+      if (ws && ws.readyState === 1 && initial !== msg.current) {
+        send('env:set', { env: initial });
+      }
       break;
     }
     case 'env:changed':
@@ -5658,7 +5748,7 @@ function handleMessage(msg) {
       break;
     case 'approval-flow:probe:done':
       setApprovalFlowBusy(false);
-      renderApprovalFlowStatus(msg);
+      renderApprovalFlowStatus(msg, { skipSelects: true });
       if (msg.ok) {
         showToast('审批列表探活完成', 'ok');
         log('ok', `[approval-flow] 探活完成 · ${msg.snapshotRel || 'live-snapshot.json'}`);
@@ -5673,11 +5763,18 @@ function handleMessage(msg) {
       break;
     case 'approval-flow:run:done':
       setApprovalFlowBusy(false);
+      lastApprovalFlowRun = msg;
+      updateApprovalFlowReportBtn(msg);
+      handleApprovalFlowFailureFromMsg(msg);
       if (msg.ok) {
         showToast('审批流程用例通过', 'ok');
         log('ok', `[approval-flow] 用例通过 · mode=${msg.mode || ''}`);
       } else if (!msg.cancelled) {
         showToast(`审批流程用例失败（退出码 ${msg.exitCode ?? '?' }）`, 'err');
+        log('err', `[approval-flow] 用例失败 · exit=${msg.exitCode ?? '?'}`);
+        if (msg.reportOpenPath) {
+          log('info', `[approval-flow] 报告 ${msg.reportOpenPath}`);
+        }
       }
       break;
     case 'ego:explore:start':
@@ -6513,15 +6610,17 @@ function refreshUiAuditStatus() {
 }
 
 function setApprovalFlowBusy(busy) {
-  ['btnApprovalProbe', 'btnApprovalPreview', 'btnApprovalReadOnly', 'btnApprovalFilter', 'btnApprovalRunSelected', 'btnApprovalDebug', 'btnApprovalUi'].forEach((id) => {
+  ['btnApprovalProbe', 'btnApprovalPresetPreview', 'btnApprovalPresetReadOnly', 'btnApprovalPresetFilter', 'btnApprovalRunSelected'].forEach((id) => {
     const btn = document.getElementById(id);
     if (!btn) return;
     btn.disabled = busy;
     btn.style.opacity = busy ? 0.6 : 1;
   });
-  const previewBtn = document.getElementById('btnApprovalPreview');
-  const label = previewBtn?.querySelector('.btn-label');
-  if (label) label.textContent = busy ? '运行中…' : '快速预览（1条）';
+  const modeSel = document.getElementById('approvalFlowMode');
+  if (modeSel) modeSel.disabled = busy;
+  const runBtn = document.getElementById('btnApprovalRunSelected');
+  const label = runBtn?.querySelector('.btn-label');
+  if (label) label.textContent = busy ? '运行中…' : '运行';
   const cancel = document.getElementById('btnApprovalCancel');
   if (cancel) cancel.style.display = busy ? '' : 'none';
 }
@@ -6534,12 +6633,66 @@ const APPROVAL_FLOW_PRESETS = {
   ui: { spec: 'approval/full-flow.spec.ts', grep: '搜索并打开详情', mode: 'ui' },
   writeAll: { spec: 'approval/full-flow.spec.ts', grep: '', mode: 'headless' },
 };
+let approvalFlowDraft = null;
+
+function ensureApprovalFlowSpecOption(spec) {
+  const sel = document.getElementById('approvalFlowSpec');
+  if (!sel || !spec) return;
+  if ([...sel.options].some((o) => o.value === spec)) return;
+  sel.add(new Option(spec, spec));
+}
+
+function clearApprovalFlowPresetActive() {
+  ['btnApprovalPresetPreview', 'btnApprovalPresetReadOnly', 'btnApprovalPresetFilter'].forEach((id) => {
+    document.getElementById(id)?.classList.remove('btn-preset-active');
+  });
+}
+
+function setApprovalFlowPresetActive(preset) {
+  const map = { preview: 'btnApprovalPresetPreview', readOnly: 'btnApprovalPresetReadOnly', filterAll: 'btnApprovalPresetFilter' };
+  clearApprovalFlowPresetActive();
+  const id = map[preset];
+  if (id) document.getElementById(id)?.classList.add('btn-preset-active');
+}
+
+function updateApprovalFlowHintFromDom(presetKey) {
+  const hint = document.getElementById('approvalFlowHint');
+  if (!hint) return;
+  const spec = document.getElementById('approvalFlowSpec')?.value?.trim() || '';
+  const grep = document.getElementById('approvalFlowTest')?.value?.trim() || '';
+  const modeLabel = document.getElementById('approvalFlowMode')?.selectedOptions?.[0]?.textContent || getApprovalFlowMode();
+  const presetLabel = presetKey ? `「${presetKey}」` : '当前选择';
+  hint.textContent = `已套用${presetLabel}：${spec}${grep ? ` · grep=${grep}` : ''} · 模式=${modeLabel}。确认后点「运行」。`;
+}
+
+function applyApprovalFlowDraftToDom() {
+  if (!approvalFlowDraft) return;
+  const { spec, grep, mode, preset } = approvalFlowDraft;
+  ensureApprovalFlowSpecOption(spec);
+  const specSel = document.getElementById('approvalFlowSpec');
+  if (specSel && spec) specSel.value = spec;
+  const testSel = document.getElementById('approvalFlowTest');
+  if (testSel && grep != null) {
+    if (!grep || [...testSel.options].some((o) => o.value === grep)) testSel.value = grep;
+  }
+  const modeSel = document.getElementById('approvalFlowMode');
+  if (modeSel && mode) modeSel.value = mode;
+  setApprovalFlowPresetActive(preset);
+  updateApprovalFlowHintFromDom(preset);
+}
 
 function fillApprovalFlowSpecSelect(specs, selected) {
   const sel = document.getElementById('approvalFlowSpec');
   if (!sel) return;
   const list = Array.isArray(specs) && specs.length ? specs : ['approval/full-flow.spec.ts'];
   const prev = selected || sel.value || list[0];
+  const same =
+    sel.options.length === list.length && list.every((rel, i) => sel.options[i]?.value === rel);
+  if (same) {
+    if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
+    else sel.value = list[0];
+    return;
+  }
   sel.innerHTML = list.map((rel) => `<option value="${escHtml(rel)}">${escHtml(rel)}</option>`).join('');
   if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
   else sel.value = list[0];
@@ -6549,8 +6702,21 @@ function fillApprovalFlowTestSelect(tests, selectedGrep) {
   const sel = document.getElementById('approvalFlowTest');
   if (!sel) return;
   const prev = selectedGrep != null ? selectedGrep : sel.value;
+  const items = tests || [];
+  const same =
+    sel.options.length === items.length + 1
+    && sel.options[0]?.value === ''
+    && items.every((t, i) => {
+      const grep = String(t.grep || '');
+      return sel.options[i + 1]?.value === grep;
+    });
+  if (same) {
+    if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
+    else sel.selectedIndex = 0;
+    return;
+  }
   const opts = ['<option value="">（全部用例）</option>'];
-  (tests || []).forEach((t) => {
+  items.forEach((t) => {
     const grep = String(t.grep || '');
     const label = String(t.label || grep);
     opts.push(`<option value="${escHtml(grep)}">${escHtml(label)}</option>`);
@@ -6562,20 +6728,29 @@ function fillApprovalFlowTestSelect(tests, selectedGrep) {
 
 function onApprovalFlowSpecChange() {
   const spec = document.getElementById('approvalFlowSpec')?.value?.trim();
+  if (approvalFlowDraft && approvalFlowDraft.spec !== spec) {
+    approvalFlowDraft = null;
+    clearApprovalFlowPresetActive();
+  }
   if (!spec || !ws || ws.readyState !== 1) return;
   send('approval-flow:list-tests', { env: envState.current, spec });
+  clearTimeout(approvalFlowStatusTimer);
 }
 
 function applyApprovalFlowTestList(msg) {
   if (!msg) return;
-  fillApprovalFlowTestSelect(msg.tests || [], '');
+  const keepGrep = approvalFlowDraft && msg.spec === approvalFlowDraft.spec
+    ? approvalFlowDraft.grep
+    : document.getElementById('approvalFlowTest')?.value;
+  fillApprovalFlowTestSelect(msg.tests || [], keepGrep ?? '');
+  if (approvalFlowDraft && msg.spec === approvalFlowDraft.spec) applyApprovalFlowDraftToDom();
   const hint = document.getElementById('approvalFlowHint');
   if (hint && msg.error) {
     hint.textContent = `用例列表加载失败：${msg.error}`;
   }
 }
 
-function renderApprovalFlowStatus(msg) {
+function renderApprovalFlowStatus(msg, opts = {}) {
   const el = document.getElementById('approvalFlowStatus');
   const snapEl = document.getElementById('approvalFlowSnapshot');
   if (!el || !msg) return;
@@ -6588,12 +6763,19 @@ function renderApprovalFlowStatus(msg) {
     const tabs = (snap.tabs || []).join(' / ') || '—';
     snapLine = `页签：${tabs}${snap.sampleDocNo ? ` · 样例单号 ${snap.sampleDocNo}` : ''}`;
   }
+  const catalog = msg.catalogCheck;
+  let catalogLine = '';
+  if (catalog && Array.isArray(catalog.warnings) && catalog.warnings.length) {
+    const color = catalog.ok ? 'var(--text-secondary)' : 'var(--amber)';
+    catalogLine = `<div><strong>catalog</strong> <span style="color:${color}">${catalog.ok ? '通过' : '漂移'} · ${escHtml(catalog.warnings.slice(0, 2).join('；'))}${catalog.warnings.length > 2 ? '…' : ''}</span></div>`;
+  }
   el.innerHTML = [
     `<div><strong>环境</strong> ${escHtml(msg.env || 'dev')} · <strong>BASE_URL</strong> ${escHtml(msg.baseURL || '')}</div>`,
     `<div><strong>登录态</strong> ${storage}</div>`,
     `<div><strong>配置</strong> ${msg.ready ? escHtml(msg.configRel || '') : '<span style="color:var(--red)">未找到 approval-flow</span>'}</div>`,
     `<div><strong>探活</strong> ${escHtml(snapLine)}</div>`,
-  ].join('');
+    catalogLine,
+  ].filter(Boolean).join('');
   if (snapEl) {
     if (snap) {
       snapEl.style.display = 'block';
@@ -6607,20 +6789,31 @@ function renderApprovalFlowStatus(msg) {
   if (repoInput && !repoInput.value.trim() && msg.frontendRepoDefault) {
     repoInput.value = msg.frontendRepoDefault;
   }
-  fillApprovalFlowSpecSelect(msg.specs, msg.spec);
-  fillApprovalFlowTestSelect(msg.tests, '');
+  if (!opts.skipSelects) {
+    const keepSpec = approvalFlowDraft?.spec || document.getElementById('approvalFlowSpec')?.value?.trim() || msg.spec;
+    const keepGrep = approvalFlowDraft?.grep ?? document.getElementById('approvalFlowTest')?.value ?? '';
+    fillApprovalFlowSpecSelect(msg.specs, keepSpec);
+    fillApprovalFlowTestSelect(msg.tests, keepGrep);
+    if (approvalFlowDraft) applyApprovalFlowDraftToDom();
+  }
   if (msg.testsError) {
     const hint = document.getElementById('approvalFlowHint');
     if (hint) hint.textContent = `用例列表：${msg.testsError}`;
   }
 }
 
+let approvalFlowStatusTimer = null;
+
 function refreshApprovalFlowStatus() {
-  const spec = document.getElementById('approvalFlowSpec')?.value?.trim() || '';
-  if (ws && ws.readyState === 1) send('approval-flow:status', { env: envState.current, spec });
+  clearTimeout(approvalFlowStatusTimer);
+  approvalFlowStatusTimer = setTimeout(() => {
+    const spec = document.getElementById('approvalFlowSpec')?.value?.trim() || '';
+    if (ws && ws.readyState === 1) send('approval-flow:status', { env: envState.current, spec });
+  }, 120);
 }
 
 function switchToApprovalFlowTab() {
+  if (document.getElementById('pane-approval-flow')?.classList.contains('active')) return;
   const tab = Array.from(document.querySelectorAll('.tab')).find((t) => t.textContent.includes('审批流程'));
   if (tab) switchTab('approval-flow', tab);
 }
@@ -6632,27 +6825,41 @@ function startApprovalFlowProbe() {
   if (!send('approval-flow:probe', { frontendRepo, env: envState.current })) setApprovalFlowBusy(false);
 }
 
-function startApprovalFlowRun(preset) {
+function getApprovalFlowMode() {
+  return document.getElementById('approvalFlowMode')?.value?.trim() || 'headless';
+}
+
+function applyApprovalFlowPreset(preset) {
   switchToApprovalFlowTab();
   const writeEnabled = Boolean(document.getElementById('approvalWriteEnabled')?.checked);
-  const docNo = document.getElementById('approvalDocNo')?.value?.trim() || '';
   const key = writeEnabled && preset === 'readOnly' ? 'writeAll' : preset;
   const cfg = APPROVAL_FLOW_PRESETS[key] || APPROVAL_FLOW_PRESETS.preview;
-  const specSel = document.getElementById('approvalFlowSpec');
-  const testSel = document.getElementById('approvalFlowTest');
-  if (cfg.spec && specSel) specSel.value = cfg.spec;
-  if (testSel) testSel.value = cfg.grep || '';
-  runSelectedApprovalFlow(cfg.mode, { writeEnabled, docNo, preset: key, grep: cfg.grep || '' });
+  approvalFlowDraft = {
+    preset: key,
+    spec: cfg.spec,
+    grep: cfg.grep ?? '',
+    mode: cfg.mode || 'headless',
+  };
+  ensureApprovalFlowSpecOption(cfg.spec);
+  applyApprovalFlowDraftToDom();
+  onApprovalFlowSpecChange();
+}
+
+function startApprovalFlowRun(preset) {
+  applyApprovalFlowPreset(preset);
+  runSelectedApprovalFlow();
 }
 
 function runSelectedApprovalFlow(mode, opts = {}) {
   switchToApprovalFlowTab();
+  approvalFlowDraft = null;
   const writeEnabled = opts.writeEnabled != null ? opts.writeEnabled : Boolean(document.getElementById('approvalWriteEnabled')?.checked);
   const docNo = opts.docNo != null ? opts.docNo : (document.getElementById('approvalDocNo')?.value?.trim() || '');
   const spec = document.getElementById('approvalFlowSpec')?.value?.trim() || 'approval/full-flow.spec.ts';
   const grep = opts.grep != null ? opts.grep : (document.getElementById('approvalFlowTest')?.value?.trim() || '');
+  const runMode = mode || getApprovalFlowMode();
   const payload = {
-    mode: mode || 'headless',
+    mode: runMode,
     env: envState.current,
     writeEnabled,
     docNo,
