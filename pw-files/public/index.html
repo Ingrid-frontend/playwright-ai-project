@@ -851,6 +851,9 @@
         <div class="tab" onclick="switchTab('ego-audit',this)">
           口语试跑
         </div>
+        <div class="tab" onclick="switchTab('request-flow',this)">
+          申请单流程
+        </div>
         <div class="tab" onclick="switchTab('approval-flow',this)">
           审批流程
         </div>
@@ -1139,6 +1142,89 @@
               </div>
               <div data-replay-list style="margin-top:4px"></div>
               <div id="egoAuditResult" style="display:none"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="editor-pane" id="pane-request-flow">
+          <div style="flex:1;overflow-y:auto;padding:16px;font-size:var(--fs-sm);line-height:1.8">
+            <div style="display:flex;flex-direction:column;gap:12px;max-width:820px">
+              <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg2)">
+                <div style="font-weight:600;color:var(--text);margin-bottom:6px">申请单 · 调试工作台</div>
+                <p class="sidebar-hint" style="margin:0;line-height:1.7;color:var(--text-secondary)">
+                  针对 <code>request-flow/</code> 模块：入口 <code>/main/request</code>，覆盖列表查询、筛选、新建、保存、提交；
+                  快捷「提交后审批」会造 2 张单并串联 <code>/main/approve</code> 通过/驳回。
+                  单号不写死，运行时从详情或列表取。
+                </p>
+              </div>
+
+              <div id="requestFlowStatus" class="sidebar-hint" style="padding:10px 12px;border:1px dashed var(--border);border-radius:8px;line-height:1.7;color:var(--text-secondary)">
+                连接后自动加载状态…
+              </div>
+
+              <div>
+                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">用例文件</label>
+                <select class="url-input" id="requestFlowSpec" style="width:100%;color:var(--text);margin-bottom:8px"
+                  onchange="onRequestFlowSpecChange()"></select>
+              </div>
+              <div>
+                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">用例（单条 / 组合 grep）</label>
+                <select class="url-input" id="requestFlowTest" style="width:100%;color:var(--text);margin-bottom:8px"></select>
+              </div>
+
+              <div>
+                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">前端仓库（探活索引用）</label>
+                <input type="text" class="url-input" id="requestFrontendRepo" spellcheck="false"
+                  value="/Users/hly/project/huilianyi-refactoring"
+                  style="width:100%;color:var(--text)">
+              </div>
+              <div>
+                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">指定单号（可选，覆盖 pickFirstDocNo）</label>
+                <input type="text" class="url-input" id="requestDocNo" spellcheck="false" placeholder="留空则用列表首行"
+                  style="width:100%;color:var(--text)">
+              </div>
+              <div>
+                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">新建单据名称（可选）</label>
+                <input type="text" class="url-input" id="requestFormName" spellcheck="false" placeholder="留空则选第一个可用模板"
+                  style="width:100%;color:var(--text)">
+              </div>
+
+              <div>
+                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">执行模式</label>
+                <select class="url-input" id="requestFlowMode" style="width:100%;color:var(--text);margin-bottom:8px">
+                  <option value="headless">无头（headless，默认）</option>
+                  <option value="headed">有头（headed，可见浏览器）</option>
+                  <option value="debug">调试（debug，逐步）</option>
+                  <option value="ui">UI 模式（Playwright UI）</option>
+                </select>
+              </div>
+
+              <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer;margin-bottom:8px">
+                <input type="checkbox" id="requestWriteEnabled">
+                <span>开启写操作（新建/提交/审批，设置 REQUEST_ENABLE_WRITE=1）</span>
+              </label>
+
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+                <span style="color:var(--text-secondary);font-size:var(--fs-xs)">快捷选例：</span>
+                <button type="button" class="btn" id="btnRequestPresetPreview" onclick="applyRequestFlowPreset('preview')">快速预览</button>
+                <button type="button" class="btn" id="btnRequestPresetReadOnly" onclick="applyRequestFlowPreset('readOnly')">完整只读</button>
+                <button type="button" class="btn" id="btnRequestPresetWrite" onclick="applyRequestFlowPreset('write')">新建保存提交</button>
+                <button type="button" class="btn" id="btnRequestPresetSubmitApprove" onclick="applyRequestFlowPreset('submitApprove')">提交后审批</button>
+              </div>
+
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <button type="button" class="btn" id="btnRequestProbe" onclick="startRequestFlowProbe()">实机探活</button>
+                <button type="button" class="btn btn-run" id="btnRequestRunSelected" onclick="runSelectedRequestFlow()">
+                  <span class="btn-label">运行</span>
+                </button>
+                <button type="button" class="btn" id="btnRequestCancel" style="display:none" onclick="cancelRequestFlowRun()">取消</button>
+                <button type="button" class="btn" id="btnRequestOpenReport" style="display:none" onclick="openRequestFlowReport()">打开报告</button>
+              </div>
+              <p class="sidebar-hint" id="requestFlowHint" style="margin:8px 0 0;color:var(--text-tertiary)">
+                快捷选例会同步「用例文件 / 用例 / 执行模式」，不会自动跑；确认后点绿色「运行」。
+              </p>
+              <pre id="requestFlowSnapshot" class="url-input" readonly spellcheck="false"
+                style="display:none;width:100%;min-height:120px;resize:vertical;color:var(--text);line-height:1.5;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;margin:0"></pre>
             </div>
           </div>
         </div>
@@ -1724,6 +1810,7 @@ function getActiveEditorTab() {
   if (document.getElementById('pane-figma')?.classList.contains('active')) return 'figma';
   if (document.getElementById('pane-intent-run')?.classList.contains('active')) return 'intent-run';
   if (document.getElementById('pane-ego-audit')?.classList.contains('active')) return 'ego-audit';
+  if (document.getElementById('pane-request-flow')?.classList.contains('active')) return 'request-flow';
   if (document.getElementById('pane-approval-flow')?.classList.contains('active')) return 'approval-flow';
   return 'raw';
 }
@@ -1732,12 +1819,12 @@ function getActiveScriptCode() {
   const tab = getActiveEditorTab();
   if (tab === 'opt') return document.getElementById('optCode')?.value?.trim() || '';
   if (tab === 'raw') return document.getElementById('rawCode')?.value?.trim() || '';
-  if (tab === 'intent-run' || tab === 'ego-audit' || tab === 'approval-flow') return '';
+  if (tab === 'intent-run' || tab === 'ego-audit' || tab === 'request-flow' || tab === 'approval-flow') return '';
   return '';
 }
 
 function syncEditorRunHint() {
-  if (['diff', 'figma', 'intent-run', 'ego-audit', 'approval-flow'].includes(getActiveEditorTab())) return;
+  if (['diff', 'figma', 'intent-run', 'ego-audit', 'request-flow', 'approval-flow'].includes(getActiveEditorTab())) return;
   if (busyState.run && pendingRunKind !== 'repo') return;
   setEditorRunStatus('', '');
 }
@@ -1999,6 +2086,9 @@ function refreshCompareReportStatus() {
   const compareActive = document.getElementById('pane-compare')?.classList.contains('active');
   if (compareActive) loadUiIssuesPanel();
   if (compareActive) refreshUiAuditStatus();
+  if (document.getElementById('pane-request-flow')?.classList.contains('active')) {
+    refreshRequestFlowStatus();
+  }
   if (document.getElementById('pane-approval-flow')?.classList.contains('active')) {
     refreshApprovalFlowStatus();
   }
@@ -2096,6 +2186,8 @@ function formatFailureSummaryText(bundle) {
   const head =
     bundle.kind === 'intent' || bundle.kind === 'nl-run'
       ? '【Intent 执行失败摘要】'
+      : bundle.kind === 'request-flow'
+        ? '【申请单流程执行失败摘要】'
       : bundle.kind === 'approval-flow'
         ? '【审批流程执行失败摘要】'
         : '【Playwright 执行失败摘要】';
@@ -2370,6 +2462,8 @@ function renderFailureDiagnosticsPanel(bundle) {
         ? `批量执行失败（${bundle.batchLabel}）`
         : bundle.kind === 'intent' || bundle.kind === 'nl-run'
           ? 'Intent 执行失败'
+          : bundle.kind === 'request-flow'
+            ? '申请单流程执行失败'
           : bundle.kind === 'approval-flow'
             ? '审批流程执行失败'
             : '执行失败';
@@ -2401,7 +2495,7 @@ function renderFailureDiagnosticsPanel(bundle) {
   }
   const reportBtn = document.getElementById('btnFailureOpenReport');
   if (reportBtn) {
-    const showReport = bundle.kind === 'approval-flow' && bundle.artifacts?.playwrightReportDir;
+    const showReport = (bundle.kind === 'request-flow' || bundle.kind === 'approval-flow') && bundle.artifacts?.playwrightReportDir;
     reportBtn.style.display = showReport ? '' : 'none';
   }
 }
@@ -2448,6 +2542,10 @@ function openFailureSpec() {
 }
 
 function openFailureReport() {
+  if (lastFailureBundle?.kind === 'request-flow') {
+    openRequestFlowReport();
+    return;
+  }
   if (lastFailureBundle?.kind === 'approval-flow') {
     openApprovalFlowReport();
     return;
@@ -2460,18 +2558,39 @@ function openFailureReport() {
   window.open(`/repo-report/${dir.replace(/^\/+/, '')}/index.html`, '_blank', 'noopener');
 }
 
+let lastRequestFlowRun = null;
+
+function openRequestFlowReport() {
+  const path = lastRequestFlowRun?.reportOpenPath;
+  if (!path) {
+    showToast('报告尚未生成', 'err');
+    return;
+  }
+  window.open(path, '_blank', 'noopener');
+}
+
+function updateRequestFlowReportBtn(msg) {
+  const btn = document.getElementById('btnRequestOpenReport');
+  if (!btn) return;
+  const show = Boolean(msg?.reportOpenPath && !msg.cancelled);
+  btn.style.display = show ? '' : 'none';
+}
+
 let lastApprovalFlowRun = null;
 
 function openApprovalFlowReport() {
-  const path = lastApprovalFlowRun?.reportOpenPath
-    || `/repo-report/approval-flow/playwright-report/index.html`;
+  const path = lastApprovalFlowRun?.reportOpenPath;
+  if (!path) {
+    showToast('报告尚未生成', 'err');
+    return;
+  }
   window.open(path, '_blank', 'noopener');
 }
 
 function updateApprovalFlowReportBtn(msg) {
   const btn = document.getElementById('btnApprovalOpenReport');
   if (!btn) return;
-  const show = Boolean(msg && (msg.mode === 'headless' || msg.reportOpenPath) && !msg.cancelled);
+  const show = Boolean(msg?.reportOpenPath && !msg.cancelled);
   btn.style.display = show ? '' : 'none';
 }
 
@@ -2516,6 +2635,35 @@ function handleRunFailureFromMsg(msg) {
     return;
   }
   const bundle = buildFailureBundleFromRunDone(msg);
+  renderFailureDiagnosticsPanel(bundle);
+}
+
+function buildRequestFlowFailureBundle(msg) {
+  const specRel = msg.specRelative || (msg.spec ? `request-flow/tests/${msg.spec}` : '');
+  return buildFailureBundle({
+    kind: 'request-flow',
+    specRelative: specRel,
+    playwrightEnv: msg.env || envState.current,
+    runMode: `mode=${msg.mode || ''}`,
+    summary: {
+      passed: msg.passed ?? (msg.ok ? 1 : 0),
+      failed: msg.failed ?? (msg.ok ? 0 : 1),
+      total: msg.total ?? 1,
+      duration: msg.duration ?? '',
+      exitCode: msg.exitCode ?? (msg.ok ? 0 : 1),
+    },
+    failures: msg.failures || [],
+    playwrightReportDir: msg.playwrightReportDir || 'request-flow/playwright-report',
+  });
+}
+
+function handleRequestFlowFailureFromMsg(msg) {
+  if (msg.ok || msg.cancelled) {
+    hideFailureDiagnosticsPanel();
+    return;
+  }
+  const bundle = buildRequestFlowFailureBundle(msg);
+  if (!bundle.failures?.length && msg.exitCode == null) return;
   renderFailureDiagnosticsPanel(bundle);
 }
 
@@ -2844,13 +2992,14 @@ function restoreEditorTab() {
     const name =
       saved === 'ai-validate'
         ? 'ego-audit'
-        : saved === 'figma' || saved === 'intent-run' || saved === 'ego-audit' || saved === 'approval-flow'
+        : saved === 'figma' || saved === 'intent-run' || saved === 'ego-audit' || saved === 'request-flow' || saved === 'approval-flow'
           ? saved
           : 'intent-run';
     const labelMap = {
       figma: '设计稿对比',
       'intent-run': 'YAML 用例',
       'ego-audit': '口语试跑',
+      'request-flow': '申请单流程',
       'approval-flow': '审批流程',
     };
     const tab = Array.from(document.querySelectorAll('.tab')).find((t) =>
@@ -3310,6 +3459,9 @@ function applyEnvChanged(msg) {
     refreshRepoOptimizedList();
   }
   updateStudioStatusBar();
+  if (envChanged && document.getElementById('pane-request-flow')?.classList.contains('active')) {
+    refreshRequestFlowStatus();
+  }
   if (envChanged && document.getElementById('pane-approval-flow')?.classList.contains('active')) {
     refreshApprovalFlowStatus();
   }
@@ -4620,6 +4772,7 @@ function connectWS() {
     setIntentRunBusy(false);
     setEgoAuditBusy(false);
     setApprovalFlowBusy(false);
+    setRequestFlowBusy(false);
     dateCategoryState.loaded = false;
     dateCategoryState.loading = false;
     resetPipelineRunning();
@@ -4643,6 +4796,7 @@ function connectWS() {
     setIntentRunBusy(false);
     setEgoAuditBusy(false);
     setApprovalFlowBusy(false);
+    setRequestFlowBusy(false);
     updateGlobalTaskBar();
     resetPipelineRunning();
     setBusy('optimize', false);
@@ -4721,7 +4875,7 @@ function syncActionButtons() {
   }
   if (!busyState.run) {
     const tab = getActiveEditorTab();
-    btnRun.disabled = ['diff', 'intent-run', 'ego-audit', 'approval-flow'].includes(tab) || !getActiveScriptCode();
+    btnRun.disabled = ['diff', 'intent-run', 'ego-audit', 'request-flow', 'approval-flow'].includes(tab) || !getActiveScriptCode();
   }
   else if (pendingRunKind === 'repo') btnRun.disabled = true;
   if (btnRecord) btnRecord.disabled = busyState.optimize || busyState.run || busyState.repoPipeline;
@@ -5735,6 +5889,49 @@ function handleMessage(msg) {
     case 'ui-audit:status':
       renderUiAuditStatus(msg);
       break;
+    case 'request-flow:status':
+      renderRequestFlowStatus(msg);
+      break;
+    case 'request-flow:tests':
+      applyRequestFlowTestList(msg);
+      break;
+    case 'request-flow:probe:start':
+      setRequestFlowBusy(true);
+      switchToRequestFlowTab();
+      log('info', `[request-flow] 探活开始 · env=${msg.env || 'dev'}`);
+      break;
+    case 'request-flow:probe:done':
+      setRequestFlowBusy(false);
+      renderRequestFlowStatus(msg, { skipSelects: true });
+      if (msg.ok) {
+        showToast('申请单列表探活完成', 'ok');
+        log('ok', `[request-flow] 探活完成 · ${msg.snapshotRel || 'live-snapshot.json'}`);
+      } else if (!msg.cancelled) {
+        showToast('探活失败', 'err');
+      }
+      break;
+    case 'request-flow:run:start':
+      setRequestFlowBusy(true);
+      updateRequestFlowReportBtn(null);
+      switchToRequestFlowTab();
+      log('info', `[request-flow] 运行开始 · mode=${msg.mode || ''} · ${msg.spec || ''}`);
+      break;
+    case 'request-flow:run:done':
+      setRequestFlowBusy(false);
+      lastRequestFlowRun = msg;
+      updateRequestFlowReportBtn(msg);
+      handleRequestFlowFailureFromMsg(msg);
+      if (msg.ok) {
+        showToast('申请单流程用例通过', 'ok');
+        log('ok', `[request-flow] 用例通过 · mode=${msg.mode || ''}`);
+      } else if (!msg.cancelled) {
+        showToast(`申请单流程用例失败（退出码 ${msg.exitCode ?? '?' }）`, 'err');
+        log('err', `[request-flow] 用例失败 · exit=${msg.exitCode ?? '?'}`);
+        if (msg.reportOpenPath) {
+          log('info', `[request-flow] 报告 ${msg.reportOpenPath}`);
+        }
+      }
+      break;
     case 'approval-flow:status':
       renderApprovalFlowStatus(msg);
       break;
@@ -5748,6 +5945,7 @@ function handleMessage(msg) {
       break;
     case 'approval-flow:probe:done':
       setApprovalFlowBusy(false);
+    setRequestFlowBusy(false);
       renderApprovalFlowStatus(msg, { skipSelects: true });
       if (msg.ok) {
         showToast('审批列表探活完成', 'ok');
@@ -5758,11 +5956,13 @@ function handleMessage(msg) {
       break;
     case 'approval-flow:run:start':
       setApprovalFlowBusy(true);
+      updateApprovalFlowReportBtn(null);
       switchToApprovalFlowTab();
       log('info', `[approval-flow] 运行开始 · mode=${msg.mode || ''} · ${msg.spec || ''}`);
       break;
     case 'approval-flow:run:done':
       setApprovalFlowBusy(false);
+    setRequestFlowBusy(false);
       lastApprovalFlowRun = msg;
       updateApprovalFlowReportBtn(msg);
       handleApprovalFlowFailureFromMsg(msg);
@@ -6238,7 +6438,7 @@ function setEditorRunStatus(text, status) {
 
 function syncEditorRunBarVisibility() {
   const bar = document.getElementById('editorRunBar');
-  const noRun = ['diff','figma','intent-run','ego-audit','approval-flow'].some((n) => document.getElementById('pane-' + n)?.classList.contains('active'));
+  const noRun = ['diff','figma','intent-run','ego-audit','request-flow','approval-flow'].some((n) => document.getElementById('pane-' + n)?.classList.contains('active'));
   if (bar) bar.style.display = noRun ? 'none' : 'block';
 }
 
@@ -6253,6 +6453,7 @@ function switchTab(name, el) {
   syncEditorRunBarVisibility();
   syncEditorRunHint();
   syncActionButtons();
+  if (name === 'request-flow') refreshRequestFlowStatus();
   if (name === 'approval-flow') refreshApprovalFlowStatus();
 }
 
@@ -6607,6 +6808,256 @@ function openExistingUiAuditReport() {
 
 function refreshUiAuditStatus() {
   if (ws && ws.readyState === 1) send('ui-audit:status', {});
+}
+
+function refreshUiAuditStatus() {
+  if (ws && ws.readyState === 1) send('ui-audit:status', {});
+}
+
+function setRequestFlowBusy(busy) {
+  ['btnRequestProbe', 'btnRequestPresetPreview', 'btnRequestPresetReadOnly', 'btnRequestPresetWrite', 'btnRequestPresetSubmitApprove', 'btnRequestRunSelected'].forEach((id) => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.disabled = busy;
+    btn.style.opacity = busy ? 0.6 : 1;
+  });
+  const modeSel = document.getElementById('requestFlowMode');
+  if (modeSel) modeSel.disabled = busy;
+  const runBtn = document.getElementById('btnRequestRunSelected');
+  const label = runBtn?.querySelector('.btn-label');
+  if (label) label.textContent = busy ? '运行中…' : '运行';
+  const cancel = document.getElementById('btnRequestCancel');
+  if (cancel) cancel.style.display = busy ? '' : 'none';
+}
+
+const REQUEST_FLOW_PRESETS = {
+  preview: { spec: 'request/full-flow.spec.ts', grep: '搜索并打开详情', mode: 'headed' },
+  readOnly: { spec: 'request/full-flow.spec.ts', grep: '加载|筛选|搜索', mode: 'headless' },
+  write: { spec: 'request/full-flow.spec.ts', grep: '新建申请单', mode: 'headless' },
+  submitApprove: { spec: 'request/submit-then-approve.spec.ts', grep: '', mode: 'headed', write: true },
+};
+let requestFlowDraft = null;
+
+function ensureRequestFlowSpecOption(spec) {
+  const sel = document.getElementById('requestFlowSpec');
+  if (!sel || !spec) return;
+  if ([...sel.options].some((o) => o.value === spec)) return;
+  sel.add(new Option(spec, spec));
+}
+
+function clearRequestFlowPresetActive() {
+  ['btnRequestPresetPreview', 'btnRequestPresetReadOnly', 'btnRequestPresetWrite', 'btnRequestPresetSubmitApprove'].forEach((id) => {
+    document.getElementById(id)?.classList.remove('btn-preset-active');
+  });
+}
+
+function setRequestFlowPresetActive(preset) {
+  const map = {
+    preview: 'btnRequestPresetPreview',
+    readOnly: 'btnRequestPresetReadOnly',
+    write: 'btnRequestPresetWrite',
+    submitApprove: 'btnRequestPresetSubmitApprove',
+  };
+  clearRequestFlowPresetActive();
+  const id = map[preset];
+  if (id) document.getElementById(id)?.classList.add('btn-preset-active');
+}
+
+function updateRequestFlowHintFromDom(presetKey) {
+  const hint = document.getElementById('requestFlowHint');
+  if (!hint) return;
+  const spec = document.getElementById('requestFlowSpec')?.value?.trim() || '';
+  const grep = document.getElementById('requestFlowTest')?.value?.trim() || '';
+  const modeLabel = document.getElementById('requestFlowMode')?.selectedOptions?.[0]?.textContent || getRequestFlowMode();
+  hint.textContent = `已套用「${presetKey || '自定义'}」：${spec}${grep ? ` · grep=${grep}` : ''} · ${modeLabel}。确认后点绿色「运行」。`;
+}
+
+function applyRequestFlowDraftToDom() {
+  if (!requestFlowDraft) return;
+  const { spec, grep, mode, preset } = requestFlowDraft;
+  ensureRequestFlowSpecOption(spec);
+  const specSel = document.getElementById('requestFlowSpec');
+  if (specSel) specSel.value = spec;
+  const testSel = document.getElementById('requestFlowTest');
+  if (testSel && [...testSel.options].some((o) => o.value === (grep ?? ''))) testSel.value = grep ?? '';
+  const modeSel = document.getElementById('requestFlowMode');
+  if (modeSel) modeSel.value = mode || 'headless';
+  setRequestFlowPresetActive(preset);
+  updateRequestFlowHintFromDom(preset);
+}
+
+function fillRequestFlowSpecSelect(specs, selected) {
+  const sel = document.getElementById('requestFlowSpec');
+  if (!sel) return;
+  const list = Array.isArray(specs) && specs.length ? specs : ['request/full-flow.spec.ts'];
+  const prev = selected || sel.value || list[0];
+  sel.innerHTML = list.map((rel) => `<option value="${escHtml(rel)}">${escHtml(rel)}</option>`).join('');
+  if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
+  else sel.value = list[0];
+}
+
+function fillRequestFlowTestSelect(tests, selectedGrep) {
+  const sel = document.getElementById('requestFlowTest');
+  if (!sel) return;
+  const prev = selectedGrep != null ? selectedGrep : sel.value;
+  const items = tests || [];
+  const opts = ['<option value="">（全部用例）</option>'];
+  items.forEach((t) => {
+    const grep = String(t.grep || '');
+    const label = String(t.label || grep);
+    opts.push(`<option value="${escHtml(grep)}">${escHtml(label)}</option>`);
+  });
+  sel.innerHTML = opts.join('');
+  if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
+  else sel.selectedIndex = 0;
+}
+
+function onRequestFlowSpecChange() {
+  const spec = document.getElementById('requestFlowSpec')?.value?.trim();
+  if (requestFlowDraft && requestFlowDraft.spec !== spec) {
+    requestFlowDraft = null;
+    clearRequestFlowPresetActive();
+  }
+  if (!spec || !ws || ws.readyState !== 1) return;
+  send('request-flow:list-tests', { env: envState.current, spec });
+  clearTimeout(requestFlowStatusTimer);
+}
+
+function applyRequestFlowTestList(msg) {
+  if (!msg) return;
+  const keepGrep = requestFlowDraft && msg.spec === requestFlowDraft.spec
+    ? requestFlowDraft.grep
+    : document.getElementById('requestFlowTest')?.value;
+  fillRequestFlowTestSelect(msg.tests || [], keepGrep ?? '');
+  if (requestFlowDraft && msg.spec === requestFlowDraft.spec) applyRequestFlowDraftToDom();
+  const hint = document.getElementById('requestFlowHint');
+  if (hint && msg.error) hint.textContent = `用例列表加载失败：${msg.error}`;
+}
+
+function renderRequestFlowStatus(msg, opts = {}) {
+  const el = document.getElementById('requestFlowStatus');
+  const snapEl = document.getElementById('requestFlowSnapshot');
+  if (!el || !msg) return;
+  const storage = msg.hasStorage
+    ? `<span style="color:var(--green)">已就绪</span> · ${escHtml(msg.storageState || '')}`
+    : '<span style="color:var(--amber)">缺失</span> · 请先在侧栏登录';
+  const snap = msg.snapshot;
+  let snapLine = '暂无 live-snapshot，可先点「实机探活」';
+  if (snap) {
+    snapLine = `表头：${(snap.headers || []).slice(0, 6).join(' / ') || '—'}${snap.sampleDocNo ? ` · 样例单号 ${snap.sampleDocNo}` : ''}`;
+  }
+  const catalog = msg.catalogCheck;
+  let catalogLine = '';
+  if (catalog && Array.isArray(catalog.warnings) && catalog.warnings.length) {
+    const color = catalog.ok ? 'var(--text-secondary)' : 'var(--amber)';
+    catalogLine = `<div><strong>catalog</strong> <span style="color:${color}">${catalog.ok ? '通过' : '漂移'} · ${escHtml(catalog.warnings.slice(0, 2).join('；'))}${catalog.warnings.length > 2 ? '…' : ''}</span></div>`;
+  }
+  el.innerHTML = [
+    `<div><strong>环境</strong> ${escHtml(msg.env || 'dev')} · <strong>BASE_URL</strong> ${escHtml(msg.baseURL || '')}</div>`,
+    `<div><strong>登录态</strong> ${storage}</div>`,
+    `<div><strong>配置</strong> ${msg.ready ? escHtml(msg.configRel || '') : '<span style="color:var(--red)">未找到 request-flow</span>'}</div>`,
+    `<div><strong>探活</strong> ${escHtml(snapLine)}</div>`,
+    catalogLine,
+  ].filter(Boolean).join('');
+  if (snapEl) {
+    if (snap) {
+      snapEl.style.display = 'block';
+      snapEl.textContent = JSON.stringify(snap, null, 2);
+    } else {
+      snapEl.style.display = 'none';
+      snapEl.textContent = '';
+    }
+  }
+  const repoInput = document.getElementById('requestFrontendRepo');
+  if (repoInput && !repoInput.value.trim() && msg.frontendRepoDefault) {
+    repoInput.value = msg.frontendRepoDefault;
+  }
+  if (!opts.skipSelects) {
+    const keepSpec = requestFlowDraft?.spec || document.getElementById('requestFlowSpec')?.value?.trim() || msg.spec;
+    const keepGrep = requestFlowDraft?.grep ?? document.getElementById('requestFlowTest')?.value ?? '';
+    fillRequestFlowSpecSelect(msg.specs, keepSpec);
+    fillRequestFlowTestSelect(msg.tests, keepGrep);
+    if (requestFlowDraft) applyRequestFlowDraftToDom();
+  }
+  if (msg.testsError) {
+    const hint = document.getElementById('requestFlowHint');
+    if (hint) hint.textContent = `用例列表：${msg.testsError}`;
+  }
+}
+
+let requestFlowStatusTimer = null;
+
+function refreshRequestFlowStatus() {
+  clearTimeout(requestFlowStatusTimer);
+  requestFlowStatusTimer = setTimeout(() => {
+    const spec = document.getElementById('requestFlowSpec')?.value?.trim() || '';
+    if (ws && ws.readyState === 1) send('request-flow:status', { env: envState.current, spec });
+  }, 120);
+}
+
+function switchToRequestFlowTab() {
+  if (document.getElementById('pane-request-flow')?.classList.contains('active')) return;
+  const tab = Array.from(document.querySelectorAll('.tab')).find((t) => t.textContent.includes('申请单流程'));
+  if (tab) switchTab('request-flow', tab);
+}
+
+function startRequestFlowProbe() {
+  switchToRequestFlowTab();
+  const frontendRepo = document.getElementById('requestFrontendRepo')?.value?.trim() || '';
+  setRequestFlowBusy(true);
+  if (!send('request-flow:probe', { frontendRepo, env: envState.current })) setRequestFlowBusy(false);
+}
+
+function getRequestFlowMode() {
+  return document.getElementById('requestFlowMode')?.value?.trim() || 'headless';
+}
+
+function applyRequestFlowPreset(preset) {
+  switchToRequestFlowTab();
+  const writeEnabled = Boolean(document.getElementById('requestWriteEnabled')?.checked);
+  let key = writeEnabled && preset === 'readOnly' ? 'write' : preset;
+  if (preset === 'submitApprove') key = 'submitApprove';
+  const cfg = REQUEST_FLOW_PRESETS[key] || REQUEST_FLOW_PRESETS.preview;
+  if (cfg.write) {
+    const cb = document.getElementById('requestWriteEnabled');
+    if (cb) cb.checked = true;
+  }
+  requestFlowDraft = {
+    preset: key,
+    spec: cfg.spec,
+    grep: cfg.grep ?? '',
+    mode: cfg.mode || 'headless',
+  };
+  ensureRequestFlowSpecOption(cfg.spec);
+  applyRequestFlowDraftToDom();
+  onRequestFlowSpecChange();
+}
+
+function runSelectedRequestFlow(mode, opts = {}) {
+  switchToRequestFlowTab();
+  requestFlowDraft = null;
+  const writeEnabled = opts.writeEnabled != null ? opts.writeEnabled : Boolean(document.getElementById('requestWriteEnabled')?.checked);
+  const docNo = opts.docNo != null ? opts.docNo : (document.getElementById('requestDocNo')?.value?.trim() || '');
+  const formName = opts.formName != null ? opts.formName : (document.getElementById('requestFormName')?.value?.trim() || '');
+  const spec = document.getElementById('requestFlowSpec')?.value?.trim() || 'request/full-flow.spec.ts';
+  const grep = opts.grep != null ? opts.grep : (document.getElementById('requestFlowTest')?.value?.trim() || '');
+  const runMode = mode || getRequestFlowMode();
+  const payload = {
+    mode: runMode,
+    env: envState.current,
+    writeEnabled,
+    docNo,
+    formName,
+    spec,
+    grep,
+    preset: opts.preset || 'custom',
+  };
+  setRequestFlowBusy(true);
+  if (!send('request-flow:run', payload)) setRequestFlowBusy(false);
+}
+
+function cancelRequestFlowRun() {
+  send('cancel:request-flow', {});
 }
 
 function setApprovalFlowBusy(busy) {

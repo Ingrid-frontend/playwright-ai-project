@@ -11,17 +11,18 @@ const {
 
 const catalogCheckMod = (() => {
   try {
-    return require(path.join(__dirname, '../../approval-flow/utils/catalog-check.cjs'));
+    return require(path.join(__dirname, '../../request-flow/utils/catalog-check.cjs'));
   } catch {
     return null;
   }
 })();
 const checkCatalogAgainstSnapshot = catalogCheckMod?.checkCatalogAgainstSnapshot || null;
 
-const FLOW_DIR = 'approval-flow';
+const FLOW_DIR = 'request-flow';
 const CONFIG_REL = path.join(FLOW_DIR, 'playwright.config.ts');
 const SNAPSHOT_REL = path.join(FLOW_DIR, 'datasource/live-snapshot.json');
 const DEFAULT_FRONTEND_REPO = '/Users/hly/project/huilianyi-refactoring';
+const ENTRY_PATH = '/main/request';
 
 function flowDir(repoRoot) {
   return path.join(repoRoot, FLOW_DIR);
@@ -53,20 +54,19 @@ function pickSnapshotFrame(snapshot) {
   return list || snapshot;
 }
 
-const DEFAULT_SPEC = 'approval/full-flow.spec.ts';
+const DEFAULT_SPEC = 'request/full-flow.spec.ts';
 
-function listApprovalFlowSpecs(repoRoot) {
-  const dir = path.join(repoRoot, FLOW_DIR, 'tests', 'approval');
+function listRequestFlowSpecs(repoRoot) {
+  const dir = path.join(repoRoot, FLOW_DIR, 'tests', 'request');
   if (!fs.existsSync(dir)) return [DEFAULT_SPEC];
   const specs = fs
     .readdirSync(dir)
     .filter((name) => name.endsWith('.spec.ts'))
     .sort()
-    .map((name) => `approval/${name}`);
+    .map((name) => `request/${name}`);
   return specs.length ? specs : [DEFAULT_SPEC];
 }
 
-/** 解析 playwright test --list 输出为 { grep, label }[] */
 function parsePlaywrightListOutput(text) {
   const items = [];
   for (const raw of String(text || '').split('\n')) {
@@ -77,13 +77,13 @@ function parsePlaywrightListOutput(text) {
     const titleParts = parts.slice(2);
     const label = titleParts.join(' › ');
     const grep = titleParts[titleParts.length - 1] || label;
-    if (!grep || /^approval\//.test(grep)) continue;
+    if (!grep || /^request\//.test(grep)) continue;
     items.push({ grep, label });
   }
   return items;
 }
 
-function listApprovalFlowTests(repoRoot, specRel, spawnEnv = process.env) {
+function listRequestFlowTests(repoRoot, specRel, spawnEnv = process.env) {
   const spec = String(specRel || DEFAULT_SPEC).trim() || DEFAULT_SPEC;
   const configAbs = path.join(repoRoot, CONFIG_REL);
   if (!fs.existsSync(configAbs)) return { spec, tests: [], error: `未找到 ${CONFIG_REL}` };
@@ -104,35 +104,33 @@ function listApprovalFlowTests(repoRoot, specRel, spawnEnv = process.env) {
   return { spec, tests: parsePlaywrightListOutput(out), error: '' };
 }
 
-function approvalFlowReportOpenPath() {
-  return 'approval-flow/playwright-report/index.html';
+function requestFlowReportOpenPath() {
+  return 'request-flow/playwright-report/index.html';
 }
 
 function snapshotSummary(snapshot) {
   const frame = pickSnapshotFrame(snapshot);
   if (!frame) return null;
-  const tabs = (frame.tabs || []).filter((t) => /待审批|已办|抄送|操作历史/.test(String(t)));
   const searchInputs = frame.searchInputs || [];
   const searchPlaceholder =
     searchInputs.find((s) => String(s.placeholder || '').includes('单号'))?.placeholder || '';
   const apis = Array.isArray(snapshot.listApis) ? snapshot.listApis : [];
-  const rows = apis[0]?.sample || snapshot.sampleRows || snapshot.pendingRows || [];
+  const rows = apis[0]?.sample || snapshot.sampleRows || [];
   const first = Array.isArray(rows) ? rows[0] : null;
   const docFromRow = first?.businessCode || first?.documentNumber || '';
-  const docFromText = String(frame.firstRowText || '').match(/[A-Z]{2}\d{6,}/);
+  const docFromText = String(frame.firstRowText || '').match(/(?:EA|ER|AR|BX|CD|comic)\w{6,}/i);
   return {
-    probedAt: snapshot.probedAt || snapshot.generatedAt || '',
-    tabs: tabs.slice(0, 8),
+    probedAt: snapshot.probedAt || snapshot.capturedAt || snapshot.generatedAt || '',
     headers: Array.isArray(frame.headers) ? frame.headers.filter((h) => h && h !== '+').slice(0, 12) : [],
     searchPlaceholder,
     inIframe: Boolean(snapshot.list?.iframeCount || snapshot.list?.iframeSrcs?.length),
     tbodyRows: frame.tbodyRows ?? 0,
     sampleDocNo: docFromRow || (docFromText ? docFromText[0] : ''),
-    listApi: apis[0]?.url?.split('?')[0] || '/api/approvals/pendingApproval',
+    listApi: apis[0]?.url?.split('?')[0] || '/api/applications/v4/search',
   };
 }
 
-function getApprovalFlowStatus(repoRoot, session, deps, msg = {}) {
+function getRequestFlowStatus(repoRoot, session, deps, msg = {}) {
   const { getSessionPlaywrightEnv, getSessionAccountProfile } = deps;
   const envId = String(msg.env || getSessionPlaywrightEnv(session) || 'dev').trim();
   const profile = getSessionAccountProfile(session, repoRoot);
@@ -144,10 +142,10 @@ function getApprovalFlowStatus(repoRoot, session, deps, msg = {}) {
       ? checkCatalogAgainstSnapshot(snapshot)
       : { ok: true, warnings: snapshot ? [] : ['未探活，跳过 catalog 校验'] };
   const hasConfig = fs.existsSync(path.join(repoRoot, CONFIG_REL));
-  const specs = listApprovalFlowSpecs(repoRoot);
+  const specs = listRequestFlowSpecs(repoRoot);
   const spec = String(msg.spec || DEFAULT_SPEC).trim() || DEFAULT_SPEC;
   const spawnEnv = buildSpawnEnv(session, deps, msg).spawnEnv;
-  const listed = hasConfig ? listApprovalFlowTests(repoRoot, spec, spawnEnv) : { spec, tests: [], error: '' };
+  const listed = hasConfig ? listRequestFlowTests(repoRoot, spec, spawnEnv) : { spec, tests: [], error: '' };
   return {
     ready: hasConfig,
     env: envId,
@@ -158,7 +156,7 @@ function getApprovalFlowStatus(repoRoot, session, deps, msg = {}) {
     snapshotRel: snapshot ? SNAPSHOT_REL : '',
     snapshot: snapshotSummary(snapshot),
     catalogCheck,
-    reportOpenPath: `/repo-report/${approvalFlowReportOpenPath()}`,
+    reportOpenPath: `/repo-report/${requestFlowReportOpenPath()}`,
     frontendRepoDefault: DEFAULT_FRONTEND_REPO,
     specs,
     defaultSpec: DEFAULT_SPEC,
@@ -168,16 +166,16 @@ function getApprovalFlowStatus(repoRoot, session, deps, msg = {}) {
   };
 }
 
-function sendApprovalFlowStatus(ws, session, deps, msg = {}) {
+function sendRequestFlowStatus(ws, session, deps, msg = {}) {
   const repoRoot = deps.resolveRepoRoot();
-  send(ws, 'approval-flow:status', getApprovalFlowStatus(repoRoot, session, deps, msg));
+  send(ws, 'request-flow:status', getRequestFlowStatus(repoRoot, session, deps, msg));
 }
 
-function sendApprovalFlowTestList(ws, session, deps, msg = {}) {
+function sendRequestFlowTestList(ws, session, deps, msg = {}) {
   const repoRoot = deps.resolveRepoRoot();
   const { spawnEnv } = buildSpawnEnv(session, deps, msg);
-  const listed = listApprovalFlowTests(repoRoot, msg.spec, spawnEnv);
-  send(ws, 'approval-flow:tests', listed);
+  const listed = listRequestFlowTests(repoRoot, msg.spec, spawnEnv);
+  send(ws, 'request-flow:tests', listed);
 }
 
 function buildSpawnEnv(session, deps, msg = {}) {
@@ -190,11 +188,14 @@ function buildSpawnEnv(session, deps, msg = {}) {
   spawnEnv.BASE_URL = String(msg.baseURL || resolved?.baseURL || 'https://dev.huilianyi.com').trim();
   const storage = resolveStorage(repoRoot, envId);
   if (storage) spawnEnv.STORAGE_STATE = storage;
-  if (msg.writeEnabled) spawnEnv.APPROVAL_ENABLE_WRITE = '1';
-  else delete spawnEnv.APPROVAL_ENABLE_WRITE;
+  if (msg.writeEnabled) spawnEnv.REQUEST_ENABLE_WRITE = '1';
+  else delete spawnEnv.REQUEST_ENABLE_WRITE;
   const docNo = String(msg.docNo || '').trim();
-  if (docNo) spawnEnv.APPROVAL_DOC_NO = docNo;
-  else delete spawnEnv.APPROVAL_DOC_NO;
+  if (docNo) spawnEnv.REQUEST_DOC_NO = docNo;
+  else delete spawnEnv.REQUEST_DOC_NO;
+  const formName = String(msg.formName || '').trim();
+  if (formName) spawnEnv.REQUEST_FORM_NAME = formName;
+  else delete spawnEnv.REQUEST_FORM_NAME;
   return { repoRoot, envId, spawnEnv, storage };
 }
 
@@ -229,7 +230,7 @@ async function streamProc(ws, session, procKey, cancelKey, label, cmd, args, opt
   return { ok: exitCode === 0, exitCode };
 }
 
-async function runApprovalFlowProbe(ws, session, msg, deps) {
+async function runRequestFlowProbe(ws, session, msg, deps) {
   const { repoRoot, envId, spawnEnv } = buildSpawnEnv(session, deps, msg);
   const frontendRepo = String(msg.frontendRepo || DEFAULT_FRONTEND_REPO).trim();
   const outRel = SNAPSHOT_REL;
@@ -237,33 +238,33 @@ async function runApprovalFlowProbe(ws, session, msg, deps) {
 
   if (!fs.existsSync(flowDir(repoRoot))) {
     send(ws, 'error', { message: `未找到 ${FLOW_DIR}/ 目录` });
-    send(ws, 'approval-flow:probe:done', { ok: false });
+    send(ws, 'request-flow:probe:done', { ok: false });
     return;
   }
 
-  send(ws, 'approval-flow:probe:start', { env: envId, frontendRepo, outRel });
-  logLine(ws, `[approval-flow] 实机探活 · env=${envId} · ${frontendRepo} · /main/approve`, 'info');
+  send(ws, 'request-flow:probe:start', { env: envId, frontendRepo, outRel });
+  logLine(ws, `[request-flow] 实机探活 · env=${envId} · ${frontendRepo} · ${ENTRY_PATH}`, 'info');
 
   const args = [
     'tsx',
     'scripts/index-frontend/probe-live-page.ts',
     `--env=${envId}`,
-    '--entry=/main/approve',
+    `--entry=${ENTRY_PATH}`,
     `--out=${outRel}`,
   ];
-  const result = await streamProc(ws, session, 'approvalFlowProc', 'approvalFlowCancelled', 'approval-flow/probe', npx, args, {
+  const result = await streamProc(ws, session, 'requestFlowProc', 'requestFlowCancelled', 'request-flow/probe', npx, args, {
     spawn: deps.spawn,
     cwd: repoRoot,
     env: spawnEnv,
   });
 
-  const status = getApprovalFlowStatus(repoRoot, session, deps, msg);
-  send(ws, 'approval-flow:probe:done', { ...result, ...status });
-  if (result.ok) logLine(ws, `[approval-flow] 探活完成 · ${outRel}`, 'ok');
+  const status = getRequestFlowStatus(repoRoot, session, deps, msg);
+  send(ws, 'request-flow:probe:done', { ...result, ...status });
+  if (result.ok) logLine(ws, `[request-flow] 探活完成 · ${outRel}`, 'ok');
   else if (!result.cancelled) send(ws, 'error', { message: `探活退出码 ${result.exitCode}` });
 }
 
-async function runApprovalFlowTests(ws, session, msg, deps) {
+async function runRequestFlowTests(ws, session, msg, deps) {
   const { repoRoot, envId, spawnEnv } = buildSpawnEnv(session, deps, msg);
   const configRel = CONFIG_REL;
   const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
@@ -273,12 +274,12 @@ async function runApprovalFlowTests(ws, session, msg, deps) {
 
   if (!fs.existsSync(path.join(repoRoot, configRel))) {
     send(ws, 'error', { message: `未找到 ${configRel}` });
-    send(ws, 'approval-flow:run:done', { ok: false, mode });
+    send(ws, 'request-flow:run:done', { ok: false, mode });
     return;
   }
   if (!resolveStorage(repoRoot, envId)) {
     send(ws, 'error', { message: `缺少登录态 storage/loginState/${envId}.json，请先在侧栏登录` });
-    send(ws, 'approval-flow:run:done', { ok: false, mode });
+    send(ws, 'request-flow:run:done', { ok: false, mode });
     return;
   }
 
@@ -290,19 +291,19 @@ async function runApprovalFlowTests(ws, session, msg, deps) {
   else if (mode === 'ui') args.push('--ui');
   else if (headless) args.push('--reporter=json');
 
-  send(ws, 'approval-flow:run:start', { env: envId, mode, spec, grep });
-  logLine(ws, `[approval-flow] 运行用例 · mode=${mode} · ${spec}${grep ? ` · grep=${grep}` : ''}`, 'info');
+  send(ws, 'request-flow:run:start', { env: envId, mode, spec, grep });
+  logLine(ws, `[request-flow] 运行用例 · mode=${mode} · ${spec}${grep ? ` · grep=${grep}` : ''}`, 'info');
 
-  session.approvalFlowCancelled = false;
+  session.requestFlowCancelled = false;
   let proc;
   try {
     proc = deps.spawn(npx, args, { cwd: repoRoot, env: spawnEnv, shell: false });
   } catch (e) {
     send(ws, 'error', { message: `用例启动失败: ${errText(e)}` });
-    send(ws, 'approval-flow:run:done', { ok: false, mode, spec, grep, env: envId });
+    send(ws, 'request-flow:run:done', { ok: false, mode, spec, grep, env: envId });
     return;
   }
-  session.approvalFlowProc = proc;
+  session.requestFlowProc = proc;
 
   let stdout = '';
   proc.stdout.on('data', (d) => {
@@ -320,11 +321,11 @@ async function runApprovalFlowTests(ws, session, msg, deps) {
 
   const startTime = Date.now();
   const exitCode = await new Promise((resolve) => proc.on('close', resolve));
-  session.approvalFlowProc = null;
+  session.requestFlowProc = null;
 
-  if (session.approvalFlowCancelled) {
-    logLine(ws, '[approval-flow/test] 已取消', 'warn');
-    send(ws, 'approval-flow:run:done', {
+  if (session.requestFlowCancelled) {
+    logLine(ws, '[request-flow/test] 已取消', 'warn');
+    send(ws, 'request-flow:run:done', {
       ok: false,
       cancelled: true,
       mode,
@@ -368,7 +369,7 @@ async function runApprovalFlowTests(ws, session, msg, deps) {
       }
     }
   } else {
-    logLine(ws, '[approval-flow] 有界面模式已结束，请在浏览器窗口查看结果', 'info');
+    logLine(ws, '[request-flow] 有界面模式已结束，请在浏览器窗口查看结果', 'info');
     passed = exitCode === 0 ? 1 : 0;
     failed = exitCode === 0 ? 0 : 1;
     total = 1;
@@ -379,9 +380,9 @@ async function runApprovalFlowTests(ws, session, msg, deps) {
   }
 
   const ok = exitCode === 0 && failed === 0;
-  const reportRel = approvalFlowReportOpenPath();
+  const reportRel = requestFlowReportOpenPath();
   const reportOpenPath = fs.existsSync(path.join(repoRoot, reportRel)) ? `/repo-report/${reportRel}` : '';
-  send(ws, 'approval-flow:run:done', {
+  send(ws, 'request-flow:run:done', {
     ok,
     exitCode,
     cancelled: false,
@@ -396,19 +397,19 @@ async function runApprovalFlowTests(ws, session, msg, deps) {
     failures,
     specRelative,
     runMode: mode,
-    playwrightReportDir: 'approval-flow/playwright-report',
+    playwrightReportDir: 'request-flow/playwright-report',
     reportHint: reportRel,
     reportOpenPath,
   });
-  if (ok) logLine(ws, '[approval-flow] 用例通过', 'ok');
+  if (ok) logLine(ws, '[request-flow] 用例通过', 'ok');
   else send(ws, 'error', { message: `用例退出码 ${exitCode}` });
 }
 
-function cancelApprovalFlow(session) {
-  session.approvalFlowCancelled = true;
-  if (session.approvalFlowProc) {
+function cancelRequestFlow(session) {
+  session.requestFlowCancelled = true;
+  if (session.requestFlowProc) {
     try {
-      session.approvalFlowProc.kill('SIGTERM');
+      session.requestFlowProc.kill('SIGTERM');
     } catch {
       /* ignore */
     }
@@ -416,13 +417,13 @@ function cancelApprovalFlow(session) {
 }
 
 module.exports = {
-  getApprovalFlowStatus,
-  sendApprovalFlowStatus,
-  sendApprovalFlowTestList,
-  listApprovalFlowSpecs,
-  listApprovalFlowTests,
-  runApprovalFlowProbe,
-  runApprovalFlowTests,
-  cancelApprovalFlow,
+  getRequestFlowStatus,
+  sendRequestFlowStatus,
+  sendRequestFlowTestList,
+  listRequestFlowSpecs,
+  listRequestFlowTests,
+  runRequestFlowProbe,
+  runRequestFlowTests,
+  cancelRequestFlow,
   DEFAULT_SPEC,
 };

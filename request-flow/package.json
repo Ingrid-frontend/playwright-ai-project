@@ -1,0 +1,22 @@
+{
+  "name": "huilianyi-request-flow",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "汇联易 · 申请单列表/新建/保存/提交 全流程 Playwright 自动测试",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "test:debug": "playwright test --debug",
+    "test:list": "playwright test --list",
+    "test:fix-approver": "playwright test tests/request/fix-approver.spec.ts",
+    "test:submit-approve": "playwright test tests/request/submit-then-approve.spec.ts",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.58.0",
+    "@types/node": "^20.19.43",
+    "dotenv": "^17.3.1"
+  }
+}

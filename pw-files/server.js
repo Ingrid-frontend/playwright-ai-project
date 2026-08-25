@@ -70,6 +70,13 @@ const {
   runApprovalFlowTests,
   cancelApprovalFlow,
 } = require('./lib/approval-flow-run');
+const {
+  sendRequestFlowStatus,
+  sendRequestFlowTestList,
+  runRequestFlowProbe,
+  runRequestFlowTests,
+  cancelRequestFlow,
+} = require('./lib/request-flow-run');
 const { runEgoAudit } = require('./lib/ego-audit');
 const { runEgoNlFlow } = require('./lib/ego-nl-run');
 const { runEgoExplore } = require('./lib/ego-explore');
@@ -412,6 +419,10 @@ const { sendHello, handleMessage } = createWsDispatcher({
     runApprovalFlowProbe,
     runApprovalFlowTests,
     cancelApprovalFlow,
+    sendRequestFlowStatus,
+    runRequestFlowProbe,
+    runRequestFlowTests,
+    cancelRequestFlow,
   },
   jobs: {
     handleJobsList,

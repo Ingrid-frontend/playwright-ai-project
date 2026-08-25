@@ -78,7 +78,16 @@ function getCompareReportStatus(repoRoot) {
   };
 }
 
-/** 仅允许通过 Studio 暴露仓库内 results/、screenshots/、screenshots-baseline/ */
+function isAllowedRepoPublicPath(fromRoot) {
+  const parts = fromRoot.split('/');
+  const top = parts[0];
+  if (top === 'results' || top === 'screenshots' || top === 'screenshots-baseline') return true;
+  if (top === 'playwright-report') return true;
+  if ((top === 'request-flow' || top === 'approval-flow') && parts[1] === 'playwright-report') return true;
+  return false;
+}
+
+/** 仅允许通过 Studio 暴露仓库内白名单目录 */
 function resolveRepoPublicReadFile(repoRoot, urlRel) {
   const rel = decodeURIComponent(String(urlRel || '').replace(/\\/g, '/')).replace(/^\/+/, '');
   if (!rel || rel.split('/').some((s) => !s || s === '..')) return null;
@@ -86,8 +95,7 @@ function resolveRepoPublicReadFile(repoRoot, urlRel) {
   const root = path.resolve(repoRoot);
   if (!abs.startsWith(root + path.sep)) return null;
   const fromRoot = path.relative(root, abs).replace(/\\/g, '/');
-  const top = fromRoot.split('/')[0];
-  if (top !== 'results' && top !== 'screenshots' && top !== 'screenshots-baseline') return null;
+  if (!isAllowedRepoPublicPath(fromRoot)) return null;
   return abs;
 }
 

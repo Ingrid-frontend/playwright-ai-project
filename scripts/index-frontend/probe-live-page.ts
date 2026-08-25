@@ -34,7 +34,10 @@ function pickStorageState(env: Record<string, string>): string | undefined {
 }
 
 function isListApi(url: string): boolean {
-  return /\/api\/approvals\/(pendingApproval|approved|copiedToMe)(?:\?|$)/.test(url);
+  return (
+    /\/api\/approvals\/(pendingApproval|approved|copiedToMe)(?:\?|$)/.test(url) ||
+    /\/api\/applications\/(?:v4\/)?search(?:\?|$)/.test(url)
+  );
 }
 
 function sampleRecords(body: unknown): unknown[] {
@@ -124,7 +127,11 @@ async function main(): Promise<void> {
   const entry = getArg('entry', '/main/approve');
   const outPath = getArg(
     'out',
-    entry.includes('approve') ? 'approval-flow/datasource/live-snapshot.json' : '',
+    entry.includes('approve')
+      ? 'approval-flow/datasource/live-snapshot.json'
+      : entry.includes('request')
+        ? 'request-flow/datasource/live-snapshot.json'
+        : '',
   );
   const clickFirstRow = hasFlag('click-first-row') || entry.includes('approve');
   const baseConfig = JSON.parse(fs.readFileSync(path.resolve('datasource/base-config.json'), 'utf8'));
@@ -168,7 +175,7 @@ async function main(): Promise<void> {
   await page
     .waitForResponse((r) => isListApi(r.url()) && r.status() === 200, { timeout: 25_000 })
     .catch(() => undefined);
-  await page.waitForSelector('.approve-list, .approve-request, .ant-tabs-tab', { timeout: 30_000 }).catch(() => undefined);
+  await page.waitForSelector('.approve-list, .approve-request, .application-list, .ant-tabs-tab', { timeout: 30_000 }).catch(() => undefined);
   await page
     .waitForSelector('.ant-table, .approve-card-list, .ant-table-tbody tr.ant-table-row', { timeout: 30_000 })
     .catch(() => undefined);
