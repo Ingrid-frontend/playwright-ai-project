@@ -86,7 +86,8 @@ export class RequestEditPage {
 
   async expectEditVisible() {
     await this.ensureRoot();
-    // 列表表头也有「单号」，不能单靠文案；以底栏按钮 / 详情专有文案为准
+    // 列表表头也有「单号」，不能单靠文案；以底栏按钮 / 详情专有文案为准。
+    // 详情打开后两者常同时可见，不能用 .or().toBeVisible()（会触发 strict mode）。
     const action = this.scope()
       .getByRole('button', { name: /^(提\s*交|保\s*存|删除单据)$/ })
       .filter({ visible: true })
@@ -95,7 +96,12 @@ export class RequestEditPage {
       .getByText(DETAIL_MARKERS)
       .filter({ visible: true })
       .first();
-    await expect(action.or(info), '未打开申请单详情').toBeVisible({ timeout: 60_000 });
+    await expect(async () => {
+      const ok =
+        (await action.isVisible().catch(() => false)) ||
+        (await info.isVisible().catch(() => false));
+      expect(ok, '未打开申请单详情').toBeTruthy();
+    }).toPass({ timeout: 60_000 });
   }
 
   /** 编辑区：侧滑壳；或无壳时用带保存/返回的 main（新建全屏常见） */

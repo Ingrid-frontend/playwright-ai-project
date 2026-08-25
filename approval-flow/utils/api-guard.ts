@@ -1,6 +1,6 @@
 import type { Page, Request, Response } from '@playwright/test';
 import { sendApiFailuresToFeishu } from '../../request-flow/utils/feishu-api-failure';
-import { requestToCurl } from '../../request-flow/utils/request-curl';
+import { extractRequestFields, formatRequestFields } from '../../request-flow/utils/request-fields';
 
 export type ApiFailureKind = 'http' | 'business' | 'requestfailed';
 
@@ -12,7 +12,7 @@ export type ApiFailure = {
   status?: number;
   bodySummary?: string;
   errorText?: string;
-  curl?: string;
+  fields?: Record<string, string>;
 };
 
 export type ApiGuardOptions = {
@@ -137,7 +137,7 @@ export class ApiGuard {
       fullUrl: url,
       method: request.method(),
       errorText: failure,
-      curl: requestToCurl(request),
+      fields: extractRequestFields(request),
     });
   };
 
@@ -199,8 +199,9 @@ export class ApiGuard {
       const status = f.status != null ? ` status=${f.status}` : '';
       const body = f.bodySummary ? ` body=${f.bodySummary}` : '';
       const err = f.errorText ? ` error=${f.errorText}` : '';
-      const curl = f.curl ? `\n     ${f.curl.split('\n').join('\n     ')}` : '';
-      return `  ${i + 1}. [${f.kind}] ${f.method} ${f.url}${status}${err}${body}${curl}`;
+      const fields = formatRequestFields(f.fields);
+      const fieldBlock = fields ? `\n     ${fields.split('\n').join('\n     ')}` : '';
+      return `  ${i + 1}. [${f.kind}] ${f.method} ${f.url}${status}${err}${body}${fieldBlock}`;
     });
 
     throw new Error(
@@ -208,11 +209,11 @@ export class ApiGuard {
     );
   }
 
-  private pushFailure(request: Request, failure: ApiFailure): void {
+  private pushFailure(request: Request, failure: ApiFailure, response?: Response): void {
     this.failures.push({
       ...failure,
       fullUrl: request.url(),
-      curl: requestToCurl(request),
+      fields: extractRequestFields(request, response),
     });
   }
 
@@ -264,7 +265,7 @@ export class ApiGuard {
         method,
         status,
         bodySummary: bodySummary || (businessMsg ?? undefined),
-      });
+      }, response);
       return;
     }
 
@@ -275,7 +276,7 @@ export class ApiGuard {
         method,
         status,
         bodySummary: bodySummary || businessMsg,
-      });
+      }, response);
     }
   }
 }

@@ -9,7 +9,7 @@ export type ApiFailureNotice = {
   status?: number;
   bodySummary?: string;
   errorText?: string;
-  curl?: string;
+  fields?: Record<string, string>;
 };
 
 type FeishuCfg = {
@@ -57,20 +57,47 @@ function truncate(text: string, max: number): string {
   return `${text.slice(0, max)}…`;
 }
 
+/** 标题用环境：PLAYWRIGHT_ENV > BASE_URL 子域（dev/uat/stage…） */
+export function resolveNotifyEnv(): string {
+  const fromEnv = (process.env.PLAYWRIGHT_ENV || process.env.REQUEST_ENV || '').trim();
+  if (fromEnv) return fromEnv;
+  const base = process.env.BASE_URL || process.env.PLAYWRIGHT_BASE_URL || '';
+  try {
+    const host = new URL(base).hostname;
+    const m = host.match(/^(dev|uat|sit|stage|staging|test|prod|www)(?:\.|$)/i);
+    if (m) return m[1]!.toLowerCase();
+    if (host.includes('huilianyi')) {
+      const part = host.split('.')[0];
+      if (part && part !== 'huilianyi') return part;
+    }
+  } catch {
+    /* ignore */
+  }
+  return 'unknown';
+}
+
 function buildMarkdown(failures: ApiFailureNotice[], label: string): string {
   const blocks = failures.map((f, i) => {
-    const head = `**${i + 1}. [${f.kind}] ${f.method} ${f.fullUrl || f.url}**`;
-    const meta = [
-      f.status != null ? `status=${f.status}` : '',
-      f.errorText ? `error=${f.errorText}` : '',
-      f.bodySummary ? `body=${truncate(f.bodySummary, 500)}` : '',
-    ]
-      .filter(Boolean)
-      .join(' · ');
-    const curl = f.curl ? `\n\`\`\`bash\n${f.curl}\n\`\`\`` : '';
-    return `${head}\n${meta}${curl}`;
+    // url 已含 path+业务 query；不再重复 fullUrl / host / path / roleType
+    const head = `**${i + 1}. [${f.kind}] ${f.method} ${f.url}**`;
+    const lines = [
+      f.status != null ? `- status: ${f.status}` : '',
+      f.errorText ? `- error: ${f.errorText}` : '',
+      f.bodySummary ? `- body: ${truncate(f.bodySummary, 400)}` : '',
+    ].filter(Boolean);
+
+    if (f.fields && Object.keys(f.fields).length) {
+      for (const [k, v] of Object.entries(f.fields)) {
+        lines.push(`- ${k}: ${v}`);
+      }
+    }
+    return `${head}\n${lines.join('\n')}`;
   });
   return `**${label}** · ${failures.length} 个接口失败\n\n${blocks.join('\n\n')}`;
+}
+
+function cardTitle(): string {
+  return `接口失败 · ${resolveNotifyEnv()}`;
 }
 
 async function getAccessToken(appId: string, appSecret: string): Promise<string> {
@@ -90,7 +117,7 @@ async function sendByApp(cfg: FeishuCfg, content: string): Promise<void> {
   const token = await getAccessToken(cfg.appId!, cfg.appSecret!);
   const card = {
     header: {
-      title: { tag: 'plain_text', content: '接口失败 · curl 复现' },
+      title: { tag: 'plain_text', content: cardTitle() },
       template: 'red',
     },
     elements: [{ tag: 'div', text: { tag: 'lark_md', content: truncate(content, 28000) } }],
@@ -114,7 +141,7 @@ async function sendByApp(cfg: FeishuCfg, content: string): Promise<void> {
 async function sendByWebhook(cfg: FeishuCfg, content: string): Promise<void> {
   const card = {
     header: {
-      title: { tag: 'plain_text', content: '接口失败 · curl 复现' },
+      title: { tag: 'plain_text', content: cardTitle() },
       template: 'red',
     },
     elements: [{ tag: 'div', text: { tag: 'lark_md', content: truncate(content, 28000) } }],
@@ -143,7 +170,7 @@ export async function sendApiFailuresToFeishu(failures: ApiFailureNotice[], labe
     } else {
       return false;
     }
-    console.log(`[api-guard] 已发送 ${failures.length} 个失败接口 curl 到飞书`);
+    console.log(`[api-guard] 已发送 ${failures.length} 个失败接口到飞书 · env=${resolveNotifyEnv()}`);
     return true;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
