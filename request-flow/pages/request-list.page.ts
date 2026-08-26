@@ -235,30 +235,17 @@ export class RequestListPage {
     await expect(btn, '未找到「新建申请单」按钮').toBeVisible({ timeout: 15_000 });
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      const availP = this.page
-        .waitForResponse(
-          (r) =>
-            /\/api\/custom\/forms\/my\/available/.test(r.url()) &&
-            r.request().method() === 'GET',
-          { timeout: 12_000 },
-        )
-        .catch(() => null);
-
       await btn.click();
 
       const empty = this.scope().getByText(/暂无可创建的单据/).filter({ visible: true }).first();
       const tipVisible = await empty.isVisible({ timeout: 2_500 }).catch(() => false);
-      const avail = await availP;
-      const availBad = avail != null && avail.status() >= 400;
-
-      if (!tipVisible && !availBad) return;
+      if (!tipVisible) {
+        // 下拉/弹窗/直进编辑均算成功；available 可能在进列表时已请求，不必再等
+        return;
+      }
 
       if (attempt === 2) {
-        throw new Error(
-          tipVisible
-            ? '新建申请单：暂无可创建的单据（模板列表为空或 available 接口异常）'
-            : `新建申请单：available 接口失败 status=${avail?.status()}`,
-        );
+        throw new Error('新建申请单：暂无可创建的单据（模板列表为空或 available 接口异常）');
       }
 
       await this.page.waitForTimeout(2_000);

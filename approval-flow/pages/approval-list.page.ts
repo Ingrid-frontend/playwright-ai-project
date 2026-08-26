@@ -245,35 +245,51 @@ export class ApprovalListPage {
   // ---------- 搜索 ----------
 
   async search(keyword: string) {
-    const byPlaceholder = this.scope()
+    const input = this.scope()
       .locator(`input[placeholder="${SEARCH_PLACEHOLDER}"], input[placeholder*="单号"], input[placeholder*="申请人"]`)
       .first();
+    await expect(input, '未找到审批列表搜索框').toBeVisible({ timeout: 15_000 });
+    await input.click();
+    await input.fill('');
+    await input.fill(keyword);
 
-    if (await byPlaceholder.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await byPlaceholder.click();
-      await byPlaceholder.fill('');
-      await byPlaceholder.fill(keyword);
+    const respP = this.waitListApi();
+    // 输入框旁搜索图标（a11y 名常为「图标: search」）；其次外露「搜索」文案；再退回 Enter
+    const icon = this.scope()
+      .getByRole('img', { name: /search/i })
+      .or(this.scope().locator('.anticon-search'))
+      .filter({ visible: true })
+      .first();
+    const textSearch = this.scope().getByText('搜索', { exact: true }).filter({ visible: true }).first();
+    if (await icon.isVisible({ timeout: 1_500 }).catch(() => false)) {
+      await icon.click();
+    } else if (await textSearch.isVisible({ timeout: 1_000 }).catch(() => false)) {
+      await textSearch.click();
     } else {
-      const fallback = this.scope()
-        .locator('.ant-table-wrapper, .approval-filter, form')
-        .first()
-        .locator('input')
-        .first();
-      await expect(fallback).toBeVisible({ timeout: 15_000 });
-      await fallback.click();
-      await fallback.fill('');
-      await fallback.fill(keyword);
+      await input.press('Enter');
     }
-    await this.page.waitForTimeout(500);
-    const searchBtn = this.scope().getByRole('button', { name: '搜索' });
-    if (await searchBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
-      const respP = this.waitListApi();
-      await searchBtn.click();
-      await respP;
-    } else {
-      await byPlaceholder.press('Enter').catch(() => undefined);
-    }
+    await respP;
     await this.waitListSettled();
+  }
+
+  /** 新建提交后审批列表偶发索引延迟：多次搜索直到行出现 */
+  async searchUntilRow(code: string, attempts = 4) {
+    let lastErr: unknown;
+    for (let i = 0; i < attempts; i += 1) {
+      try {
+        if (i > 0) {
+          await this.page.waitForTimeout(2_000 * i);
+          await this.goto();
+          await this.expectLoaded();
+        }
+        await this.search(code);
+        await this.expectRowContains(code);
+        return;
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
   }
 
   // ---------- 筛选 ----------
@@ -717,48 +733,128 @@ export class ApprovalListPage {
 
   // ---------- 审批动作 ----------
 
-  /** 某数据行内的「操作」列定位器 */
-  private rowActions(row: Locator): Locator {
-    return row.locator('td').last().locator('a, button, [class*="action"], [class*="operate"], span');
+  /**
+   * 操作列「通过/驳回」：dev 实机在右侧固定表（.ant-table-fixed-right），
+   * 与数据行分表，不能只用 dataRow.locator('td').last()。
+   */
+  private actionButton(name: RegExp): Locator {
+    const fixed = this.scope()
+      .locator('.ant-table-fixed-right')
+      .getByRole('button', { name })
+      .filter({ visible: true });
+    const any = this.scope().getByRole('button', { name }).filter({ visible: true });
+    return fixed.or(any).first();
   }
 
   /** 在指定行（或首行）的操作列点击「通过」；若弹出意见框则自动填写 */
   async approveRow(comment?: string, code?: string) {
-    const row = code ? this.rowByCode(code) : this.dataRows().first();
-    await expect(row).toBeVisible({ timeout: 20_000 });
-    const btn = this.rowActions(row).filter({ hasText: /通\s*过/ }).first();
+    if (code) {
+      await expect(this.rowByCode(code), `未找到单据「${code}」`).toBeVisible({ timeout: 20_000 });
+    } else {
+      await expect(this.dataRows().first()).toBeVisible({ timeout: 20_000 });
+    }
+    const btn = this.actionButton(/^\s*通\s*过\s*$/);
     await expect(btn, '未在操作列找到「通过」按钮').toBeVisible({ timeout: 10_000 });
     await btn.click();
-    await this.fillCommentDialogIfNeeded(comment);
+    await this.fillCommentDialogIfNeeded(comment, false);
     await this.confirmIfNeeded();
   }
 
   /** 在指定行（或首行）的操作列点击「驳回」；若弹出意见框则自动填写 */
   async rejectRow(comment?: string, code?: string) {
-    const row = code ? this.rowByCode(code) : this.dataRows().first();
-    await expect(row).toBeVisible({ timeout: 20_000 });
-    const btn = this.rowActions(row).filter({ hasText: /驳\s*回/ }).first();
+    if (code) {
+      await expect(this.rowByCode(code), `未找到单据「${code}」`).toBeVisible({ timeout: 20_000 });
+    } else {
+      await expect(this.dataRows().first()).toBeVisible({ timeout: 20_000 });
+    }
+    const btn = this.actionButton(/^\s*驳\s*回\s*$/);
     await expect(btn, '未在操作列找到「驳回」按钮').toBeVisible({ timeout: 10_000 });
     await btn.click();
-    await this.fillCommentDialogIfNeeded(comment);
+    await expect(
+      this.scope().getByRole('dialog').filter({ hasText: /驳回意见|审批驳回/ }),
+      '未出现审批驳回弹窗',
+    ).toBeVisible({ timeout: 15_000 });
+    await this.fillCommentDialogIfNeeded(comment, true);
     await this.confirmIfNeeded();
   }
 
-  /** 点击通过/驳回后，如果出现「审批意见」输入框则填写（可能以弹窗/抽屉形式出现） */
-  private async fillCommentDialogIfNeeded(comment?: string) {
+  /** 点击通过/驳回后，填写意见并点弹窗内「确定」 */
+  private async fillCommentDialogIfNeeded(comment?: string, required = false) {
     if (!comment) return;
-    // 尝试在弹窗/抽屉/内联表单中找到「审批意见」的 textarea
     const dialog = this.scope()
-      .locator('.ant-modal, .ant-drawer, .ant-popover, .approval-dialog')
+      .getByRole('dialog')
+      .filter({ hasText: /驳回意见|审批意见|审批驳回|审批通过/ })
       .filter({ visible: true })
-      .first();
-    const visible = await dialog.count().catch(() => 0);
-    if (visible === 0) return;
-
-    const ta = dialog.locator('textarea').first();
-    if (await ta.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await ta.fill(comment);
+      .last();
+    if (!required) {
+      if (!(await dialog.isVisible({ timeout: 3_000 }).catch(() => false))) return;
+    } else {
+      await expect(dialog, '未出现审批意见弹窗').toBeVisible({ timeout: 15_000 });
     }
+
+    // 驳回优先点快捷回复（contenteditable 手输偶发未写入受控值）
+    let filled = false;
+    const quick = dialog.getByText(/test审批意见\d+/).first();
+    if (await quick.isVisible({ timeout: 2_000 }).catch(() => false)) {
+      await quick.click();
+      filled = true;
+    }
+    if (!filled) {
+      filled = await this.fillDialogComment(dialog, comment);
+    }
+
+    const counter = dialog.getByText(/\d+\s*\/\s*500/);
+    if (await counter.isVisible({ timeout: 2_000 }).catch(() => false)) {
+      await expect(counter, '驳回意见未填写').not.toHaveText(/^0\s*\/\s*500/, { timeout: 8_000 });
+    } else if (!filled) {
+      throw new Error('审批意见弹窗：未找到可填写的输入框');
+    }
+
+    const ok = dialog.getByRole('button', { name: /^确\s*定$/ }).filter({ visible: true }).last();
+    await expect(ok, '审批意见弹窗未找到「确定」').toBeVisible({ timeout: 8_000 });
+    const respP = this.waitListApi(15_000);
+    await ok.click();
+    await expect(dialog).toBeHidden({ timeout: 20_000 });
+    await respP;
+    await this.waitListSettled();
+  }
+
+  private async fillDialogComment(dialog: Locator, comment: string): Promise<boolean> {
+    const item = dialog.locator('.ant-form-item').filter({ hasText: /驳回意见|审批意见/ }).first();
+    const targets = [
+      item.locator('textarea').first(),
+      item.locator('[contenteditable="true"]').first(),
+      item.getByRole('textbox').first(),
+      dialog.locator('textarea').first(),
+      dialog.locator('[contenteditable="true"]').first(),
+    ];
+
+    for (const target of targets) {
+      if (!(await target.isVisible({ timeout: 500 }).catch(() => false))) continue;
+      await target.click();
+      const ok = await target.fill(comment).then(() => true).catch(async () => {
+        await this.page.keyboard.press('Meta+a').catch(() => this.page.keyboard.press('Control+a'));
+        await this.page.keyboard.type(comment, { delay: 15 });
+        return true;
+      });
+      if (ok) return true;
+    }
+
+    const ph = item.getByText('请输入').first();
+    if (await ph.isVisible({ timeout: 1_000 }).catch(() => false)) {
+      await ph.click();
+      await this.page.keyboard.type(comment, { delay: 15 });
+      return true;
+    }
+
+    const box = item.locator('div').filter({ hasText: '请输入' }).first();
+    if (await box.isVisible({ timeout: 1_000 }).catch(() => false)) {
+      await box.click();
+      await this.page.keyboard.type(comment, { delay: 15 });
+      return true;
+    }
+
+    return false;
   }
 
   /** 填写「审批意见」（详情弹窗场景） */
@@ -803,13 +899,29 @@ export class ApprovalListPage {
 
   // ---------- 结果校验 ----------
 
-  /** 断言出现审批成功类提示 */
-  async expectApprovalSuccess() {
-    await expect(
-      this.scope()
-        .getByText(/审批成功|提交成功|操作成功|已通过|审批完成|处理成功/)
-        .first()
-    ).toBeVisible({ timeout: 20_000 });
+  /** 断言出现审批成功类提示；toast 闪过时用「待审批行消失」兜底 */
+  async expectApprovalSuccess(goneText?: string) {
+    const msg = /审批成功|驳回成功|提交成功|操作成功|已通过|已驳回|审批完成|处理成功/;
+    const toast = this.scope()
+      .locator('.ant-message, .ant-notification')
+      .getByText(msg)
+      .or(this.scope().getByText(msg))
+      .or(this.page.locator('.ant-message, .ant-notification').getByText(msg))
+      .filter({ visible: true })
+      .first();
+
+    const toastOk = await toast.isVisible({ timeout: 12_000 }).catch(() => false);
+    if (toastOk) return;
+
+    if (goneText) {
+      await expect(
+        this.rowByCode(goneText),
+        `未看到成功提示，且列表仍有「${goneText}」`,
+      ).toBeHidden({ timeout: 15_000 });
+      return;
+    }
+
+    await expect(toast).toBeVisible({ timeout: 5_000 });
   }
 
   /** 断言回到列表（详情关闭、表格可见） */

@@ -43,6 +43,15 @@ const STEP_SLUG_LABELS: Record<string, string> = {
   'approval-detail': '审批详情',
   'approval-after-row-click': '点击列表行后',
   'approval-first-row': '审批列表首行',
+  'approval-filter': '审批筛选',
+  'approval-approve': '审批通过',
+  'approval-reject': '审批驳回',
+  'request-list': '申请单列表',
+  'request-search': '申请单搜索',
+  'request-filter': '申请单筛选',
+  'request-detail': '申请单详情',
+  'request-submit': '申请单提交',
+  'full-flow': '全流程',
 };
 
 /** 去掉尾部运行时间戳：`工作台_2026-08-20_19-29-59` -> `工作台` */
@@ -63,6 +72,9 @@ export function friendlyScriptLabel(scriptKey: string): string {
     .map((s) => s.trim())
     .filter(Boolean);
 
+  const flowName =
+    segs.includes('request-flow') ? '申请单流程' : segs.includes('approval-flow') ? '审批流程' : '';
+
   let env = '';
   const rest: string[] = [];
   for (const seg of segs) {
@@ -72,12 +84,14 @@ export function friendlyScriptLabel(scriptKey: string): string {
       continue;
     }
     if (isDateSegment(seg) || isInternalSegment(seg)) continue;
+    if (seg === 'flows' || seg === 'request-flow' || seg === 'approval-flow') continue;
     rest.push(stripRunTimestamp(seg));
   }
 
   const flow = [...new Set(rest)].filter(Boolean).join(' / ');
-  if (env && flow) return `${env} · ${flow}`;
-  return flow || env || scriptKey;
+  const parts = [env, flowName, flow].filter(Boolean);
+  if (parts.length) return parts.join(' · ');
+  return scriptKey;
 }
 
 /**

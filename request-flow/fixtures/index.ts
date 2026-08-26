@@ -2,12 +2,16 @@ import { test as base, type BrowserContext, type Page } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'node:url';
+import { appendApiFailures, initWorkerRun } from '../../src/utils/flow-run-report.js';
 import { HomePage } from '../pages/home.page';
 import { LoginPage } from '../pages/login.page';
 import { RequestListPage } from '../pages/request-list.page';
 import { RequestEditPage } from '../pages/request-edit.page';
 import { ApiGuard, createApiGuard } from '../utils/api-guard';
 import { env, hasLoginCredentials } from '../utils/env';
+
+const FLOW_ID = 'request-flow' as const;
+let workerRun: ReturnType<typeof initWorkerRun> | null = null;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -27,6 +31,7 @@ type AppFixtures = {
   requestListPage: RequestListPage;
   requestEditPage: RequestEditPage;
   authenticatedPage: LoginPage;
+  flowRunDir: string;
   _apiGuardPerTest: void;
 };
 
@@ -34,11 +39,27 @@ type WorkerFixtures = {
   sharedContext: BrowserContext;
   sharedPage: Page;
   apiGuard: ApiGuard;
+  _flowWorkerRun: void;
 };
 
 const VIEWPORT = { width: 1440, height: 900 };
 
 export const test = base.extend<AppFixtures, WorkerFixtures>({
+  _flowWorkerRun: [
+    async ({}, use, workerInfo) => {
+      const spec = process.env.FLOW_SPEC || 'request/full-flow.spec.ts';
+      workerRun = initWorkerRun({
+        flowId: FLOW_ID,
+        env: process.env.PLAYWRIGHT_ENV || 'dev',
+        spec,
+      });
+      process.env.FLOW_RUN_MODE = process.env.FLOW_RUN_MODE || 'headless';
+      await use();
+      void workerInfo;
+    },
+    { scope: 'worker', auto: true },
+  ],
+
   sharedContext: [
     async ({ browser }, use) => {
       const storageState = resolveStorageState();
@@ -84,6 +105,10 @@ export const test = base.extend<AppFixtures, WorkerFixtures>({
     await use(sharedPage);
   },
 
+  flowRunDir: async ({}, use) => {
+    await use(workerRun?.runDir || '');
+  },
+
   _apiGuardPerTest: [
     async ({ apiGuard }, use, testInfo) => {
       const skip = testInfo.annotations.some((a) => a.type === 'skip-api-guard');
@@ -92,6 +117,22 @@ export const test = base.extend<AppFixtures, WorkerFixtures>({
       }
       await use();
       if (!skip) {
+        const failures = apiGuard.getFailures();
+        if (failures.length && workerRun) {
+          appendApiFailures(
+            FLOW_ID,
+            workerRun.runId,
+            testInfo.title,
+            failures.map((f) => ({
+              kind: f.kind,
+              url: f.url,
+              method: f.method,
+              status: f.status,
+              bodySummary: f.bodySummary,
+              errorText: f.errorText,
+            })),
+          );
+        }
         await apiGuard.assertNoFailures(`[${testInfo.title}]`);
       }
     },

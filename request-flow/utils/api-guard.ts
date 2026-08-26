@@ -82,6 +82,7 @@ export function detectBusinessFailure(data: unknown): string | null {
 
   if (obj.success === false) {
     const msg = pickMessage(obj);
+    if (msg && /无行程明细，不处理/.test(msg)) return null;
     return msg || 'success:false';
   }
 

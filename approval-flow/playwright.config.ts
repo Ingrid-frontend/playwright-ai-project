@@ -35,7 +35,11 @@ export default defineConfig({
     /* 每次用例结束都截图；失败时保留录像（见 fixtures 里 sharedContext.recordVideo） */
     screenshot: 'on',
     video: 'retain-on-failure',
-    trace: 'on-first-retry',
+    trace: process.env.FLOW_TRACE === 'on'
+      ? 'on'
+      : process.env.FLOW_TRACE === 'retain-on-failure'
+        ? 'retain-on-failure'
+        : 'on-first-retry',
     actionTimeout: 20_000,
     navigationTimeout: 60_000,
   },

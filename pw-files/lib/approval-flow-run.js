@@ -8,6 +8,7 @@ const {
   parsePlaywrightFailures,
   headedFailurePlaceholder,
 } = require('./failure-report');
+const { finalizeFlowRun } = require('./flow-run-common');
 
 const catalogCheckMod = (() => {
   try {
@@ -188,6 +189,8 @@ function buildSpawnEnv(session, deps, msg = {}) {
   const resolved = getEnvEntryResolved(repoRoot, envId, profile);
   const spawnEnv = buildRepoSpawnEnv(session, profile, envId);
   spawnEnv.BASE_URL = String(msg.baseURL || resolved?.baseURL || 'https://dev.huilianyi.com').trim();
+  spawnEnv.PLAYWRIGHT_ENV = envId;
+  spawnEnv.FLOW_SPEC = String(msg.spec || DEFAULT_SPEC).trim() || DEFAULT_SPEC;
   const storage = resolveStorage(repoRoot, envId);
   if (storage) spawnEnv.STORAGE_STATE = storage;
   if (msg.writeEnabled) spawnEnv.APPROVAL_ENABLE_WRITE = '1';
@@ -319,6 +322,9 @@ async function runApprovalFlowTests(ws, session, msg, deps) {
   });
 
   const startTime = Date.now();
+  const startedAt = new Date(startTime).toISOString();
+  process.env.FLOW_SPEC = spec;
+  process.env.FLOW_RUN_MODE = mode;
   const exitCode = await new Promise((resolve) => proc.on('close', resolve));
   session.approvalFlowProc = null;
 
@@ -381,7 +387,8 @@ async function runApprovalFlowTests(ws, session, msg, deps) {
   const ok = exitCode === 0 && failed === 0;
   const reportRel = approvalFlowReportOpenPath();
   const reportOpenPath = fs.existsSync(path.join(repoRoot, reportRel)) ? `/repo-report/${reportRel}` : '';
-  send(ws, 'approval-flow:run:done', {
+
+  const finalized = finalizeFlowRun(repoRoot, 'approval-flow', '审批流程', {
     ok,
     exitCode,
     cancelled: false,
@@ -393,6 +400,8 @@ async function runApprovalFlowTests(ws, session, msg, deps) {
     failed,
     total,
     duration,
+    startedAt,
+    finishedAt: new Date().toISOString(),
     failures,
     specRelative,
     runMode: mode,
@@ -400,6 +409,8 @@ async function runApprovalFlowTests(ws, session, msg, deps) {
     reportHint: reportRel,
     reportOpenPath,
   });
+
+  send(ws, 'approval-flow:run:done', finalized);
   if (ok) logLine(ws, '[approval-flow] 用例通过', 'ok');
   else send(ws, 'error', { message: `用例退出码 ${exitCode}` });
 }

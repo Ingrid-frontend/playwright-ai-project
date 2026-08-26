@@ -1185,7 +1185,7 @@
               </div>
               <div>
                 <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">新建单据名称（可选）</label>
-                <input type="text" class="url-input" id="requestFormName" spellcheck="false" placeholder="留空则选第一个可用模板"
+                <input type="text" class="url-input" id="requestFormName" spellcheck="false" placeholder="留空则随机选可见模板"
                   style="width:100%;color:var(--text)">
               </div>
 
@@ -1218,7 +1218,10 @@
                   <span class="btn-label">运行</span>
                 </button>
                 <button type="button" class="btn" id="btnRequestCancel" style="display:none" onclick="cancelRequestFlowRun()">取消</button>
-                <button type="button" class="btn" id="btnRequestOpenReport" style="display:none" onclick="openRequestFlowReport()">打开报告</button>
+                <button type="button" class="btn" id="btnRequestOpenReport" style="display:none" onclick="openRequestFlowReport()">Playwright 报告</button>
+                <button type="button" class="btn" id="btnRequestOpenCompare" style="display:none" onclick="openRequestFlowCompareReport()">截图对比</button>
+                <button type="button" class="btn" id="btnRequestOpenCustomer" style="display:none" onclick="openRequestFlowCustomerReport()">客户报告</button>
+                <button type="button" class="btn" id="btnRequestOpenSummary" style="display:none" onclick="openRequestFlowSummaryReport()">运行汇总</button>
               </div>
               <p class="sidebar-hint" id="requestFlowHint" style="margin:8px 0 0;color:var(--text-tertiary)">
                 快捷选例会同步「用例文件 / 用例 / 执行模式」，不会自动跑；确认后点绿色「运行」。
@@ -1294,7 +1297,10 @@
                   <span class="btn-label">运行</span>
                 </button>
                 <button type="button" class="btn" id="btnApprovalCancel" style="display:none" onclick="cancelApprovalFlowRun()">取消</button>
-                <button type="button" class="btn" id="btnApprovalOpenReport" style="display:none" onclick="openApprovalFlowReport()">打开报告</button>
+                <button type="button" class="btn" id="btnApprovalOpenReport" style="display:none" onclick="openApprovalFlowReport()">Playwright 报告</button>
+                <button type="button" class="btn" id="btnApprovalOpenCompare" style="display:none" onclick="openApprovalFlowCompareReport()">截图对比</button>
+                <button type="button" class="btn" id="btnApprovalOpenCustomer" style="display:none" onclick="openApprovalFlowCustomerReport()">客户报告</button>
+                <button type="button" class="btn" id="btnApprovalOpenSummary" style="display:none" onclick="openApprovalFlowSummaryReport()">运行汇总</button>
               </div>
               <p class="sidebar-hint" id="approvalFlowHint" style="margin:8px 0 0;color:var(--text-tertiary)">
                 快捷选例会同步「用例文件 / 用例 / 执行模式」（按钮高亮 = 已套用），不会自动跑；确认后点绿色「运行」。
@@ -2569,11 +2575,43 @@ function openRequestFlowReport() {
   window.open(path, '_blank', 'noopener');
 }
 
+function openFlowReportPath(path, label) {
+  if (!path) {
+    showToast(`${label || '报告'}尚未生成`, 'err');
+    return;
+  }
+  window.open(path, '_blank', 'noopener');
+}
+
+function openRequestFlowCompareReport() {
+  openFlowReportPath(lastRequestFlowRun?.compareReportOpenPath, '截图对比报告');
+}
+
+function openRequestFlowCustomerReport() {
+  openFlowReportPath(lastRequestFlowRun?.customerReportOpenPath, '客户报告');
+}
+
+function openRequestFlowSummaryReport() {
+  openFlowReportPath(lastRequestFlowRun?.summaryReportOpenPath, '运行汇总');
+}
+
 function updateRequestFlowReportBtn(msg) {
-  const btn = document.getElementById('btnRequestOpenReport');
-  if (!btn) return;
-  const show = Boolean(msg?.reportOpenPath && !msg.cancelled);
-  btn.style.display = show ? '' : 'none';
+  const show = Boolean(msg && !msg.cancelled);
+  const ids = ['btnRequestOpenReport', 'btnRequestOpenCompare', 'btnRequestOpenCustomer', 'btnRequestOpenSummary'];
+  for (const id of ids) {
+    const btn = document.getElementById(id);
+    if (!btn) continue;
+    if (id === 'btnRequestOpenReport') btn.style.display = msg?.reportOpenPath ? '' : 'none';
+    else if (id === 'btnRequestOpenCompare') btn.style.display = msg?.compareReportOpenPath ? '' : 'none';
+    else if (id === 'btnRequestOpenCustomer') btn.style.display = msg?.customerReportOpenPath ? '' : 'none';
+    else if (id === 'btnRequestOpenSummary') btn.style.display = msg?.summaryReportOpenPath ? '' : 'none';
+  }
+  if (show && msg?.apiFailureCount > 0) {
+    log('warn', `[request-flow] 接口报错 ${msg.apiFailureCount} 条，见运行汇总`);
+  }
+  if (show && msg?.startedAt) {
+    log('info', `[request-flow] 运行 ${msg.startedAt} → ${msg.finishedAt || '?'}`);
+  }
 }
 
 let lastApprovalFlowRun = null;
@@ -2587,11 +2625,35 @@ function openApprovalFlowReport() {
   window.open(path, '_blank', 'noopener');
 }
 
+function openApprovalFlowCompareReport() {
+  openFlowReportPath(lastApprovalFlowRun?.compareReportOpenPath, '截图对比报告');
+}
+
+function openApprovalFlowCustomerReport() {
+  openFlowReportPath(lastApprovalFlowRun?.customerReportOpenPath, '客户报告');
+}
+
+function openApprovalFlowSummaryReport() {
+  openFlowReportPath(lastApprovalFlowRun?.summaryReportOpenPath, '运行汇总');
+}
+
 function updateApprovalFlowReportBtn(msg) {
-  const btn = document.getElementById('btnApprovalOpenReport');
-  if (!btn) return;
-  const show = Boolean(msg?.reportOpenPath && !msg.cancelled);
-  btn.style.display = show ? '' : 'none';
+  const show = Boolean(msg && !msg.cancelled);
+  const ids = ['btnApprovalOpenReport', 'btnApprovalOpenCompare', 'btnApprovalOpenCustomer', 'btnApprovalOpenSummary'];
+  for (const id of ids) {
+    const btn = document.getElementById(id);
+    if (!btn) continue;
+    if (id === 'btnApprovalOpenReport') btn.style.display = msg?.reportOpenPath ? '' : 'none';
+    else if (id === 'btnApprovalOpenCompare') btn.style.display = msg?.compareReportOpenPath ? '' : 'none';
+    else if (id === 'btnApprovalOpenCustomer') btn.style.display = msg?.customerReportOpenPath ? '' : 'none';
+    else if (id === 'btnApprovalOpenSummary') btn.style.display = msg?.summaryReportOpenPath ? '' : 'none';
+  }
+  if (show && msg?.apiFailureCount > 0) {
+    log('warn', `[approval-flow] 接口报错 ${msg.apiFailureCount} 条，见运行汇总`);
+  }
+  if (show && msg?.startedAt) {
+    log('info', `[approval-flow] 运行 ${msg.startedAt} → ${msg.finishedAt || '?'}`);
+  }
 }
 
 function copyBatchFailureByIndex(i) {

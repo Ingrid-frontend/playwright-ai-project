@@ -7,21 +7,26 @@ import { env } from '../../utils/env';
 import { randomReason } from '../../utils/random';
 
 /**
- * 申请单提交 → 审批通过 / 驳回（serial，共享登录会话）：
- *  1) 新建并提交单据 A → 记单号
- *  2) 我的审批按单号搜索 → 通过
- *  3) 再新建并提交单据 B → 记单号
- *  4) 我的审批按单号搜索 → 驳回
+ * 差旅/差补/自由式：造单提交 → 审批通过 / 驳回（serial）
+ * 默认表单：自由式-97测试差补规则申请单（可用 REQUEST_FORM_NAME 覆盖）
  *
- * 自选审批人须为当前登录人（默认 REQUEST_APPROVER=97dev），否则待审批搜不到。
- * 写操作：REQUEST_ENABLE_WRITE=1（Studio 勾选「开启写操作」）。
+ * 注意：comic 单号在待审批列表可能重复展示，审批搜索用「事由」保证唯一行。
  */
 test.describe.configure({ mode: 'serial' });
 
-const shared = { approveDocNo: '', rejectDocNo: '' };
+const FORM = env.requestFormName || '自由式-97测试差补规则申请单';
+const shared = {
+  approveDocNo: '',
+  approveReason: '',
+  rejectDocNo: '',
+  rejectReason: '',
+};
 const AVAILABLE_RE = /\/api\/custom\/forms\/my\/available/;
 
-async function createAndSubmit(page: Page, apiGuard: ApiGuard): Promise<string> {
+async function createTravelAndSubmit(
+  page: Page,
+  apiGuard: ApiGuard,
+): Promise<{ docNo: string; reason: string }> {
   let lastErr: unknown;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const reason = randomReason();
@@ -32,7 +37,7 @@ async function createAndSubmit(page: Page, apiGuard: ApiGuard): Promise<string> 
       await list.clickNewRequest();
 
       const edit = new RequestEditPage(page);
-      await edit.confirmNewRequestModal(env.requestFormName || undefined);
+      await edit.confirmNewRequestModal(FORM);
       await edit.expectEditVisible();
       await edit.fillReason(reason);
       await edit.save(env.requestApprover || undefined);
@@ -40,14 +45,16 @@ async function createAndSubmit(page: Page, apiGuard: ApiGuard): Promise<string> 
 
       apiGuard.dismissMatching(AVAILABLE_RE);
 
+      let docNo = '';
       try {
-        return await edit.readDocNo();
+        docNo = await edit.readDocNo();
       } catch {
         await list.goto();
         await list.expectLoaded();
         await list.filterByReason(reason);
-        return list.pickFirstDocNo();
+        docNo = await list.pickFirstDocNo();
       }
+      return { docNo, reason };
     } catch (err) {
       lastErr = err;
       apiGuard.dismissMatching(AVAILABLE_RE);
@@ -58,45 +65,49 @@ async function createAndSubmit(page: Page, apiGuard: ApiGuard): Promise<string> 
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
-test.describe('申请单提交 → 审批通过 / 驳回', () => {
-  test('造单并提交（待通过）', async ({ authenticatedPage, page, apiGuard }) => {
+test.describe('差旅申请单提交 → 审批通过 / 驳回', () => {
+  test('造差旅单并提交（待通过）', async ({ authenticatedPage, page, apiGuard }) => {
     test.skip(!env.writeEnabled, '未开启写操作：设置 REQUEST_ENABLE_WRITE=1');
     test.setTimeout(300_000);
     void authenticatedPage;
-    shared.approveDocNo = await createAndSubmit(page, apiGuard);
+    const created = await createTravelAndSubmit(page, apiGuard);
+    shared.approveDocNo = created.docNo;
+    shared.approveReason = created.reason;
   });
 
-  test('审批列表按单号搜索并「通过」', async ({ page }) => {
+  test('审批列表按事由搜索并「通过」', async ({ page }) => {
     test.skip(!env.writeEnabled, '未开启写操作：设置 REQUEST_ENABLE_WRITE=1');
-    test.skip(!shared.approveDocNo, '缺少待通过单号（上一步造单失败）');
+    test.skip(!shared.approveReason, '缺少待通过事由（上一步造单失败）');
     test.setTimeout(120_000);
 
     const approval = new ApprovalListPage(page);
     await approval.goto();
     await approval.expectLoaded();
-    await approval.searchUntilRow(shared.approveDocNo);
-    await approval.approveRow(env.approvalComment, shared.approveDocNo);
-    await approval.expectApprovalSuccess();
+    await approval.searchUntilRow(shared.approveReason);
+    await approval.approveRow(env.approvalComment);
+    await approval.expectApprovalSuccess(shared.approveReason);
     await approval.expectBackToList();
   });
 
-  test('再造一单并提交（待驳回）', async ({ page, apiGuard }) => {
+  test('再造差旅单并提交（待驳回）', async ({ page, apiGuard }) => {
     test.skip(!env.writeEnabled, '未开启写操作：设置 REQUEST_ENABLE_WRITE=1');
     test.setTimeout(300_000);
-    shared.rejectDocNo = await createAndSubmit(page, apiGuard);
+    const created = await createTravelAndSubmit(page, apiGuard);
+    shared.rejectDocNo = created.docNo;
+    shared.rejectReason = created.reason;
   });
 
-  test('审批列表按单号搜索并「驳回」', async ({ page }) => {
+  test('审批列表按事由搜索并「驳回」', async ({ page }) => {
     test.skip(!env.writeEnabled, '未开启写操作：设置 REQUEST_ENABLE_WRITE=1');
-    test.skip(!shared.rejectDocNo, '缺少待驳回单号（上一步造单失败）');
+    test.skip(!shared.rejectReason, '缺少待驳回事由（上一步造单失败）');
     test.setTimeout(120_000);
 
     const approval = new ApprovalListPage(page);
     await approval.goto();
     await approval.expectLoaded();
-    await approval.searchUntilRow(shared.rejectDocNo);
-    await approval.rejectRow(env.rejectComment, shared.rejectDocNo);
-    await approval.expectApprovalSuccess();
+    await approval.searchUntilRow(shared.rejectReason);
+    await approval.rejectRow(env.rejectComment);
+    await approval.expectApprovalSuccess(shared.rejectReason);
     await approval.expectBackToList();
   });
 });
