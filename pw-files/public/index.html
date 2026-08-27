@@ -1243,7 +1243,6 @@
                   <button type="button" class="btn" id="btnRequestGoldenRun" onclick="runRequestFlowGolden()" style="border-color:rgba(52,211,153,.45);color:var(--green)">Golden 回归</button>
                   <button type="button" class="btn" id="btnRequestGoldenRunAll" onclick="runRequestFlowGoldenAll()" style="border-color:rgba(52,211,153,.35);color:var(--green)">全部 Golden 角色</button>
                   <button type="button" class="btn" id="btnRequestPromoteBaseline" onclick="promoteRequestFlowBaseline()">晋升 Golden 基线</button>
-                  <button type="button" class="btn" id="btnRequestOpenReplay" style="display:none" onclick="openRequestFlowReplay()">查看回放</button>
                 </div>
               </div>
 
@@ -1354,6 +1353,7 @@
                 <button type="button" class="btn" id="btnApprovalOpenCompare" style="display:none" onclick="openApprovalFlowCompareReport()">截图对比</button>
                 <button type="button" class="btn" id="btnApprovalOpenCustomer" style="display:none" onclick="openApprovalFlowCustomerReport()">客户报告</button>
                 <button type="button" class="btn" id="btnApprovalOpenSummary" style="display:none" onclick="openApprovalFlowSummaryReport()">运行汇总</button>
+                <button type="button" class="btn" id="btnApprovalOpenReplay" style="display:none" onclick="openApprovalFlowReplay()">查看回放</button>
               </div>
               <p class="sidebar-hint" id="approvalFlowHint" style="margin:8px 0 0;color:var(--text-tertiary)">
                 快捷选例会同步「用例文件 / 用例 / 执行模式」（按钮高亮 = 已套用），不会自动跑；确认后点绿色「运行」。
@@ -2643,13 +2643,22 @@ function openRequestFlowSummaryReport() {
   openFlowReportPath(lastRequestFlowRun?.summaryReportOpenPath, '运行汇总');
 }
 
+function openRequestFlowReplay() {
+  const path = lastRequestFlowRun?.replayReportOpenPath;
+  if (!path) {
+    showToast('本次运行没有步骤回放', 'err');
+    return;
+  }
+  openFlowReplay(path);
+}
+
 function openRequestFlowUiAuditReport() {
   openFlowReportPath(lastRequestFlowRun?.uiAuditReportOpenPath, 'UI 审计报告');
 }
 
 function updateRequestFlowReportBtn(msg) {
   const show = Boolean(msg && !msg.cancelled);
-  const ids = ['btnRequestOpenReport', 'btnRequestOpenCompare', 'btnRequestOpenCustomer', 'btnRequestOpenSummary', 'btnRequestOpenUiAudit'];
+  const ids = ['btnRequestOpenReport', 'btnRequestOpenCompare', 'btnRequestOpenCustomer', 'btnRequestOpenSummary', 'btnRequestOpenReplayRun', 'btnRequestOpenUiAudit'];
   for (const id of ids) {
     const btn = document.getElementById(id);
     if (!btn) continue;
@@ -2657,6 +2666,7 @@ function updateRequestFlowReportBtn(msg) {
     else if (id === 'btnRequestOpenCompare') btn.style.display = msg?.compareReportOpenPath ? '' : 'none';
     else if (id === 'btnRequestOpenCustomer') btn.style.display = msg?.customerReportOpenPath ? '' : 'none';
     else if (id === 'btnRequestOpenSummary') btn.style.display = msg?.summaryReportOpenPath ? '' : 'none';
+    else if (id === 'btnRequestOpenReplayRun') btn.style.display = msg?.replayReportOpenPath ? '' : 'none';
     else if (id === 'btnRequestOpenUiAudit') btn.style.display = msg?.uiAuditReportOpenPath ? '' : 'none';
   }
   if (show && msg?.apiFailureCount > 0) {
@@ -2685,9 +2695,18 @@ function openApprovalFlowSummaryReport() {
   openFlowReportPath(lastApprovalFlowRun?.summaryReportOpenPath, '运行汇总');
 }
 
+function openApprovalFlowReplay() {
+  const path = lastApprovalFlowRun?.replayReportOpenPath;
+  if (!path) {
+    showToast('本次运行没有步骤回放', 'err');
+    return;
+  }
+  openFlowReplay(path);
+}
+
 function updateApprovalFlowReportBtn(msg) {
   const show = Boolean(msg && !msg.cancelled);
-  const ids = ['btnApprovalOpenReport', 'btnApprovalOpenCompare', 'btnApprovalOpenCustomer', 'btnApprovalOpenSummary'];
+  const ids = ['btnApprovalOpenReport', 'btnApprovalOpenCompare', 'btnApprovalOpenCustomer', 'btnApprovalOpenSummary', 'btnApprovalOpenReplay'];
   for (const id of ids) {
     const btn = document.getElementById(id);
     if (!btn) continue;
@@ -2695,6 +2714,7 @@ function updateApprovalFlowReportBtn(msg) {
     else if (id === 'btnApprovalOpenCompare') btn.style.display = msg?.compareReportOpenPath ? '' : 'none';
     else if (id === 'btnApprovalOpenCustomer') btn.style.display = msg?.customerReportOpenPath ? '' : 'none';
     else if (id === 'btnApprovalOpenSummary') btn.style.display = msg?.summaryReportOpenPath ? '' : 'none';
+    else if (id === 'btnApprovalOpenReplay') btn.style.display = msg?.replayReportOpenPath ? '' : 'none';
   }
   if (show && msg?.apiFailureCount > 0) {
     log('warn', `[approval-flow] 接口报错 ${msg.apiFailureCount} 条，见运行汇总`);
@@ -6086,6 +6106,7 @@ function handleMessage(msg) {
       if (msg.ok) {
         const extras = [];
         if (msg.pipeline === 'golden' && msg.baselinePromoted) extras.push('已 seed Golden 基线');
+        if (msg.replayReportOpenPath) extras.push('回放已生成');
         if (msg.pipeline === 'probe' && msg.uiAuditReportOpenPath) extras.push('UI 审计报告已生成');
         if (msg.accountProfile) extras.push(`profile=${msg.accountProfile}`);
         if (msg.roleSlug) extras.push(`role=${msg.roleSlug}`);
