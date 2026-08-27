@@ -1274,6 +1274,7 @@
                 <button type="button" class="btn" id="btnRequestOpenSummary" style="display:none" onclick="openRequestFlowSummaryReport()">运行汇总</button>
                 <button type="button" class="btn" id="btnRequestOpenReplayRun" style="display:none" onclick="openRequestFlowReplay()">查看回放</button>
                 <button type="button" class="btn" id="btnRequestOpenUiAudit" style="display:none" onclick="openRequestFlowUiAuditReport()">UI 审计报告</button>
+                <button type="button" class="btn" id="btnRequestFeishuWeeklyDoc" onclick="writeFlowFeishuWeeklyDoc('request-flow')" title="将最近一次运行追加到当周飞书周报文档">飞书周报</button>
               </div>
               <p class="sidebar-hint" id="requestFlowHint" style="margin:8px 0 0;color:var(--text-tertiary)">
                 快捷选例会同步「用例文件 / 用例 / 执行模式」，不会自动跑；确认后点绿色「运行」。
@@ -1354,6 +1355,7 @@
                 <button type="button" class="btn" id="btnApprovalOpenCustomer" style="display:none" onclick="openApprovalFlowCustomerReport()">客户报告</button>
                 <button type="button" class="btn" id="btnApprovalOpenSummary" style="display:none" onclick="openApprovalFlowSummaryReport()">运行汇总</button>
                 <button type="button" class="btn" id="btnApprovalOpenReplay" style="display:none" onclick="openApprovalFlowReplay()">查看回放</button>
+                <button type="button" class="btn" id="btnApprovalFeishuWeeklyDoc" onclick="writeFlowFeishuWeeklyDoc('approval-flow')" title="将最近一次运行追加到当周飞书周报文档">飞书周报</button>
               </div>
               <p class="sidebar-hint" id="approvalFlowHint" style="margin:8px 0 0;color:var(--text-tertiary)">
                 快捷选例会同步「用例文件 / 用例 / 执行模式」（按钮高亮 = 已套用），不会自动跑；确认后点绿色「运行」。
@@ -9231,6 +9233,30 @@ async function sendFeishuMessage() {
     showToast('飞书卡片已发送', 'ok');
   } catch (e) {
     showToast(e && e.message ? e.message : '发送失败', 'err');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function writeFlowFeishuWeeklyDoc(flowId) {
+  const btnId = flowId === 'request-flow' ? 'btnRequestFeishuWeeklyDoc' : 'btnApprovalFeishuWeeklyDoc';
+  const btn = document.getElementById(btnId);
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch('/api/feishu/flow-weekly-doc', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ flow: flowId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      showToast(data.error || `写入失败 (${res.status})`, 'err');
+      return;
+    }
+    showToast('已写入飞书周报', 'ok');
+    if (data.url) window.open(data.url, '_blank', 'noopener');
+  } catch (e) {
+    showToast(e && e.message ? e.message : '写入失败', 'err');
   } finally {
     if (btn) btn.disabled = false;
   }

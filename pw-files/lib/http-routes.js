@@ -117,6 +117,68 @@ function registerHttpRoutes(app, deps) {
     }
   });
 
+  app.post('/api/feishu/flow-weekly-doc', express.json(), async (req, res) => {
+    const flowId = String(req.body?.flow || 'request-flow').trim();
+    if (flowId !== 'request-flow' && flowId !== 'approval-flow') {
+      return res.status(400).json({ ok: false, error: 'flow 须为 request-flow 或 approval-flow' });
+    }
+    const appId = (process.env.FEISHU_APP_ID || '').trim();
+    const appSecret = (process.env.FEISHU_APP_SECRET || '').trim();
+    if (!appId || !appSecret) {
+      return res.status(400).json({
+        ok: false,
+        error: '未配置飞书文档：请设置 FEISHU_APP_ID + FEISHU_APP_SECRET',
+      });
+    }
+    const repoRoot = resolveRepoRoot();
+    const lastRunPath = path.join(repoRoot, 'results', 'flow-runs', flowId, 'last-run.json');
+    if (!fs.existsSync(lastRunPath)) {
+      return res.status(400).json({
+        ok: false,
+        error: '暂无运行记录，请先执行一次流程用例',
+      });
+    }
+    const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    const args = ['run', 'feishu:flow-weekly-doc', '--', `--flow=${flowId}`];
+    try {
+      await new Promise((resolve, reject) => {
+        const proc = spawn(npmCmd, args, { cwd: repoRoot, env: { ...process.env }, shell: false });
+        let out = '';
+        let err = '';
+        proc.stdout.on('data', (d) => {
+          out += d.toString();
+        });
+        proc.stderr.on('data', (d) => {
+          err += d.toString();
+        });
+        const timer = setTimeout(() => {
+          proc.kill();
+          reject(new Error('写入飞书周报超时'));
+        }, 120000);
+        proc.on('error', (e) => {
+          clearTimeout(timer);
+          reject(e);
+        });
+        proc.on('close', (code) => {
+          clearTimeout(timer);
+          if (code !== 0) {
+            reject(new Error(stripAnsi(err || out || `退出码 ${code}`).slice(0, 400)));
+            return;
+          }
+          resolve();
+        });
+      });
+      const urlFile = path.join(repoRoot, 'results', 'feishu-docs', `${flowId}-week-url.txt`);
+      let url = '';
+      if (fs.existsSync(urlFile)) {
+        url = fs.readFileSync(urlFile, 'utf8').trim();
+      }
+      return res.json({ ok: true, url, flow: flowId });
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
   app.post('/api/visual-review', express.json(), async (req, res) => {
     const body = req.body || {};
     const verdict = String(body.verdict || '').trim();
