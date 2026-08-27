@@ -94,7 +94,31 @@ export class RequestListPage {
   }
 
   dataRows(): Locator {
-    return this.scope().locator(ROW).filter({ visible: true });
+    return this.scope()
+      .locator(`${ROW}, .application-table-v2 .ant-table-tbody > tr[data-row-key]`)
+      .filter({ hasNot: this.scope().locator('.ant-table-placeholder') })
+      .filter({ visible: true });
+  }
+
+  async hasDataRows(): Promise<boolean> {
+    return (await this.dataRows().count().catch(() => 0)) > 0;
+  }
+
+  /** 清掉顶栏单号搜索与高级筛选，避免 Golden 串行用例读到空列表 */
+  async clearListQuery() {
+    const input = this.searchInput();
+    if (await input.isVisible({ timeout: 2_000 }).catch(() => false)) {
+      const val = ((await input.inputValue().catch(() => '')) || '').trim();
+      if (val) {
+        const respP = this.waitListApi();
+        await input.click();
+        await input.fill('');
+        await input.press('Enter').catch(() => undefined);
+        await respP;
+      }
+    }
+    await this.resetFilters();
+    await this.waitListSettled();
   }
 
   private headerCells(): Locator {
@@ -122,13 +146,21 @@ export class RequestListPage {
   }
 
   async pickFirstDocNo(): Promise<string> {
+    await this.clearListQuery();
+    await expect
+      .poll(async () => await this.dataRows().count().catch(() => 0), {
+        timeout: 20_000,
+        message: '列表没有可解析单号的数据行',
+      })
+      .toBeGreaterThan(0);
+
     try {
       return (await this.pickFirstRowCell(FILTER_LABELS.docNo)).replace(/\s+/g, '');
     } catch {
       /* fallback */
     }
     const row = this.dataRows().first();
-    await expect(row, '列表没有可解析单号的数据行').toBeVisible({ timeout: 20_000 });
+    await expect(row, '列表没有可解析单号的数据行').toBeVisible({ timeout: 5_000 });
     const text = (await row.innerText()).replace(/\s+/g, ' ');
     const match = text.match(DOC_NO_RE) || text.match(/[A-Za-z0-9]{8,}/);
     if (!match) {
