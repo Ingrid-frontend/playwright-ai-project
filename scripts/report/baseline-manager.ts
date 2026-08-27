@@ -158,6 +158,14 @@ export function browserToRunSegment(browser: string): string {
   return 'run-chromium-optimized';
 }
 
+/** 申请单/审批 flow 截图目录（screenshots/flows/.../run-chromium-flow/{runId}） */
+export function browserToFlowRunSegment(browser: string): string {
+  const b = browser.toLowerCase();
+  if (b === 'webkit') return 'run-webkit-flow';
+  if (b === 'firefox') return 'run-firefox-flow';
+  return 'run-chromium-flow';
+}
+
 /** 是否已有可对比的 Golden 基线（至少一张 step PNG） */
 export function hasGoldenBaseline(scriptKey: string, browser = 'chrome'): boolean {
   const dir = goldenDirForScript(scriptKey, browserToRunSegment(browser));
@@ -183,8 +191,10 @@ export function resolveSourceRunDir(opts: {
   const browser = opts.browser || 'chrome';
   const ts = opts.sourceRunTimestamp;
   const runSegment = browserToRunSegment(browser);
+  const flowRunSegment = browserToFlowRunSegment(browser);
   const prefix = browserRunPrefix(browser);
   const candidates = [
+    path.join(screenshotsRoot, opts.scriptKey, flowRunSegment, ts),
     path.join(screenshotsRoot, opts.scriptKey, runSegment, ts),
     path.join(screenshotsRoot, opts.scriptKey, `${prefix}${ts}`),
     path.join(screenshotsRoot, opts.scriptKey, ts),
@@ -202,7 +212,17 @@ export function findLatestRunTimestamp(
 ): string | null {
   const prefix = browserRunPrefix(browser);
   const runSegment = browserToRunSegment(browser);
+  const flowRunSegment = browserToFlowRunSegment(browser);
   const hits: Array<{ ts: string; mtime: number }> = [];
+
+  const flowRoot = path.join(screenshotsRoot, scriptKey, flowRunSegment);
+  if (fs.existsSync(flowRoot) && fs.statSync(flowRoot).isDirectory()) {
+    for (const name of fs.readdirSync(flowRoot)) {
+      const abs = path.join(flowRoot, name);
+      if (!fs.statSync(abs).isDirectory()) continue;
+      hits.push({ ts: name, mtime: fs.statSync(abs).mtimeMs });
+    }
+  }
 
   const optimizedRoot = path.join(screenshotsRoot, scriptKey, runSegment);
   if (fs.existsSync(optimizedRoot) && fs.statSync(optimizedRoot).isDirectory()) {
@@ -216,7 +236,7 @@ export function findLatestRunTimestamp(
   const scriptRoot = path.join(screenshotsRoot, scriptKey);
   if (fs.existsSync(scriptRoot) && fs.statSync(scriptRoot).isDirectory()) {
     for (const name of fs.readdirSync(scriptRoot)) {
-      if (name === runSegment || !name.startsWith(prefix)) continue;
+      if (name === runSegment || name === flowRunSegment || !name.startsWith(prefix)) continue;
       const abs = path.join(scriptRoot, name);
       if (!fs.statSync(abs).isDirectory()) continue;
       hits.push({ ts: name.slice(prefix.length), mtime: fs.statSync(abs).mtimeMs });

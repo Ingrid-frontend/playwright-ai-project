@@ -42,6 +42,9 @@ const DEFAULT_URL_IGNORES: RegExp[] = [
   // 性能/埋点监控，失败不影响业务用例（如 call minos fail）
   /\/api\/monitor\/performance\b/i,
   /\/monitor\/performance\b/i,
+  // 路由监控配置，dev 偶发 500（Redis cache null），不影响申请单等业务
+  /\/api\/monitor\/router\/config\b/i,
+  /\/monitor\/router\/config\b/i,
   // 工作台可选小组件，dev 上 404，与审批列表无关
   /\/mobile\/api\/work\/widget\/global-entry\/find\b/i,
   // 分摊模板探测：无命中时 HTTP 200 + success:false + result:[]，属正常空结果

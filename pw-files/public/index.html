@@ -1188,6 +1188,11 @@
                 <input type="text" class="url-input" id="requestFormName" spellcheck="false" placeholder="留空则随机选可见模板"
                   style="width:100%;color:var(--text)">
               </div>
+              <div>
+                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">Golden 筛选关键字（REQUEST_FILTER_KEYWORD）</label>
+                <input type="text" class="url-input" id="requestFilterKeyword" spellcheck="false" placeholder="如：测试（Golden 回归必填）"
+                  style="width:100%;color:var(--text)">
+              </div>
 
               <div>
                 <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">执行模式</label>
@@ -1212,6 +1217,20 @@
                 <button type="button" class="btn" id="btnRequestPresetSubmitApprove" onclick="applyRequestFlowPreset('submitApprove')">提交后审批</button>
               </div>
 
+              <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);margin-bottom:8px">
+                <div style="font-weight:600;color:var(--text);margin-bottom:6px;font-size:var(--fs-sm)">双线回归</div>
+                <p class="sidebar-hint" style="margin:0 0 8px;line-height:1.6;color:var(--text-secondary)">
+                  <strong>Golden</strong>：固定脚本 + 像素对比 + 自动 seed 基线；
+                  <strong>探活</strong>：随机 full-flow + 通过后 AI UI 审计。
+                </p>
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                  <button type="button" class="btn" id="btnRequestGoldenRun" onclick="runRequestFlowGolden()" style="border-color:rgba(52,211,153,.45);color:var(--green)">Golden 回归</button>
+                  <button type="button" class="btn" id="btnRequestGoldenTravel" onclick="runRequestFlowGoldenTravel()">Golden 差旅</button>
+                  <button type="button" class="btn" id="btnRequestProbeAudit" onclick="runRequestFlowProbeAudit()" style="border-color:rgba(167,139,250,.45);color:var(--purple,#a78bfa)">随机探活 + AI 审计</button>
+                  <button type="button" class="btn" id="btnRequestPromoteBaseline" onclick="promoteRequestFlowBaseline()">晋升 Golden 基线</button>
+                </div>
+              </div>
+
               <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
                 <button type="button" class="btn" id="btnRequestProbe" onclick="startRequestFlowProbe()">实机探活</button>
                 <button type="button" class="btn btn-run" id="btnRequestRunSelected" onclick="runSelectedRequestFlow()">
@@ -1222,6 +1241,7 @@
                 <button type="button" class="btn" id="btnRequestOpenCompare" style="display:none" onclick="openRequestFlowCompareReport()">截图对比</button>
                 <button type="button" class="btn" id="btnRequestOpenCustomer" style="display:none" onclick="openRequestFlowCustomerReport()">客户报告</button>
                 <button type="button" class="btn" id="btnRequestOpenSummary" style="display:none" onclick="openRequestFlowSummaryReport()">运行汇总</button>
+                <button type="button" class="btn" id="btnRequestOpenUiAudit" style="display:none" onclick="openRequestFlowUiAuditReport()">UI 审计报告</button>
               </div>
               <p class="sidebar-hint" id="requestFlowHint" style="margin:8px 0 0;color:var(--text-tertiary)">
                 快捷选例会同步「用例文件 / 用例 / 执行模式」，不会自动跑；确认后点绿色「运行」。
@@ -2595,9 +2615,13 @@ function openRequestFlowSummaryReport() {
   openFlowReportPath(lastRequestFlowRun?.summaryReportOpenPath, '运行汇总');
 }
 
+function openRequestFlowUiAuditReport() {
+  openFlowReportPath(lastRequestFlowRun?.uiAuditReportOpenPath, 'UI 审计报告');
+}
+
 function updateRequestFlowReportBtn(msg) {
   const show = Boolean(msg && !msg.cancelled);
-  const ids = ['btnRequestOpenReport', 'btnRequestOpenCompare', 'btnRequestOpenCustomer', 'btnRequestOpenSummary'];
+  const ids = ['btnRequestOpenReport', 'btnRequestOpenCompare', 'btnRequestOpenCustomer', 'btnRequestOpenSummary', 'btnRequestOpenUiAudit'];
   for (const id of ids) {
     const btn = document.getElementById(id);
     if (!btn) continue;
@@ -2605,6 +2629,7 @@ function updateRequestFlowReportBtn(msg) {
     else if (id === 'btnRequestOpenCompare') btn.style.display = msg?.compareReportOpenPath ? '' : 'none';
     else if (id === 'btnRequestOpenCustomer') btn.style.display = msg?.customerReportOpenPath ? '' : 'none';
     else if (id === 'btnRequestOpenSummary') btn.style.display = msg?.summaryReportOpenPath ? '' : 'none';
+    else if (id === 'btnRequestOpenUiAudit') btn.style.display = msg?.uiAuditReportOpenPath ? '' : 'none';
   }
   if (show && msg?.apiFailureCount > 0) {
     log('warn', `[request-flow] 接口报错 ${msg.apiFailureCount} 条，见运行汇总`);
@@ -5693,8 +5718,13 @@ function handleMessage(msg) {
       refreshTestJobsList();
       break;
     case 'repo:promote-baseline:done':
-      if (msg.ok) toast('Golden 基线已更新', 'ok');
-      else toast('Promote 失败', 'err');
+      setRequestFlowBusy(false);
+      if (msg.ok) {
+        showToast('Golden 基线已更新', 'ok');
+        toast('Golden 基线已更新', 'ok');
+      } else {
+        toast('Promote 失败', 'err');
+      }
       loadUiIssuesPanel();
       break;
     case 'ai:validate:start':
@@ -5984,8 +6014,11 @@ function handleMessage(msg) {
       updateRequestFlowReportBtn(msg);
       handleRequestFlowFailureFromMsg(msg);
       if (msg.ok) {
-        showToast('申请单流程用例通过', 'ok');
-        log('ok', `[request-flow] 用例通过 · mode=${msg.mode || ''}`);
+        const extras = [];
+        if (msg.pipeline === 'golden' && msg.baselinePromoted) extras.push('已 seed Golden 基线');
+        if (msg.pipeline === 'probe' && msg.uiAuditReportOpenPath) extras.push('UI 审计报告已生成');
+        showToast(extras.length ? `申请单流程用例通过 · ${extras.join(' · ')}` : '申请单流程用例通过', 'ok');
+        log('ok', `[request-flow] 用例通过 · mode=${msg.mode || ''}${msg.pipeline ? ` · pipeline=${msg.pipeline}` : ''}`);
       } else if (!msg.cancelled) {
         showToast(`申请单流程用例失败（退出码 ${msg.exitCode ?? '?' }）`, 'err');
         log('err', `[request-flow] 用例失败 · exit=${msg.exitCode ?? '?'}`);
@@ -6877,7 +6910,7 @@ function refreshUiAuditStatus() {
 }
 
 function setRequestFlowBusy(busy) {
-  ['btnRequestProbe', 'btnRequestPresetPreview', 'btnRequestPresetReadOnly', 'btnRequestPresetWrite', 'btnRequestPresetSubmitApprove', 'btnRequestRunSelected'].forEach((id) => {
+  ['btnRequestProbe', 'btnRequestPresetPreview', 'btnRequestPresetReadOnly', 'btnRequestPresetWrite', 'btnRequestPresetSubmitApprove', 'btnRequestRunSelected', 'btnRequestGoldenRun', 'btnRequestGoldenTravel', 'btnRequestProbeAudit', 'btnRequestPromoteBaseline'].forEach((id) => {
     const btn = document.getElementById(id);
     if (!btn) return;
     btn.disabled = busy;
@@ -6897,6 +6930,9 @@ const REQUEST_FLOW_PRESETS = {
   readOnly: { spec: 'request/full-flow.spec.ts', grep: '加载|筛选|搜索', mode: 'headless' },
   write: { spec: 'request/full-flow.spec.ts', grep: '新建申请单', mode: 'headless' },
   submitApprove: { spec: 'request/submit-then-approve.spec.ts', grep: '', mode: 'headed', write: true },
+  golden: { spec: 'request/golden-regression.spec.ts', grep: '', mode: 'headless', pipeline: 'golden' },
+  goldenTravel: { spec: 'request/travel-submit.spec.ts', grep: '造差旅单', mode: 'headless', write: true, pipeline: 'golden' },
+  probe: { spec: 'request/full-flow.spec.ts', grep: '', mode: 'headless', write: true, pipeline: 'probe', runUiAudit: true },
 };
 let requestFlowDraft = null;
 
@@ -7101,21 +7137,62 @@ function runSelectedRequestFlow(mode, opts = {}) {
   const writeEnabled = opts.writeEnabled != null ? opts.writeEnabled : Boolean(document.getElementById('requestWriteEnabled')?.checked);
   const docNo = opts.docNo != null ? opts.docNo : (document.getElementById('requestDocNo')?.value?.trim() || '');
   const formName = opts.formName != null ? opts.formName : (document.getElementById('requestFormName')?.value?.trim() || '');
+  const filterKeyword = opts.filterKeyword != null ? opts.filterKeyword : (document.getElementById('requestFilterKeyword')?.value?.trim() || '');
   const spec = document.getElementById('requestFlowSpec')?.value?.trim() || 'request/full-flow.spec.ts';
   const grep = opts.grep != null ? opts.grep : (document.getElementById('requestFlowTest')?.value?.trim() || '');
   const runMode = mode || getRequestFlowMode();
+  const presetCfg = REQUEST_FLOW_PRESETS[opts.preset] || null;
   const payload = {
     mode: runMode,
     env: envState.current,
     writeEnabled,
     docNo,
     formName,
+    filterKeyword,
     spec,
     grep,
     preset: opts.preset || 'custom',
+    pipeline: opts.pipeline || presetCfg?.pipeline || '',
+    runUiAudit: opts.runUiAudit != null ? opts.runUiAudit : Boolean(presetCfg?.runUiAudit),
   };
   setRequestFlowBusy(true);
   if (!send('request-flow:run', payload)) setRequestFlowBusy(false);
+}
+
+function requestFlowScriptKeyFromDom(spec) {
+  const base = (spec || '').split('/').pop()?.replace(/\.spec\.ts$/, '').replace(/\.spec$/, '') || 'flow';
+  const slug = base.replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]+/g, '-').slice(0, 60) || 'flow';
+  return `flows/request-flow/${envState.current}/${slug}`;
+}
+
+function runRequestFlowGolden() {
+  applyRequestFlowPreset('golden');
+  const filterEl = document.getElementById('requestFilterKeyword');
+  if (filterEl && !filterEl.value.trim()) filterEl.value = '测试';
+  runSelectedRequestFlow('headless', { preset: 'golden', pipeline: 'golden', writeEnabled: false });
+}
+
+function runRequestFlowGoldenTravel() {
+  applyRequestFlowPreset('goldenTravel');
+  runSelectedRequestFlow('headless', { preset: 'goldenTravel', pipeline: 'golden', writeEnabled: true });
+}
+
+function runRequestFlowProbeAudit() {
+  applyRequestFlowPreset('probe');
+  const cb = document.getElementById('requestWriteEnabled');
+  if (cb) cb.checked = true;
+  runSelectedRequestFlow('headless', { preset: 'probe', pipeline: 'probe', runUiAudit: true, writeEnabled: true });
+}
+
+function promoteRequestFlowBaseline() {
+  switchToRequestFlowTab();
+  const spec = document.getElementById('requestFlowSpec')?.value?.trim() || 'request/golden-regression.spec.ts';
+  const scriptKey = requestFlowScriptKeyFromDom(spec);
+  const runTs = lastRequestFlowRun?.runId || '';
+  setRequestFlowBusy(true);
+  if (!send('repo:promote-baseline', { scriptKey, runTimestamp: runTs, latest: !runTs, onlyIfMissing: false })) {
+    setRequestFlowBusy(false);
+  }
 }
 
 function cancelRequestFlowRun() {

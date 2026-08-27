@@ -26,6 +26,30 @@
         "单号列内容被省略号截断是列宽统一规范，不要报 truncation",
         "行左侧序号/角标与展开「+」的布局与 Figma 设计稿一致，不要报 layout"
       ]
+    },
+    {
+      "script": "flows/request-flow",
+      "expect": [
+        "列表中单号、事由、金额等列内容被省略号截断是表格列宽规范，不要报 truncation",
+        "申请单列表分页「跳至」、底部操作栏与悬浮按钮叠压是常见布局，不要报 occlusion",
+        "筛选面板展开时遮罩层覆盖列表是正常交互，不要报 overlay"
+      ],
+      "dropPatterns": [
+        "跳至",
+        "省略号",
+        "截断",
+        "悬浮",
+        "遮挡",
+        "overlay",
+        "遮罩"
+      ]
+    },
+    {
+      "script": "flows/request-flow",
+      "step": "request-list",
+      "expect": [
+        "空列表占位文案或加载骨架屏是数据状态，不是 layout 缺陷"
+      ]
     }
   ]
 }

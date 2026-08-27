@@ -6,9 +6,11 @@ async function runRepoPromoteBaseline(ws, session, msg, deps) {
   const scriptKey = String(msg.scriptKey || msg.script || '').trim();
   const runTs = String(msg.runTimestamp || msg.run || '').trim();
   const browser = String(msg.browser || 'chrome').trim().toLowerCase();
+  const onlyIfMissing = Boolean(msg.onlyIfMissing);
+  const useLatest = Boolean(msg.latest) || !runTs;
 
-  if (!scriptKey || !runTs) {
-    send(ws, 'error', { message: 'promote 需要 scriptKey 与 runTimestamp' });
+  if (!scriptKey) {
+    send(ws, 'error', { message: 'promote 需要 scriptKey' });
     send(ws, 'repo:promote-baseline:done', { ok: false });
     return;
   }
@@ -19,10 +21,12 @@ async function runRepoPromoteBaseline(ws, session, msg, deps) {
     'promote-baseline',
     '--',
     `--script=${scriptKey}`,
-    `--run=${runTs}`,
     `--browser=${browser}`,
   ];
-  logLine(ws, `[repo] promote-baseline ${scriptKey} @ ${runTs}`, 'info');
+  if (runTs) args.push(`--run=${runTs}`);
+  else if (useLatest) args.push('--latest');
+  if (onlyIfMissing) args.push('--only-if-missing');
+  logLine(ws, `[repo] promote-baseline ${scriptKey}${runTs ? ` @ ${runTs}` : ' --latest'}`, 'info');
   const proc = spawn(npmCmd, args, {
     cwd: repoRoot,
     env: buildRepoSpawnEnv(session),

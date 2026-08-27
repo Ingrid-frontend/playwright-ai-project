@@ -5,6 +5,7 @@ const { spawnSync } = require('child_process');
 const FLOW_COMPARE_REL = 'results/flow-screenshot-comparison.html';
 const FLOW_CUSTOMER_REL = 'results/flow-customer-report.html';
 const FLOW_SUMMARY_REL = 'results/flow-run-summary.html';
+const UI_AUDIT_REPORT_REL = path.join('results', 'ui-audit', 'index.html');
 
 function readJsonSafe(p) {
   if (!fs.existsSync(p)) return null;
@@ -66,10 +67,49 @@ function hasFlowScreenshots(repoRoot) {
   return walk(root);
 }
 
+function specSlug(spec) {
+  const base = path.basename(spec, path.extname(spec)).replace(/\.spec$/, '');
+  return base.replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]+/g, '-').slice(0, 60) || 'flow';
+}
+
+function flowScriptKey(flowId, env, spec) {
+  const envId = String(env || 'dev').trim() || 'dev';
+  return `flows/${flowId}/${envId}/${specSlug(spec)}`;
+}
+
+function detectPipeline(spec, msg = {}) {
+  if (msg.pipeline) return msg.pipeline;
+  const s = String(spec || '');
+  if (/golden-regression|travel-submit/.test(s)) return 'golden';
+  if (/full-flow/.test(s) && msg.runUiAudit) return 'probe';
+  return 'default';
+}
+
+function tryPromoteFlowBaseline(repoRoot, scriptKey) {
+  const result = runNpmScript(repoRoot, 'promote-baseline', [
+    `--script=${scriptKey}`,
+    '--latest',
+    '--browser=chrome',
+    '--only-if-missing',
+    '--promoted-by=studio-golden',
+  ]);
+  const seeded = result.ok && /已提升 Golden/.test(result.out);
+  return { ...result, seeded };
+}
+
+function runFlowUiAudit(repoRoot, flowId, limit = 24) {
+  return runNpmScript(repoRoot, 'ui-audit', [
+    '--dir=screenshots/flows',
+    `--script=flows/${flowId}`,
+    `--limit=${limit}`,
+  ]);
+}
+
 function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
   const startedAt = payload.startedAt || new Date(Date.now() - (payload.duration || 0) * 1000).toISOString();
   const finishedAt = payload.finishedAt || new Date().toISOString();
   const runId = payload.runId || startedAt.replace(/[:.]/g, '-');
+  const pipeline = detectPipeline(payload.spec, payload);
 
   const lastManifest = readJsonSafe(path.join(repoRoot, 'results', 'flow-runs', flowId, 'last-run.json'));
   const effectiveRunId = lastManifest?.runId || runId;
@@ -79,14 +119,32 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
 
   let compareReportRel = '';
   let customerReportRel = '';
+  let uiAuditReportRel = '';
+  let baselinePromoted = false;
+
   if (!payload.cancelled && hasFlowScreenshots(repoRoot)) {
-    const cmp = runNpmScript(repoRoot, 'compare-flow-screenshots');
-    if (cmp.ok && fs.existsSync(path.join(repoRoot, FLOW_COMPARE_REL))) {
-      compareReportRel = FLOW_COMPARE_REL;
+    if (pipeline === 'golden' || pipeline === 'default') {
+      const cmp = runNpmScript(repoRoot, 'compare-flow-screenshots');
+      if (cmp.ok && fs.existsSync(path.join(repoRoot, FLOW_COMPARE_REL))) {
+        compareReportRel = FLOW_COMPARE_REL;
+      }
+      const cust = runNpmScript(repoRoot, 'report:flow-customer');
+      if (cust.ok && fs.existsSync(path.join(repoRoot, FLOW_CUSTOMER_REL))) {
+        customerReportRel = FLOW_CUSTOMER_REL;
+      }
     }
-    const cust = runNpmScript(repoRoot, 'report:flow-customer');
-    if (cust.ok && fs.existsSync(path.join(repoRoot, FLOW_CUSTOMER_REL))) {
-      customerReportRel = FLOW_CUSTOMER_REL;
+  }
+
+  if (pipeline === 'golden' && payload.ok && !payload.cancelled) {
+    const scriptKey = flowScriptKey(flowId, payload.env, payload.spec);
+    const promoted = tryPromoteFlowBaseline(repoRoot, scriptKey);
+    baselinePromoted = promoted.seeded;
+  }
+
+  if (pipeline === 'probe' && payload.ok && !payload.cancelled) {
+    const audit = runFlowUiAudit(repoRoot, flowId, payload.uiAuditLimit || 24);
+    if (audit.ok && fs.existsSync(path.join(repoRoot, UI_AUDIT_REPORT_REL))) {
+      uiAuditReportRel = UI_AUDIT_REPORT_REL;
     }
   }
 
@@ -106,6 +164,7 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     spec: payload.spec || '',
     grep: payload.grep || '',
     mode: payload.mode || 'headless',
+    pipeline,
     ok: Boolean(payload.ok),
     exitCode: payload.exitCode,
     passed: payload.passed,
@@ -115,6 +174,8 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     screenshotDir: `screenshots/flows/${flowId}`,
     compareReportRel: compareReportRel || undefined,
     customerReportRel: customerReportRel || undefined,
+    uiAuditReportRel: uiAuditReportRel || undefined,
+    baselinePromoted: baselinePromoted || undefined,
     summaryReportRel: FLOW_SUMMARY_REL,
     apiFailureLogRel: apiFailures.length
       ? `results/flow-runs/${flowId}/${effectiveRunId}/api-failures.json`
@@ -129,11 +190,14 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
 
   return {
     ...payload,
+    pipeline,
     runId: effectiveRunId,
     startedAt: manifest.startedAt,
     finishedAt,
+    baselinePromoted,
     compareReportOpenPath: compareReportRel ? `/repo-report/${compareReportRel}` : '',
     customerReportOpenPath: customerReportRel ? `/repo-report/${customerReportRel}` : '',
+    uiAuditReportOpenPath: uiAuditReportRel ? `/repo-report/${UI_AUDIT_REPORT_REL.split(path.sep).join('/')}` : '',
     summaryReportOpenPath: `/repo-report/${FLOW_SUMMARY_REL}`,
     apiFailureCount,
     apiFailures,
@@ -147,4 +211,7 @@ module.exports = {
   FLOW_SUMMARY_REL,
   finalizeFlowRun,
   hasFlowScreenshots,
+  detectPipeline,
+  flowScriptKey,
+  specSlug,
 };

@@ -221,11 +221,36 @@ export class RequestEditPage {
     await this.saveDocInfoIfEditing();
   }
 
-  /** 关掉未确认的「新建明细」侧滑，避免 slide-mask 挡住「编辑/提交」 */
+  /** 关掉未确认的侧滑（新建明细 / 新建行程），避免 slide-mask 挡住「编辑/提交」 */
   private async finishDetailSlideIfOpen() {
-    const panel = this.scope().getByText('新建明细', { exact: true }).filter({ visible: true }).first();
+    const detailPanel = this.scope().getByText('新建明细', { exact: true }).filter({ visible: true }).first();
+    const tripPanel = this.scope().getByText('新建行程', { exact: true }).filter({ visible: true }).first();
     const mask = this.scope().locator('.slide-mask').filter({ visible: true }).first();
-    if (!(await panel.isVisible({ timeout: 1_000 }).catch(() => false)) && !(await mask.isVisible({ timeout: 500 }).catch(() => false))) {
+    if (
+      !(await detailPanel.isVisible({ timeout: 1_000 }).catch(() => false)) &&
+      !(await tripPanel.isVisible({ timeout: 500 }).catch(() => false)) &&
+      !(await mask.isVisible({ timeout: 500 }).catch(() => false))
+    ) {
+      return;
+    }
+
+    if (await tripPanel.isVisible({ timeout: 500 }).catch(() => false)) {
+      const cancel = this.scope().getByRole('button', { name: /^取\s*消$/ }).filter({ visible: true }).last();
+      if (await cancel.isVisible({ timeout: 1_000 }).catch(() => false)) {
+        await cancel.click();
+      } else {
+        await this.page.keyboard.press('Escape').catch(() => undefined);
+      }
+      await expect(mask).toBeHidden({ timeout: 15_000 }).catch(() => undefined);
+    }
+
+    if (
+      !(await detailPanel.isVisible({ timeout: 500 }).catch(() => false)) &&
+      !(await this.scope().locator('.slide-mask').filter({ visible: true }).first().isVisible({ timeout: 500 }).catch(() => false))
+    ) {
+      await expect(this.scope().getByRole('button', { name: /^提\s*交$/ }).first())
+        .toBeVisible({ timeout: 15_000 })
+        .catch(() => undefined);
       return;
     }
 
@@ -509,42 +534,75 @@ export class RequestEditPage {
     await this.ensureItineraryRow(root);
   }
 
-  private async pickTripCities(root: Locator) {
-    const hasCity = root
-      .getByText(/北京|上海|广州|深圳|杭州|成都|武汉|南京/)
+  private async pickCityInBlock(block: Locator, city: string | RegExp): Promise<boolean> {
+    const control = block.locator('.ant-form-item-control, [class*="control"], [class*="content"]').first();
+    const area = (await control.isVisible({ timeout: 300 }).catch(() => false)) ? control : block;
+    const trigger = area
+      .getByRole('combobox')
+      .or(area.locator('.ant-select, [class*="city"]'))
+      .or(area.getByText(/^请选择$|^出发地$|^目的地$/).filter({ visible: true }))
+      .first();
+    if (!(await trigger.isVisible({ timeout: 2_000 }).catch(() => false))) return false;
+    await trigger.click();
+    const opt = this.scope()
+      .locator(
+        '.ant-select-dropdown:visible .ant-select-item-option, .ant-select-dropdown:visible .ant-select-dropdown-menu-item, .ant-modal:visible, [class*="city-panel"]:visible',
+      )
+      .filter({ hasText: city })
       .filter({ visible: true })
       .first();
-    if (await hasCity.isVisible({ timeout: 1_000 }).catch(() => false)) return;
+    if (!(await opt.isVisible({ timeout: 5_000 }).catch(() => false))) return false;
+    await opt.click();
+    return true;
+  }
+
+  private async fillTripCityByLabel(root: Locator, label: RegExp, city: string) {
+    const block = root
+      .locator('.ant-form-item, [class*="form-item"]')
+      .filter({
+        has: root.locator('.ant-form-item-label, label, [class*="label"]').filter({ hasText: label }),
+      })
+      .filter({ visible: true })
+      .first();
+    if (!(await block.isVisible({ timeout: 500 }).catch(() => false))) return;
+
+    const err = block.getByText(/请选择/).filter({ visible: true }).first();
+    const val = block.getByText(/北京|上海|广州|深圳|杭州|成都|武汉|南京/).filter({ visible: true }).first();
+    if (await val.isVisible({ timeout: 300 }).catch(() => false) && !(await err.isVisible({ timeout: 200 }).catch(() => false))) {
+      return;
+    }
+    await this.pickCityInBlock(block, city);
+  }
+
+  private async pickTripCities(root: Locator) {
+    for (const { label, city } of [
+      { label: /^出发地$|出发城市/, city: '北京' },
+      { label: /^目的地$|到达城市/, city: '上海' },
+      { label: /^城市$/, city: '北京' },
+    ] as const) {
+      await this.fillTripCityByLabel(root, label, city);
+    }
 
     const destErr = root.getByText(/请选择目的地|请选择城市|请选择出发/).filter({ visible: true }).first();
-    const destBlock = root
-      .locator('.ant-form-item, [class*="form-item"]')
-      .filter({ hasText: /目的地|出发城市|到达城市/ })
-      .filter({ visible: true })
-      .first();
-    const trigger = destBlock.getByRole('combobox').or(destBlock.locator('.ant-select, [class*="city"]')).first();
-    if (await trigger.isVisible({ timeout: 2_000 }).catch(() => false)) {
-      await trigger.click();
-      const opt = this.scope()
-        .locator('.ant-select-dropdown:visible .ant-select-item-option, .ant-select-dropdown:visible .ant-select-dropdown-menu-item')
-        .filter({ hasText: /北京|上海|广州/ })
+    if (await destErr.isVisible({ timeout: 500 }).catch(() => false)) {
+      const block = root
+        .locator('.ant-form-item, [class*="form-item"]')
+        .filter({ has: destErr })
         .filter({ visible: true })
         .first();
-      if (await opt.isVisible({ timeout: 5_000 }).catch(() => false)) {
-        await opt.click();
-        return;
-      }
-    }
-    if (await destErr.isVisible({ timeout: 500 }).catch(() => false)) {
-      const icon = destBlock.locator('.anticon, i, [class*="add"]').filter({ visible: true }).last();
-      if (await icon.isVisible({ timeout: 1_000 }).catch(() => false)) {
-        await icon.click();
-        const city = this.scope()
-          .locator('.ant-select-dropdown:visible, .ant-modal:visible, [class*="city-panel"]:visible')
-          .getByText(/^北京$|^上海$|^广州$/)
-          .filter({ visible: true })
-          .first();
-        if (await city.isVisible({ timeout: 5_000 }).catch(() => false)) await city.click();
+      if (await block.isVisible({ timeout: 500 }).catch(() => false)) {
+        await this.pickCityInBlock(block, /北京|上海|广州/);
+      } else {
+        const icon = root.locator('.anticon, i, [class*="add"]').filter({ visible: true }).last();
+        if (await icon.isVisible({ timeout: 1_000 }).catch(() => false)) {
+          await icon.click();
+          const city = this.scope()
+            .locator('.ant-select-dropdown:visible, .ant-modal:visible, [class*="city-panel"]:visible')
+            .getByText(/^北京$|^上海$|^广州$/)
+            .filter({ visible: true })
+            .first();
+          if (await city.isVisible({ timeout: 5_000 }).catch(() => false)) await city.click();
+        }
       }
     }
   }
@@ -577,25 +635,24 @@ export class RequestEditPage {
       [/到达城市|目的地|到/, '上海'],
     ] as const) {
       const block = panel.locator('.ant-form-item, [class*="form-item"]').filter({ hasText: re }).first();
-      if (!(await block.isVisible({ timeout: 1_000 }).catch(() => false))) continue;
-      const combo = block.getByRole('combobox').or(block.locator('.ant-select')).first();
-      if (await combo.isVisible({ timeout: 1_000 }).catch(() => false)) {
-        await combo.click();
-        const opt = this.scope()
-          .locator('.ant-select-dropdown:visible .ant-select-item-option, .ant-select-dropdown:visible .ant-select-dropdown-menu-item')
-          .filter({ hasText: city })
-          .filter({ visible: true })
-          .first();
-        if (await opt.isVisible({ timeout: 5_000 }).catch(() => false)) await opt.click();
+      if (await block.isVisible({ timeout: 1_000 }).catch(() => false)) {
+        if (await this.pickCityInBlock(block, city)) continue;
+      }
+      const loose = panel.locator('div').filter({ hasText: re }).filter({ visible: true }).first();
+      if (await loose.isVisible({ timeout: 500 }).catch(() => false)) {
+        await this.pickCityInBlock(loose, city);
       }
     }
 
-    const ok = panel.getByRole('button', { name: /^确\s*定$/ }).filter({ visible: true }).last();
-    if (await ok.isVisible({ timeout: 2_000 }).catch(() => false)) {
-      await expect(ok).toBeEnabled({ timeout: 8_000 });
-      await ok.click();
+    const saveBtn = panel.getByRole('button', { name: /^保\s*存$|^确\s*定$/ }).filter({ visible: true }).last();
+    if (await saveBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
+      await expect(saveBtn).toBeEnabled({ timeout: 8_000 });
+      await saveBtn.click();
     }
     await expect(panel).toBeHidden({ timeout: 15_000 }).catch(() => undefined);
+    await expect(this.scope().locator('.slide-mask').filter({ visible: true }).first())
+      .toBeHidden({ timeout: 15_000 })
+      .catch(() => undefined);
   }
 
   /** 差旅类表单：补出发/返回日期（避开与已有单据重叠；RangePicker 多为 readonly） */

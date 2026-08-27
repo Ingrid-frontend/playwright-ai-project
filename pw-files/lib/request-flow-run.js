@@ -8,7 +8,7 @@ const {
   parsePlaywrightFailures,
   headedFailurePlaceholder,
 } = require('./failure-report');
-const { finalizeFlowRun } = require('./flow-run-common');
+const { finalizeFlowRun, detectPipeline, flowScriptKey } = require('./flow-run-common');
 
 const catalogCheckMod = (() => {
   try {
@@ -199,6 +199,9 @@ function buildSpawnEnv(session, deps, msg = {}) {
   const formName = String(msg.formName || '').trim();
   if (formName) spawnEnv.REQUEST_FORM_NAME = formName;
   else delete spawnEnv.REQUEST_FORM_NAME;
+  const filterKeyword = String(msg.filterKeyword || '').trim();
+  if (filterKeyword) spawnEnv.REQUEST_FILTER_KEYWORD = filterKeyword;
+  else delete spawnEnv.REQUEST_FILTER_KEYWORD;
   return { repoRoot, envId, spawnEnv, storage };
 }
 
@@ -409,6 +412,9 @@ async function runRequestFlowTests(ws, session, msg, deps) {
     playwrightReportDir: 'request-flow/playwright-report',
     reportHint: reportRel,
     reportOpenPath,
+    pipeline: detectPipeline(spec, msg),
+    runUiAudit: Boolean(msg.runUiAudit),
+    uiAuditLimit: Number(msg.uiAuditLimit) || 24,
   });
 
   send(ws, 'request-flow:run:done', finalized);
@@ -437,4 +443,5 @@ module.exports = {
   runRequestFlowTests,
   cancelRequestFlow,
   DEFAULT_SPEC,
+  flowScriptKey,
 };
