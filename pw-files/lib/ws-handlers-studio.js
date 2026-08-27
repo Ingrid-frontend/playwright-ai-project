@@ -35,7 +35,10 @@ function createStudioHandlers(ctx) {
     'record:start': async (ws, session, _sessionId, msg) => {
       if (msg.env) session.playwrightEnv = String(msg.env);
       session.lastUrl = msg.url;
-      await startRecording(ws, session, msg.url, { loginOnly: Boolean(msg.loginOnly) });
+      await startRecording(ws, session, msg.url, {
+        loginOnly: Boolean(msg.loginOnly),
+        profile: msg.profile ? String(msg.profile).trim() : undefined,
+      });
     },
 
     'env:set': async (ws, session, _sessionId, msg) => {
@@ -46,12 +49,12 @@ function createStudioHandlers(ctx) {
       setSessionAccountProfile(ws, session, String(msg.profile || ''));
     },
 
-    'account:login': async (ws, session) => {
-      await runAccountLogin(ws, session);
+    'account:login': async (ws, session, _sessionId, msg) => {
+      await runAccountLogin(ws, session, msg.env, msg.profile);
     },
 
-    'account:clear-storage': async (ws, session) => {
-      clearSessionStorage(ws, session);
+    'account:clear-storage': async (ws, session, _sessionId, msg) => {
+      clearSessionStorage(ws, session, msg.profile);
     },
 
     'record:stop': async (ws, session) => {

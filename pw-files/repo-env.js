@@ -78,6 +78,20 @@ function resolveStorageStateRel(repoRoot, env, profile) {
   return '';
 }
 
+/** 按 profile 字面 id 解析 storage 路径（不因 accounts.json 缺项回退到 default） */
+function resolveStorageStateRelDirect(repoRoot, env, profileId) {
+  const base = getBaseEnvConfig(repoRoot, env);
+  if (!base) return '';
+  const prof = String(profileId || '').trim() || 'default';
+  if (base.storageStates?.[prof]) return base.storageStates[prof];
+  if (base.storageState) {
+    if (prof === 'default') return base.storageState;
+    const withoutExt = base.storageState.replace(/\.json$/i, '');
+    return `${withoutExt}/${prof}.json`;
+  }
+  return '';
+}
+
 function maskUsername(username) {
   const u = String(username || '');
   if (u.length <= 4) return '****';
@@ -107,6 +121,26 @@ function storageExists(repoRoot, storageRel) {
   } catch {
     return false;
   }
+}
+
+/** 批量查询 profile 登录态（用于 Golden / write 双线） */
+function listProfilesStorageStatus(repoRoot, envId, profileIds) {
+  const cfg = getEnvAccountConfig(repoRoot, envId);
+  const ids =
+    Array.isArray(profileIds) && profileIds.length
+      ? profileIds
+      : Object.keys(cfg?.profiles || {});
+  return ids.map((id) => {
+    const rel = resolveStorageStateRelDirect(repoRoot, envId, id);
+    const prof = cfg?.profiles?.[id];
+    return {
+      id,
+      label: prof?.label || id,
+      storageState: rel,
+      hasStorage: storageExists(repoRoot, rel),
+      maskedUsername: maskUsername(prof?.username || ''),
+    };
+  });
 }
 
 const META_MARKERS = /录制元信息|录制环境:/;
@@ -164,10 +198,26 @@ function prependRecordingAccountHeader(repoRoot, code, envId, profileId) {
   return buildRecordingAccountHeader(repoRoot, envId, profileId, { code }) + String(code).replace(/^\s*/, '');
 }
 
+function resolveAccountCredentials(repoRoot, envId, profileId) {
+  const cfg = getEnvAccountConfig(repoRoot, envId);
+  const literal = String(profileId || '').trim();
+  const prof = literal && cfg?.profiles?.[literal]
+    ? literal
+    : resolveAccountProfile(repoRoot, envId, profileId);
+  const acc = cfg?.profiles?.[prof];
+  if (acc?.username && acc?.password) {
+    return { username: acc.username, password: acc.password, profile: prof };
+  }
+  return null;
+}
+
 module.exports = {
   getEnvAccountConfig,
   resolveAccountProfile,
   resolveStorageStateRel,
+  resolveStorageStateRelDirect,
+  resolveAccountCredentials,
+  listProfilesStorageStatus,
   maskUsername,
   listAccountProfiles,
   storageExists,

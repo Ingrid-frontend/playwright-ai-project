@@ -38,8 +38,23 @@ function createRecordingActions(deps) {
     const repoRoot = resolveRepoRoot();
     const repoReady = fs.existsSync(path.join(repoRoot, 'playwright.config.ts'));
     const envId = getSessionPlaywrightEnv(session);
-    const profile = repoReady ? getSessionAccountProfile(session, repoRoot) : 'default';
+    const profileOverride = opts.profile ? String(opts.profile).trim() : '';
+    const profile = profileOverride
+      ? profileOverride
+      : repoReady
+        ? getSessionAccountProfile(session, repoRoot)
+        : 'default';
+    session.recordProfileId = profile;
     let envEntry = repoReady ? getEnvEntryResolved(repoRoot, envId, profile) : null;
+    if (repoReady && profileOverride) {
+      const storageRel = repoEnv.resolveStorageStateRelDirect(repoRoot, envId, profile);
+      const base = envEntry || getEnvEntryResolved(repoRoot, envId, profile);
+      envEntry = {
+        ...base,
+        storageState: storageRel,
+        hasStorage: repoEnv.storageExists(repoRoot, storageRel),
+      };
+    }
 
     if (!loginOnly && repoReady && envEntry?.storageState && !envEntry?.hasStorage) {
       logLine(ws, `[env] storageState 无效，自动执行 login.setup…`, 'info');
@@ -166,7 +181,7 @@ function createRecordingActions(deps) {
     const repoRoot = resolveRepoRoot();
     if (fs.existsSync(path.join(repoRoot, 'playwright.config.ts'))) {
       const envId = getSessionPlaywrightEnv(session);
-      const profile = getSessionAccountProfile(session, repoRoot);
+      const profile = session.recordProfileId || getSessionAccountProfile(session, repoRoot);
       const storageRelForUse = storageRel || repoEnv.resolveStorageStateRel(repoRoot, envId, profile);
 
       let storageSavedForMeta = false;
@@ -219,6 +234,7 @@ function createRecordingActions(deps) {
       storageSaved,
       storageState: storageRel || undefined,
       loginOnly: Boolean(session.loginOnlyRecord),
+      profile: session.recordProfileId || profile,
     });
 
     if (storageSaved && storageRel) {
@@ -235,6 +251,7 @@ function createRecordingActions(deps) {
     session.recordSaveStorageAbs = null;
     session.recordSaveStorageRel = null;
     session.loginOnlyRecord = false;
+    session.recordProfileId = null;
     session._stoppingRecord = false;
   }
 

@@ -10,6 +10,7 @@ const {
   headedFailurePlaceholder,
 } = require('./failure-report');
 const { finalizeFlowRun, detectPipeline, flowScriptKey } = require('./flow-run-common');
+const repoEnv = require('../repo-env');
 
 const catalogCheckMod = (() => {
   try {
@@ -30,7 +31,19 @@ function flowDir(repoRoot) {
   return path.join(repoRoot, FLOW_DIR);
 }
 
-function resolveStorage(repoRoot, envId) {
+function resolveProfile(session, repoRoot, msg = {}) {
+  const envId = String(msg.env || '').trim();
+  const override = String(msg.accountProfile || '').trim();
+  if (override) return override;
+  const { getSessionAccountProfile } = require('./repo-context');
+  return getSessionAccountProfile(session, repoRoot);
+}
+
+function resolveStorageAbs(repoRoot, envId, profileId) {
+  const rel = repoEnv.resolveStorageStateRelDirect(repoRoot, envId, profileId);
+  if (rel && repoEnv.storageExists(repoRoot, rel)) {
+    return path.resolve(repoRoot, rel);
+  }
   const ids = [envId, 'dev'].filter(Boolean);
   for (const id of ids) {
     const p = path.join(repoRoot, 'storage/loginState', `${id}.json`);
@@ -138,11 +151,12 @@ function snapshotSummary(snapshot) {
 }
 
 function getRequestFlowStatus(repoRoot, session, deps, msg = {}) {
-  const { getSessionPlaywrightEnv, getSessionAccountProfile } = deps;
+  const { getSessionPlaywrightEnv } = deps;
   const envId = String(msg.env || getSessionPlaywrightEnv(session) || 'dev').trim();
-  const profile = getSessionAccountProfile(session, repoRoot);
+  const profile = resolveProfile(session, repoRoot, { env: envId, accountProfile: msg.accountProfile });
   const resolved = getEnvEntryResolved(repoRoot, envId, profile);
-  const storage = resolveStorage(repoRoot, envId);
+  const storageAbs = resolveStorageAbs(repoRoot, envId, profile);
+  const storageRel = storageAbs ? path.relative(repoRoot, storageAbs).replace(/\\/g, '/') : '';
   const snapshot = readSnapshot(repoRoot);
   const catalogCheck =
     snapshot && checkCatalogAgainstSnapshot
@@ -153,12 +167,15 @@ function getRequestFlowStatus(repoRoot, session, deps, msg = {}) {
   const spec = String(msg.spec || DEFAULT_SPEC).trim() || DEFAULT_SPEC;
   const spawnEnv = buildSpawnEnv(session, deps, msg).spawnEnv;
   const listed = hasConfig ? listRequestFlowTests(repoRoot, spec, spawnEnv) : { spec, tests: [], error: '' };
+  const flowProfileIds = ['golden', 'write'];
+  const profileStorage = repoEnv.listProfilesStorageStatus(repoRoot, envId, flowProfileIds);
   return {
     ready: hasConfig,
     env: envId,
+    accountProfile: profile,
     baseURL: resolved?.baseURL || 'https://dev.huilianyi.com',
-    storageState: storage,
-    hasStorage: Boolean(storage),
+    storageState: storageRel,
+    hasStorage: Boolean(storageAbs),
     configRel: CONFIG_REL,
     snapshotRel: snapshot ? SNAPSHOT_REL : '',
     snapshot: snapshotSummary(snapshot),
@@ -170,6 +187,7 @@ function getRequestFlowStatus(repoRoot, session, deps, msg = {}) {
     spec: listed.spec,
     tests: listed.tests,
     testsError: listed.error || '',
+    profileStorage,
   };
 }
 
@@ -187,16 +205,22 @@ function sendRequestFlowTestList(ws, session, deps, msg = {}) {
 
 function buildSpawnEnv(session, deps, msg = {}) {
   const repoRoot = deps.resolveRepoRoot();
-  const { getSessionPlaywrightEnv, getSessionAccountProfile, buildRepoSpawnEnv } = deps;
+  const { getSessionPlaywrightEnv, buildRepoSpawnEnv } = deps;
   const envId = String(msg.env || getSessionPlaywrightEnv(session) || 'dev').trim();
-  const profile = getSessionAccountProfile(session, repoRoot);
+  const profile = resolveProfile(session, repoRoot, { env: envId, accountProfile: msg.accountProfile });
   const resolved = getEnvEntryResolved(repoRoot, envId, profile);
   const spawnEnv = buildRepoSpawnEnv(session, profile, envId);
   spawnEnv.BASE_URL = String(msg.baseURL || resolved?.baseURL || 'https://dev.huilianyi.com').trim();
   spawnEnv.PLAYWRIGHT_ENV = envId;
+  spawnEnv.PLAYWRIGHT_ACCOUNT = profile;
   spawnEnv.FLOW_SPEC = String(msg.spec || DEFAULT_SPEC).trim() || DEFAULT_SPEC;
-  const storage = resolveStorage(repoRoot, envId);
-  if (storage) spawnEnv.STORAGE_STATE = storage;
+  const storageAbs = resolveStorageAbs(repoRoot, envId, profile);
+  if (storageAbs) spawnEnv.STORAGE_STATE = storageAbs;
+  const creds = repoEnv.resolveAccountCredentials(repoRoot, envId, profile);
+  if (creds) {
+    spawnEnv.LOGIN_USERNAME = creds.username;
+    spawnEnv.LOGIN_PASSWORD = creds.password;
+  }
   if (msg.writeEnabled) spawnEnv.REQUEST_ENABLE_WRITE = '1';
   else delete spawnEnv.REQUEST_ENABLE_WRITE;
   const docNo = String(msg.docNo || '').trim();
@@ -208,7 +232,7 @@ function buildSpawnEnv(session, deps, msg = {}) {
   const filterKeyword = String(msg.filterKeyword || '').trim();
   if (filterKeyword) spawnEnv.REQUEST_FILTER_KEYWORD = filterKeyword;
   else delete spawnEnv.REQUEST_FILTER_KEYWORD;
-  return { repoRoot, envId, spawnEnv, storage };
+  return { repoRoot, envId, profile, spawnEnv, storage: storageAbs };
 }
 
 async function streamProc(ws, session, procKey, cancelKey, label, cmd, args, opts) {
@@ -277,7 +301,7 @@ async function runRequestFlowProbe(ws, session, msg, deps) {
 }
 
 async function runRequestFlowTests(ws, session, msg, deps) {
-  const { repoRoot, envId, spawnEnv } = buildSpawnEnv(session, deps, msg);
+  const { repoRoot, envId, profile, spawnEnv, storage } = buildSpawnEnv(session, deps, msg);
   const configRel = CONFIG_REL;
   const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
   const mode = String(msg.mode || 'headless').trim();
@@ -289,8 +313,11 @@ async function runRequestFlowTests(ws, session, msg, deps) {
     send(ws, 'request-flow:run:done', { ok: false, mode });
     return;
   }
-  if (!resolveStorage(repoRoot, envId)) {
-    send(ws, 'error', { message: `缺少登录态 storage/loginState/${envId}.json，请先在侧栏登录` });
+  if (!storage) {
+    const relHint = repoEnv.resolveStorageStateRel(repoRoot, envId, profile) || `storage/loginState/${envId}.json`;
+    send(ws, 'error', {
+      message: `缺少登录态 profile=${profile}（${relHint}），请先在侧栏用该档案登录`,
+    });
     send(ws, 'request-flow:run:done', { ok: false, mode });
     return;
   }
@@ -311,8 +338,12 @@ async function runRequestFlowTests(ws, session, msg, deps) {
   spawnEnv.FLOW_SPEC = spec;
   spawnEnv.FLOW_RUN_MODE = mode;
 
-  send(ws, 'request-flow:run:start', { env: envId, mode, spec, grep });
-  logLine(ws, `[request-flow] 运行用例 · mode=${mode} · ${spec}${grep ? ` · grep=${grep}` : ''}`, 'info');
+  send(ws, 'request-flow:run:start', { env: envId, accountProfile: profile, mode, spec, grep });
+  logLine(
+    ws,
+    `[request-flow] 运行用例 · profile=${profile} · mode=${mode} · ${spec}${grep ? ` · grep=${grep}` : ''}`,
+    'info',
+  );
 
   session.requestFlowCancelled = false;
   let proc;
@@ -423,7 +454,8 @@ async function runRequestFlowTests(ws, session, msg, deps) {
     playwrightReportDir: 'request-flow/playwright-report',
     reportHint: reportRel,
     reportOpenPath,
-    pipeline: detectPipeline(spec, msg),
+    pipeline: msg.pipeline || detectPipeline(spec, msg),
+    accountProfile: profile,
     runUiAudit: Boolean(msg.runUiAudit),
     uiAuditLimit: Number(msg.uiAuditLimit) || 24,
   });

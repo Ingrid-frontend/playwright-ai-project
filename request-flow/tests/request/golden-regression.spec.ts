@@ -7,6 +7,7 @@ import { bindFlowStepCapture, flowStep } from '../../../src/utils/flow-step';
 /**
  * Golden 固定回归（只读 + 固定筛选项）：
  * 供像素基线对比；筛选用 REQUEST_FILTER_KEYWORD，单号用 REQUEST_DOC_NO。
+ * 须使用 accountProfile=golden 账号，勿与 write 档案混跑造单用例。
  */
 test.describe.configure({ mode: 'serial' });
 

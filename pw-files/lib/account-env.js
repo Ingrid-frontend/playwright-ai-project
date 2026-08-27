@@ -37,12 +37,14 @@ function createAccountEnvActions(deps) {
     }
     const profile = getSessionAccountProfile(session, repoRoot);
     const storageRel = repoEnv.resolveStorageStateRel(repoRoot, envId, profile);
+    const flowProfileIds = ['golden', 'write'].filter((id) => cfg?.profiles?.[id]);
     send(ws, 'account:info', {
       repoReady: true,
       env: envId,
       current: profile,
       defaultProfile: cfg?.defaultProfile || 'default',
       profiles: repoEnv.listAccountProfiles(repoRoot, envId),
+      flowProfiles: repoEnv.listProfilesStorageStatus(repoRoot, envId, flowProfileIds),
       hasStorage: repoEnv.storageExists(repoRoot, storageRel),
       storageState: storageRel,
       hasAccountsFile: Boolean(cfg),
@@ -77,14 +79,16 @@ function createAccountEnvActions(deps) {
     sendAccountInfo(ws, session, repoRoot, true);
   }
 
-  function clearSessionStorage(ws, session) {
+  function clearSessionStorage(ws, session, profileOverride) {
     const repoRoot = resolveRepoRoot();
     if (!fs.existsSync(path.join(repoRoot, 'playwright.config.ts'))) {
       send(ws, 'error', { message: '未找到项目根，无法清除登录态' });
       return;
     }
     const envId = getSessionPlaywrightEnv(session);
-    const profile = getSessionAccountProfile(session, repoRoot);
+    const profile = profileOverride
+      ? repoEnv.resolveAccountProfile(repoRoot, envId, profileOverride)
+      : getSessionAccountProfile(session, repoRoot);
     const storageRel = repoEnv.resolveStorageStateRel(repoRoot, envId, profile);
     if (!storageRel) {
       send(ws, 'error', { message: '当前环境未配置 storageState' });
@@ -140,7 +144,7 @@ function createAccountEnvActions(deps) {
     }
   }
 
-  function runAccountLogin(ws, session, envOverride) {
+  function runAccountLogin(ws, session, envOverride, profileOverride) {
     const repoRoot = resolveRepoRoot();
     const cli = getRepoPlaywrightCli(repoRoot);
     if (!cli) {
@@ -148,7 +152,11 @@ function createAccountEnvActions(deps) {
       return Promise.resolve();
     }
     const envId = envOverride || getSessionPlaywrightEnv(session);
-    const profile = repoEnv.resolveAccountProfile(repoRoot, envId, session.accountProfile);
+    const profile = repoEnv.resolveAccountProfile(
+      repoRoot,
+      envId,
+      profileOverride || session.accountProfile,
+    );
     const storageRel = repoEnv.resolveStorageStateRel(repoRoot, envId, profile);
 
     logLine(ws, `[account] 正在登录 ${envId} / ${profile}…`, 'info');

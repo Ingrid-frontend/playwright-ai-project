@@ -5,11 +5,13 @@ import { RequestEditPage } from '../../pages/request-edit.page';
 import { ApprovalListPage } from '../../../approval-flow/pages/approval-list.page';
 import { env } from '../../utils/env';
 import { randomReason } from '../../utils/random';
+import { bindFlowStepCapture, flowStep } from '../../../src/utils/flow-step';
 
 /**
  * 差旅/差补/自由式：造单提交 → 审批通过 / 驳回（serial）
  * 默认表单：自由式-97测试差补规则申请单（可用 REQUEST_FORM_NAME 覆盖）
  *
+ * 走 probe 流水线：截图 + AI UI 审计，不做 Golden 像素对比。
  * 注意：comic 单号在待审批列表可能重复展示，审批搜索用「事由」保证唯一行。
  */
 test.describe.configure({ mode: 'serial' });
@@ -66,48 +68,64 @@ async function createTravelAndSubmit(
 }
 
 test.describe('差旅申请单提交 → 审批通过 / 驳回', () => {
-  test('造差旅单并提交（待通过）', async ({ authenticatedPage, page, apiGuard }) => {
+  test.beforeAll(() => {
+    process.env.FLOW_SPEC = 'request/travel-submit.spec.ts';
+  });
+
+  test('造差旅单并提交（待通过）', async ({ authenticatedPage, page, apiGuard, flowRunDir }) => {
     test.skip(!env.writeEnabled, '未开启写操作：设置 REQUEST_ENABLE_WRITE=1');
     test.setTimeout(300_000);
     void authenticatedPage;
-    const created = await createTravelAndSubmit(page, apiGuard);
-    shared.approveDocNo = created.docNo;
-    shared.approveReason = created.reason;
+    bindFlowStepCapture({ page, runDir: flowRunDir });
+    await flowStep('造差旅单并提交', async () => {
+      const created = await createTravelAndSubmit(page, apiGuard);
+      shared.approveDocNo = created.docNo;
+      shared.approveReason = created.reason;
+    }, { snapshot: 'travel-submit' });
   });
 
-  test('审批列表按事由搜索并「通过」', async ({ page }) => {
+  test('审批列表按事由搜索并「通过」', async ({ page, flowRunDir }) => {
     test.skip(!env.writeEnabled, '未开启写操作：设置 REQUEST_ENABLE_WRITE=1');
     test.skip(!shared.approveReason, '缺少待通过事由（上一步造单失败）');
     test.setTimeout(120_000);
 
-    const approval = new ApprovalListPage(page);
-    await approval.goto();
-    await approval.expectLoaded();
-    await approval.searchUntilRow(shared.approveReason);
-    await approval.approveRow(env.approvalComment);
-    await approval.expectApprovalSuccess(shared.approveReason);
-    await approval.expectBackToList();
+    bindFlowStepCapture({ page, runDir: flowRunDir });
+    await flowStep('审批通过', async () => {
+      const approval = new ApprovalListPage(page);
+      await approval.goto();
+      await approval.expectLoaded();
+      await approval.searchUntilRow(shared.approveReason);
+      await approval.approveRow(env.approvalComment);
+      await approval.expectApprovalSuccess(shared.approveReason);
+      await approval.expectBackToList();
+    }, { snapshot: 'travel-approve' });
   });
 
-  test('再造差旅单并提交（待驳回）', async ({ page, apiGuard }) => {
+  test('再造差旅单并提交（待驳回）', async ({ page, apiGuard, flowRunDir }) => {
     test.skip(!env.writeEnabled, '未开启写操作：设置 REQUEST_ENABLE_WRITE=1');
     test.setTimeout(300_000);
-    const created = await createTravelAndSubmit(page, apiGuard);
-    shared.rejectDocNo = created.docNo;
-    shared.rejectReason = created.reason;
+    bindFlowStepCapture({ page, runDir: flowRunDir });
+    await flowStep('再造差旅单并提交', async () => {
+      const created = await createTravelAndSubmit(page, apiGuard);
+      shared.rejectDocNo = created.docNo;
+      shared.rejectReason = created.reason;
+    }, { snapshot: 'travel-submit-reject' });
   });
 
-  test('审批列表按事由搜索并「驳回」', async ({ page }) => {
+  test('审批列表按事由搜索并「驳回」', async ({ page, flowRunDir }) => {
     test.skip(!env.writeEnabled, '未开启写操作：设置 REQUEST_ENABLE_WRITE=1');
     test.skip(!shared.rejectReason, '缺少待驳回事由（上一步造单失败）');
     test.setTimeout(120_000);
 
-    const approval = new ApprovalListPage(page);
-    await approval.goto();
-    await approval.expectLoaded();
-    await approval.searchUntilRow(shared.rejectReason);
-    await approval.rejectRow(env.rejectComment);
-    await approval.expectApprovalSuccess(shared.rejectReason);
-    await approval.expectBackToList();
+    bindFlowStepCapture({ page, runDir: flowRunDir });
+    await flowStep('审批驳回', async () => {
+      const approval = new ApprovalListPage(page);
+      await approval.goto();
+      await approval.expectLoaded();
+      await approval.searchUntilRow(shared.rejectReason);
+      await approval.rejectRow(env.rejectComment);
+      await approval.expectApprovalSuccess(shared.rejectReason);
+      await approval.expectBackToList();
+    }, { snapshot: 'travel-reject' });
   });
 });

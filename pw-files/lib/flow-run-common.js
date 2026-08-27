@@ -80,7 +80,7 @@ function flowScriptKey(flowId, env, spec) {
 function detectPipeline(spec, msg = {}) {
   if (msg.pipeline) return msg.pipeline;
   const s = String(spec || '');
-  if (/golden-regression|travel-submit/.test(s)) return 'golden';
+  if (/golden-regression/.test(s)) return 'golden';
   if (/full-flow/.test(s) && msg.runUiAudit) return 'probe';
   return 'default';
 }

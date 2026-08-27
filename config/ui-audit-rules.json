@@ -50,6 +50,24 @@
       "expect": [
         "空列表占位文案或加载骨架屏是数据状态，不是 layout 缺陷"
       ]
+    },
+    {
+      "script": "flows/request-flow",
+      "step": "travel",
+      "expect": [
+        "差旅/差补申请表单字段随业务配置变化，不要报 missing-element",
+        "审批意见弹窗、成功提示文案变化不算 layout 缺陷",
+        "列表行内单号、事由、状态每次运行可能不同，不要报 component/layout"
+      ],
+      "dropPatterns": [
+        "单号",
+        "事由",
+        "审批中",
+        "已通过",
+        "已驳回",
+        "EA",
+        "comic"
+      ]
     }
   ]
 }
