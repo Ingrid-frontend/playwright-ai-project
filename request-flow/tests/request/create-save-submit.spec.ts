@@ -15,7 +15,7 @@ test.describe('申请单 · 新建保存提交', () => {
 
     const edit = new RequestEditPage(page);
     await edit.confirmNewRequestModal(env.requestFormName || undefined);
-    await edit.fillReason(env.requestReason || randomReason());
-    await edit.save(env.requestApprover || undefined);
+    const reason = env.requestReason || randomReason();
+    await edit.save(env.requestApprover || undefined, reason);
   });
 });

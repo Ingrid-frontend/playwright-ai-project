@@ -2,7 +2,7 @@ import { type FrameLocator, type Locator, type Page, expect } from '@playwright/
 import { waitForAppRoot, type AppRoot } from '../utils/app-frame';
 import { env } from '../utils/env';
 import { DETAIL, DETAIL_MARKERS, DOC_NO_RE } from '../utils/request-catalog';
-import { pickRandom } from '../utils/random';
+import { pickRandom, randomReason } from '../utils/random';
 
 type Scope = FrameLocator | Page;
 
@@ -130,25 +130,56 @@ export class RequestEditPage {
     return shell.or(main).last();
   }
 
-  private reasonInput(): Locator {
-    // label 与 input 是兄弟，不能用 input.filter({ has: label })；accessible name 多为「请输入」而非「事由」
+  private reasonInputStrict(): Locator {
     const root = this.editRoot();
     return root
       .locator('.ant-form-item, [class*="form-item"]')
-      .filter({ has: root.locator('.ant-form-item-label, label, [class*="label"]').filter({ hasText: /^\s*事由/ }) })
-      .locator('textarea, input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])')
+      .filter({
+        has: root.locator('.ant-form-item-label, label, [class*="label"]').filter({ hasText: /事由/ }),
+      })
+      .locator('textarea, input#title, input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])')
       .filter({ visible: true })
-      .first()
-      .or(root.getByRole('textbox', { name: /请输入/ }).filter({ visible: true }).first());
+      .first();
+  }
+
+  private async smartFillField(input: Locator, value: string) {
+    await input.scrollIntoViewIfNeeded();
+    await input.click();
+    await input.press('ControlOrMeta+a');
+    await input.press('Backspace');
+    try {
+      await input.fill(value);
+    } catch {
+      await input.pressSequentially(value, { delay: 20 });
+    }
+    const cur = ((await input.inputValue().catch(() => '')) || '').trim();
+    if (cur !== value) {
+      await input.evaluate((el, text) => {
+        const node = el as HTMLInputElement | HTMLTextAreaElement;
+        const proto =
+          node instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+        const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+        setter?.call(node, text);
+        node.dispatchEvent(new Event('input', { bubbles: true }));
+        node.dispatchEvent(new Event('change', { bubbles: true }));
+      }, value);
+    }
+    await input.blur();
   }
 
   async fillReason(value: string) {
     await this.expectEditVisible();
-    const input = this.reasonInput();
+    const input = this.reasonInputStrict();
     await expect(input, '未找到事由输入框').toBeVisible({ timeout: 20_000 });
-    await input.click();
-    await input.fill('');
-    await input.fill(value);
+    await this.smartFillField(input, value);
+    await expect(input, '事由未写入表单').toHaveValue(value, { timeout: 5_000 });
+  }
+
+  private async ensureReasonFilled() {
+    const input = this.reasonInputStrict();
+    if (!(await input.isVisible({ timeout: 3_000 }).catch(() => false))) return;
+    const val = ((await input.inputValue().catch(() => '')) || '').trim();
+    if (!val) await this.fillReason(env.requestReason || randomReason());
   }
 
   /**
@@ -460,11 +491,14 @@ export class RequestEditPage {
     await expect(submitOnSameBar).toBeVisible({ timeout: 30_000 });
   }
 
-  async save(approverKeyword?: string) {
+  async save(approverKeyword?: string, reason?: string) {
     await this.expectEditVisible();
+    if (reason) await this.fillReason(reason);
+    else await this.ensureReasonFilled();
     await this.fillApproverIfNeeded(approverKeyword);
     const travel = await this.isTravelForm();
     if (travel) await this.ensureTravelItinerary();
+    await this.ensureReasonFilled();
     const root = this.editRoot();
     // 优先纯「保存/暂存」；仅有「保存并添加明细」时再点它（会弹出费用类型弹窗）
     const saveOnly = root.getByRole('button', { name: /^保\s*存$|^暂\s*存$/ }).filter({ visible: true }).first();

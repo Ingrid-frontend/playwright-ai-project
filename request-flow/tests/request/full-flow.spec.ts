@@ -81,6 +81,7 @@ test.describe('申请单 · 全流程', () => {
     test.skip(!env.writeEnabled, '未开启写操作：设置 REQUEST_ENABLE_WRITE=1 后才会真实新建/提交');
     bindFlowStepCapture({ page, runDir: flowRunDir });
     const list = new RequestListPage(page);
+    const reason = env.requestReason || randomReason();
     await flowStep('新建并提交申请单', async () => {
       await list.goto();
       await list.expectLoaded();
@@ -88,8 +89,7 @@ test.describe('申请单 · 全流程', () => {
       const edit = new RequestEditPage(page);
       await edit.confirmNewRequestModal(env.requestFormName || undefined);
       await edit.expectEditVisible();
-      await edit.fillReason(env.requestReason || randomReason());
-      await edit.save(env.requestApprover || undefined);
+      await edit.save(env.requestApprover || undefined, reason);
       await edit.submit(env.requestApprover || undefined);
     }, { snapshot: 'request-submit' });
   });

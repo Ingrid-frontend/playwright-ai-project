@@ -314,16 +314,19 @@ export async function clearDocumentBlocks(documentId: string, accessToken: strin
 export async function createFeishuDocument(accessToken: string): Promise<string> {
   console.log('📄 创建飞书文档...');
   
+  const createBody: { title: string; folder_token?: string } = {
+    title: 'Playwright 截图对比报告',
+  };
+  const folderToken = process.env.FEISHU_DOC_FOLDER_TOKEN?.trim();
+  if (folderToken) createBody.folder_token = folderToken;
+
   const response = await fetchWithRetry('https://open.feishu.cn/open-apis/docx/v1/documents', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${accessToken}`
     },
-    body: JSON.stringify({
-      title: 'Playwright 截图对比报告',
-      folder_token: ''
-    })
+    body: JSON.stringify(createBody),
   });
 
   const responseText = await response.text();

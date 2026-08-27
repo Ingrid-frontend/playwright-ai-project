@@ -44,6 +44,8 @@ function resolveFeishuNotifyReady(resolveRepoRoot) {
   return false;
 }
 
+const { handleFeishuEventPost } = require('./feishu-events');
+
 function registerHttpRoutes(app, deps) {
   const { resolveRepoRoot, sessions } = deps;
 
@@ -166,6 +168,10 @@ function registerHttpRoutes(app, deps) {
   });
 
   const FEISHU_VERIFICATION_TOKEN = process.env.FEISHU_VERIFICATION_TOKEN || '';
+
+  app.post('/feishu/events', express.json(), (req, res) => {
+    handleFeishuEventPost(req, res, deps);
+  });
 
   app.post('/feishu/callback', express.json(), (req, res) => {
     const body = req.body || {};
