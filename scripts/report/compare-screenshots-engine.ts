@@ -7,6 +7,7 @@ import {
   runWithConcurrency,
 } from './image-diff.js';
 import { generateBaselineComparisons } from './baseline-comparisons.js';
+import { flowBaselineScriptKey } from './baseline-manager.js';
 import { resolveCompareCrossBrowser, resolveCompareRunDrift, resolveCrossBrowserPixelmatch, resolveSameBrowserPixelmatch } from './ui-regression-config.js';
 import { calendarDayKeyForScreenshot, formatDateGroupTitle } from './compare-screenshots-render.js';
 import { getAllScreenshots } from './compare-screenshots-scan.js';
@@ -348,7 +349,8 @@ async function generateCrossBrowserComparisonsByStepName(
 
 export async function generateTestComparisons(testDir: string, screenshots: Map<number, ScreenshotInfo[]>, outputPath: string): Promise<StepComparison[]> {
   const allSteps = Array.from(screenshots.keys()).sort((a, b) => a - b);
-  
+  const baselineScriptKey = flowBaselineScriptKey(testDir);
+
   const diffOutputDir = path.join(path.dirname(outputPath), 'diffs', testDir);
   if (!fs.existsSync(diffOutputDir)) {
     fs.mkdirSync(diffOutputDir, { recursive: true });
@@ -365,7 +367,7 @@ export async function generateTestComparisons(testDir: string, screenshots: Map<
           stepNumber,
           diffOutputDir,
           outputPath,
-          testDir,
+          baselineScriptKey,
         )
       : [];
     const baselineComparisons = await generateBaselineComparisons(

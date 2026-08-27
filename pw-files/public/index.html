@@ -2587,12 +2587,7 @@ function openFailureReport() {
 let lastRequestFlowRun = null;
 
 function openRequestFlowReport() {
-  const path = lastRequestFlowRun?.reportOpenPath;
-  if (!path) {
-    showToast('报告尚未生成', 'err');
-    return;
-  }
-  window.open(path, '_blank', 'noopener');
+  openFlowReportPath(lastRequestFlowRun?.reportOpenPath, 'Playwright 报告');
 }
 
 function openFlowReportPath(path, label) {
@@ -2642,12 +2637,7 @@ function updateRequestFlowReportBtn(msg) {
 let lastApprovalFlowRun = null;
 
 function openApprovalFlowReport() {
-  const path = lastApprovalFlowRun?.reportOpenPath;
-  if (!path) {
-    showToast('报告尚未生成', 'err');
-    return;
-  }
-  window.open(path, '_blank', 'noopener');
+  openFlowReportPath(lastApprovalFlowRun?.reportOpenPath, 'Playwright 报告');
 }
 
 function openApprovalFlowCompareReport() {

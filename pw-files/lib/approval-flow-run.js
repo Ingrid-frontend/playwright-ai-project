@@ -6,6 +6,7 @@ const { getEnvEntryResolved } = require('./repo-context');
 const {
   logPlaywrightFailureReport,
   parsePlaywrightFailures,
+  parsePlaywrightResultJson,
   headedFailurePlaceholder,
 } = require('./failure-report');
 const { finalizeFlowRun } = require('./flow-run-common');
@@ -109,6 +110,11 @@ function approvalFlowReportOpenPath() {
   return 'approval-flow/playwright-report/index.html';
 }
 
+function approvalFlowReportHref(repoRoot) {
+  const rel = approvalFlowReportOpenPath();
+  return fs.existsSync(path.join(repoRoot, rel)) ? `/repo-report/${rel}` : '';
+}
+
 function snapshotSummary(snapshot) {
   const frame = pickSnapshotFrame(snapshot);
   if (!frame) return null;
@@ -159,7 +165,7 @@ function getApprovalFlowStatus(repoRoot, session, deps, msg = {}) {
     snapshotRel: snapshot ? SNAPSHOT_REL : '',
     snapshot: snapshotSummary(snapshot),
     catalogCheck,
-    reportOpenPath: `/repo-report/${approvalFlowReportOpenPath()}`,
+    reportOpenPath: approvalFlowReportHref(repoRoot),
     frontendRepoDefault: DEFAULT_FRONTEND_REPO,
     specs,
     defaultSpec: DEFAULT_SPEC,
@@ -291,7 +297,15 @@ async function runApprovalFlowTests(ws, session, msg, deps) {
   if (mode === 'headed') args.push('--headed');
   else if (mode === 'debug') args.push('--debug');
   else if (mode === 'ui') args.push('--ui');
-  else if (headless) args.push('--reporter=json');
+  else if (headless) args.push('--reporter=json,html');
+
+  const startTime = Date.now();
+  const startedAt = new Date(startTime).toISOString();
+  const runId = startedAt.replace(/[:.]/g, '-');
+  spawnEnv.FLOW_RUN_ID = runId;
+  spawnEnv.FLOW_RUN_STARTED_AT = startedAt;
+  spawnEnv.FLOW_SPEC = spec;
+  spawnEnv.FLOW_RUN_MODE = mode;
 
   send(ws, 'approval-flow:run:start', { env: envId, mode, spec, grep });
   logLine(ws, `[approval-flow] 运行用例 · mode=${mode} · ${spec}${grep ? ` · grep=${grep}` : ''}`, 'info');
@@ -321,10 +335,6 @@ async function runApprovalFlowTests(ws, session, msg, deps) {
     if (t.trim()) logLine(ws, t.trimEnd(), 'warn');
   });
 
-  const startTime = Date.now();
-  const startedAt = new Date(startTime).toISOString();
-  process.env.FLOW_SPEC = spec;
-  process.env.FLOW_RUN_MODE = mode;
   const exitCode = await new Promise((resolve) => proc.on('close', resolve));
   session.approvalFlowProc = null;
 
@@ -350,7 +360,7 @@ async function runApprovalFlowTests(ws, session, msg, deps) {
 
   if (headless) {
     try {
-      const result = JSON.parse(stdout);
+      const result = parsePlaywrightResultJson(stdout);
       const s = result.stats || {};
       const expected = Number(s.expected) || 0;
       const unexpected = Number(s.unexpected) || 0;
@@ -386,7 +396,7 @@ async function runApprovalFlowTests(ws, session, msg, deps) {
 
   const ok = exitCode === 0 && failed === 0;
   const reportRel = approvalFlowReportOpenPath();
-  const reportOpenPath = fs.existsSync(path.join(repoRoot, reportRel)) ? `/repo-report/${reportRel}` : '';
+  const reportOpenPath = approvalFlowReportHref(repoRoot);
 
   const finalized = finalizeFlowRun(repoRoot, 'approval-flow', '审批流程', {
     ok,
@@ -400,6 +410,7 @@ async function runApprovalFlowTests(ws, session, msg, deps) {
     failed,
     total,
     duration,
+    runId,
     startedAt,
     finishedAt: new Date().toISOString(),
     failures,

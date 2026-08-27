@@ -51,6 +51,11 @@ function apiFailureCount(flowId: FlowId, runId: string): number {
   return readApiFailures(flowId, runId).reduce((n, e) => n + e.failures.length, 0);
 }
 
+function reportHref(rel?: string): string {
+  if (!rel) return '';
+  return `/repo-report/${rel.replace(/^\/+/, '')}`;
+}
+
 function buildHtml(generatedAt: string): string {
   const lastRuns = FLOW_IDS.map((id) => ({ id, run: readLastRun(id) }));
   const histories = FLOW_IDS.map((id) => ({ id, rows: loadHistory(id) }));
@@ -63,9 +68,9 @@ function buildHtml(generatedAt: string): string {
       const apiN = apiFailureCount(id, run.runId);
       const status = run.ok === true ? 'ok' : run.ok === false ? 'fail' : 'unk';
       const links = [
-        run.playwrightReportRel ? `<a href="/${esc(run.playwrightReportRel)}" target="_blank">Playwright 报告</a>` : '',
-        run.compareReportRel ? `<a href="/${esc(run.compareReportRel)}" target="_blank">截图对比</a>` : '',
-        run.customerReportRel ? `<a href="/${esc(run.customerReportRel)}" target="_blank">客户报告</a>` : '',
+        run.playwrightReportRel ? `<a href="${esc(reportHref(run.playwrightReportRel))}" target="_blank">Playwright 报告</a>` : '',
+        run.compareReportRel ? `<a href="${esc(reportHref(run.compareReportRel))}" target="_blank">截图对比</a>` : '',
+        run.customerReportRel ? `<a href="${esc(reportHref(run.customerReportRel))}" target="_blank">客户报告</a>` : '',
       ]
         .filter(Boolean)
         .join(' · ');

@@ -1,0 +1,84 @@
+{
+  "capturedAt": "2026-08-27T06:21:24.778Z",
+  "viewport": {
+    "name": "desktop",
+    "width": 1280,
+    "height": 720,
+    "deviceScaleFactor": 1
+  },
+  "imageWidth": 1280,
+  "imageHeight": 720,
+  "layout": {
+    "horizontalOverflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280
+  },
+  "domHash": "BODY|1|",
+  "sections": [
+    {
+      "key": "intent-approve-tabs",
+      "structureHash": "0baf4d93744717ec",
+      "textHash": "a1ca0a2df1ba04ae",
+      "nodeCount": 46,
+      "childTags": "DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "intent-approve-toolbar",
+      "structureHash": "76afb338c6e0590a",
+      "textHash": "e3b0c44298fc1c14",
+      "nodeCount": 8,
+      "childTags": "SPAN,INPUT,SPAN"
+    },
+    {
+      "key": "intent-approve-table",
+      "structureHash": "a0fe02a013574d9b",
+      "textHash": "72b1b34c2f2fc24a",
+      "nodeCount": 233,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "golden-approve-tabs",
+      "structureHash": "0baf4d93744717ec",
+      "textHash": "a1ca0a2df1ba04ae",
+      "nodeCount": 46,
+      "childTags": "DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "golden-approve-table",
+      "structureHash": "a0fe02a013574d9b",
+      "textHash": "72b1b34c2f2fc24a",
+      "nodeCount": 233,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV"
+    }
+  ],
+  "textSections": [
+    {
+      "key": "intent-approve-tabs",
+      "text": "工作台 消费平台财务管理数据分析AI能力中心e档案系统管理",
+      "textHash": "ef0266769073e345",
+      "charCount": 29
+    },
+    {
+      "key": "intent-approve-table",
+      "text": "序号 创建日期 申请人 单据名称 事由 单号 币种 金额 本币金额 当前处理人 状态 提交日期 <NUM> <NUM>-<NUM>-<NUM> <NUM>dev 费用申请单-<NUM>dev-无费用行 自动化申请单事由-<NUM>-<NUM> EA<NUM> CNY <NUM>.<NUM> <NUM>.<NUM> <NUM>dev <NUM> 审批中 <NUM>-<NUM>-<NUM> 操作 复制 联查",
+      "textHash": "03defc40f6c0eca9",
+      "charCount": 203
+    },
+    {
+      "key": "golden-approve-tabs",
+      "text": "工作台 消费平台财务管理数据分析AI能力中心e档案系统管理",
+      "textHash": "ef0266769073e345",
+      "charCount": 29
+    },
+    {
+      "key": "golden-approve-table",
+      "text": "序号 创建日期 申请人 单据名称 事由 单号 币种 金额 本币金额 当前处理人 状态 提交日期 <NUM> <NUM>-<NUM>-<NUM> <NUM>dev 费用申请单-<NUM>dev-无费用行 自动化申请单事由-<NUM>-<NUM> EA<NUM> CNY <NUM>.<NUM> <NUM>.<NUM> <NUM>dev <NUM> 审批中 <NUM>-<NUM>-<NUM> 操作 复制 联查",
+      "textHash": "03defc40f6c0eca9",
+      "charCount": 203
+    }
+  ],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "snapshotName": "request-detail",
+  "state": "normal"
+}

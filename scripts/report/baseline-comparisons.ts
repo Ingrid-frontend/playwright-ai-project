@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import {
+  flowBaselineScriptKey,
   getGoldenScreenshotPath,
   getLastGreenScreenshotPath,
   stepFileNameFromScreenshot,
@@ -115,6 +116,7 @@ export async function generateBaselineComparisons(
   incremental: boolean,
 ): Promise<ImageComparison[]> {
   const strategy = resolveBaselineStrategy();
+  const scriptKey = flowBaselineScriptKey(testDir);
   const groupedByStepName = new Map<string, ScreenshotInfoLite[]>();
   stepScreenshots.forEach((s) => {
     if (!groupedByStepName.has(s.stepName)) groupedByStepName.set(s.stepName, []);
@@ -139,7 +141,7 @@ export async function generateBaselineComparisons(
       if (!latest) continue;
 
       const stepFileName = stepFileNameFromScreenshot(latest.path);
-      const resolved = resolveBaselinePath(testDir, browser, stepFileName, sorted, latest, strategy);
+      const resolved = resolveBaselinePath(scriptKey, browser, stepFileName, sorted, latest, strategy);
       if (!resolved) continue;
 
       const compareKind =
@@ -190,7 +192,7 @@ export async function generateBaselineComparisons(
           latest.path,
           diffOutputPath,
           pixelThreshold,
-          { includeAA, scriptKey: testDir },
+          { includeAA, scriptKey },
         );
 
         return {

@@ -1,4 +1,4 @@
-const { logLine, errText } = require('./ws-safe');
+const { logLine, errText, stripAnsi } = require('./ws-safe');
 
 function findLastFailedStep(steps) {
   if (!Array.isArray(steps)) return null;
@@ -9,6 +9,20 @@ function findLastFailedStep(steps) {
     if (inner) hit = inner;
   }
   return hit;
+}
+
+function parsePlaywrightResultJson(stdout) {
+  const text = stripAnsi(stdout).trim();
+  try {
+    return JSON.parse(text);
+  } catch {
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start >= 0 && end > start) {
+      return JSON.parse(text.slice(start, end + 1));
+    }
+    throw new Error('Playwright JSON 输出解析失败');
+  }
 }
 
 /** 从 Playwright JSON 报告提取结构化失败列表（不写日志） */
@@ -173,6 +187,7 @@ function headedFailurePlaceholder(specRel) {
 module.exports = {
   findLastFailedStep,
   parsePlaywrightFailures,
+  parsePlaywrightResultJson,
   logPlaywrightFailureReport,
   headedFailurePlaceholder,
 };

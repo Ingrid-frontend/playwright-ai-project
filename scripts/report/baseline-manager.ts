@@ -257,6 +257,16 @@ export function goldenDirForScript(scriptKey: string, runSegment: string): strin
   return path.join(BASELINE_ROOT, scriptKey, runSegment);
 }
 
+/** screenshots/flows 扫描 testDir → 与 promote-baseline 一致的 scriptKey */
+export function flowBaselineScriptKey(testDir: string): string {
+  const n = testDir.replace(/\\/g, '/').replace(/^\/+/, '');
+  if (n.startsWith('flows/')) return n;
+  if (n.startsWith('request-flow/') || n.startsWith('approval-flow/')) {
+    return `flows/${n}`;
+  }
+  return n;
+}
+
 export function goldenFilePath(scriptKey: string, runSegment: string, stepFileName: string): string {
   return path.join(goldenDirForScript(scriptKey, runSegment), stepFileName);
 }

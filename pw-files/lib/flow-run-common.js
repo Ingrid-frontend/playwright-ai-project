@@ -16,11 +16,6 @@ function readJsonSafe(p) {
   }
 }
 
-function readApiFailures(repoRoot, flowId, runId) {
-  const p = path.join(repoRoot, 'results', 'flow-runs', flowId, runId, 'api-failures.json');
-  return readJsonSafe(p) || [];
-}
-
 function writeFlowManifest(repoRoot, manifest) {
   const dir = path.join(repoRoot, 'results', 'flow-runs', manifest.flowId, manifest.runId);
   fs.mkdirSync(dir, { recursive: true });
@@ -30,13 +25,18 @@ function writeFlowManifest(repoRoot, manifest) {
     JSON.stringify(manifest, null, 2),
     'utf-8',
   );
-  const day = (manifest.startedAt || new Date().toISOString()).slice(0, 10);
+  const day = (manifest.finishedAt || manifest.startedAt || new Date().toISOString()).slice(0, 10);
   const histDir = path.join(repoRoot, 'results', 'flow-runs', manifest.flowId, 'history');
   fs.mkdirSync(histDir, { recursive: true });
   const histPath = path.join(histDir, `${day}.json`);
   let rows = readJsonSafe(histPath) || [];
   rows.push(manifest);
   fs.writeFileSync(histPath, JSON.stringify(rows, null, 2), 'utf-8');
+}
+
+function readApiFailures(repoRoot, flowId, runId) {
+  const p = path.join(repoRoot, 'results', 'flow-runs', flowId, runId, 'api-failures.json');
+  return readJsonSafe(p) || [];
 }
 
 function runNpmScript(repoRoot, script, extraArgs = []) {
@@ -105,16 +105,31 @@ function runFlowUiAudit(repoRoot, flowId, limit = 24) {
   ]);
 }
 
-function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
-  const startedAt = payload.startedAt || new Date(Date.now() - (payload.duration || 0) * 1000).toISOString();
+function alignRunTimes(payload) {
   const finishedAt = payload.finishedAt || new Date().toISOString();
-  const runId = payload.runId || startedAt.replace(/[:.]/g, '-');
+  const durationSec = Number(payload.duration) || 0;
+  let startedAt = payload.startedAt || new Date(Date.now() - durationSec * 1000).toISOString();
+
+  if (durationSec > 0) {
+    const finishMs = new Date(finishedAt).getTime();
+    const startMs = new Date(startedAt).getTime();
+    if (finishMs - startMs > durationSec * 1000 + 5000) {
+      startedAt = new Date(finishMs - durationSec * 1000).toISOString();
+    }
+  }
+
+  const runIdFromStart = startedAt.replace(/[:.]/g, '-');
+  return { startedAt, finishedAt, runId: runIdFromStart };
+}
+
+function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
+  const { startedAt, finishedAt, runId } = alignRunTimes(payload);
   const pipeline = detectPipeline(payload.spec, payload);
 
-  const lastManifest = readJsonSafe(path.join(repoRoot, 'results', 'flow-runs', flowId, 'last-run.json'));
-  const effectiveRunId = lastManifest?.runId || runId;
-
-  const apiFailures = readApiFailures(repoRoot, flowId, effectiveRunId);
+  let apiFailures = readApiFailures(repoRoot, flowId, runId);
+  if (!apiFailures.length && payload.runId && payload.runId !== runId) {
+    apiFailures = readApiFailures(repoRoot, flowId, payload.runId);
+  }
   const apiFailureCount = apiFailures.reduce((n, e) => n + (e.failures?.length || 0), 0);
 
   let compareReportRel = '';
@@ -148,17 +163,15 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     }
   }
 
-  runNpmScript(repoRoot, 'report:flow-summary');
-
   const playwrightReportRel = payload.playwrightReportDir
     ? `${payload.playwrightReportDir}/index.html`
     : `${flowId}/playwright-report/index.html`;
 
   const manifest = {
-    runId: effectiveRunId,
+    runId,
     flowId,
     flowLabel,
-    startedAt: lastManifest?.startedAt || startedAt,
+    startedAt,
     finishedAt,
     env: payload.env || 'dev',
     spec: payload.spec || '',
@@ -178,7 +191,7 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     baselinePromoted: baselinePromoted || undefined,
     summaryReportRel: FLOW_SUMMARY_REL,
     apiFailureLogRel: apiFailures.length
-      ? `results/flow-runs/${flowId}/${effectiveRunId}/api-failures.json`
+      ? `results/flow-runs/${flowId}/${runId}/api-failures.json`
       : undefined,
     apiFailureCount,
     playwrightReportRel,
@@ -188,11 +201,13 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
 
   writeFlowManifest(repoRoot, manifest);
 
+  runNpmScript(repoRoot, 'report:flow-summary');
+
   return {
     ...payload,
     pipeline,
-    runId: effectiveRunId,
-    startedAt: manifest.startedAt,
+    runId,
+    startedAt,
     finishedAt,
     baselinePromoted,
     compareReportOpenPath: compareReportRel ? `/repo-report/${compareReportRel}` : '',
