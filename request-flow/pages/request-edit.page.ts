@@ -120,26 +120,73 @@ export class RequestEditPage {
     }).toPass({ timeout: 60_000 });
   }
 
-  /** 编辑区：侧滑壳；或无壳时用带保存/返回的 main（新建全屏常见） */
-  private editRoot(): Locator {
-    const shell = this.detailShell();
-    const main = this.scope()
-      .locator('main')
-      .filter({ has: this.scope().getByRole('button', { name: /保\s*存|返\s*回|提\s*交|删除单据/ }) })
-      .last();
-    return shell.or(main).last();
+  private editActionBtn(): Locator {
+    return this.scope()
+      .getByRole('button', { name: /保存并添加明细|保\s*存|返\s*回|提\s*交|删除单据/ })
+      .filter({ visible: true });
   }
 
-  private reasonInputStrict(): Locator {
-    const root = this.editRoot();
-    return root
+  /** 编辑区：优先含底栏按钮的壳/main，避免 .last() 命中空侧滑 */
+  private editRoot(): Locator {
+    const actions = this.editActionBtn();
+    const withActions = this.scope()
+      .locator(`${DETAIL}, main`)
+      .filter({ has: actions })
+      .filter({ visible: true })
+      .last();
+    const shell = this.detailShell();
+    const main = this.scope().locator('main').filter({ has: actions }).last();
+    return withActions.or(shell.or(main).last()).last();
+  }
+
+  private reasonInputIn(root: Locator): Locator {
+    const byLabel = root
       .locator('.ant-form-item, [class*="form-item"]')
-      .filter({
-        has: root.locator('.ant-form-item-label, label, [class*="label"]').filter({ hasText: /事由/ }),
-      })
+      .filter({ hasText: /事由/ })
       .locator('textarea, input#title, input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])')
       .filter({ visible: true })
       .first();
+    const byId = root.locator('input#title').filter({ visible: true }).first();
+    const byPh = root
+      .getByPlaceholder(/事由|请输入/)
+      .or(root.getByRole('textbox', { name: /事由|请输入/ }))
+      .filter({ visible: true })
+      .first();
+    return byLabel.or(byId).or(byPh).first();
+  }
+
+  private async waitEditFormReady() {
+    await this.ensureRoot();
+    await this.scope()
+      .locator('.ant-spin-spinning, .request-loading-modal')
+      .first()
+      .waitFor({ state: 'hidden', timeout: 30_000 })
+      .catch(() => undefined);
+  }
+
+  private async ensureDocInfoTab() {
+    const tab = this.editRoot().getByText('单据信息', { exact: true }).filter({ visible: true }).first();
+    if (await tab.isVisible({ timeout: 1_000 }).catch(() => false)) {
+      await tab.click();
+      await this.page.waitForTimeout(400);
+    }
+  }
+
+  private async resolveReasonInput(): Promise<Locator> {
+    await this.waitEditFormReady();
+    const tryRoots = () => [this.editRoot(), this.detailShell(), this.scope().locator('main').filter({ visible: true }).last()];
+    for (const root of tryRoots()) {
+      const input = this.reasonInputIn(root);
+      if (await input.isVisible({ timeout: 2_000 }).catch(() => false)) return input;
+    }
+    await this.ensureDocInfoTab();
+    for (const root of tryRoots()) {
+      const input = this.reasonInputIn(root);
+      if (await input.isVisible({ timeout: 2_000 }).catch(() => false)) return input;
+    }
+    const fallback = this.reasonInputIn(this.detailShell().or(this.editRoot()));
+    await expect(fallback, '未找到事由输入框').toBeVisible({ timeout: 20_000 });
+    return fallback;
   }
 
   private async smartFillField(input: Locator, value: string) {
@@ -169,15 +216,14 @@ export class RequestEditPage {
 
   async fillReason(value: string) {
     await this.expectEditVisible();
-    const input = this.reasonInputStrict();
-    await expect(input, '未找到事由输入框').toBeVisible({ timeout: 20_000 });
+    const input = await this.resolveReasonInput();
     await this.smartFillField(input, value);
     await expect(input, '事由未写入表单').toHaveValue(value, { timeout: 5_000 });
   }
 
   private async ensureReasonFilled() {
-    const input = this.reasonInputStrict();
-    if (!(await input.isVisible({ timeout: 3_000 }).catch(() => false))) return;
+    const input = await this.resolveReasonInput().catch(() => null);
+    if (!input || !(await input.isVisible({ timeout: 1_000 }).catch(() => false))) return;
     const val = ((await input.inputValue().catch(() => '')) || '').trim();
     if (!val) await this.fillReason(env.requestReason || randomReason());
   }
