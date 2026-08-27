@@ -37,9 +37,13 @@ function createAccountEnvActions(deps) {
     }
     const profile = getSessionAccountProfile(session, repoRoot);
     const storageRel = repoEnv.resolveStorageStateRel(repoRoot, envId, profile);
-    const flowProfileIds = [...repoEnv.listGoldenProfileIds(repoRoot, envId), 'write'].filter(
-      (id) => id === 'write' || repoEnv.getEnvAccountConfig(repoRoot, envId)?.profiles?.[id],
-    );
+    const flowProfileIds = [
+      ...repoEnv.listGoldenProfileIds(repoRoot, envId),
+      ...repoEnv.listWriteProfileIds(repoRoot, envId),
+    ].filter((id) => {
+      const profiles = repoEnv.getEnvAccountConfig(repoRoot, envId)?.profiles;
+      return profiles?.[id] || id === 'write' || id === 'golden';
+    });
     send(ws, 'account:info', {
       repoReady: true,
       env: envId,
@@ -319,6 +323,64 @@ function createAccountEnvActions(deps) {
     sendAccountInfo(ws, session, repoRoot, repoReady);
   }
 
+  function addWriteProfileEntry(ws, session, envOverride, opts = {}) {
+    const repoRoot = resolveRepoRoot();
+    if (!fs.existsSync(path.join(repoRoot, 'playwright.config.ts'))) {
+      send(ws, 'error', { message: '未找到项目根，无法新增 write 档案' });
+      return;
+    }
+    const envId = envOverride || getSessionPlaywrightEnv(session);
+    const result = repoEnv.addWriteProfile(repoRoot, envId, opts);
+    if (!result.ok) {
+      send(ws, 'error', { message: result.error || '新增 write 档案失败' });
+      return;
+    }
+    const repoReady = true;
+    send(ws, 'account:write-profile-added', {
+      env: envId,
+      profile: result.profileId,
+      label: result.label,
+      storageState: result.storageState || '',
+      hasStorage: repoEnv.storageExists(repoRoot, result.storageState),
+    });
+    logLine(ws, `[account] 已新增 write 档案 ${envId}/${result.profileId}`, 'ok');
+    if (result.initializedAccounts) {
+      logLine(ws, `[account] 已自动补全 datasource/accounts.json（环境 ${envId}）`, 'info');
+    }
+    sendEnvInfo(ws, session, repoRoot, repoReady);
+    sendAccountInfo(ws, session, repoRoot, repoReady);
+  }
+
+  function removeWriteProfileEntry(ws, session, envOverride, profileId) {
+    const repoRoot = resolveRepoRoot();
+    if (!fs.existsSync(path.join(repoRoot, 'playwright.config.ts'))) {
+      send(ws, 'error', { message: '未找到项目根，无法删除 write 档案' });
+      return;
+    }
+    const envId = envOverride || getSessionPlaywrightEnv(session);
+    const prof = String(profileId || '').trim();
+    if (!prof) {
+      send(ws, 'error', { message: '缺少 profile' });
+      return;
+    }
+    const result = repoEnv.removeWriteProfile(repoRoot, envId, prof);
+    if (!result.ok) {
+      send(ws, 'error', { message: result.error || '删除 write 档案失败' });
+      return;
+    }
+    const repoReady = true;
+    send(ws, 'account:write-profile-removed', {
+      env: envId,
+      profile: result.profileId,
+      label: result.label,
+      storageState: result.storageState || '',
+      removedStorage: Boolean(result.removedStorage),
+    });
+    logLine(ws, `[account] 已删除 write 档案 ${envId}/${result.profileId}`, 'ok');
+    sendEnvInfo(ws, session, repoRoot, repoReady);
+    sendAccountInfo(ws, session, repoRoot, repoReady);
+  }
+
   return {
     sendAccountInfo,
     sendEnvInfo,
@@ -328,6 +390,8 @@ function createAccountEnvActions(deps) {
     setSessionPlaywrightEnv,
     addGoldenProfileEntry,
     removeGoldenProfileEntry,
+    addWriteProfileEntry,
+    removeWriteProfileEntry,
   };
 }
 

@@ -170,8 +170,11 @@ function getRequestFlowStatus(repoRoot, session, deps, msg = {}) {
   const listed = hasConfig ? listRequestFlowTests(repoRoot, spec, spawnEnv) : { spec, tests: [], error: '' };
   const flowProfileIds = [
     ...repoEnv.listGoldenProfileIds(repoRoot, envId),
-    'write',
-  ].filter((id) => id === 'write' || repoEnv.getEnvAccountConfig(repoRoot, envId)?.profiles?.[id]);
+    ...repoEnv.listWriteProfileIds(repoRoot, envId),
+  ].filter((id) => {
+    const profiles = repoEnv.getEnvAccountConfig(repoRoot, envId)?.profiles;
+    return profiles?.[id] || id === 'write' || id === 'golden';
+  });
   const profileStorage = repoEnv.listProfilesStorageStatus(repoRoot, envId, flowProfileIds);
   return {
     ready: hasConfig,

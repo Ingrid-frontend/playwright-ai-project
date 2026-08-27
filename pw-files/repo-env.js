@@ -4,7 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const { slugifyLoginAccount, isGoldenProfileId } = require(path.join(__dirname, '../src/utils/account-slug.cjs'));
+const { slugifyLoginAccount, isGoldenProfileId, isWriteProfileId } = require(path.join(__dirname, '../src/utils/account-slug.cjs'));
 const { extractLoginAccount, extractFromCode } = require(path.join(__dirname, '../src/utils/extract-login-account.cjs'));
 const {
   readLoginStateMeta,
@@ -159,6 +159,14 @@ function nextGoldenProfileId(profiles) {
   return `golden_${n}`;
 }
 
+function nextWriteProfileId(profiles) {
+  const keys = Object.keys(profiles || {}).filter(isWriteProfileId);
+  if (!keys.includes('write')) return 'write';
+  let n = 2;
+  while (keys.includes(`write_${n}`)) n += 1;
+  return `write_${n}`;
+}
+
 function defaultEnvAccountEntry() {
   return {
     defaultProfile: 'default',
@@ -241,9 +249,91 @@ function addGoldenProfile(repoRoot, envId, opts = {}) {
   };
 }
 
+function addWriteProfile(repoRoot, envId, opts = {}) {
+  const ensured = ensureAccountsEnvEntry(repoRoot, envId);
+  if (!ensured.ok) return ensured;
+
+  const accountsPath = ensured.accountsPath;
+  const raw = readJsonFile(accountsPath) || ensured.raw;
+  const env = ensured.env;
+
+  const normalized = normalizeEnvEntryToProfiles(raw[env]);
+  if (!normalized) return { ok: false, error: `环境 ${env} 的 accounts.json 格式无法扩展 write 档案` };
+
+  raw[env] = normalized;
+  const profiles = normalized.profiles;
+  const profileId = nextWriteProfileId(profiles);
+  if (profiles[profileId]) return { ok: false, error: `profile ${profileId} 已存在` };
+
+  const label = String(opts.label || '').trim() || `流程调试 ${profileId}`;
+  profiles[profileId] = {
+    label,
+    username: String(opts.username || '').trim(),
+    password: String(opts.password || '').trim(),
+  };
+
+  try {
+    fs.writeFileSync(accountsPath, `${JSON.stringify(raw, null, 2)}\n`, 'utf8');
+  } catch (e) {
+    return { ok: false, error: `写入 accounts.json 失败: ${e.message || e}` };
+  }
+
+  const storageRel = resolveStorageStateRelDirect(repoRoot, env, profileId);
+  return {
+    ok: true,
+    profileId,
+    label,
+    storageState: storageRel,
+    initializedAccounts: ensured.createdFile,
+  };
+}
+
 function removeGoldenProfile(repoRoot, envId, profileId) {
   const id = String(profileId || '').trim();
   if (!isGoldenProfileId(id)) return { ok: false, error: '仅可删除 golden* 档案' };
+
+  const accountsPath = path.join(repoRoot, 'datasource', 'accounts.json');
+  const raw = readJsonFile(accountsPath);
+  if (!raw) return { ok: false, error: '未找到 datasource/accounts.json' };
+
+  const env = String(envId || '').trim();
+  if (!env || !raw[env]) return { ok: false, error: `accounts.json 中未配置环境: ${env}` };
+
+  const normalized = normalizeEnvEntryToProfiles(raw[env]);
+  if (!normalized) return { ok: false, error: `环境 ${env} 的 accounts.json 格式不支持删除` };
+
+  if (!normalized.profiles[id]) return { ok: false, error: `档案 ${id} 不存在` };
+
+  const label = normalized.profiles[id].label || id;
+  delete normalized.profiles[id];
+  raw[env] = normalized;
+
+  const storageRel = resolveStorageStateRelDirect(repoRoot, env, id);
+  let removedStorage = false;
+  if (storageRel) {
+    const storageAbs = path.resolve(repoRoot, storageRel);
+    if (fs.existsSync(storageAbs)) {
+      try {
+        fs.unlinkSync(storageAbs);
+        removedStorage = true;
+      } catch (e) {
+        return { ok: false, error: `删除登录态失败: ${e.message || e}` };
+      }
+    }
+  }
+
+  try {
+    fs.writeFileSync(accountsPath, `${JSON.stringify(raw, null, 2)}\n`, 'utf8');
+  } catch (e) {
+    return { ok: false, error: `写入 accounts.json 失败: ${e.message || e}` };
+  }
+
+  return { ok: true, profileId: id, label, storageState: storageRel || '', removedStorage };
+}
+
+function removeWriteProfile(repoRoot, envId, profileId) {
+  const id = String(profileId || '').trim();
+  if (!isWriteProfileId(id)) return { ok: false, error: '仅可删除 write* 档案' };
 
   const accountsPath = path.join(repoRoot, 'datasource', 'accounts.json');
   const raw = readJsonFile(accountsPath);
@@ -291,6 +381,13 @@ function listGoldenProfileIds(repoRoot, envId) {
   return ids.length ? ids : ['golden'];
 }
 
+function listWriteProfileIds(repoRoot, envId) {
+  const cfg = getEnvAccountConfig(repoRoot, envId);
+  if (!cfg?.profiles) return ['write'];
+  const ids = Object.keys(cfg.profiles).filter(isWriteProfileId).sort();
+  return ids.length ? ids : ['write'];
+}
+
 function resolveFlowRoleSlug(repoRoot, envId, profileId) {
   const prof = String(profileId || '').trim();
   if (!prof) return '';
@@ -331,6 +428,7 @@ function enrichProfileStorageEntry(repoRoot, envId, profileId) {
     hasStorage: storageExists(repoRoot, rel),
     maskedUsername: loginAccount ? maskUsername(loginAccount) : maskUsername(prof?.username || ''),
     isGolden: isGoldenProfileId(id),
+    isWrite: isWriteProfileId(id),
   };
 }
 
@@ -414,8 +512,12 @@ module.exports = {
   resolveFlowRoleSlug,
   enrichProfileStorageEntry,
   isGoldenProfileId,
+  isWriteProfileId,
   addGoldenProfile,
   removeGoldenProfile,
+  addWriteProfile,
+  removeWriteProfile,
+  listWriteProfileIds,
   ensureAccountsEnvEntry,
   maskUsername,
   listAccountProfiles,

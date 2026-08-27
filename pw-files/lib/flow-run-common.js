@@ -138,6 +138,7 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
   let compareReportRel = '';
   let customerReportRel = '';
   let uiAuditReportRel = '';
+  let replayReportRel = '';
   let baselinePromoted = false;
 
   if (!payload.cancelled && hasFlowScreenshots(repoRoot)) {
@@ -150,6 +151,18 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
       if (cust.ok && fs.existsSync(path.join(repoRoot, FLOW_CUSTOMER_REL))) {
         customerReportRel = FLOW_CUSTOMER_REL;
       }
+    }
+    const replayArgs = [
+      `--flow=${flowId}`,
+      `--run=${runId}`,
+      `--env=${payload.env || 'dev'}`,
+      `--spec=${payload.spec || ''}`,
+    ];
+    if (payload.roleSlug) replayArgs.push(`--role=${payload.roleSlug}`);
+    runNpmScript(repoRoot, 'report:flow-replay', replayArgs);
+    const replayAbs = path.join(repoRoot, 'results', 'flow-runs', flowId, runId, 'flow.html');
+    if (fs.existsSync(replayAbs)) {
+      replayReportRel = path.relative(repoRoot, replayAbs).replace(/\\/g, '/');
     }
   }
 
@@ -191,6 +204,7 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     compareReportRel: compareReportRel || undefined,
     customerReportRel: customerReportRel || undefined,
     uiAuditReportRel: uiAuditReportRel || undefined,
+    replayReportRel: replayReportRel || undefined,
     baselinePromoted: baselinePromoted || undefined,
     summaryReportRel: FLOW_SUMMARY_REL,
     apiFailureLogRel: apiFailures.length
@@ -216,6 +230,7 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     compareReportOpenPath: compareReportRel ? `/repo-report/${compareReportRel}` : '',
     customerReportOpenPath: customerReportRel ? `/repo-report/${customerReportRel}` : '',
     uiAuditReportOpenPath: uiAuditReportRel ? `/repo-report/${UI_AUDIT_REPORT_REL.split(path.sep).join('/')}` : '',
+    replayReportOpenPath: replayReportRel ? `/repo-report/${replayReportRel}` : '',
     summaryReportOpenPath: `/repo-report/${FLOW_SUMMARY_REL}`,
     apiFailureCount,
     apiFailures,

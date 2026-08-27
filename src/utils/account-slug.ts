@@ -25,3 +25,11 @@ export function isGoldenProfileId(profileId?: string | null): boolean {
   if (s.startsWith("golden_") || s.startsWith("golden-")) return true;
   return false;
 }
+
+export function isWriteProfileId(profileId?: string | null): boolean {
+  const s = String(profileId || "").trim();
+  if (!s) return false;
+  if (s === "write") return true;
+  if (s.startsWith("write_") || s.startsWith("write-")) return true;
+  return false;
+}

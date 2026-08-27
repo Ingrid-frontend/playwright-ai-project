@@ -32,6 +32,7 @@
     "compare-flow-screenshots": "tsx scripts/report/compare-flow-screenshots.ts",
     "report:flow-customer": "tsx scripts/report/flow-customer-report.ts",
     "report:flow-summary": "tsx scripts/report/flow-run-summary.ts",
+    "report:flow-replay": "tsx scripts/report/flow-run-replay.ts",
     "flow:run": "tsx scripts/flow/run-flow-cli.ts",
     "feishu:flow-weekly-doc": "tsx scripts/feishu/append-flow-weekly-doc.ts",
     "feishu:flow-notify": "tsx scripts/feishu/send-flow-feishu-result.ts",

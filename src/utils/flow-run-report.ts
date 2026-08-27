@@ -26,6 +26,7 @@ export type FlowRunManifest = {
   summaryReportRel?: string;
   apiFailureLogRel?: string;
   playwrightReportRel?: string;
+  replayReportRel?: string;
   traceMode?: string;
   failures?: Array<{ title?: string; message?: string }>;
 };

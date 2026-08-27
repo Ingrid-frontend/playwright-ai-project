@@ -9,6 +9,8 @@ function createStudioHandlers(ctx) {
     setSessionAccountProfile,
     addGoldenProfileEntry,
     removeGoldenProfileEntry,
+    addWriteProfileEntry,
+    removeWriteProfileEntry,
     runAccountLogin,
     clearSessionStorage,
     optimizeCode,
@@ -69,6 +71,18 @@ function createStudioHandlers(ctx) {
 
     'account:remove-golden-profile': async (ws, session, _sessionId, msg) => {
       removeGoldenProfileEntry(ws, session, msg.env, msg.profile);
+    },
+
+    'account:add-write-profile': async (ws, session, _sessionId, msg) => {
+      addWriteProfileEntry(ws, session, msg.env, {
+        label: msg.label,
+        username: msg.username,
+        password: msg.password,
+      });
+    },
+
+    'account:remove-write-profile': async (ws, session, _sessionId, msg) => {
+      removeWriteProfileEntry(ws, session, msg.env, msg.profile);
     },
 
     'record:stop': async (ws, session) => {

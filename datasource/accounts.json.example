@@ -22,6 +22,11 @@
         "username": "your-write-dev-username",
         "password": "your-dev-password"
       },
+      "write_2": {
+        "label": "流程调试角色2（如审批人）",
+        "username": "your-write2-dev-username",
+        "password": "your-dev-password"
+      },
       "reviewer": {
         "label": "审批人",
         "username": "reviewer-dev@example.com",
@@ -64,6 +69,11 @@
       "write": {
         "label": "流程调试（造单/审批）",
         "username": "your-write-stage-username",
+        "password": "your-stage-password"
+      },
+      "write_2": {
+        "label": "流程调试角色2（如审批人）",
+        "username": "your-write2-stage-username",
         "password": "your-stage-password"
       },
       "admin": {

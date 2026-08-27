@@ -69,6 +69,7 @@ function buildHtml(generatedAt: string): string {
       const status = run.ok === true ? 'ok' : run.ok === false ? 'fail' : 'unk';
       const links = [
         run.playwrightReportRel ? `<a href="${esc(reportHref(run.playwrightReportRel))}" target="_blank">Playwright 报告</a>` : '',
+        run.replayReportRel ? `<a href="${esc(reportHref(run.replayReportRel))}" target="_blank">步骤回放</a>` : '',
         run.compareReportRel ? `<a href="${esc(reportHref(run.compareReportRel))}" target="_blank">截图对比</a>` : '',
         run.customerReportRel ? `<a href="${esc(reportHref(run.customerReportRel))}" target="_blank">客户报告</a>` : '',
       ]
