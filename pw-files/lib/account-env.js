@@ -37,7 +37,9 @@ function createAccountEnvActions(deps) {
     }
     const profile = getSessionAccountProfile(session, repoRoot);
     const storageRel = repoEnv.resolveStorageStateRel(repoRoot, envId, profile);
-    const flowProfileIds = ['golden', 'write'].filter((id) => cfg?.profiles?.[id]);
+    const flowProfileIds = [...repoEnv.listGoldenProfileIds(repoRoot, envId), 'write'].filter(
+      (id) => id === 'write' || repoEnv.getEnvAccountConfig(repoRoot, envId)?.profiles?.[id],
+    );
     send(ws, 'account:info', {
       repoReady: true,
       env: envId,
@@ -259,6 +261,64 @@ function createAccountEnvActions(deps) {
     logLine(ws, `[env] 已切换为 ${entry.id} · ${entry.baseURL}`, 'info');
   }
 
+  function addGoldenProfileEntry(ws, session, envOverride, opts = {}) {
+    const repoRoot = resolveRepoRoot();
+    if (!fs.existsSync(path.join(repoRoot, 'playwright.config.ts'))) {
+      send(ws, 'error', { message: '未找到项目根，无法新增 Golden 档案' });
+      return;
+    }
+    const envId = envOverride || getSessionPlaywrightEnv(session);
+    const result = repoEnv.addGoldenProfile(repoRoot, envId, opts);
+    if (!result.ok) {
+      send(ws, 'error', { message: result.error || '新增 Golden 档案失败' });
+      return;
+    }
+    const repoReady = true;
+    send(ws, 'account:golden-profile-added', {
+      env: envId,
+      profile: result.profileId,
+      label: result.label,
+      storageState: result.storageState || '',
+      hasStorage: repoEnv.storageExists(repoRoot, result.storageState),
+    });
+    logLine(ws, `[account] 已新增 Golden 档案 ${envId}/${result.profileId}`, 'ok');
+    if (result.initializedAccounts) {
+      logLine(ws, `[account] 已自动补全 datasource/accounts.json（环境 ${envId}）`, 'info');
+    }
+    sendEnvInfo(ws, session, repoRoot, repoReady);
+    sendAccountInfo(ws, session, repoRoot, repoReady);
+  }
+
+  function removeGoldenProfileEntry(ws, session, envOverride, profileId) {
+    const repoRoot = resolveRepoRoot();
+    if (!fs.existsSync(path.join(repoRoot, 'playwright.config.ts'))) {
+      send(ws, 'error', { message: '未找到项目根，无法删除 Golden 档案' });
+      return;
+    }
+    const envId = envOverride || getSessionPlaywrightEnv(session);
+    const prof = String(profileId || '').trim();
+    if (!prof) {
+      send(ws, 'error', { message: '缺少 profile' });
+      return;
+    }
+    const result = repoEnv.removeGoldenProfile(repoRoot, envId, prof);
+    if (!result.ok) {
+      send(ws, 'error', { message: result.error || '删除 Golden 档案失败' });
+      return;
+    }
+    const repoReady = true;
+    send(ws, 'account:golden-profile-removed', {
+      env: envId,
+      profile: result.profileId,
+      label: result.label,
+      storageState: result.storageState || '',
+      removedStorage: Boolean(result.removedStorage),
+    });
+    logLine(ws, `[account] 已删除 Golden 档案 ${envId}/${result.profileId}`, 'ok');
+    sendEnvInfo(ws, session, repoRoot, repoReady);
+    sendAccountInfo(ws, session, repoRoot, repoReady);
+  }
+
   return {
     sendAccountInfo,
     sendEnvInfo,
@@ -266,6 +326,8 @@ function createAccountEnvActions(deps) {
     setSessionAccountProfile,
     runAccountLogin,
     setSessionPlaywrightEnv,
+    addGoldenProfileEntry,
+    removeGoldenProfileEntry,
   };
 }
 

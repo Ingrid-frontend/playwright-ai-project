@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { flowRolePathSegment } from './account-slug.js';
 
 export type FlowId = 'request-flow' | 'approval-flow';
 
@@ -67,9 +68,20 @@ export function specSlug(spec: string): string {
   return base.replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]+/g, '-').slice(0, 60) || 'flow';
 }
 
-export function flowScreenshotRoot(flowId: FlowId, env: string, spec: string): string {
+export function flowScreenshotRoot(flowId: FlowId, env: string, spec: string, roleSlug?: string): string {
   const envId = (env || 'dev').trim() || 'dev';
-  return path.join('screenshots', 'flows', flowId, envId, specSlug(spec));
+  const base = path.join('screenshots', 'flows', flowId, envId, specSlug(spec));
+  const segment = flowRolePathSegment(roleSlug);
+  if (segment) return path.join(base, segment);
+  return base;
+}
+
+export function flowScreenshotScriptKey(flowId: FlowId, env: string, spec: string, roleSlug?: string): string {
+  const envId = (env || 'dev').trim() || 'dev';
+  const base = `flows/${flowId}/${envId}/${specSlug(spec)}`;
+  const segment = flowRolePathSegment(roleSlug);
+  if (segment) return `${base}/${segment}`;
+  return base;
 }
 
 export function newRunId(): string {
@@ -99,7 +111,8 @@ export function initWorkerRun(opts: {
 }): { runId: string; startedAt: string; screenshotDir: string; runDir: string } {
   const runId = process.env.FLOW_RUN_ID?.trim() || newRunId();
   const startedAt = process.env.FLOW_RUN_STARTED_AT?.trim() || new Date().toISOString();
-  const root = flowScreenshotRoot(opts.flowId, opts.env, opts.spec);
+  const roleSlug = process.env.FLOW_ACCOUNT_SLUG?.trim() || '';
+  const root = flowScreenshotRoot(opts.flowId, opts.env, opts.spec, roleSlug);
   const runDir = path.join(root, screenshotRunSegment(), runId);
 
   if (flowScreenshotEnabled()) {

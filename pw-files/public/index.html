@@ -1217,18 +1217,28 @@
                 <button type="button" class="btn" id="btnRequestPresetSubmitApprove" onclick="applyRequestFlowPreset('submitApprove')">提交后审批</button>
               </div>
 
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px">
+                <span class="sidebar-hint" style="margin:0;color:var(--text-secondary)">Golden / 调试登录态</span>
+                <button type="button" class="btn" id="btnAddGoldenProfile" style="font-size:var(--fs-xs);padding:4px 10px;border-color:rgba(52,211,153,.45);color:var(--green)" onclick="addGoldenProfileEntry()">新增 Golden 登录态</button>
+              </div>
               <div id="requestFlowProfileStorage" class="sidebar-hint" style="padding:10px 12px;border:1px dashed var(--border);border-radius:8px;line-height:1.7;color:var(--text-secondary);margin-bottom:8px">
-                双账号登录态加载中…
+                加载中…
               </div>
 
               <div style="padding:10px 12px;border:1px solid rgba(52,211,153,.35);border-radius:8px;background:var(--bg2);margin-bottom:8px">
-                <div style="font-weight:600;color:var(--green);margin-bottom:6px;font-size:var(--fs-sm)">Golden 回归（只读 · profile=<code>golden</code>）</div>
+                <div style="font-weight:600;color:var(--green);margin-bottom:6px;font-size:var(--fs-sm)">Golden 回归（多角色 · 只读）</div>
                 <p class="sidebar-hint" style="margin:0 0 8px;line-height:1.6;color:var(--text-secondary)">
-                  固定脚本 + 像素对比 + 自动 seed 基线。数据须稳定，<strong>禁止造单</strong>。
-                  请用 <code>golden</code> 档案登录（<code>storage/loginState/&lt;env&gt;/golden.json</code>）。
+                  同一页面可按不同登录账号维护多套 Golden 基线（<code>by-account/&lt;slug&gt;</code>）。
+                  点「新增 Golden 登录态」添加角色并登录；角色名取自登录账号。
+                  数据须稳定，<strong>禁止造单</strong>。
                 </p>
+                <label style="display:block;margin-bottom:4px;color:var(--text-secondary);font-size:var(--fs-xs)">Golden 角色</label>
+                <select class="url-input" id="requestGoldenRoleSelect" style="width:100%;margin-bottom:8px;color:var(--text)">
+                  <option value="">加载中…</option>
+                </select>
                 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                   <button type="button" class="btn" id="btnRequestGoldenRun" onclick="runRequestFlowGolden()" style="border-color:rgba(52,211,153,.45);color:var(--green)">Golden 回归</button>
+                  <button type="button" class="btn" id="btnRequestGoldenRunAll" onclick="runRequestFlowGoldenAll()" style="border-color:rgba(52,211,153,.35);color:var(--green)">全部 Golden 角色</button>
                   <button type="button" class="btn" id="btnRequestPromoteBaseline" onclick="promoteRequestFlowBaseline()">晋升 Golden 基线</button>
                 </div>
               </div>
@@ -5248,6 +5258,20 @@ function handleMessage(msg) {
     case 'account:changed':
       applyAccountChanged(msg);
       break;
+    case 'account:golden-profile-added':
+      log('ok', `[account] 新增 Golden 档案 ${msg.profile} → ${msg.storageState || ''}`);
+      showToast(`已新增 ${msg.profile}，请在浏览器中完成登录`, 'ok');
+      refreshRequestFlowStatus();
+      if (pendingGoldenProfileLogin && msg.profile) {
+        pendingGoldenProfileLogin = false;
+        setTimeout(() => startFlowProfileLogin(msg.profile), 200);
+      }
+      break;
+    case 'account:golden-profile-removed':
+      log('ok', `[account] 已删除 Golden 档案 ${msg.profile}`);
+      showToast(`已删除 ${msg.label || msg.profile}`, 'ok');
+      refreshRequestFlowStatus();
+      break;
     case 'account:login:start':
       busyState.accountLogin = true;
       syncLoginStateControls();
@@ -6017,7 +6041,19 @@ function handleMessage(msg) {
       setRequestFlowBusy(true);
       updateRequestFlowReportBtn(null);
       switchToRequestFlowTab();
-      log('info', `[request-flow] 运行开始 · mode=${msg.mode || ''} · ${msg.spec || ''}`);
+      const roleNote = msg.roleSlug ? ` · role=${msg.roleSlug}` : '';
+      log('info', `[request-flow] 运行开始 · profile=${msg.accountProfile || ''}${roleNote} · mode=${msg.mode || ''} · ${msg.spec || ''}`);
+      break;
+    case 'request-flow:golden-all:start':
+      setRequestFlowBusy(true);
+      switchToRequestFlowTab();
+      log('info', `[request-flow] Golden 全角色回归开始（${msg.total || 0} 个）`);
+      break;
+    case 'request-flow:golden-all:done':
+      setRequestFlowBusy(false);
+      refreshRequestFlowStatus();
+      if (msg.ok) showToast('全部 Golden 角色回归完成', 'ok');
+      else if (!msg.cancelled) showToast('Golden 全角色回归未全部完成', 'err');
       break;
     case 'request-flow:run:done':
       setRequestFlowBusy(false);
@@ -6029,6 +6065,7 @@ function handleMessage(msg) {
         if (msg.pipeline === 'golden' && msg.baselinePromoted) extras.push('已 seed Golden 基线');
         if (msg.pipeline === 'probe' && msg.uiAuditReportOpenPath) extras.push('UI 审计报告已生成');
         if (msg.accountProfile) extras.push(`profile=${msg.accountProfile}`);
+        if (msg.roleSlug) extras.push(`role=${msg.roleSlug}`);
         showToast(extras.length ? `申请单流程用例通过 · ${extras.join(' · ')}` : '申请单流程用例通过', 'ok');
         log('ok', `[request-flow] 用例通过 · mode=${msg.mode || ''}${msg.pipeline ? ` · pipeline=${msg.pipeline}` : ''}`);
       } else if (!msg.cancelled) {
@@ -6918,7 +6955,7 @@ function refreshUiAuditStatus() {
 }
 
 function setRequestFlowBusy(busy) {
-  ['btnRequestProbe', 'btnRequestPresetPreview', 'btnRequestPresetReadOnly', 'btnRequestPresetWrite', 'btnRequestPresetSubmitApprove', 'btnRequestRunSelected', 'btnRequestGoldenRun', 'btnRequestTravelProbe', 'btnRequestProbeAudit', 'btnRequestPromoteBaseline'].forEach((id) => {
+  ['btnRequestProbe', 'btnRequestPresetPreview', 'btnRequestPresetReadOnly', 'btnRequestPresetWrite', 'btnRequestPresetSubmitApprove', 'btnRequestRunSelected', 'btnRequestGoldenRun', 'btnRequestGoldenRunAll', 'btnRequestTravelProbe', 'btnRequestProbeAudit', 'btnRequestPromoteBaseline', 'btnAddGoldenProfile'].forEach((id) => {
     const btn = document.getElementById(id);
     if (!btn) return;
     btn.disabled = busy;
@@ -6933,36 +6970,105 @@ function setRequestFlowBusy(busy) {
   if (cancel) cancel.style.display = busy ? '' : 'none';
 }
 
-const REQUEST_FLOW_PROFILES = { golden: 'golden', debug: 'write' };
-const requestFlowProfileState = { golden: null, write: null };
+const REQUEST_FLOW_PROFILES = { debug: 'write' };
+const requestFlowProfileState = {};
 let flowProfileLoginTarget = '';
+let pendingGoldenProfileLogin = false;
+
+function isGoldenProfileId(id) {
+  const s = String(id || '');
+  return s === 'golden' || s.startsWith('golden_') || s.startsWith('golden-');
+}
 
 function renderRequestFlowProfileStorage(list) {
   const el = document.getElementById('requestFlowProfileStorage');
   if (!el) return;
   const items = Array.isArray(list) ? list : [];
-  const pick = (id) => items.find((p) => p.id === id) || { id, label: id, hasStorage: false, storageState: '' };
-  const golden = pick('golden');
-  const write = pick('write');
-  requestFlowProfileState.golden = golden;
-  requestFlowProfileState.write = write;
-  const row = (p, accent) => {
+  items.forEach((p) => {
+    requestFlowProfileState[p.id] = p;
+  });
+  const goldenItems = items.filter((p) => p.isGolden || isGoldenProfileId(p.id));
+  const write = items.find((p) => p.id === 'write') || { id: 'write', label: '流程调试', hasStorage: false, storageState: '' };
+  const row = (p, accent, rowOpts = {}) => {
     const ok = p.hasStorage;
     const status = ok
       ? `<span style="color:var(--green)">已就绪</span>`
       : `<span style="color:var(--amber)">未登录</span>`;
-    const path = p.storageState ? `<code style="font-size:11px">${escHtml(p.storageState)}</code>` : '—';
-    const user = p.maskedUsername ? ` · ${escHtml(p.maskedUsername)}` : '';
-    return `<div style="margin-bottom:8px;padding:6px 0;border-bottom:1px solid var(--border)">
-      <div><strong style="color:${accent}">${escHtml(p.label || p.id)}</strong> <code>${escHtml(p.id)}</code> · ${status}${user}</div>
-      <div style="font-size:11px;margin-top:4px">${path}</div>
-      <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
-        <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="startFlowProfileLogin('${p.id}')">登录</button>
-        <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="clearFlowProfileStorage('${p.id}')">清除</button>
-      </div>
+    const hasRemark = p.label && p.loginAccount && p.label !== p.loginAccount;
+    const roleName = escHtml(hasRemark ? p.label : (p.roleLabel || p.label || p.id));
+    const idBadge = rowOpts.hideProfileId ? '' : ` <code>${escHtml(p.id)}</code>`;
+    const sep = '<span style="color:var(--text-tertiary)"> · </span>';
+    const lineParts = [`<strong style="color:${accent}">${roleName}</strong>`];
+    if (!rowOpts.hideProfileId && idBadge) lineParts.push(idBadge.trim());
+    if (hasRemark && p.loginAccount) {
+      lineParts.push(`<span style="color:var(--text-tertiary)">${escHtml(p.loginAccount)}</span>`);
+    }
+    lineParts.push(status);
+    const loginBtn = ok
+      ? '<button type="button" class="btn" disabled style="font-size:var(--fs-xs);padding:4px 8px;opacity:0.45;cursor:not-allowed">登录</button>'
+      : `<button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="startFlowProfileLogin('${p.id}')">登录</button>`;
+    const clearBtn = `<button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="clearFlowProfileStorage('${p.id}')"${ok ? '' : ' disabled style="opacity:0.45;cursor:not-allowed"'}>清除</button>`;
+    const deleteBtn = rowOpts.allowDelete
+      ? `<button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px;color:var(--amber)" onclick="removeFlowProfileEntry('${p.id}')">删除</button>`
+      : '';
+    return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1;min-width:0;line-height:1.5;font-size:var(--fs-sm)">${lineParts.join(sep)}</div>
+      <div style="display:flex;gap:6px;flex-shrink:0">${loginBtn}${clearBtn}${deleteBtn}</div>
     </div>`;
   };
-  el.innerHTML = `<div style="font-weight:600;color:var(--text);margin-bottom:6px;font-size:var(--fs-sm)">双账号登录态（Golden / 调试互不影响）</div>${row(golden, 'var(--green)')}${row(write, 'var(--purple,#a78bfa)')}`;
+  let goldenHtml = '';
+  if (goldenItems.length) {
+    goldenHtml = `<div style="font-weight:600;color:var(--text);margin-bottom:6px;font-size:var(--fs-sm)">Golden 角色（备注 + 登录账号）</div>`;
+    goldenHtml += goldenItems.map((p) => row(p, 'var(--green)', { hideProfileId: true, allowDelete: true })).join('');
+  } else {
+    goldenHtml = `<div style="color:var(--amber);margin-bottom:8px">未配置 golden* 档案</div>`;
+  }
+  el.innerHTML = `${goldenHtml}<div style="font-weight:600;color:var(--purple,#a78bfa);margin-bottom:6px;font-size:var(--fs-sm)">流程调试（write）</div>${row(write, 'var(--purple,#a78bfa)')}`;
+  const roleSel = document.getElementById('requestGoldenRoleSelect');
+  if (roleSel) {
+    const prev = roleSel.value;
+    const opts = goldenItems.map((p) => {
+      const hasRemark = p.label && p.loginAccount && p.label !== p.loginAccount;
+      const label = hasRemark ? `${p.label} · ${p.loginAccount}` : (p.roleLabel || p.label || p.id);
+      const suffix = p.hasStorage ? '' : ' · 未登录';
+      return `<option value="${escHtml(p.id)}"${p.hasStorage ? '' : ' disabled'}>${escHtml(label)}${suffix}</option>`;
+    });
+    roleSel.innerHTML = opts.length ? opts.join('') : '<option value="">无 golden* 档案</option>';
+    if ([...roleSel.options].some((o) => o.value === prev && !o.disabled)) roleSel.value = prev;
+    else {
+      const firstReady = goldenItems.find((p) => p.hasStorage);
+      if (firstReady) roleSel.value = firstReady.id;
+    }
+  }
+}
+
+function getSelectedGoldenProfile() {
+  const sel = document.getElementById('requestGoldenRoleSelect');
+  const id = sel?.value?.trim() || '';
+  if (id && requestFlowProfileState[id]) return requestFlowProfileState[id];
+  return Object.values(requestFlowProfileState).find((p) => isGoldenProfileId(p.id) && p.hasStorage) || null;
+}
+
+function addGoldenProfileEntry() {
+  if (!ws || ws.readyState !== 1) {
+    showToast('未连接服务器', 'err');
+    return;
+  }
+  if (!envState.repoReady) {
+    showToast('仓库未就绪', 'err');
+    return;
+  }
+  if (state.recording || loginOnlyRecording) {
+    showToast('正在录制中', 'err');
+    return;
+  }
+  const label = prompt('角色备注（可选，将显示在列表中；登录后另显示账号）', '');
+  if (label === null) return;
+  pendingGoldenProfileLogin = true;
+  if (!send('account:add-golden-profile', { env: envState.current, label: label.trim() })) {
+    pendingGoldenProfileLogin = false;
+    showToast('新增失败', 'err');
+  }
 }
 
 function startFlowProfileLogin(profileId) {
@@ -7013,10 +7119,24 @@ function clearFlowProfileStorage(profileId) {
   }
 }
 
+function removeFlowProfileEntry(profileId) {
+  if (!ws || ws.readyState !== 1) {
+    showToast('未连接服务器', 'err');
+    return;
+  }
+  const p = requestFlowProfileState[profileId];
+  const name = p?.label || p?.roleLabel || profileId;
+  if (!confirm(`删除 Golden 角色「${name}」？将从 accounts.json 移除`)) return;
+  if (!send('account:remove-golden-profile', { env: envState.current, profile: profileId })) {
+    showToast('删除失败', 'err');
+  }
+}
+
 function ensureFlowProfileReady(profileId, label) {
   const p = requestFlowProfileState[profileId];
   if (p?.hasStorage) return true;
-  showToast(`请先登录 ${label}（profile=${profileId}）`, 'err');
+  const name = label || p?.roleLabel || profileId;
+  showToast(`请先登录 ${name}（profile=${profileId}）`, 'err');
   return false;
 }
 
@@ -7260,12 +7380,20 @@ function runSelectedRequestFlow(mode, opts = {}) {
 
 function requestFlowScriptKeyFromDom(spec) {
   const base = (spec || '').split('/').pop()?.replace(/\.spec\.ts$/, '').replace(/\.spec$/, '') || 'flow';
-  const slug = base.replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]+/g, '-').slice(0, 60) || 'flow';
-  return `flows/request-flow/${envState.current}/${slug}`;
+  const specSlug = base.replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]+/g, '-').slice(0, 60) || 'flow';
+  const golden = getSelectedGoldenProfile();
+  const roleSlug = golden?.roleSlug || '';
+  let key = `flows/request-flow/${envState.current}/${specSlug}`;
+  if (roleSlug) key += `/by-account/${roleSlug}`;
+  return key;
 }
 
 function runRequestFlowGolden() {
-  if (!ensureFlowProfileReady('golden', 'Golden 只读')) return;
+  const p = getSelectedGoldenProfile();
+  if (!p?.hasStorage) {
+    showToast('请先选择并已登录 Golden 角色', 'err');
+    return;
+  }
   applyRequestFlowPreset('golden');
   const filterEl = document.getElementById('requestFilterKeyword');
   if (filterEl && !filterEl.value.trim()) filterEl.value = '测试';
@@ -7273,8 +7401,28 @@ function runRequestFlowGolden() {
     preset: 'golden',
     pipeline: 'golden',
     writeEnabled: false,
-    accountProfile: REQUEST_FLOW_PROFILES.golden,
+    accountProfile: p.id,
   });
+}
+
+function runRequestFlowGoldenAll() {
+  switchToRequestFlowTab();
+  const ready = Object.values(requestFlowProfileState).filter((p) => isGoldenProfileId(p.id) && p.hasStorage);
+  if (!ready.length) {
+    showToast('请先为至少一个 golden* 档案完成登录', 'err');
+    return;
+  }
+  applyRequestFlowPreset('golden');
+  const filterEl = document.getElementById('requestFilterKeyword');
+  if (filterEl && !filterEl.value.trim()) filterEl.value = '测试';
+  setRequestFlowBusy(true);
+  if (!send('request-flow:run', {
+    goldenAll: true,
+    env: envState.current,
+    filterKeyword: filterEl?.value?.trim() || '测试',
+  })) {
+    setRequestFlowBusy(false);
+  }
 }
 
 function runRequestFlowTravelProbe() {

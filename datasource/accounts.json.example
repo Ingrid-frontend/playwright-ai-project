@@ -12,6 +12,11 @@
         "username": "your-golden-dev-username",
         "password": "your-dev-password"
       },
+      "golden_2": {
+        "label": "Golden 角色2",
+        "username": "your-golden2-dev-username",
+        "password": "your-dev-password"
+      },
       "write": {
         "label": "流程调试（造单/审批）",
         "username": "your-write-dev-username",
@@ -49,6 +54,11 @@
       "golden": {
         "label": "Golden 只读（截图基线）",
         "username": "your-golden-stage-username",
+        "password": "your-stage-password"
+      },
+      "golden_2": {
+        "label": "Golden 角色2（如审批人）",
+        "username": "your-golden2-stage-username",
         "password": "your-stage-password"
       },
       "write": {

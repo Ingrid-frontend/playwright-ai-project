@@ -155,6 +155,7 @@ function getRequestFlowStatus(repoRoot, session, deps, msg = {}) {
   const envId = String(msg.env || getSessionPlaywrightEnv(session) || 'dev').trim();
   const profile = resolveProfile(session, repoRoot, { env: envId, accountProfile: msg.accountProfile });
   const resolved = getEnvEntryResolved(repoRoot, envId, profile);
+  const enriched = repoEnv.enrichProfileStorageEntry(repoRoot, envId, profile);
   const storageAbs = resolveStorageAbs(repoRoot, envId, profile);
   const storageRel = storageAbs ? path.relative(repoRoot, storageAbs).replace(/\\/g, '/') : '';
   const snapshot = readSnapshot(repoRoot);
@@ -167,12 +168,17 @@ function getRequestFlowStatus(repoRoot, session, deps, msg = {}) {
   const spec = String(msg.spec || DEFAULT_SPEC).trim() || DEFAULT_SPEC;
   const spawnEnv = buildSpawnEnv(session, deps, msg).spawnEnv;
   const listed = hasConfig ? listRequestFlowTests(repoRoot, spec, spawnEnv) : { spec, tests: [], error: '' };
-  const flowProfileIds = ['golden', 'write'];
+  const flowProfileIds = [
+    ...repoEnv.listGoldenProfileIds(repoRoot, envId),
+    'write',
+  ].filter((id) => id === 'write' || repoEnv.getEnvAccountConfig(repoRoot, envId)?.profiles?.[id]);
   const profileStorage = repoEnv.listProfilesStorageStatus(repoRoot, envId, flowProfileIds);
   return {
     ready: hasConfig,
     env: envId,
     accountProfile: profile,
+    roleSlug: enriched.roleSlug,
+    roleLabel: enriched.roleLabel,
     baseURL: resolved?.baseURL || 'https://dev.huilianyi.com',
     storageState: storageRel,
     hasStorage: Boolean(storageAbs),
@@ -216,6 +222,9 @@ function buildSpawnEnv(session, deps, msg = {}) {
   spawnEnv.FLOW_SPEC = String(msg.spec || DEFAULT_SPEC).trim() || DEFAULT_SPEC;
   const storageAbs = resolveStorageAbs(repoRoot, envId, profile);
   if (storageAbs) spawnEnv.STORAGE_STATE = storageAbs;
+  const roleSlug = repoEnv.resolveFlowRoleSlug(repoRoot, envId, profile);
+  if (roleSlug) spawnEnv.FLOW_ACCOUNT_SLUG = roleSlug;
+  else delete spawnEnv.FLOW_ACCOUNT_SLUG;
   const creds = repoEnv.resolveAccountCredentials(repoRoot, envId, profile);
   if (creds) {
     spawnEnv.LOGIN_USERNAME = creds.username;
@@ -232,7 +241,7 @@ function buildSpawnEnv(session, deps, msg = {}) {
   const filterKeyword = String(msg.filterKeyword || '').trim();
   if (filterKeyword) spawnEnv.REQUEST_FILTER_KEYWORD = filterKeyword;
   else delete spawnEnv.REQUEST_FILTER_KEYWORD;
-  return { repoRoot, envId, profile, spawnEnv, storage: storageAbs };
+  return { repoRoot, envId, profile, roleSlug, spawnEnv, storage: storageAbs };
 }
 
 async function streamProc(ws, session, procKey, cancelKey, label, cmd, args, opts) {
@@ -301,7 +310,10 @@ async function runRequestFlowProbe(ws, session, msg, deps) {
 }
 
 async function runRequestFlowTests(ws, session, msg, deps) {
-  const { repoRoot, envId, profile, spawnEnv, storage } = buildSpawnEnv(session, deps, msg);
+  if (msg.goldenAll) {
+    return runRequestFlowGoldenAll(ws, session, msg, deps);
+  }
+  const { repoRoot, envId, profile, roleSlug, spawnEnv, storage } = buildSpawnEnv(session, deps, msg);
   const configRel = CONFIG_REL;
   const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
   const mode = String(msg.mode || 'headless').trim();
@@ -338,10 +350,18 @@ async function runRequestFlowTests(ws, session, msg, deps) {
   spawnEnv.FLOW_SPEC = spec;
   spawnEnv.FLOW_RUN_MODE = mode;
 
-  send(ws, 'request-flow:run:start', { env: envId, accountProfile: profile, mode, spec, grep });
+  send(ws, 'request-flow:run:start', {
+    env: envId,
+    accountProfile: profile,
+    roleSlug,
+    roleLabel: repoEnv.enrichProfileStorageEntry(repoRoot, envId, profile).roleLabel,
+    mode,
+    spec,
+    grep,
+  });
   logLine(
     ws,
-    `[request-flow] 运行用例 · profile=${profile} · mode=${mode} · ${spec}${grep ? ` · grep=${grep}` : ''}`,
+    `[request-flow] 运行用例 · profile=${profile}${roleSlug ? ` · role=${roleSlug}` : ''} · mode=${mode} · ${spec}${grep ? ` · grep=${grep}` : ''}`,
     'info',
   );
 
@@ -456,6 +476,7 @@ async function runRequestFlowTests(ws, session, msg, deps) {
     reportOpenPath,
     pipeline: msg.pipeline || detectPipeline(spec, msg),
     accountProfile: profile,
+    roleSlug,
     runUiAudit: Boolean(msg.runUiAudit),
     uiAuditLimit: Number(msg.uiAuditLimit) || 24,
   });
@@ -463,6 +484,62 @@ async function runRequestFlowTests(ws, session, msg, deps) {
   send(ws, 'request-flow:run:done', finalized);
   if (ok) logLine(ws, '[request-flow] 用例通过', 'ok');
   else send(ws, 'error', { message: `用例退出码 ${exitCode}` });
+}
+
+async function runRequestFlowGoldenAll(ws, session, msg, deps) {
+  const repoRoot = deps.resolveRepoRoot();
+  const { getSessionPlaywrightEnv } = deps;
+  const envId = String(msg.env || getSessionPlaywrightEnv(session) || 'dev').trim();
+  const goldenIds = repoEnv.listGoldenProfileIds(repoRoot, envId);
+  const ready = goldenIds.filter((id) => {
+    const rel = repoEnv.resolveStorageStateRelDirect(repoRoot, envId, id);
+    return repoEnv.storageExists(repoRoot, rel);
+  });
+
+  if (!ready.length) {
+    send(ws, 'error', { message: '无已登录 Golden 角色，请先为 golden* 档案完成登录' });
+    send(ws, 'request-flow:golden-all:done', { ok: false, results: [], env: envId });
+    return;
+  }
+
+  const filterKeyword =
+    msg.filterKeyword != null
+      ? String(msg.filterKeyword).trim()
+      : String(process.env.REQUEST_FILTER_KEYWORD || '').trim();
+  const spec = String(msg.spec || 'request/golden-regression.spec.ts').trim();
+  const results = [];
+
+  send(ws, 'request-flow:golden-all:start', { env: envId, profiles: ready, total: ready.length });
+  logLine(ws, `[request-flow] Golden 全角色回归 · ${ready.length} 个角色`, 'info');
+
+  for (let i = 0; i < ready.length; i++) {
+    if (session.requestFlowCancelled) break;
+    const profileId = ready[i];
+    const entry = repoEnv.enrichProfileStorageEntry(repoRoot, envId, profileId);
+    logLine(ws, `[request-flow] Golden 角色 ${i + 1}/${ready.length}: ${entry.roleLabel} (${profileId})`, 'info');
+    await runRequestFlowTests(ws, session, {
+      ...msg,
+      goldenAll: false,
+      accountProfile: profileId,
+      spec,
+      pipeline: 'golden',
+      writeEnabled: false,
+      filterKeyword: filterKeyword || '测试',
+      mode: 'headless',
+    }, deps);
+    results.push({
+      profile: profileId,
+      roleSlug: entry.roleSlug,
+      roleLabel: entry.roleLabel,
+    });
+  }
+
+  send(ws, 'request-flow:golden-all:done', {
+    ok: results.length > 0 && !session.requestFlowCancelled,
+    env: envId,
+    results,
+    cancelled: Boolean(session.requestFlowCancelled),
+  });
 }
 
 function cancelRequestFlow(session) {
@@ -484,6 +561,7 @@ module.exports = {
   listRequestFlowTests,
   runRequestFlowProbe,
   runRequestFlowTests,
+  runRequestFlowGoldenAll,
   cancelRequestFlow,
   DEFAULT_SPEC,
   flowScriptKey,

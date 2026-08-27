@@ -7,6 +7,8 @@ function createStudioHandlers(ctx) {
     stopRecording,
     setSessionPlaywrightEnv,
     setSessionAccountProfile,
+    addGoldenProfileEntry,
+    removeGoldenProfileEntry,
     runAccountLogin,
     clearSessionStorage,
     optimizeCode,
@@ -55,6 +57,18 @@ function createStudioHandlers(ctx) {
 
     'account:clear-storage': async (ws, session, _sessionId, msg) => {
       clearSessionStorage(ws, session, msg.profile);
+    },
+
+    'account:add-golden-profile': async (ws, session, _sessionId, msg) => {
+      addGoldenProfileEntry(ws, session, msg.env, {
+        label: msg.label,
+        username: msg.username,
+        password: msg.password,
+      });
+    },
+
+    'account:remove-golden-profile': async (ws, session, _sessionId, msg) => {
+      removeGoldenProfileEntry(ws, session, msg.env, msg.profile);
     },
 
     'record:stop': async (ws, session) => {

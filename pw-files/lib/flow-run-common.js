@@ -72,9 +72,12 @@ function specSlug(spec) {
   return base.replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]+/g, '-').slice(0, 60) || 'flow';
 }
 
-function flowScriptKey(flowId, env, spec) {
+function flowScriptKey(flowId, env, spec, roleSlug) {
   const envId = String(env || 'dev').trim() || 'dev';
-  return `flows/${flowId}/${envId}/${specSlug(spec)}`;
+  const base = `flows/${flowId}/${envId}/${specSlug(spec)}`;
+  const slug = String(roleSlug || '').trim();
+  if (slug) return `${base}/by-account/${slug}`;
+  return base;
 }
 
 function detectPipeline(spec, msg = {}) {
@@ -151,7 +154,7 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
   }
 
   if (pipeline === 'golden' && payload.ok && !payload.cancelled) {
-    const scriptKey = flowScriptKey(flowId, payload.env, payload.spec);
+    const scriptKey = flowScriptKey(flowId, payload.env, payload.spec, payload.roleSlug);
     const promoted = tryPromoteFlowBaseline(repoRoot, scriptKey);
     baselinePromoted = promoted.seeded;
   }

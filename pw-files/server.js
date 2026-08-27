@@ -194,6 +194,8 @@ const {
   setSessionAccountProfile,
   runAccountLogin,
   setSessionPlaywrightEnv,
+  addGoldenProfileEntry,
+  removeGoldenProfileEntry,
 } = createAccountEnvActions({
   repoEnv,
   resolveRepoRoot,
@@ -325,6 +327,8 @@ const { sendHello, handleMessage } = createWsDispatcher({
     stopRecording,
     setSessionPlaywrightEnv,
     setSessionAccountProfile,
+    addGoldenProfileEntry,
+    removeGoldenProfileEntry,
     runAccountLogin,
     clearSessionStorage,
     optimizeCode,

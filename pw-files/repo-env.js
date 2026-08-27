@@ -4,6 +4,15 @@
 const fs = require('fs');
 const path = require('path');
 
+const { slugifyLoginAccount, isGoldenProfileId } = require(path.join(__dirname, '../src/utils/account-slug.cjs'));
+const { extractLoginAccount, extractFromCode } = require(path.join(__dirname, '../src/utils/extract-login-account.cjs'));
+const {
+  readLoginStateMeta,
+  formatLoginAccountLabel,
+} = require(path.join(__dirname, '../src/utils/storage-state-meta.cjs'));
+
+const META_MARKERS = /录制元信息|录制环境:/;
+
 function readJsonFile(filePath) {
   if (!fs.existsSync(filePath)) return null;
   try {
@@ -124,32 +133,215 @@ function storageExists(repoRoot, storageRel) {
 }
 
 /** 批量查询 profile 登录态（用于 Golden / write 双线） */
+function normalizeEnvEntryToProfiles(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  if (entry.profiles && typeof entry.profiles === 'object') return entry;
+  if (entry.username && entry.password) {
+    return {
+      defaultProfile: 'default',
+      profiles: {
+        default: {
+          username: entry.username,
+          password: entry.password,
+          label: 'default',
+        },
+      },
+    };
+  }
+  return null;
+}
+
+function nextGoldenProfileId(profiles) {
+  const keys = Object.keys(profiles || {}).filter(isGoldenProfileId);
+  if (!keys.includes('golden')) return 'golden';
+  let n = 2;
+  while (keys.includes(`golden_${n}`)) n += 1;
+  return `golden_${n}`;
+}
+
+function defaultEnvAccountEntry() {
+  return {
+    defaultProfile: 'default',
+    profiles: {
+      default: { label: '默认账号', username: '', password: '' },
+      golden: { label: 'Golden 只读', username: '', password: '' },
+      write: { label: '流程调试', username: '', password: '' },
+    },
+  };
+}
+
+function ensureAccountsEnvEntry(repoRoot, envId) {
+  const accountsPath = path.join(repoRoot, 'datasource', 'accounts.json');
+  const examplePath = path.join(repoRoot, 'datasource', 'accounts.json.example');
+  const env = String(envId || '').trim();
+  if (!env) return { ok: false, error: '环境 id 为空' };
+  if (!getBaseEnvConfig(repoRoot, env)) {
+    return { ok: false, error: `base-config.json 中未配置环境: ${env}` };
+  }
+
+  let raw = readJsonFile(accountsPath);
+  let needsWrite = false;
+  if (!raw) {
+    raw = readJsonFile(examplePath) || {};
+    needsWrite = true;
+  }
+  if (!raw[env]) {
+    raw[env] = defaultEnvAccountEntry();
+    needsWrite = true;
+  }
+
+  if (needsWrite) {
+    try {
+      fs.mkdirSync(path.dirname(accountsPath), { recursive: true });
+      fs.writeFileSync(accountsPath, `${JSON.stringify(raw, null, 2)}\n`, 'utf8');
+    } catch (e) {
+      return { ok: false, error: `写入 accounts.json 失败: ${e.message || e}` };
+    }
+  }
+
+  return { ok: true, raw, accountsPath, env, createdFile: needsWrite };
+}
+
+function addGoldenProfile(repoRoot, envId, opts = {}) {
+  const ensured = ensureAccountsEnvEntry(repoRoot, envId);
+  if (!ensured.ok) return ensured;
+
+  const accountsPath = ensured.accountsPath;
+  const raw = readJsonFile(accountsPath) || ensured.raw;
+  const env = ensured.env;
+
+  const normalized = normalizeEnvEntryToProfiles(raw[env]);
+  if (!normalized) return { ok: false, error: `环境 ${env} 的 accounts.json 格式无法扩展 Golden 档案` };
+
+  raw[env] = normalized;
+  const profiles = normalized.profiles;
+  const profileId = nextGoldenProfileId(profiles);
+  if (profiles[profileId]) return { ok: false, error: `profile ${profileId} 已存在` };
+
+  const label = String(opts.label || '').trim() || `Golden ${profileId}`;
+  profiles[profileId] = {
+    label,
+    username: String(opts.username || '').trim(),
+    password: String(opts.password || '').trim(),
+  };
+
+  try {
+    fs.writeFileSync(accountsPath, `${JSON.stringify(raw, null, 2)}\n`, 'utf8');
+  } catch (e) {
+    return { ok: false, error: `写入 accounts.json 失败: ${e.message || e}` };
+  }
+
+  const storageRel = resolveStorageStateRelDirect(repoRoot, env, profileId);
+  return {
+    ok: true,
+    profileId,
+    label,
+    storageState: storageRel,
+    initializedAccounts: ensured.createdFile,
+  };
+}
+
+function removeGoldenProfile(repoRoot, envId, profileId) {
+  const id = String(profileId || '').trim();
+  if (!isGoldenProfileId(id)) return { ok: false, error: '仅可删除 golden* 档案' };
+
+  const accountsPath = path.join(repoRoot, 'datasource', 'accounts.json');
+  const raw = readJsonFile(accountsPath);
+  if (!raw) return { ok: false, error: '未找到 datasource/accounts.json' };
+
+  const env = String(envId || '').trim();
+  if (!env || !raw[env]) return { ok: false, error: `accounts.json 中未配置环境: ${env}` };
+
+  const normalized = normalizeEnvEntryToProfiles(raw[env]);
+  if (!normalized) return { ok: false, error: `环境 ${env} 的 accounts.json 格式不支持删除` };
+
+  if (!normalized.profiles[id]) return { ok: false, error: `档案 ${id} 不存在` };
+
+  const label = normalized.profiles[id].label || id;
+  delete normalized.profiles[id];
+  raw[env] = normalized;
+
+  const storageRel = resolveStorageStateRelDirect(repoRoot, env, id);
+  let removedStorage = false;
+  if (storageRel) {
+    const storageAbs = path.resolve(repoRoot, storageRel);
+    if (fs.existsSync(storageAbs)) {
+      try {
+        fs.unlinkSync(storageAbs);
+        removedStorage = true;
+      } catch (e) {
+        return { ok: false, error: `删除登录态失败: ${e.message || e}` };
+      }
+    }
+  }
+
+  try {
+    fs.writeFileSync(accountsPath, `${JSON.stringify(raw, null, 2)}\n`, 'utf8');
+  } catch (e) {
+    return { ok: false, error: `写入 accounts.json 失败: ${e.message || e}` };
+  }
+
+  return { ok: true, profileId: id, label, storageState: storageRel || '', removedStorage };
+}
+
+function listGoldenProfileIds(repoRoot, envId) {
+  const cfg = getEnvAccountConfig(repoRoot, envId);
+  if (!cfg?.profiles) return ['golden'];
+  const ids = Object.keys(cfg.profiles).filter(isGoldenProfileId).sort();
+  return ids.length ? ids : ['golden'];
+}
+
+function resolveFlowRoleSlug(repoRoot, envId, profileId) {
+  const prof = String(profileId || '').trim();
+  if (!prof) return '';
+  const rel = resolveStorageStateRelDirect(repoRoot, envId, prof);
+  const abs = rel ? path.resolve(repoRoot, rel) : '';
+  const loginAccount = formatLoginAccountLabel(readLoginStateMeta(abs));
+  if (loginAccount) return slugifyLoginAccount(loginAccount);
+  return slugifyLoginAccount(prof) || prof.replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]+/g, '_').slice(0, 48);
+}
+
+function formatProfileRoleLabel(configLabel, loginAccount, profileId) {
+  const label = String(configLabel || '').trim();
+  const account = String(loginAccount || '').trim();
+  const id = String(profileId || '').trim();
+  if (label && account && label !== account) return `${label} · ${account}`;
+  if (account) return account;
+  if (label) return label;
+  return id;
+}
+
+function enrichProfileStorageEntry(repoRoot, envId, profileId) {
+  const id = String(profileId || '').trim();
+  const rel = resolveStorageStateRelDirect(repoRoot, envId, id);
+  const cfg = getEnvAccountConfig(repoRoot, envId);
+  const prof = cfg?.profiles?.[id];
+  const abs = rel ? path.resolve(repoRoot, rel) : '';
+  const loginAccount = formatLoginAccountLabel(readLoginStateMeta(abs));
+  const roleSlug = resolveFlowRoleSlug(repoRoot, envId, id);
+  const configLabel = prof?.label || id;
+  const roleLabel = formatProfileRoleLabel(configLabel, loginAccount, id);
+  return {
+    id,
+    label: configLabel,
+    roleSlug,
+    roleLabel,
+    loginAccount: loginAccount || null,
+    storageState: rel,
+    hasStorage: storageExists(repoRoot, rel),
+    maskedUsername: loginAccount ? maskUsername(loginAccount) : maskUsername(prof?.username || ''),
+    isGolden: isGoldenProfileId(id),
+  };
+}
+
 function listProfilesStorageStatus(repoRoot, envId, profileIds) {
   const cfg = getEnvAccountConfig(repoRoot, envId);
   const ids =
     Array.isArray(profileIds) && profileIds.length
       ? profileIds
       : Object.keys(cfg?.profiles || {});
-  return ids.map((id) => {
-    const rel = resolveStorageStateRelDirect(repoRoot, envId, id);
-    const prof = cfg?.profiles?.[id];
-    return {
-      id,
-      label: prof?.label || id,
-      storageState: rel,
-      hasStorage: storageExists(repoRoot, rel),
-      maskedUsername: maskUsername(prof?.username || ''),
-    };
-  });
+  return ids.map((id) => enrichProfileStorageEntry(repoRoot, envId, id));
 }
-
-const META_MARKERS = /录制元信息|录制环境:/;
-
-const { extractLoginAccount, extractFromCode } = require(path.join(__dirname, '../src/utils/extract-login-account.cjs'));
-const {
-  readLoginStateMeta,
-  formatLoginAccountLabel,
-} = require(path.join(__dirname, '../src/utils/storage-state-meta.cjs'));
 
 function isLikelyInternalUserId(value) {
   return typeof value === 'string' && /^\d{4,}$/.test(value.trim());
@@ -218,6 +410,13 @@ module.exports = {
   resolveStorageStateRelDirect,
   resolveAccountCredentials,
   listProfilesStorageStatus,
+  listGoldenProfileIds,
+  resolveFlowRoleSlug,
+  enrichProfileStorageEntry,
+  isGoldenProfileId,
+  addGoldenProfile,
+  removeGoldenProfile,
+  ensureAccountsEnvEntry,
   maskUsername,
   listAccountProfiles,
   storageExists,
