@@ -139,20 +139,84 @@ export class RequestEditPage {
     return withActions.or(shell.or(main).last()).last();
   }
 
-  private reasonInputIn(root: Locator): Locator {
-    const byLabel = root
+  private reasonBlock(root: Locator): Locator {
+    return root
       .locator('.ant-form-item, [class*="form-item"]')
-      .filter({ hasText: /事由/ })
-      .locator('textarea, input#title, input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])')
+      .filter({ hasText: /事\s*由/ })
       .filter({ visible: true })
       .first();
+  }
+
+  private reasonTextInputSel() {
+    return 'input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="number"]):not(.ant-input-number-input):not([role="spinbutton"])';
+  }
+
+  private async isReasonInput(input: Locator): Promise<boolean> {
+    if (!(await input.count())) return false;
+    if (!(await input.isVisible({ timeout: 500 }).catch(() => false))) return false;
+    const role = (await input.getAttribute('role').catch(() => '')) || '';
+    if (role === 'spinbutton') return false;
+    const cls = (await input.getAttribute('class').catch(() => '')) || '';
+    if (cls.includes('ant-input-number-input')) return false;
+    const type = (await input.getAttribute('type').catch(() => '')) || '';
+    return type !== 'number';
+  }
+
+  private async findReasonInput(root: Locator): Promise<Locator | null> {
+    const textInput = this.reasonTextInputSel();
+    const blocks = root.locator('.ant-form-item, [class*="form-item"]').filter({ hasText: /事\s*由/ });
+    const n = await blocks.count();
+    for (let i = 0; i < n; i++) {
+      const block = blocks.nth(i);
+      if (!(await block.isVisible({ timeout: 300 }).catch(() => false))) continue;
+      await block.scrollIntoViewIfNeeded().catch(() => undefined);
+      for (const sel of ['textarea', 'input#title', textInput] as const) {
+        const cand = block.locator(sel).filter({ visible: true });
+        const m = await cand.count();
+        for (let j = 0; j < m; j++) {
+          const input = cand.nth(j);
+          if (await this.isReasonInput(input)) return input;
+        }
+      }
+    }
+
+    const outs = [
+      root.locator('input#title').filter({ visible: true }).first(),
+      root.getByLabel(/事\s*由/).filter({ visible: true }).first(),
+      root.getByPlaceholder(/^事由/).filter({ visible: true }).first(),
+      root.getByRole('textbox', { name: /事由/ }).filter({ visible: true }).first(),
+      root
+        .locator(
+          '.request-edit input#title, .one-screen-request input#title, .full-screen input#title, [class*="request"] input#title',
+        )
+        .filter({ visible: true })
+        .first(),
+    ];
+    for (const loc of outs) {
+      if (await this.isReasonInput(loc)) return loc;
+    }
+    return null;
+  }
+
+  private reasonInputIn(root: Locator): Locator {
+    const block = this.reasonBlock(root);
+    const textInput = this.reasonTextInputSel();
+    const inBlock = block
+      .locator('textarea')
+      .filter({ visible: true })
+      .first()
+      .or(block.locator('input#title').filter({ visible: true }).first())
+      .or(block.locator(textInput).filter({ visible: true }).first())
+      .or(
+        block
+          .getByPlaceholder(/事由|请输入/)
+          .and(block.locator(`textarea, input#title, ${textInput}`))
+          .filter({ visible: true })
+          .first(),
+      );
     const byId = root.locator('input#title').filter({ visible: true }).first();
-    const byPh = root
-      .getByPlaceholder(/事由|请输入/)
-      .or(root.getByRole('textbox', { name: /事由|请输入/ }))
-      .filter({ visible: true })
-      .first();
-    return byLabel.or(byId).or(byPh).first();
+    const byLabel = root.getByLabel(/^事\s*由/).filter({ visible: true }).first();
+    return byId.or(byLabel).or(inBlock).first();
   }
 
   private async waitEditFormReady() {
@@ -174,19 +238,24 @@ export class RequestEditPage {
 
   private async resolveReasonInput(): Promise<Locator> {
     await this.waitEditFormReady();
-    const tryRoots = () => [this.editRoot(), this.detailShell(), this.scope().locator('main').filter({ visible: true }).last()];
-    for (const root of tryRoots()) {
-      const input = this.reasonInputIn(root);
-      if (await input.isVisible({ timeout: 2_000 }).catch(() => false)) return input;
-    }
     await this.ensureDocInfoTab();
-    for (const root of tryRoots()) {
-      const input = this.reasonInputIn(root);
-      if (await input.isVisible({ timeout: 2_000 }).catch(() => false)) return input;
-    }
-    const fallback = this.reasonInputIn(this.detailShell().or(this.editRoot()));
-    await expect(fallback, '未找到事由输入框').toBeVisible({ timeout: 20_000 });
-    return fallback;
+
+    let found: Locator | null = null;
+    await expect(async () => {
+      const roots = [
+        this.editRoot(),
+        this.detailShell(),
+        this.scope().locator('main').filter({ visible: true }).last(),
+        this.scope(),
+      ];
+      for (const root of roots) {
+        found = await this.findReasonInput(root);
+        if (found) return;
+      }
+      expect(found, '未找到事由输入框').toBeTruthy();
+    }).toPass({ timeout: 30_000 });
+
+    return found!;
   }
 
   private async smartFillField(input: Locator, value: string) {
@@ -611,7 +680,30 @@ export class RequestEditPage {
     await this.fillTripIfNeeded();
     const root = this.editRoot();
     await this.pickTripCities(root);
+    await this.pickTripCities(this.scope().locator('main').filter({ visible: true }).last());
+    await this.ensureDestinationFilled(root);
     await this.ensureItineraryRow(root);
+  }
+
+  private async ensureDestinationFilled(root: Locator) {
+    const err = root.getByText(/请选择目的地|请选择城市|请选择出发/).filter({ visible: true }).first();
+    if (!(await err.isVisible({ timeout: 800 }).catch(() => false))) return;
+
+    const blocks = root.locator('.ant-form-item, [class*="form-item"]').filter({ hasText: /目的地|到达城市|出发地|出发城市/ });
+    const n = await blocks.count();
+    for (let i = 0; i < n; i++) {
+      const block = blocks.nth(i);
+      if (!(await block.isVisible({ timeout: 300 }).catch(() => false))) continue;
+      await block.scrollIntoViewIfNeeded().catch(() => undefined);
+      const label = ((await block.innerText().catch(() => '')) || '').trim();
+      const city = /目的地|到达/.test(label) ? '上海' : '北京';
+      if (await this.pickCityInBlock(block, city)) continue;
+      await this.pickCityInBlock(block, /北京|上海|广州/);
+    }
+
+    if (await err.isVisible({ timeout: 500 }).catch(() => false)) {
+      throw new Error('差旅表单未选目的地（请检查城市选择器）');
+    }
   }
 
   private async pickCityInBlock(block: Locator, city: string | RegExp): Promise<boolean> {
@@ -620,17 +712,24 @@ export class RequestEditPage {
     const trigger = area
       .getByRole('combobox')
       .or(area.locator('.ant-select, [class*="city"]'))
-      .or(area.getByText(/^请选择$|^出发地$|^目的地$/).filter({ visible: true }))
+      .or(area.getByText(/^请选择$|^出发地$|^目的地$|请选择目的地|请选择城市/).filter({ visible: true }))
+      .or(area.locator('input').filter({ visible: true }))
       .first();
     if (!(await trigger.isVisible({ timeout: 2_000 }).catch(() => false))) return false;
+    await trigger.scrollIntoViewIfNeeded().catch(() => undefined);
     await trigger.click();
-    const opt = this.scope()
+    const panel = this.scope()
       .locator(
-        '.ant-select-dropdown:visible .ant-select-item-option, .ant-select-dropdown:visible .ant-select-dropdown-menu-item, .ant-modal:visible, [class*="city-panel"]:visible',
+        '.ant-select-dropdown:visible, .ant-modal:visible, [class*="city-panel"]:visible, .ant-cascader-menus:visible',
       )
+      .last();
+    await panel.waitFor({ state: 'visible', timeout: 5_000 }).catch(() => undefined);
+    const opt = panel
+      .locator('.ant-select-item-option, .ant-select-dropdown-menu-item, .ant-cascader-menu-item')
       .filter({ hasText: city })
       .filter({ visible: true })
-      .first();
+      .first()
+      .or(panel.getByText(city, { exact: typeof city === 'string' }).filter({ visible: true }).first());
     if (!(await opt.isVisible({ timeout: 5_000 }).catch(() => false))) return false;
     await opt.click();
     return true;
@@ -656,9 +755,9 @@ export class RequestEditPage {
 
   private async pickTripCities(root: Locator) {
     for (const { label, city } of [
-      { label: /^出发地$|出发城市/, city: '北京' },
-      { label: /^目的地$|到达城市/, city: '上海' },
-      { label: /^城市$/, city: '北京' },
+      { label: /出发地|出发城市/, city: '北京' },
+      { label: /目的地|到达城市/, city: '上海' },
+      { label: /城市/, city: '北京' },
     ] as const) {
       await this.fillTripCityByLabel(root, label, city);
     }
