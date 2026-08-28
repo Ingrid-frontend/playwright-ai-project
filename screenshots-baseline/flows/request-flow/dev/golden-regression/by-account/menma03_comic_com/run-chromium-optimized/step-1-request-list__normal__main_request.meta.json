@@ -1,0 +1,84 @@
+{
+  "capturedAt": "2026-08-28T02:18:22.861Z",
+  "viewport": {
+    "name": "desktop",
+    "width": 1280,
+    "height": 720,
+    "deviceScaleFactor": 1
+  },
+  "imageWidth": 1280,
+  "imageHeight": 720,
+  "layout": {
+    "horizontalOverflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280
+  },
+  "domHash": "BODY|1|",
+  "sections": [
+    {
+      "key": "intent-approve-tabs",
+      "structureHash": "5df3af64077c1e50",
+      "textHash": "acd407dc53e8ba14",
+      "nodeCount": 43,
+      "childTags": "DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "intent-approve-toolbar",
+      "structureHash": "76afb338c6e0590a",
+      "textHash": "e3b0c44298fc1c14",
+      "nodeCount": 8,
+      "childTags": "SPAN,INPUT,SPAN"
+    },
+    {
+      "key": "intent-approve-table",
+      "structureHash": "6607968d9765fa3e",
+      "textHash": "99d21dc4fc37b743",
+      "nodeCount": 202,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "golden-approve-tabs",
+      "structureHash": "5df3af64077c1e50",
+      "textHash": "acd407dc53e8ba14",
+      "nodeCount": 43,
+      "childTags": "DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "golden-approve-table",
+      "structureHash": "6607968d9765fa3e",
+      "textHash": "99d21dc4fc37b743",
+      "nodeCount": 202,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV"
+    }
+  ],
+  "textSections": [
+    {
+      "key": "intent-approve-tabs",
+      "text": "工作台 消费平台财务管理数据分析e档案系统管理",
+      "textHash": "7ae7244d4aff8207",
+      "charCount": 23
+    },
+    {
+      "key": "intent-approve-table",
+      "text": "序号 创建日期 申请人 单据名称 事由 单号 币种 金额 本币金额 当前处理人 状态 提交日期 暂无数据 操作",
+      "textHash": "e316ce6817f90934",
+      "charCount": 55
+    },
+    {
+      "key": "golden-approve-tabs",
+      "text": "工作台 消费平台财务管理数据分析e档案系统管理",
+      "textHash": "7ae7244d4aff8207",
+      "charCount": 23
+    },
+    {
+      "key": "golden-approve-table",
+      "text": "序号 创建日期 申请人 单据名称 事由 单号 币种 金额 本币金额 当前处理人 状态 提交日期 暂无数据 操作",
+      "textHash": "e316ce6817f90934",
+      "charCount": 55
+    }
+  ],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "snapshotName": "request-list",
+  "state": "normal"
+}
