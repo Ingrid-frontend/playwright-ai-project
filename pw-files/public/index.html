@@ -294,6 +294,21 @@
   .report-hub-tab.active { border-color: rgba(167,139,250,.4); color: var(--purple); }
   .report-hub-pane { display: none; }
   .report-hub-pane.active { display: block; }
+  .request-flow-sub-tabs { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+  .request-flow-sub-tab {
+    flex: 1; min-width: 140px; font-size: var(--fs-xs); padding: 8px 12px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--bg3); color: var(--text-secondary); cursor: pointer;
+    text-align: center; transition: all .15s;
+  }
+  .request-flow-sub-tab:hover { border-color: var(--border2); color: var(--text); }
+  .request-flow-sub-tab.active[data-sub="golden"] {
+    border-color: rgba(52,211,153,.45); color: var(--green); background: rgba(52,211,153,.08);
+  }
+  .request-flow-sub-tab.active[data-sub="probe"] {
+    border-color: rgba(167,139,250,.45); color: var(--purple,#a78bfa); background: rgba(167,139,250,.08);
+  }
+  .request-flow-pane { display: none; }
+  .request-flow-pane.active { display: block; }
   .tab-badge.dirty { background: rgba(251,191,36,.15); color: var(--amber); border: 1px solid rgba(251,191,36,.3); }
   .tab-badge.saved { background: rgba(52,211,153,.1); color: var(--green); }
   .api-key-block .api-key-label { font-size: var(--fs-xs); color: var(--muted); margin-bottom: 4px; }
@@ -1184,17 +1199,6 @@
                   style="width:100%;color:var(--text)">
               </div>
               <div>
-                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">新建单据名称（可选）</label>
-                <input type="text" class="url-input" id="requestFormName" spellcheck="false" placeholder="留空则随机选可见模板"
-                  style="width:100%;color:var(--text)">
-              </div>
-              <div>
-                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">Golden 筛选关键字（REQUEST_FILTER_KEYWORD）</label>
-                <input type="text" class="url-input" id="requestFilterKeyword" spellcheck="false" placeholder="如：测试（Golden 回归必填）"
-                  style="width:100%;color:var(--text)">
-              </div>
-
-              <div>
                 <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">执行模式</label>
                 <select class="url-input" id="requestFlowMode" style="width:100%;color:var(--text);margin-bottom:8px">
                   <option value="headless">无头（headless，默认）</option>
@@ -1204,61 +1208,79 @@
                 </select>
               </div>
 
-              <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer;margin-bottom:8px">
-                <input type="checkbox" id="requestWriteEnabled">
-                <span>开启写操作（新建/提交/审批，设置 REQUEST_ENABLE_WRITE=1）</span>
-              </label>
-
-              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-                <span style="color:var(--text-secondary);font-size:var(--fs-xs)">快捷选例：</span>
-                <button type="button" class="btn" id="btnRequestPresetPreview" onclick="applyRequestFlowPreset('preview')">快速预览</button>
-                <button type="button" class="btn" id="btnRequestPresetReadOnly" onclick="applyRequestFlowPreset('readOnly')">完整只读</button>
-                <button type="button" class="btn" id="btnRequestPresetWrite" onclick="applyRequestFlowPreset('write')">新建保存提交</button>
-                <button type="button" class="btn" id="btnRequestPresetSubmitApprove" onclick="applyRequestFlowPreset('submitApprove')">提交后审批</button>
+              <div class="request-flow-sub-tabs" role="tablist" aria-label="申请单流程子模式">
+                <button type="button" class="request-flow-sub-tab active" data-sub="golden" id="requestFlowSubGolden" onclick="setRequestFlowSubTab('golden', this)">Golden 回归</button>
+                <button type="button" class="request-flow-sub-tab" data-sub="probe" id="requestFlowSubProbe" onclick="setRequestFlowSubTab('probe', this)">流程调试 + AI 审计</button>
               </div>
 
-              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;flex-wrap:wrap">
-                <span class="sidebar-hint" style="margin:0;color:var(--text-secondary)">Golden / 调试登录态</span>
-                <div style="display:flex;gap:6px;flex-wrap:wrap">
-                  <button type="button" class="btn" id="btnAddGoldenProfile" style="font-size:var(--fs-xs);padding:4px 10px;border-color:rgba(52,211,153,.45);color:var(--green)" onclick="addGoldenProfileEntry()">新增 Golden 登录态</button>
-                  <button type="button" class="btn" id="btnAddWriteProfile" style="font-size:var(--fs-xs);padding:4px 10px;border-color:rgba(167,139,250,.45);color:var(--purple,#a78bfa)" onclick="addWriteProfileEntry()">新增调试登录态</button>
-                </div>
-              </div>
-              <div id="requestFlowProfileStorage" class="sidebar-hint" style="padding:10px 12px;border:1px dashed var(--border);border-radius:8px;line-height:1.7;color:var(--text-secondary);margin-bottom:8px">
-                加载中…
-              </div>
-
-              <div style="padding:10px 12px;border:1px solid rgba(52,211,153,.35);border-radius:8px;background:var(--bg2);margin-bottom:8px">
-                <div style="font-weight:600;color:var(--green);margin-bottom:6px;font-size:var(--fs-sm)">Golden 回归（多角色 · 只读）</div>
-                <p class="sidebar-hint" style="margin:0 0 8px;line-height:1.6;color:var(--text-secondary)">
-                  同一页面可按不同登录账号维护多套 Golden 基线（<code>by-account/&lt;slug&gt;</code>）。
-                  点「新增 Golden 登录态」添加角色并登录；角色名取自登录账号。
-                  数据须稳定，<strong>禁止造单</strong>。
-                </p>
-                <label style="display:block;margin-bottom:4px;color:var(--text-secondary);font-size:var(--fs-xs)">Golden 角色</label>
-                <select class="url-input" id="requestGoldenRoleSelect" style="width:100%;margin-bottom:8px;color:var(--text)">
-                  <option value="">加载中…</option>
-                </select>
-                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                  <button type="button" class="btn" id="btnRequestGoldenRun" onclick="runRequestFlowGolden()" style="border-color:rgba(52,211,153,.45);color:var(--green)">Golden 回归</button>
-                  <button type="button" class="btn" id="btnRequestGoldenRunAll" onclick="runRequestFlowGoldenAll()" style="border-color:rgba(52,211,153,.35);color:var(--green)">全部 Golden 角色</button>
-                  <button type="button" class="btn" id="btnRequestPromoteBaseline" onclick="promoteRequestFlowBaseline()">晋升 Golden 基线</button>
+              <div class="request-flow-pane active" id="requestFlowPaneGolden" data-sub="golden">
+                <div style="padding:10px 12px;border:1px solid rgba(52,211,153,.35);border-radius:8px;background:var(--bg2);margin-bottom:8px">
+                  <p class="sidebar-hint" style="margin:0 0 8px;line-height:1.6;color:var(--text-secondary)">
+                    同一页面可按不同登录账号维护多套 Golden 基线（<code>by-account/&lt;slug&gt;</code>）。
+                    点「新增 Golden 登录态」添加角色并登录；角色名取自登录账号。
+                    数据须稳定，<strong>禁止造单</strong>。
+                  </p>
+                  <div>
+                    <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">Golden 筛选关键字（REQUEST_FILTER_KEYWORD）</label>
+                    <input type="text" class="url-input" id="requestFilterKeyword" spellcheck="false" placeholder="留空默认「测试」；填环境中稳定存在的事由关键字"
+                      style="width:100%;color:var(--text);margin-bottom:8px">
+                  </div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+                    <span class="sidebar-hint" style="margin:0;color:var(--text-secondary)">Golden 登录态</span>
+                    <button type="button" class="btn" id="btnAddGoldenProfile" style="font-size:var(--fs-xs);padding:4px 10px;border-color:rgba(52,211,153,.45);color:var(--green)" onclick="addGoldenProfileEntry()">新增 Golden 登录态</button>
+                  </div>
+                  <div id="requestFlowGoldenProfileStorage" class="sidebar-hint" style="padding:10px 12px;border:1px dashed var(--border);border-radius:8px;line-height:1.7;color:var(--text-secondary);margin-bottom:8px">
+                    加载中…
+                  </div>
+                  <label style="display:block;margin-bottom:4px;color:var(--text-secondary);font-size:var(--fs-xs)">Golden 角色</label>
+                  <select class="url-input" id="requestGoldenRoleSelect" style="width:100%;margin-bottom:8px;color:var(--text)">
+                    <option value="">加载中…</option>
+                  </select>
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <button type="button" class="btn" id="btnRequestGoldenRun" onclick="runRequestFlowGolden()" style="border-color:rgba(52,211,153,.45);color:var(--green)">Golden 回归</button>
+                    <button type="button" class="btn" id="btnRequestGoldenRunAll" onclick="runRequestFlowGoldenAll()" style="border-color:rgba(52,211,153,.35);color:var(--green)">全部 Golden 角色</button>
+                    <button type="button" class="btn" id="btnRequestPromoteBaseline" onclick="promoteRequestFlowBaseline()">晋升 Golden 基线</button>
+                  </div>
                 </div>
               </div>
 
-              <div style="padding:10px 12px;border:1px solid rgba(167,139,250,.35);border-radius:8px;background:var(--bg2);margin-bottom:8px">
-                <div style="font-weight:600;color:var(--purple,#a78bfa);margin-bottom:6px;font-size:var(--fs-sm)">流程调试 + AI 审计（写操作 · write*）</div>
-                <p class="sidebar-hint" style="margin:0 0 8px;line-height:1.6;color:var(--text-secondary)">
-                  造单/审批可改数据；截图后走 <strong>AI UI 审计</strong>，不做 Golden 像素对比。
-                  点「新增调试登录态」添加角色并登录；勿与 Golden 账号混用。
-                </p>
-                <label style="display:block;margin-bottom:4px;color:var(--text-secondary);font-size:var(--fs-xs)">调试角色</label>
-                <select class="url-input" id="requestWriteRoleSelect" style="width:100%;margin-bottom:8px;color:var(--text)">
-                  <option value="">加载中…</option>
-                </select>
-                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                  <button type="button" class="btn" id="btnRequestTravelProbe" onclick="runRequestFlowTravelProbe()" style="border-color:rgba(167,139,250,.45);color:var(--purple,#a78bfa)">差旅全流程 + AI 审计</button>
-                  <button type="button" class="btn" id="btnRequestProbeAudit" onclick="runRequestFlowProbeAudit()" style="border-color:rgba(167,139,250,.45);color:var(--purple,#a78bfa)">申请单全流程 + AI 审计</button>
+              <div class="request-flow-pane" id="requestFlowPaneProbe" data-sub="probe">
+                <div style="padding:10px 12px;border:1px solid rgba(167,139,250,.35);border-radius:8px;background:var(--bg2);margin-bottom:8px">
+                  <p class="sidebar-hint" style="margin:0 0 8px;line-height:1.6;color:var(--text-secondary)">
+                    造单/审批可改数据；截图后走 <strong>AI UI 审计</strong>，不做 Golden 像素对比。
+                    点「新增调试登录态」添加角色并登录；勿与 Golden 账号混用。
+                  </p>
+                  <div>
+                    <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">新建单据名称（可选）</label>
+                    <input type="text" class="url-input" id="requestFormName" spellcheck="false" placeholder="留空则随机选可见模板"
+                      style="width:100%;color:var(--text);margin-bottom:8px">
+                  </div>
+                  <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer;margin-bottom:8px">
+                    <input type="checkbox" id="requestWriteEnabled">
+                    <span>开启写操作（新建/提交/审批，设置 REQUEST_ENABLE_WRITE=1）</span>
+                  </label>
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+                    <span style="color:var(--text-secondary);font-size:var(--fs-xs)">快捷选例：</span>
+                    <button type="button" class="btn" id="btnRequestPresetPreview" onclick="applyRequestFlowPreset('preview')">快速预览</button>
+                    <button type="button" class="btn" id="btnRequestPresetReadOnly" onclick="applyRequestFlowPreset('readOnly')">完整只读</button>
+                    <button type="button" class="btn" id="btnRequestPresetWrite" onclick="applyRequestFlowPreset('write')">新建保存提交</button>
+                    <button type="button" class="btn" id="btnRequestPresetSubmitApprove" onclick="applyRequestFlowPreset('submitApprove')">提交后审批</button>
+                  </div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+                    <span class="sidebar-hint" style="margin:0;color:var(--text-secondary)">调试登录态</span>
+                    <button type="button" class="btn" id="btnAddWriteProfile" style="font-size:var(--fs-xs);padding:4px 10px;border-color:rgba(167,139,250,.45);color:var(--purple,#a78bfa)" onclick="addWriteProfileEntry()">新增调试登录态</button>
+                  </div>
+                  <div id="requestFlowWriteProfileStorage" class="sidebar-hint" style="padding:10px 12px;border:1px dashed var(--border);border-radius:8px;line-height:1.7;color:var(--text-secondary);margin-bottom:8px">
+                    加载中…
+                  </div>
+                  <label style="display:block;margin-bottom:4px;color:var(--text-secondary);font-size:var(--fs-xs)">调试角色</label>
+                  <select class="url-input" id="requestWriteRoleSelect" style="width:100%;margin-bottom:8px;color:var(--text)">
+                    <option value="">加载中…</option>
+                  </select>
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <button type="button" class="btn" id="btnRequestTravelProbe" onclick="runRequestFlowTravelProbe()" style="border-color:rgba(167,139,250,.45);color:var(--purple,#a78bfa)">差旅全流程 + AI 审计</button>
+                    <button type="button" class="btn" id="btnRequestProbeAudit" onclick="runRequestFlowProbeAudit()" style="border-color:rgba(167,139,250,.45);color:var(--purple,#a78bfa)">申请单全流程 + AI 审计</button>
+                  </div>
                 </div>
               </div>
 
@@ -7001,7 +7023,7 @@ function refreshUiAuditStatus() {
 }
 
 function setRequestFlowBusy(busy) {
-  ['btnRequestProbe', 'btnRequestPresetPreview', 'btnRequestPresetReadOnly', 'btnRequestPresetWrite', 'btnRequestPresetSubmitApprove', 'btnRequestRunSelected', 'btnRequestGoldenRun', 'btnRequestGoldenRunAll', 'btnRequestTravelProbe', 'btnRequestProbeAudit', 'btnRequestPromoteBaseline', 'btnAddGoldenProfile'].forEach((id) => {
+  ['btnRequestProbe', 'btnRequestPresetPreview', 'btnRequestPresetReadOnly', 'btnRequestPresetWrite', 'btnRequestPresetSubmitApprove', 'btnRequestRunSelected', 'btnRequestGoldenRun', 'btnRequestGoldenRunAll', 'btnRequestTravelProbe', 'btnRequestProbeAudit', 'btnRequestPromoteBaseline', 'btnAddGoldenProfile', 'btnAddWriteProfile'].forEach((id) => {
     const btn = document.getElementById(id);
     if (!btn) return;
     btn.disabled = busy;
@@ -7017,6 +7039,7 @@ function setRequestFlowBusy(busy) {
 }
 
 const requestFlowProfileState = {};
+let requestFlowSubTab = 'golden';
 let flowProfileLoginTarget = '';
 let pendingGoldenProfileLogin = false;
 let pendingWriteProfileLogin = false;
@@ -7032,8 +7055,9 @@ function isWriteProfileId(id) {
 }
 
 function renderRequestFlowProfileStorage(list) {
-  const el = document.getElementById('requestFlowProfileStorage');
-  if (!el) return;
+  const goldenEl = document.getElementById('requestFlowGoldenProfileStorage');
+  const writeEl = document.getElementById('requestFlowWriteProfileStorage');
+  if (!goldenEl && !writeEl) return;
   const items = Array.isArray(list) ? list : [];
   items.forEach((p) => {
     requestFlowProfileState[p.id] = p;
@@ -7041,6 +7065,7 @@ function renderRequestFlowProfileStorage(list) {
   const goldenItems = items.filter((p) => p.isGolden || isGoldenProfileId(p.id));
   const writeItems = items.filter((p) => p.isWrite || isWriteProfileId(p.id));
   const writeFallback = { id: 'write', label: '流程调试', hasStorage: false, storageState: '' };
+  const writeList = writeItems.length ? writeItems : [writeFallback];
   const row = (p, accent, rowOpts = {}) => {
     const ok = p.hasStorage;
     const status = ok
@@ -7068,18 +7093,18 @@ function renderRequestFlowProfileStorage(list) {
       <div style="display:flex;gap:6px;flex-shrink:0">${loginBtn}${clearBtn}${deleteBtn}</div>
     </div>`;
   };
-  let goldenHtml = '';
-  if (goldenItems.length) {
-    goldenHtml = `<div style="font-weight:600;color:var(--text);margin-bottom:6px;font-size:var(--fs-sm)">Golden 角色（备注 + 登录账号）</div>`;
-    goldenHtml += goldenItems.map((p) => row(p, 'var(--green)', { hideProfileId: true, allowDelete: true })).join('');
-  } else {
-    goldenHtml = `<div style="color:var(--amber);margin-bottom:8px">未配置 golden* 档案</div>`;
+  if (goldenEl) {
+    let goldenHtml = '';
+    if (goldenItems.length) {
+      goldenHtml = goldenItems.map((p) => row(p, 'var(--green)', { hideProfileId: true, allowDelete: true })).join('');
+    } else {
+      goldenHtml = `<div style="color:var(--amber)">未配置 golden* 档案</div>`;
+    }
+    goldenEl.innerHTML = goldenHtml;
   }
-  let writeHtml = '';
-  const writeList = writeItems.length ? writeItems : [writeFallback];
-  writeHtml = `<div style="font-weight:600;color:var(--purple,#a78bfa);margin-bottom:6px;font-size:var(--fs-sm)">流程调试（write*）</div>`;
-  writeHtml += writeList.map((p) => row(p, 'var(--purple,#a78bfa)', { hideProfileId: true, allowDelete: true })).join('');
-  el.innerHTML = `${goldenHtml}${writeHtml}`;
+  if (writeEl) {
+    writeEl.innerHTML = writeList.map((p) => row(p, 'var(--purple,#a78bfa)', { hideProfileId: true, allowDelete: true })).join('');
+  }
   const roleSel = document.getElementById('requestGoldenRoleSelect');
   if (roleSel) {
     const prev = roleSel.value;
@@ -7129,6 +7154,7 @@ function getSelectedWriteProfile() {
 }
 
 function addGoldenProfileEntry() {
+  switchToRequestFlowSubTab('golden');
   if (!ws || ws.readyState !== 1) {
     showToast('未连接服务器', 'err');
     return;
@@ -7151,6 +7177,7 @@ function addGoldenProfileEntry() {
 }
 
 function addWriteProfileEntry() {
+  switchToRequestFlowSubTab('probe');
   if (!ws || ws.readyState !== 1) {
     showToast('未连接服务器', 'err');
     return;
@@ -7419,6 +7446,41 @@ function switchToRequestFlowTab() {
   if (tab) switchTab('request-flow', tab);
 }
 
+const SS_REQUEST_FLOW_SUB_TAB = 'pw_studio_request_flow_sub_tab';
+
+function setRequestFlowSubTab(mode, el) {
+  const next = mode === 'probe' ? 'probe' : 'golden';
+  requestFlowSubTab = next;
+  document.querySelectorAll('.request-flow-sub-tab').forEach((tab) => {
+    tab.classList.toggle('active', tab.dataset.sub === next);
+  });
+  document.querySelectorAll('.request-flow-pane').forEach((pane) => {
+    pane.classList.toggle('active', pane.dataset.sub === next);
+  });
+  try {
+    sessionStorage.setItem(SS_REQUEST_FLOW_SUB_TAB, next);
+  } catch {
+    /* ignore */
+  }
+}
+
+function restoreRequestFlowSubTab() {
+  let saved = 'golden';
+  try {
+    saved = sessionStorage.getItem(SS_REQUEST_FLOW_SUB_TAB) || 'golden';
+  } catch {
+    /* ignore */
+  }
+  const tabEl = document.querySelector(`.request-flow-sub-tab[data-sub="${saved === 'probe' ? 'probe' : 'golden'}"]`);
+  setRequestFlowSubTab(saved === 'probe' ? 'probe' : 'golden', tabEl);
+}
+
+function switchToRequestFlowSubTab(mode) {
+  switchToRequestFlowTab();
+  const tabEl = document.querySelector(`.request-flow-sub-tab[data-sub="${mode === 'probe' ? 'probe' : 'golden'}"]`);
+  setRequestFlowSubTab(mode === 'probe' ? 'probe' : 'golden', tabEl);
+}
+
 function startRequestFlowProbe() {
   switchToRequestFlowTab();
   const frontendRepo = document.getElementById('requestFrontendRepo')?.value?.trim() || '';
@@ -7432,6 +7494,8 @@ function getRequestFlowMode() {
 
 function applyRequestFlowPreset(preset) {
   switchToRequestFlowTab();
+  const goldenPresets = new Set(['golden', 'readOnly', 'preview']);
+  switchToRequestFlowSubTab(goldenPresets.has(preset) ? 'golden' : 'probe');
   const writeEnabled = Boolean(document.getElementById('requestWriteEnabled')?.checked);
   let key = writeEnabled && preset === 'readOnly' ? 'write' : preset;
   if (preset === 'submitApprove') key = 'submitApprove';
@@ -7455,6 +7519,7 @@ function runSelectedRequestFlow(mode, opts = {}) {
   switchToRequestFlowTab();
   requestFlowDraft = null;
   const writeEnabled = opts.writeEnabled != null ? opts.writeEnabled : Boolean(document.getElementById('requestWriteEnabled')?.checked);
+  switchToRequestFlowSubTab(writeEnabled ? 'probe' : 'golden');
   const docNo = opts.docNo != null ? opts.docNo : (document.getElementById('requestDocNo')?.value?.trim() || '');
   const formName = opts.formName != null ? opts.formName : (document.getElementById('requestFormName')?.value?.trim() || '');
   const filterKeyword = opts.filterKeyword != null ? opts.filterKeyword : (document.getElementById('requestFilterKeyword')?.value?.trim() || '');
@@ -7500,6 +7565,7 @@ function requestFlowScriptKeyFromDom(spec) {
 }
 
 function runRequestFlowGolden() {
+  switchToRequestFlowSubTab('golden');
   const p = getSelectedGoldenProfile();
   if (!p?.hasStorage) {
     showToast('请先选择并已登录 Golden 角色', 'err');
@@ -7517,7 +7583,7 @@ function runRequestFlowGolden() {
 }
 
 function runRequestFlowGoldenAll() {
-  switchToRequestFlowTab();
+  switchToRequestFlowSubTab('golden');
   const ready = Object.values(requestFlowProfileState).filter((p) => isGoldenProfileId(p.id) && p.hasStorage);
   if (!ready.length) {
     showToast('请先为至少一个 golden* 档案完成登录', 'err');
@@ -7537,6 +7603,7 @@ function runRequestFlowGoldenAll() {
 }
 
 function runRequestFlowTravelProbe() {
+  switchToRequestFlowSubTab('probe');
   const p = getSelectedWriteProfile();
   if (!p?.hasStorage) {
     showToast('请先选择并已登录流程调试角色', 'err');
@@ -7555,6 +7622,7 @@ function runRequestFlowTravelProbe() {
 }
 
 function runRequestFlowProbeAudit() {
+  switchToRequestFlowSubTab('probe');
   const p = getSelectedWriteProfile();
   if (!p?.hasStorage) {
     showToast('请先选择并已登录流程调试角色', 'err');
@@ -7573,7 +7641,7 @@ function runRequestFlowProbeAudit() {
 }
 
 function promoteRequestFlowBaseline() {
-  switchToRequestFlowTab();
+  switchToRequestFlowSubTab('golden');
   const spec = document.getElementById('requestFlowSpec')?.value?.trim() || 'request/golden-regression.spec.ts';
   const scriptKey = requestFlowScriptKeyFromDom(spec);
   const runTs = lastRequestFlowRun?.runId || '';
@@ -9324,6 +9392,7 @@ restoreWorkflowMode();
 restoreBrowserProjects();
 bindBrowserProjectControls();
 restoreEditorTab();
+restoreRequestFlowSubTab();
 onIntentEngineChange();
 onEgoNlEngineChange();
 renderRunHistory();

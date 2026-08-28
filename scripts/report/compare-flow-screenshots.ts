@@ -12,7 +12,7 @@ import {
   generateTestComparisons,
   type TestDirComparisons,
 } from './compare-screenshots-engine.js';
-import { discoverScriptScanTargets } from './compare-screenshots-scan.js';
+import { discoverFlowScriptScanTargets } from './compare-screenshots-scan.js';
 import { renderCompareReportHtml } from './compare-screenshots-report.js';
 import { buildOverviewData, countComparisonSeverities } from './compare-screenshots-overview.js';
 import { generateOverviewPanel, generateSummaryTableHtml } from './compare-report-viz.js';
@@ -43,7 +43,7 @@ const FLOW_SCREENSHOTS_ROOT = path.join('screenshots', 'flows');
 const DEFAULT_OUT = 'results/flow-screenshot-comparison.html';
 const DEFAULT_ISSUES = 'results/flow-ui-issues.json';
 
-function filterFlowTargets(targets: ReturnType<typeof discoverScriptScanTargets>) {
+function filterFlowTargets(targets: ReturnType<typeof discoverFlowScriptScanTargets>) {
   return targets.filter(
     (t) =>
       t.testDir.startsWith('flows/request-flow') ||
@@ -65,7 +65,7 @@ async function main() {
     process.exit(1);
   }
 
-  const scanTargets = filterFlowTargets(discoverScriptScanTargets(scanRoot));
+  const scanTargets = filterFlowTargets(discoverFlowScriptScanTargets(scanRoot));
   if (scanTargets.length === 0) {
     console.error('未发现申请单/审批流程截图，请先运行 request-flow 或 approval-flow 用例');
     process.exit(1);
@@ -112,7 +112,7 @@ async function main() {
     overviewHtml,
     browserFilterRow: buildBrowserFilterRow(browserList),
     summaryHtml,
-    analysisHtml: '<p>本报告仅包含<strong>申请单流程</strong>与<strong>审批流程</strong>的步骤截图对比。</p>',
+    analysisHtml: '<p>本报告仅包含<strong>申请单流程</strong>与<strong>审批流程</strong>的步骤截图对比；多角色时按 <code>by-account/&lt;slug&gt;</code> 拆分，同一角色与自身 Golden 对比，不同角色互不混比。</p>',
     issuesHtml: renderIssuesTabHtml(uiIssues, {
       isCompareCrossBrowserEnabled,
       renderInlineDiffThumb: diffRenderer.renderInlineDiffThumb,

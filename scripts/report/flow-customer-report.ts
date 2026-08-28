@@ -12,7 +12,7 @@ import {
   generateTestComparisons,
   type TestDirComparisons,
 } from './compare-screenshots-engine.js';
-import { discoverScriptScanTargets } from './compare-screenshots-scan.js';
+import { discoverFlowScriptScanTargets } from './compare-screenshots-scan.js';
 import { buildCoverageStats } from './coverage-stats.js';
 import { buildCustomerReportModel } from './customer-report-model.js';
 import { renderCustomerReportHtml } from './customer-report-render.js';
@@ -22,7 +22,7 @@ dotenv.config({ path: path.join(process.cwd(), '.env') });
 const FLOW_ROOT = path.join('screenshots', 'flows');
 const DEFAULT_OUT = 'results/flow-customer-report.html';
 
-function filterFlowTargets(targets: ReturnType<typeof discoverScriptScanTargets>) {
+function filterFlowTargets(targets: ReturnType<typeof discoverFlowScriptScanTargets>) {
   return targets.filter(
     (t) =>
       t.testDir.startsWith('flows/request-flow') ||
@@ -43,7 +43,7 @@ async function main() {
     process.exit(1);
   }
 
-  const scanTargets = filterFlowTargets(discoverScriptScanTargets(scanRoot));
+  const scanTargets = filterFlowTargets(discoverFlowScriptScanTargets(scanRoot));
   if (scanTargets.length === 0) {
     console.error('未发现流程截图，请先运行申请单/审批用例');
     process.exit(1);

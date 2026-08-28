@@ -33,7 +33,7 @@ function fmtTime(iso?: string): string {
 function loadHistory(flowId: FlowId, limit = 20): FlowRunManifest[] {
   const dir = path.join(flowRunsDir(flowId), 'history');
   if (!fs.existsSync(dir)) return [];
-  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.json')).sort().reverse();
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.json'));
   const rows: FlowRunManifest[] = [];
   for (const f of files) {
     try {
@@ -42,9 +42,10 @@ function loadHistory(flowId: FlowId, limit = 20): FlowRunManifest[] {
     } catch {
       /* ignore */
     }
-    if (rows.length >= limit) break;
   }
-  return rows.slice(0, limit);
+  return rows
+    .sort((a, b) => new Date(b.startedAt || 0).getTime() - new Date(a.startedAt || 0).getTime())
+    .slice(0, limit);
 }
 
 function apiFailureCount(flowId: FlowId, runId: string): number {
@@ -58,7 +59,9 @@ function reportHref(rel?: string): string {
 
 function buildHtml(generatedAt: string): string {
   const lastRuns = FLOW_IDS.map((id) => ({ id, run: readLastRun(id) }));
-  const histories = FLOW_IDS.map((id) => ({ id, rows: loadHistory(id) }));
+  const historyEntries = FLOW_IDS.flatMap((id) => loadHistory(id, 50).map((run) => ({ id, run })))
+    .sort((a, b) => new Date(b.run.startedAt || 0).getTime() - new Date(a.run.startedAt || 0).getTime())
+    .slice(0, 20);
 
   const cards = lastRuns
     .map(({ id, run }) => {
@@ -90,12 +93,11 @@ ${links ? `<p class="links">${links}</p>` : ''}
     })
     .join('\n');
 
-  const historyRows = histories
-    .flatMap(({ id, rows }) =>
-      rows.map((r) => {
-        const apiN = apiFailureCount(id, r.runId);
-        const cls = r.ok === true ? 'ok' : r.ok === false ? 'fail' : 'unk';
-        return `<tr class="${cls}">
+  const historyRows = historyEntries
+    .map(({ id, run: r }) => {
+      const apiN = apiFailureCount(id, r.runId);
+      const cls = r.ok === true ? 'ok' : r.ok === false ? 'fail' : 'unk';
+      return `<tr class="${cls}">
 <td>${esc(flowLabel(id))}</td>
 <td>${esc(fmtTime(r.startedAt))}</td>
 <td>${esc(fmtTime(r.finishedAt))}</td>
@@ -105,8 +107,7 @@ ${links ? `<p class="links">${links}</p>` : ''}
 <td>${apiN || '-'}</td>
 <td>${esc(r.spec)}</td>
 </tr>`;
-      }),
-    )
+    })
     .join('\n');
 
   const apiSections = lastRuns

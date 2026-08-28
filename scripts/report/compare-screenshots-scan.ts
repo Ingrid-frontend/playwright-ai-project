@@ -8,6 +8,7 @@ import {
 } from './compare-screenshots-utils.js';
 
 export const RUN_SEGMENT_DIR = /^run-(chromium|webkit|firefox|safari|edge)-/i;
+const BY_ACCOUNT_DIR = 'by-account';
 
 export interface ScriptScanTarget {
   testDir: string;
@@ -20,6 +21,60 @@ export function hasDirectRunSegment(dir: string): boolean {
     .readdirSync(dir)
     .filter((f) => !f.startsWith('.'))
     .some((f) => fs.statSync(path.join(dir, f)).isDirectory() && RUN_SEGMENT_DIR.test(f));
+}
+
+function hasByAccountChildren(absDir: string): boolean {
+  const p = path.join(absDir, BY_ACCOUNT_DIR);
+  return fs.existsSync(p) && fs.statSync(p).isDirectory();
+}
+
+/**
+ * 流程截图扫描：存在 by-account/<slug> 时按角色拆分，各角色独立对比，不与其它角色混比。
+ */
+export function discoverFlowScriptScanTargets(screenshotsDir: string): ScriptScanTarget[] {
+  const skipTop = new Set(['results', 'diffs', 'pom']);
+  const targets: ScriptScanTarget[] = [];
+
+  function walk(relativeDir: string, absDir: string): void {
+    if (hasByAccountChildren(absDir)) {
+      for (const slug of fs.readdirSync(path.join(absDir, BY_ACCOUNT_DIR)).filter((f) => !f.startsWith('.'))) {
+        const slugAbs = path.join(absDir, BY_ACCOUNT_DIR, slug);
+        if (!fs.statSync(slugAbs).isDirectory()) continue;
+        const slugRel = relativeDir
+          ? path.join(relativeDir, BY_ACCOUNT_DIR, slug)
+          : path.join(BY_ACCOUNT_DIR, slug);
+        walk(slugRel, slugAbs);
+      }
+      return;
+    }
+
+    if (hasDirectRunSegment(absDir)) {
+      targets.push({
+        testDir: relativeDir.replaceAll(path.sep, '/'),
+        scriptPath: absDir,
+      });
+      return;
+    }
+
+    for (const entry of fs.readdirSync(absDir).filter((f) => !f.startsWith('.'))) {
+      const childAbs = path.join(absDir, entry);
+      if (!fs.statSync(childAbs).isDirectory() || RUN_SEGMENT_DIR.test(entry)) continue;
+      if (entry === BY_ACCOUNT_DIR) continue;
+      const childRel = relativeDir ? path.join(relativeDir, entry) : entry;
+      walk(childRel, childAbs);
+    }
+  }
+
+  if (!fs.existsSync(screenshotsDir)) return targets;
+
+  for (const top of fs
+    .readdirSync(screenshotsDir)
+    .filter((f) => !f.startsWith('.') && !skipTop.has(f))
+    .filter((f) => fs.statSync(path.join(screenshotsDir, f)).isDirectory())) {
+    walk(top, path.join(screenshotsDir, top));
+  }
+
+  return targets.sort((a, b) => a.testDir.localeCompare(b.testDir, 'zh-CN'));
 }
 
 export function discoverScriptScanTargets(screenshotsDir: string): ScriptScanTarget[] {
