@@ -150,7 +150,7 @@ export interface StructureCheckItem {
 
 没有 xpath、没有 fallback、没有 text hint。前端一次重构 class 名，`required: true` 的项直接判 blocker 误报。
 
-并发方面，`grep -rniE "lockfile|flock|revision|mutex" src scripts` **零命中**。但 `test-job` + `node-cron` daemon 会并发跑任务，`promote-baseline` 直接写 `screenshots-baseline/`，多任务同时晋升同一 script 时会互相覆盖。
+并发方面，`grep -rniE "lockfile|flock|revision|mutex" src scripts` **零命中**。但 `test-job` 后台跑任务时，`promote-baseline` 直接写 `screenshots-baseline/`，多任务同时晋升同一 script 时会互相覆盖。
 
 ## 四、改造方案
 

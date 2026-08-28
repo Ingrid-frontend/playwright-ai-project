@@ -1,6 +1,6 @@
 # 测试任务（Test Jobs）
 
-通过 `config/test-jobs.json` 配置后台运行、定时调度、失败即停与飞书通知。
+通过 `config/test-jobs.json` 配置后台运行、失败即停与飞书通知。
 
 ## 快速开始
 
@@ -22,9 +22,6 @@ npm run test-job -- run --id=smoke-workbench --env=dev --background
 npm run test-job -- status --id=smoke-workbench
 npm run test-job -- logs --id=smoke-workbench
 npm run test-job -- stop --id=smoke-workbench
-
-# 启动定时守护（读取 config 中带 schedule 的 Job）
-npm run test-job:daemon
 ```
 
 ## 配置文件
@@ -64,45 +61,13 @@ results/jobs/<jobId>/
 2. **UI blocker 即失败**：`steps.compareGate: true` + `stopOnCompareGate: true`
 3. **中断后跳过对比**：`runCompareAfterAbort: false`（默认）
 
-## 定时调度
+## 手动 / 云端触发
 
-方式一：内置守护进程
+当前 Job 均为 `schedule: null`（仅手动）。可选方式：
 
-```bash
-npm run test-job:daemon
-```
-
-方式二：系统 crontab
-
-```cron
-0 2 * * * cd /path/to/playwright-ai-project && npm run test-job -- run --id=nightly-regression --background
-```
-
-方式三：macOS launchd（示例）
-
-```xml
-<!-- ~/Library/LaunchAgents/com.playwright.test-jobs-daemon.plist -->
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>com.playwright.test-jobs-daemon</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/usr/local/bin/npm</string>
-    <string>run</string>
-    <string>test-job:daemon</string>
-  </array>
-  <key>WorkingDirectory</key><string>/path/to/playwright-ai-project</string>
-  <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>/tmp/test-jobs-daemon.log</string>
-  <key>StandardErrorPath</key><string>/tmp/test-jobs-daemon.err</string>
-</dict>
-</plist>
-```
-
-加载：`launchctl load ~/Library/LaunchAgents/com.playwright.test-jobs-daemon.plist`
+- Studio **定时任务** 工作区 → 前台/后台运行
+- CLI：`npm run test-job -- run --id=<jobId> [--background]`
+- GitHub Actions：[`.github/workflows/scheduled-test-jobs.yml`](../.github/workflows/scheduled-test-jobs.yml) → **Run workflow**（`workflow_dispatch`）
 
 ## Playwright Studio
 
@@ -114,13 +79,9 @@ npm run test-job:daemon
 
 WebSocket 消息：`jobs:list`、`jobs:preview`、`jobs:run`、`jobs:stop`、`jobs:status`
 
-## GitHub Actions 定时
+## GitHub Actions
 
-云端定时见 [`.github/workflows/scheduled-test-jobs.yml`](../.github/workflows/scheduled-test-jobs.yml)：
-
-- Cron：`0 18 * * *`（UTC，约北京时间 02:00）
-- 手动触发时可指定 `playwright_env` 输入参数覆盖 Job 环境
-- 与本地共用 `npm run test-job -- run --id=... [--env=...]`
+云端手动触发见 [`.github/workflows/scheduled-test-jobs.yml`](../.github/workflows/scheduled-test-jobs.yml)（无 schedule，仅 `workflow_dispatch`）。与本地共用 `npm run test-job -- run --id=... [--env=...]`。
 
 ## 环境变量
 
