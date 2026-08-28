@@ -6,7 +6,7 @@ on:
       job_id:
         description: test-jobs.json 中的 job id
         required: false
-        default: nightly-regression
+        default: golden-set
         type: string
       playwright_env:
         description: 覆盖 Job 的 playwrightEnv（留空则用 Job 配置）
@@ -50,7 +50,7 @@ jobs:
 
       - name: Run test job
         run: |
-          ARGS="run --id=${{ inputs.job_id || 'nightly-regression' }} --trigger=schedule"
+          ARGS="run --id=${{ inputs.job_id || 'golden-set' }} --trigger=schedule"
           if [ -n "${{ inputs.playwright_env }}" ]; then
             ARGS="$ARGS --env=${{ inputs.playwright_env }}"
           fi
@@ -78,7 +78,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-job-results-${{ inputs.job_id || 'nightly-regression' }}
+          name: test-job-results-${{ inputs.job_id || 'golden-set' }}
           path: results/jobs/
           retention-days: 30
           if-no-files-found: ignore

@@ -22,13 +22,14 @@
   },
   "jobs": [
     {
-      "id": "nightly-regression",
+      "id": "golden-set",
       "enabled": true,
-      "description": "全量回归（仅手动；stage 多账号按 meta 分组 login 后执行）",
+      "description": "Golden Set 回归（stage：登录 → 工作台 → 我的审批）",
       "schedule": null,
       "timezone": "Asia/Shanghai",
       "playwrightEnv": "stage",
-      "specs": "all",
+      "accountProfile": "default",
+      "specs": ["golden-set/*.optimized.spec.ts"],
       "steps": {
         "login": true,
         "compare": true,
@@ -39,41 +40,6 @@
         "writeFeishuBitable": false
       },
       "notifyOn": ["failure", "success"]
-    },
-    {
-      "id": "smoke-workbench",
-      "enabled": true,
-      "description": "stage/260612 冒烟（手动触发；Studio 可勾选子集）",
-      "schedule": null,
-      "playwrightEnv": "stage",
-      "specs": ["260612/*.optimized.spec.ts"],
-      "stopOnTestFailure": true,
-      "steps": {
-        "login": true,
-        "compare": true,
-        "compareGate": false,
-        "feishuNotify": true,
-        "writeFeishuBitable": false
-      }
-    },
-    {
-      "id": "approval-flow-write",
-      "enabled": false,
-      "description": "审批写操作（stage，APPROVAL_ENABLE_WRITE=1）；仅手动或 workflow_dispatch，本地可 npm run approval:test:write",
-      "schedule": null,
-      "timezone": "Asia/Shanghai",
-      "playwrightEnv": "stage",
-      "specs": "all",
-      "steps": {
-        "login": true,
-        "compare": false,
-        "compareGate": false,
-        "recordLastGreen": false,
-        "feishuNotify": true,
-        "createFeishuDoc": false,
-        "writeFeishuBitable": false
-      },
-      "notifyOn": ["failure"]
     }
   ]
 }
