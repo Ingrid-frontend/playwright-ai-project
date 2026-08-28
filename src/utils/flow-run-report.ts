@@ -30,6 +30,7 @@ export type FlowRunManifest = {
   apiFailureLogRel?: string;
   playwrightReportRel?: string;
   replayReportRel?: string;
+  videoReportRel?: string;
   traceMode?: string;
   failures?: Array<{ title?: string; message?: string }>;
 };

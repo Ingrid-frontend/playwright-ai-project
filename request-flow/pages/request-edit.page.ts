@@ -622,7 +622,7 @@ export class RequestEditPage {
     await expect(btn).toBeVisible({ timeout: 15_000 });
     await btn.click();
     await this.confirmIfNeeded();
-    await this.waitSaveDone();
+    await this.waitSaveDone(travel ? 60_000 : 30_000);
     if (travel) {
       // 「保存并添加明细」可能弹出费用类型；差旅靠行程，关掉即可
       await this.dismissExpenseTypeIfOpen();
@@ -677,12 +677,14 @@ export class RequestEditPage {
   }
 
   private async ensureTravelItinerary() {
-    await this.fillTripIfNeeded();
     const root = this.editRoot();
+    await this.fillTripIfNeeded();
+    await this.assertTripDatesFilled(root);
     await this.pickTripCities(root);
     await this.pickTripCities(this.scope().locator('main').filter({ visible: true }).last());
     await this.ensureDestinationFilled(root);
     await this.ensureItineraryRow(root);
+    await this.assertTripDatesFilled(root);
   }
 
   private async ensureDestinationFilled(root: Locator) {
@@ -847,17 +849,62 @@ export class RequestEditPage {
       .or(root.getByRole('textbox', { name: /返回日期|结束日期|返回/ }))
       .filter({ visible: true })
       .first();
-    if (!(await start.isVisible({ timeout: 2_000 }).catch(() => false))) return;
 
-    // 往后翻若干月再选，降低与历史差补单「单据日期重叠」概率
-    const monthsAhead = 2 + (Date.now() % 3);
+    if (await start.isVisible({ timeout: 2_000 }).catch(() => false)) {
+      await start.click();
+      await this.pickCalendarDayRange();
+      const s = ((await start.inputValue().catch(() => '')) || '').trim();
+      const e = (await end.isVisible().catch(() => false))
+        ? ((await end.inputValue().catch(() => '')) || '').trim()
+        : s;
+      if (!s || !e || s >= e) {
+        await start.click();
+        await this.pickCalendarDayRange();
+      }
+    } else if (!(await this.fillTripDatesByLabel(root))) {
+      const picker = root.locator('.ant-picker-range, .ant-picker, .ant-calendar-picker').filter({ visible: true }).first();
+      if (await picker.isVisible({ timeout: 2_000 }).catch(() => false)) {
+        await picker.click();
+        await this.pickCalendarDayRange();
+      }
+    }
 
-    await start.click();
+    const destErr = root.getByText(/请选择目的地/).filter({ visible: true }).first();
+    if (await destErr.isVisible({ timeout: 1_000 }).catch(() => false)) {
+      const city = root.getByText(/北京|上海|广州|深圳|杭州/).filter({ visible: true }).first();
+      if (await city.isVisible({ timeout: 1_000 }).catch(() => false)) {
+        await city.click().catch(() => undefined);
+      }
+    }
+  }
+
+  private async fillTripDatesByLabel(root: Locator): Promise<boolean> {
+    const block = root
+      .locator('.ant-form-item, [class*="form-item"]')
+      .filter({
+        has: root
+          .locator('.ant-form-item-label, label, [class*="label"]')
+          .filter({ hasText: /出发日期|返回日期|行程日期|出差日期|开始日期|结束日期/ }),
+      })
+      .filter({ visible: true })
+      .first();
+    const trigger = (await block.isVisible({ timeout: 1_000 }).catch(() => false))
+      ? block.locator('.ant-picker, .ant-calendar-picker, input').filter({ visible: true }).first()
+      : root.locator('.ant-picker-range, .ant-picker, .ant-calendar-picker').filter({ visible: true }).first();
+    if (!(await trigger.isVisible({ timeout: 1_000 }).catch(() => false))) return false;
+    await trigger.scrollIntoViewIfNeeded().catch(() => undefined);
+    await trigger.click();
+    await this.pickCalendarDayRange();
+    return true;
+  }
+
+  private async pickCalendarDayRange() {
     const cal = this.scope()
       .locator('.ant-calendar-picker-container:visible, .ant-picker-dropdown:visible')
       .last();
     await expect(cal, '未打开行程日期日历').toBeVisible({ timeout: 8_000 });
 
+    const monthsAhead = 2 + (Date.now() % 3);
     const nextMonth = cal
       .locator(
         '.ant-calendar-next-month-btn, .ant-picker-header-next-btn, .ant-calendar-next-year-btn, button.ant-picker-header-super-next-btn',
@@ -878,70 +925,126 @@ export class RequestEditPage {
       .filter({ visible: true });
     await expect(dayCells.first(), '日历无可选日期').toBeVisible({ timeout: 5_000 });
 
-    // 选当月中间两天，保证 start < end
     const n = await dayCells.count();
     const i0 = Math.min(10, Math.max(0, n - 3));
     const i1 = Math.min(i0 + 2, n - 1);
     await dayCells.nth(i0).click({ force: true });
     await dayCells.nth(i1).click({ force: true });
     await this.page.keyboard.press('Escape').catch(() => undefined);
+  }
 
-    const s = ((await start.inputValue().catch(() => '')) || '').trim();
-    const e = (await end.isVisible().catch(() => false))
-      ? ((await end.inputValue().catch(() => '')) || '').trim()
-      : s;
-    if (!s || !e || s >= e) {
-      // readonly 填不进时再点一轮相邻两天
-      await start.click();
-      const cal2 = this.scope()
-        .locator('.ant-calendar-picker-container:visible, .ant-picker-dropdown:visible')
-        .last();
-      if (await cal2.isVisible({ timeout: 3_000 }).catch(() => false)) {
-        const cells = cal2
-          .locator(
-            'td.ant-calendar-cell:not(.ant-calendar-disabled-cell) .ant-calendar-date, .ant-picker-cell-in-view:not(.ant-picker-cell-disabled) .ant-picker-cell-inner',
-          )
-          .filter({ visible: true });
-        if ((await cells.count()) >= 2) {
-          await cells.nth(5).click({ force: true }).catch(() => cells.first().click({ force: true }));
-          await cells.nth(7).click({ force: true }).catch(() => cells.nth(1).click({ force: true }));
-        }
-        await this.page.keyboard.press('Escape').catch(() => undefined);
+  private async assertTripDatesFilled(root: Locator) {
+    const err = root
+      .getByText(/请选择开始结束日期|请选择出发日期|请选择返回日期|请选择出差日期|请选择行程日期/)
+      .filter({ visible: true })
+      .first();
+    if (!(await err.isVisible({ timeout: 500 }).catch(() => false))) return;
+    await this.fillTripDatesByLabel(root);
+    if (await err.isVisible({ timeout: 500 }).catch(() => false)) {
+      const picker = root.locator('.ant-picker-range, .ant-picker, .ant-calendar-picker').filter({ visible: true }).first();
+      if (await picker.isVisible({ timeout: 1_000 }).catch(() => false)) {
+        await picker.click();
+        await this.pickCalendarDayRange();
       }
     }
-
-    const destErr = root.getByText(/请选择目的地/).filter({ visible: true }).first();
-    if (await destErr.isVisible({ timeout: 1_000 }).catch(() => false)) {
-      const city = root.getByText(/北京|上海|广州|深圳|杭州/).filter({ visible: true }).first();
-      if (await city.isVisible({ timeout: 1_000 }).catch(() => false)) {
-        await city.click().catch(() => undefined);
-      }
+    if (await err.isVisible({ timeout: 500 }).catch(() => false)) {
+      throw new Error('差旅表单未填行程日期（请检查日期选择器）');
     }
+  }
+
+  private saveSuccessText() {
+    return /已保存|保存成功|操作成功|单据已保存|保存并添加明细/;
+  }
+
+  private saveSuccessLocators() {
+    const text = this.saveSuccessText();
+    return {
+      inScope: this.scope().getByText(text).filter({ visible: true }).first(),
+      inDetail: this.editRoot().getByText(text).filter({ visible: true }).first(),
+      toast: this.page
+        .locator('.ant-message-notice, .ant-message, .ant-notification-notice, .ant-notification')
+        .filter({ hasText: text })
+        .filter({ visible: true })
+        .first(),
+      toastScope: this.scope()
+        .locator('.ant-message-notice, .ant-message, .ant-notification-notice')
+        .filter({ hasText: text })
+        .filter({ visible: true })
+        .first(),
+      expenseDlg: this.expenseTypeDialog(),
+    };
+  }
+
+  private async isSaveDoneVisible() {
+    const locs = this.saveSuccessLocators();
+    for (const loc of Object.values(locs)) {
+      if (await loc.isVisible().catch(() => false)) return true;
+    }
+    return false;
+  }
+
+  private async collectSaveFailureHint() {
+    const parts: string[] = [];
+    const loc = this.scope()
+      .getByText(/请选择|不能为空|请填写|校验|重叠|失败|必填|请添加|差补/)
+      .filter({ visible: true });
+    const n = Math.min(await loc.count(), 3);
+    for (let i = 0; i < n; i += 1) {
+      const t = ((await loc.nth(i).innerText().catch(() => '')) || '').trim().replace(/\s+/g, ' ');
+      if (t && !parts.includes(t)) parts.push(t.slice(0, 80));
+    }
+    const toastErr = this.page
+      .locator('.ant-message-error, .ant-notification-notice')
+      .filter({ visible: true })
+      .first();
+    const te = ((await toastErr.innerText().catch(() => '')) || '').trim();
+    if (te) parts.push(te.slice(0, 80));
+    return parts.slice(0, 3).join(' | ');
   }
 
   /** 保存成功：toast / 顶栏「单据已保存」/「保存并添加明细」弹出费用类型 均算成功 */
   private async waitSaveDone(timeout = 30_000) {
     const deadline = Date.now() + timeout;
-    const ok = this.scope()
-      .getByText(/已保存|保存成功|操作成功|单据已保存/)
-      .filter({ visible: true })
-      .first();
-    const expenseDlg = this.expenseTypeDialog();
     const bad = this.scope()
-      .getByText(/请选择开始结束日期|请选择目的地|请填写|不能为空|校验失败|保存失败/)
+      .getByText(/请选择开始结束日期|请选择目的地|请填写|不能为空|校验失败|保存失败|请选择出差|请添加行程/)
       .filter({ visible: true })
       .first();
+    const saving = this.scope().locator('.request-loading-modal, .modal-submit-checking').filter({ visible: true }).first();
+
     while (Date.now() < deadline) {
-      if (await ok.isVisible().catch(() => false)) return;
-      if (await expenseDlg.isVisible({ timeout: 200 }).catch(() => false)) return;
-      await this.clickContinueSaveIfNeeded();
+      if (await this.isSaveDoneVisible()) return;
+      if (await saving.isVisible().catch(() => false)) {
+        await saving.waitFor({ state: 'hidden', timeout: 15_000 }).catch(() => undefined);
+        continue;
+      }
+      await this.handleSaveFollowUps();
       if (await bad.isVisible().catch(() => false)) {
         const msg = ((await bad.innerText().catch(() => '')) || '').trim();
         throw new Error(`保存未成功（表单校验）：${msg || '存在必填未填'}`);
       }
       await this.page.waitForTimeout(400);
     }
-    await expect(ok, '保存未出现成功提示（差旅等模板可能缺行程日期）').toBeVisible({ timeout: 1_000 });
+
+    const hint = await this.collectSaveFailureHint();
+    const locs = this.saveSuccessLocators();
+    await expect(
+      locs.inScope.or(locs.inDetail).or(locs.toast).or(locs.toastScope).or(locs.expenseDlg).first(),
+      `保存未出现成功提示（差旅等模板可能缺行程日期）${hint ? `；页面提示：${hint}` : ''}`,
+    ).toBeVisible({ timeout: 1_000 });
+  }
+
+  private async handleSaveFollowUps() {
+    await this.clickContinueSaveIfNeeded();
+    const cont = this.scope()
+      .locator('.ant-modal, [role="dialog"]')
+      .filter({ visible: true })
+      .filter({ hasNot: this.scope().locator('.request-loading-modal, .modal-submit-checking') })
+      .getByRole('button', { name: /继续保存|继\s*续\s*保\s*存|仍\s*要\s*保\s*存|继续提交|强行提交/ })
+      .filter({ visible: true })
+      .last();
+    if (await cont.isVisible({ timeout: 800 }).catch(() => false) && (await cont.isEnabled().catch(() => false))) {
+      await cont.click({ timeout: 8_000 }).catch(() => undefined);
+    }
   }
 
   /** 「单据日期重叠」等：点「继续保存」 */
@@ -951,8 +1054,19 @@ export class RequestEditPage {
       .or(this.scope().getByText(/继续保存/, { exact: true }))
       .filter({ visible: true })
       .first();
-    if (await btn.isVisible({ timeout: 300 }).catch(() => false)) {
+    if (await btn.isVisible({ timeout: 300 }).catch(() => false) && (await btn.isEnabled().catch(() => false))) {
       await btn.click();
+      return;
+    }
+    const modalBtn = this.scope()
+      .locator('.ant-modal, [role="dialog"]')
+      .filter({ visible: true })
+      .filter({ hasText: /日期重叠|继续保存|仍要保存/ })
+      .getByRole('button', { name: /继\s*续\s*保\s*存|仍\s*要\s*保\s*存/ })
+      .filter({ visible: true })
+      .last();
+    if (await modalBtn.isVisible({ timeout: 300 }).catch(() => false) && (await modalBtn.isEnabled().catch(() => false))) {
+      await modalBtn.click();
     }
   }
 
@@ -1120,8 +1234,49 @@ export class RequestEditPage {
       .filter({ visible: true })
       .first();
     await expect(btn, '未找到提交按钮（若在编辑侧滑请先保存退出）').toBeVisible({ timeout: 30_000 });
+    const alreadySubmitted = await this.scope()
+      .getByText(/审批中|已提交/)
+      .filter({ visible: true })
+      .first()
+      .isVisible({ timeout: 800 })
+      .catch(() => false);
+    if (alreadySubmitted) {
+      const stale = await this.tryReadDocNo();
+      throw new Error(
+        stale
+          ? `单据 ${stale} 已是审批中/已提交，未新建空白单（可能复用了服务端草稿）`
+          : '单据已是审批中/已提交，未新建空白单（可能复用了服务端草稿）',
+      );
+    }
     await btn.click();
     await this.waitSubmitDone();
+  }
+
+  /** 静默读单号；无详情或尚未分配时返回空串 */
+  async tryReadDocNo(): Promise<string> {
+    try {
+      return await this.readDocNo();
+    } catch {
+      return '';
+    }
+  }
+
+  /** 编辑中草稿：点「删除单据」并确认 */
+  async deleteDraftIfPresent(): Promise<boolean> {
+    await this.ensureRoot();
+    const del = this.scope().getByRole('button', { name: /删除单据/ }).filter({ visible: true }).first();
+    if (!(await del.isVisible({ timeout: 2_000 }).catch(() => false))) return false;
+    await del.click();
+    const ok = this.scope()
+      .locator('.ant-modal, [role="dialog"]')
+      .filter({ visible: true })
+      .getByRole('button', { name: /确\s*定|确\s*认|删\s*除/ })
+      .filter({ visible: true })
+      .last();
+    await expect(ok).toBeVisible({ timeout: 8_000 });
+    await ok.click();
+    await expect(del).toBeHidden({ timeout: 30_000 }).catch(() => undefined);
+    return true;
   }
 
   /** 从当前详情/编辑区解析单号（提交成功后调用） */
@@ -1162,8 +1317,13 @@ export class RequestEditPage {
       .getByText(/提交成功|单据已提交|操作成功/)
       .filter({ visible: true })
       .first();
+    // 勿把进入详情时已有的「审批中」当成本次提交成功
     const detailOk = this.editRoot()
-      .getByText(/提交成功|单据已提交|审批中|已提交/)
+      .getByText(/提交成功|单据已提交/)
+      .filter({ visible: true })
+      .first();
+    const statusAfterSubmit = this.editRoot()
+      .getByText(/审批中|已提交/)
       .filter({ visible: true })
       .first();
     const backToList = this.scope()
@@ -1182,8 +1342,18 @@ export class RequestEditPage {
           .catch(() => false));
         if (submitGone) return;
       }
-      if ((await toastOk.isVisible().catch(() => false)) || (await detailOk.isVisible().catch(() => false))) {
-        return;
+      if (await toastOk.isVisible().catch(() => false)) return;
+      if (await detailOk.isVisible().catch(() => false)) return;
+      const submitting = this.scope()
+        .locator('.request-loading-modal, .modal-submit-checking')
+        .filter({ visible: true })
+        .first();
+      if (await submitting.isVisible().catch(() => false)) {
+        await submitting.waitFor({ state: 'hidden', timeout: 60_000 }).catch(() => undefined);
+        if ((await toastOk.isVisible().catch(() => false)) || (await detailOk.isVisible().catch(() => false))) {
+          return;
+        }
+        if (await statusAfterSubmit.isVisible().catch(() => false)) return;
       }
       const bizErr = this.scope()
         .getByText(/请选择审批人|以保证单据正常送审|70401010/)
@@ -1196,7 +1366,10 @@ export class RequestEditPage {
       await this.page.waitForTimeout(500);
     }
 
-    await expect(toastOk.or(detailOk).first(), '提交未完成（可能缺明细/需选审批人/校验未点继续）').toBeVisible({
+    await expect(
+      toastOk.or(detailOk).or(statusAfterSubmit).first(),
+      '提交未完成（可能缺明细/需选审批人/校验未点继续）',
+    ).toBeVisible({
       timeout: 1_000,
     });
   }

@@ -1240,6 +1240,8 @@
                     <button type="button" class="btn" id="btnRequestGoldenRun" onclick="runRequestFlowGolden()" style="border-color:rgba(52,211,153,.45);color:var(--green)">Golden 回归</button>
                     <button type="button" class="btn" id="btnRequestGoldenRunAll" onclick="runRequestFlowGoldenAll()" style="border-color:rgba(52,211,153,.35);color:var(--green)">全部 Golden 角色</button>
                     <button type="button" class="btn" id="btnRequestPromoteBaseline" onclick="promoteRequestFlowBaseline()">晋升 Golden 基线</button>
+                    <button type="button" class="btn" id="btnRequestClearBaseline" onclick="clearRequestFlowBaseline()" style="border-color:rgba(229,72,77,.35);color:var(--red,#e5484d)">清空基线</button>
+                    <button type="button" class="btn" id="btnRequestGoldenOpenCustomer" onclick="openExistingCustomerReport()" style="border-color:rgba(52,211,153,.4);color:var(--green,#34d399)">打开客户报告</button>
                   </div>
                 </div>
               </div>
@@ -1280,13 +1282,13 @@
                   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                     <button type="button" class="btn" id="btnRequestTravelProbe" onclick="runRequestFlowTravelProbe()" style="border-color:rgba(167,139,250,.45);color:var(--purple,#a78bfa)">差旅全流程</button>
                     <button type="button" class="btn" id="btnRequestProbeFlow" onclick="runRequestFlowProbeFlow()" style="border-color:rgba(167,139,250,.45);color:var(--purple,#a78bfa)">申请单全流程</button>
+                    <button type="button" class="btn" id="btnRequestProbeRunUiAudit" onclick="runRequestFlowProbeUiAudit()" style="font-size:var(--fs-sm)">AI 审计</button>
+                    <button type="button" class="btn" id="btnRequestProbeOpenUiAudit" onclick="openExistingUiAuditReport()" style="font-size:var(--fs-sm)">打开已有审计报告</button>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
                     <span class="sidebar-hint" style="margin:0;color:var(--text-tertiary)">快捷</span>
                     <button type="button" class="btn" id="btnRequestTravelProbeChain" onclick="runRequestFlowTravelProbeChain()" style="font-size:var(--fs-xs);padding:4px 10px;border-color:rgba(167,139,250,.3);color:var(--purple,#a78bfa)">差旅并审计</button>
                     <button type="button" class="btn" id="btnRequestProbeChain" onclick="runRequestFlowProbeChain()" style="font-size:var(--fs-xs);padding:4px 10px;border-color:rgba(167,139,250,.3);color:var(--purple,#a78bfa)">申请单并审计</button>
-                  </div>
-                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
-                    <button type="button" class="btn" id="btnRequestProbeRunUiAudit" onclick="runRequestFlowProbeUiAudit()" style="font-size:var(--fs-sm)">AI 审计</button>
-                    <button type="button" class="btn" id="btnRequestProbeOpenUiAudit" onclick="openExistingUiAuditReport()" style="font-size:var(--fs-sm)">打开已有审计报告</button>
                   </div>
                 </div>
               </div>
@@ -2675,12 +2677,16 @@ function openRequestFlowSummaryReport() {
 }
 
 function openRequestFlowReplay() {
-  const path = lastRequestFlowRun?.replayReportOpenPath;
+  const path = lastRequestFlowRun?.replayReportOpenPath || lastRequestFlowRun?.videoReportOpenPath;
   if (!path) {
-    showToast('本次运行没有步骤回放', 'err');
+    showToast('本次运行没有流程回放', 'err');
     return;
   }
   openFlowReplay(path);
+}
+
+function hasFlowReplayPath(msg) {
+  return Boolean(msg?.replayReportOpenPath || msg?.videoReportOpenPath);
 }
 
 function openRequestFlowUiAuditReport() {
@@ -2697,7 +2703,7 @@ function updateRequestFlowReportBtn(msg) {
     else if (id === 'btnRequestOpenCompare') btn.style.display = msg?.compareReportOpenPath ? '' : 'none';
     else if (id === 'btnRequestOpenCustomer') btn.style.display = msg?.customerReportOpenPath ? '' : 'none';
     else if (id === 'btnRequestOpenSummary') btn.style.display = msg?.summaryReportOpenPath ? '' : 'none';
-    else if (id === 'btnRequestOpenReplayRun') btn.style.display = msg?.replayReportOpenPath ? '' : 'none';
+    else if (id === 'btnRequestOpenReplayRun') btn.style.display = hasFlowReplayPath(msg) ? '' : 'none';
     else if (id === 'btnRequestOpenUiAudit') btn.style.display = msg?.uiAuditReportOpenPath ? '' : 'none';
   }
   if (show && msg?.apiFailureCount > 0) {
@@ -2727,9 +2733,9 @@ function openApprovalFlowSummaryReport() {
 }
 
 function openApprovalFlowReplay() {
-  const path = lastApprovalFlowRun?.replayReportOpenPath;
+  const path = lastApprovalFlowRun?.replayReportOpenPath || lastApprovalFlowRun?.videoReportOpenPath;
   if (!path) {
-    showToast('本次运行没有步骤回放', 'err');
+    showToast('本次运行没有流程回放', 'err');
     return;
   }
   openFlowReplay(path);
@@ -2745,7 +2751,7 @@ function updateApprovalFlowReportBtn(msg) {
     else if (id === 'btnApprovalOpenCompare') btn.style.display = msg?.compareReportOpenPath ? '' : 'none';
     else if (id === 'btnApprovalOpenCustomer') btn.style.display = msg?.customerReportOpenPath ? '' : 'none';
     else if (id === 'btnApprovalOpenSummary') btn.style.display = msg?.summaryReportOpenPath ? '' : 'none';
-    else if (id === 'btnApprovalOpenReplay') btn.style.display = msg?.replayReportOpenPath ? '' : 'none';
+    else if (id === 'btnApprovalOpenReplay') btn.style.display = hasFlowReplayPath(msg) ? '' : 'none';
   }
   if (show && msg?.apiFailureCount > 0) {
     log('warn', `[approval-flow] 接口报错 ${msg.apiFailureCount} 条，见运行汇总`);
@@ -3613,8 +3619,8 @@ function applyEnvChanged(msg) {
   renderEnvChips();
   const baseURL = msg.baseURL || entry?.baseURL;
   if (baseURL) applyEnvToTargetUrl(baseURL, envChanged ? prev : null);
-  if (!msg.hasStorage && msg.storageState) {
-    showToast(`${msg.env}: 未找到登录态文件`, 'err');
+  if (!msg.hasStorage && !msg.hasAnyStorage && msg.storageState) {
+    showToast(`${msg.env}: 尚无登录态，请在侧栏或流程 Tab 完成角色登录`, 'err');
   }
   if (envChanged) {
     refreshRepoOptimizedList();
@@ -5836,6 +5842,20 @@ function handleMessage(msg) {
       }
       loadUiIssuesPanel();
       break;
+    case 'repo:clear-baseline:done':
+      setRequestFlowBusy(false);
+      if (msg.ok) {
+        const hint = msg.scope === 'flows'
+          ? 'flows 基线与 run 截图已清空'
+          : `基线与 run 截图已清空：${msg.scriptKey || ''}`;
+        showToast(hint, 'ok');
+        log('ok', `[repo] ${hint}`);
+      } else {
+        showToast('清空基线失败', 'err');
+      }
+      loadUiIssuesPanel();
+      refreshCompareReportStatus();
+      break;
     case 'ai:validate:start':
     case 'ego:nl-run:start':
       if (msg.seq) egoAuditSeq = msg.seq;
@@ -6137,7 +6157,7 @@ function handleMessage(msg) {
       if (msg.ok) {
         const extras = [];
         if (msg.pipeline === 'golden' && msg.baselinePromoted) extras.push('已 seed Golden 基线');
-        if (msg.replayReportOpenPath) extras.push('回放已生成');
+        if (hasFlowReplayPath(msg)) extras.push('回放已生成');
         if (msg.pipeline === 'probe' && msg.uiAuditReportOpenPath) extras.push('UI 审计报告已生成');
         else if (msg.pipeline === 'probe' && msg.ok) extras.push('可对截图点「AI 审计」');
         if (msg.accountProfile) extras.push(`profile=${msg.accountProfile}`);
@@ -6149,6 +6169,9 @@ function handleMessage(msg) {
         log('err', `[request-flow] 用例失败 · exit=${msg.exitCode ?? '?'}`);
         if (msg.reportOpenPath) {
           log('info', `[request-flow] 报告 ${msg.reportOpenPath}`);
+        }
+        if (hasFlowReplayPath(msg)) {
+          log('info', `[request-flow] 回放 ${msg.replayReportOpenPath || msg.videoReportOpenPath}`);
         }
       }
       break;
@@ -7031,7 +7054,7 @@ function refreshUiAuditStatus() {
 }
 
 function setRequestFlowBusy(busy) {
-  ['btnRequestProbe', 'btnRequestPresetPreview', 'btnRequestPresetReadOnly', 'btnRequestPresetWrite', 'btnRequestPresetSubmitApprove', 'btnRequestRunSelected', 'btnRequestGoldenRun', 'btnRequestGoldenRunAll', 'btnRequestTravelProbe', 'btnRequestProbeFlow', 'btnRequestTravelProbeChain', 'btnRequestProbeChain', 'btnRequestProbeRunUiAudit', 'btnRequestPromoteBaseline', 'btnAddGoldenProfile', 'btnAddWriteProfile'].forEach((id) => {
+  ['btnRequestProbe', 'btnRequestPresetPreview', 'btnRequestPresetReadOnly', 'btnRequestPresetWrite', 'btnRequestPresetSubmitApprove', 'btnRequestRunSelected', 'btnRequestGoldenRun', 'btnRequestGoldenRunAll', 'btnRequestTravelProbe', 'btnRequestProbeFlow', 'btnRequestTravelProbeChain', 'btnRequestProbeChain', 'btnRequestProbeRunUiAudit', 'btnRequestPromoteBaseline', 'btnRequestClearBaseline', 'btnAddGoldenProfile', 'btnAddWriteProfile'].forEach((id) => {
     const btn = document.getElementById(id);
     if (!btn) return;
     btn.disabled = busy;
@@ -7663,6 +7686,15 @@ function promoteRequestFlowBaseline() {
   if (!send('repo:promote-baseline', { scriptKey, runTimestamp: runTs, latest: !runTs, onlyIfMissing: false })) {
     setRequestFlowBusy(false);
   }
+}
+
+function clearRequestFlowBaseline() {
+  switchToRequestFlowSubTab('golden');
+  const spec = document.getElementById('requestFlowSpec')?.value?.trim() || 'request/golden-regression.spec.ts';
+  const scriptKey = requestFlowScriptKeyFromDom(spec);
+  if (!confirm(`确认清空该脚本的 Golden 基线与 run 截图？\n\n${scriptKey}\n\n将删除 screenshots-baseline、screenshots 下对应目录及 results/diffs 缓存，不可恢复。`)) return;
+  setRequestFlowBusy(true);
+  if (!send('repo:clear-baseline', { scriptKey })) setRequestFlowBusy(false);
 }
 
 function cancelRequestFlowRun() {

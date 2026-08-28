@@ -6,7 +6,8 @@ import type {
 } from './customer-report-model.js';
 import { customerReportCss, customerReportClientJs } from './customer-report-assets.js';
 import { friendlyScriptLabel, friendlyStepLabel } from './customer-report-naming.js';
-import { formatDurationSec, summarizeScriptRuns } from './customer-report-run-meta.js';
+import { formatDurationSec, formatScriptStartedAt, summarizeScriptRuns } from './customer-report-run-meta.js';
+import { totalRunCount } from './customer-report-run-history.js';
 
 function esc(s: string): string {
   return String(s || '')
@@ -211,14 +212,14 @@ function renderScopeTable(model: CustomerReportModel): string {
               : '未检测（无验收基线）';
       const kind =
         s.compareKind === 'golden' ? '验收基线' : s.compareKind === 'last-green' ? '最近通过' : '—';
-      const runDur = formatDurationSec(model.scriptRuns.get(s.scriptKey)?.durationSec) || '—';
+      const runStart = formatScriptStartedAt(model.scriptRuns.get(s.scriptKey)?.startedAt) || '—';
       return `<tr>
         <td>${esc(friendlyStepLabel(s.pageTitle))}</td>
         <td>${esc(friendlyScriptLabel(s.scriptKey))}</td>
         <td>${esc(friendlyStepLabel(s.stepName))}${s.processOnly ? '<span class="tag-process">过程</span>' : ''}</td>
         <td>${s.difference != null ? `${(s.difference * 100).toFixed(2)}%` : '—'}</td>
         <td>${esc(kind)}</td>
-        <td>${esc(runDur)}</td>
+        <td>${esc(runStart)}</td>
         <td class="st-${esc(s.status)}">${esc(status)}</td>
       </tr>`;
     })
@@ -232,12 +233,77 @@ function renderScopeTable(model: CustomerReportModel): string {
         <th>步骤</th>
         <th>差异</th>
         <th>基线来源</th>
-        <th>运行耗时</th>
+        <th>开始时间</th>
         <th>状态</th>
       </tr>
     </thead>
     <tbody>${rows || '<tr><td colspan="7">无检测项</td></tr>'}</tbody>
   </table>`;
+}
+
+function runHistoryStatusClass(verdict: string): string {
+  if (verdict === 'regress') return 'st-regress';
+  if (verdict === 'minor') return 'st-minor';
+  if (verdict === 'pass') return 'st-pass';
+  return 'st-uncovered';
+}
+
+function renderRunHistoryPanel(model: CustomerReportModel): string {
+  const entries = [...model.runHistory.entries()];
+  if (!entries.length) {
+    return `<div class="empty">尚无 run 截图目录，请先执行 Golden 回归。</div>`;
+  }
+
+  const blocks = entries.map(([scriptKey, rows]) => {
+    const label = friendlyScriptLabel(scriptKey);
+    const body = [...rows]
+      .sort((a, b) => b.runIndex - a.runIndex)
+      .map((r) => {
+        const start = formatScriptStartedAt(r.startedAt) || '—';
+        const dur = formatDurationSec(r.durationSec) || '—';
+        const diff =
+          r.comparedSteps > 0 && r.maxDifference > 0
+            ? `${(r.maxDifference * 100).toFixed(2)}%`
+            : r.comparedSteps > 0
+              ? '0.00%'
+              : '—';
+        const exec = r.ok === false ? '失败' : r.ok === true ? '通过' : '—';
+        const latest = r.isLatest ? '<span class="tag-latest">最新</span>' : '';
+        return `<tr>
+          <td>第 ${r.runIndex} 次${latest}</td>
+          <td>${esc(start)}</td>
+          <td>${esc(dur)}</td>
+          <td>${r.screenshotCount}</td>
+          <td>${r.comparedSteps}</td>
+          <td>${diff}</td>
+          <td>${esc(exec)}</td>
+          <td class="${runHistoryStatusClass(r.verdict)}">${esc(r.verdictLabel)}</td>
+        </tr>`;
+      })
+      .join('');
+    return `
+    <section class="run-history-block">
+      <h3 class="run-history-title">${esc(label)}</h3>
+      <p class="run-history-meta">共 ${rows.length} 次 run · 与验收基线逐步对比；「最新」一轮用于上方结论与检测范围</p>
+      <table class="scope-table run-history-table">
+        <thead>
+          <tr>
+            <th>次序</th>
+            <th>开始时间</th>
+            <th>耗时</th>
+            <th>截图</th>
+            <th>已对比</th>
+            <th>最大差异</th>
+            <th>用例</th>
+            <th>判定</th>
+          </tr>
+        </thead>
+        <tbody>${body}</tbody>
+      </table>
+    </section>`;
+  });
+
+  return blocks.join('');
 }
 
 function renderUncoveredSummary(model: CustomerReportModel): string {
@@ -327,7 +393,13 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
         : `已对比 ${c.comparedSteps} 个步骤，与验收基线一致`;
 
   const runSummary = summarizeScriptRuns([...model.scriptRuns.values()]);
-  const runMetaLine = runSummary ? ` · 脚本运行 ${esc(runSummary)}` : '';
+  const runTotal = totalRunCount(model.runHistory);
+  const runMetaLine = runSummary ? ` · 最新一轮 ${esc(runSummary)}` : '';
+  const runCountLine = runTotal > 0 ? ` · 共 ${runTotal} 次 run` : '';
+  const stepsHint =
+    runTotal > 1
+      ? `最新一轮 ${c.expectedSteps} 步 · 共 ${runTotal} 次 run`
+      : `共 ${c.expectedSteps} 步/轮`;
 
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -340,7 +412,7 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
 <body>
   <div class="header">
     <h1>UI 衰退检测报告</h1>
-    <div class="sub">生成时间 ${esc(model.generatedAt)}${runMetaLine} · 与验收基线逐像素比对</div>
+    <div class="sub">生成时间 ${esc(model.generatedAt)}${runCountLine}${runMetaLine} · 与验收基线逐像素比对</div>
   </div>
   <div class="wrap">
     <div class="verdict ${verdictClass}">
@@ -350,7 +422,7 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
         <div class="stat"><span class="n n-red">${c.regressSteps}</span><span class="l">明显衰退</span><span class="h">步骤级，需修复</span></div>
         <div class="stat"><span class="n n-amber">${c.minorSteps}</span><span class="l">轻微变化</span><span class="h">内容一致，无需处理</span></div>
         <div class="stat"><span class="n n-green">${c.passSteps}</span><span class="l">完全一致</span><span class="h">与基线零差异</span></div>
-        <div class="stat"><span class="n">${c.comparedSteps}</span><span class="l">已对比步骤</span><span class="h">共 ${c.expectedSteps} 步截图</span></div>
+        <div class="stat"><span class="n">${c.comparedSteps}</span><span class="l">已对比步骤</span><span class="h">${esc(stepsHint)}</span></div>
       </div>
       <div class="verdict-foot">合格率 ${passPct}%（已对比步骤中无明显衰退的占比）${c.uncoveredSteps > 0 ? ` · ${c.uncoveredSteps} 步尚无验收基线，未参与判定` : ''}</div>
     </div>
@@ -359,6 +431,7 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
       <button class="tab active" data-tab="conclusion" onclick="switchCustomerTab('conclusion')">结论</button>
       <button class="tab" data-tab="regress" onclick="switchCustomerTab('regress')">对比明细${model.regressionGroups.length > 0 ? ` (${model.regressionGroups.length})` : ''}</button>
       <button class="tab" data-tab="scope" onclick="switchCustomerTab('scope')">检测范围</button>
+      <button class="tab" data-tab="runs" onclick="switchCustomerTab('runs')">运行历史${runTotal > 0 ? ` (${runTotal})` : ''}</button>
     </div>
 
     <div id="panel-conclusion" class="panel active">
@@ -369,8 +442,12 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
       ${minorList}
     </div>
     <div id="panel-scope" class="panel">
-      <p class="sec-lead">下表为本次全部检测项。「未检测」表示该步骤有截图但尚无可配对的验收基线；标记「过程」的是操作中间态截图，不作为验收结论。</p>
+      <p class="sec-lead">下表为<strong>最新一轮</strong> run 的全部检测项。「未检测」表示该步骤有截图但尚无可配对的验收基线；标记「过程」的是操作中间态截图，不作为验收结论。历次 run 见「运行历史」。</p>
       ${renderScopeTable(model)}
+    </div>
+    <div id="panel-runs" class="panel">
+      <p class="sec-lead">每次 Golden 回归对应一行：列出截图数量、与验收基线的逐步对比结果。标「最新」的一轮与上方结论、检测范围一致。</p>
+      ${renderRunHistoryPanel(model)}
     </div>
   </div>
   <script>${customerReportClientJs()}</script>

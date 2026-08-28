@@ -29,11 +29,7 @@ async function createAndSubmit(page: Page, apiGuard: ApiGuard): Promise<string> 
       const list = new RequestListPage(page);
       await list.goto();
       await list.expectLoaded();
-      await list.clickNewRequest();
-
-      const edit = new RequestEditPage(page);
-      await edit.confirmNewRequestModal(env.requestFormName || undefined);
-      await edit.expectEditVisible();
+      const edit = await list.startNewRequest(env.requestFormName || undefined);
       await edit.fillReason(reason);
       await edit.save(env.requestApprover || undefined);
       await edit.submit(env.requestApprover || undefined);

@@ -7,7 +7,7 @@
  *   npm run promote-baseline -- --script 260612/xxx --latest --only-if-missing
  *   npm run promote-baseline -- --script 260612/xxx --latest --step=step-2-approval-list__normal.png
  */
-import { findLatestRunTimestamp, hasGoldenBaseline, promoteRunToGolden, promoteStepsToGolden, revertGolden } from './baseline-manager.js';
+import { findLatestRunTimestamp, hasGoldenBaseline, promoteRunToGolden, promoteStepsToGolden, revertGolden, clearGoldenBaseline, clearFlowGoldenBaselines } from './baseline-manager.js';
 
 function printHelp(): void {
   console.log(`用法: npm run promote-baseline -- [选项]
@@ -22,6 +22,8 @@ function printHelp(): void {
   --expected-revision=<n>       乐观锁：与当前 .baseline-meta.json revision 一致才写入
   --promoted-by=<name>            记录晋升来源（如 test-job:nightly）
   --revert                      撤销 Golden
+  --clear                       清空 Golden 基线目录（含 screenshots-baseline 与单次 run 截图）
+  --scope=flows                 配合 --clear：清空全部 flows 基线
   -h, --help
 `);
 }
@@ -31,6 +33,8 @@ function parseArgs(argv: string[]): {
   run?: string;
   browser: string;
   revert: boolean;
+  clear: boolean;
+  scope?: string;
   latest: boolean;
   onlyIfMissing: boolean;
   steps: string[];
@@ -41,6 +45,8 @@ function parseArgs(argv: string[]): {
   let run: string | undefined;
   let browser = 'chrome';
   let revert = false;
+  let clear = false;
+  let scope: string | undefined;
   let latest = false;
   let onlyIfMissing = false;
   const steps: string[] = [];
@@ -54,6 +60,14 @@ function parseArgs(argv: string[]): {
     }
     if (arg === '--revert') {
       revert = true;
+      continue;
+    }
+    if (arg === '--clear') {
+      clear = true;
+      continue;
+    }
+    if (arg.startsWith('--scope=')) {
+      scope = arg.slice('--scope='.length).trim();
       continue;
     }
     if (arg === '--latest') {
@@ -92,16 +106,28 @@ function parseArgs(argv: string[]): {
     }
   }
 
-  return { script, run, browser, revert, latest, onlyIfMissing, steps, expectedRevision, promotedBy };
+  return { script, run, browser, revert, clear, scope, latest, onlyIfMissing, steps, expectedRevision, promotedBy };
 }
 
 function main(): void {
   const opts = parseArgs(process.argv.slice(2));
 
+  if (opts.clear && opts.scope === 'flows') {
+    const r = clearFlowGoldenBaselines();
+    console.log(`✅ 已清空 flows 基线：删除 ${r.removedPng} 张基线 PNG，${r.removedRunPng} 张 run 截图`);
+    return;
+  }
+
   if (!opts.script) {
-    console.error('❌ 需要 --script=<iteration/script>');
+    console.error('❌ 需要 --script=<iteration/script>（--clear --scope=flows 除外）');
     printHelp();
     process.exit(1);
+  }
+
+  if (opts.clear) {
+    const r = clearGoldenBaseline(opts.script);
+    console.log(`✅ 已清空基线 ${opts.script}：删除 ${r.removedPng} 张基线 PNG，${r.removedRunPng} 张 run 截图`);
+    return;
   }
 
   if (opts.revert) {

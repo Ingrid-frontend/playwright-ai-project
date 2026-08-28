@@ -85,10 +85,7 @@ test.describe('申请单 · 全流程', () => {
     await flowStep('新建并提交申请单', async () => {
       await list.goto();
       await list.expectLoaded();
-      await list.clickNewRequest();
-      const edit = new RequestEditPage(page);
-      await edit.confirmNewRequestModal(env.requestFormName || undefined);
-      await edit.expectEditVisible();
+      const edit = await list.startNewRequest(env.requestFormName || undefined);
       await edit.save(env.requestApprover || undefined, reason);
       await edit.submit(env.requestApprover || undefined);
     }, { snapshot: 'request-submit' });

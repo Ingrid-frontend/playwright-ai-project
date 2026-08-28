@@ -348,6 +348,20 @@ body {
 .scope-table td.st-minor { color: #a37200; }
 .scope-table td.st-pass { color: var(--green); }
 .scope-table td.st-uncovered { color: var(--muted); }
+.run-history-block { margin-bottom: 20px; }
+.run-history-title { font-size: 15px; font-weight: 650; margin: 0 0 6px; }
+.run-history-meta { margin: 0 0 10px; font-size: 12px; color: var(--muted); }
+.run-history-table { margin-bottom: 0; }
+.tag-latest {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #e7f5ff;
+  color: #1971c2;
+  font-size: 11px;
+  font-weight: 600;
+}
 .tag-process {
   display: inline-block;
   margin-left: 6px;

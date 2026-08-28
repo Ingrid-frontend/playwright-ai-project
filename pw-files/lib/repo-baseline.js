@@ -52,6 +52,52 @@ async function runRepoPromoteBaseline(ws, session, msg, deps) {
   logLine(ws, '[repo] Golden 基线已更新', 'ok');
 }
 
+async function runRepoClearBaseline(ws, session, msg, deps) {
+  const { resolveRepoRoot, buildRepoSpawnEnv, spawn } = deps;
+  const repoRoot = resolveRepoRoot();
+  const scriptKey = String(msg.scriptKey || msg.script || '').trim();
+  const scope = String(msg.scope || '').trim();
+
+  const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const args = ['run', 'promote-baseline', '--', '--clear'];
+  if (scope === 'flows') {
+    args.push('--scope=flows');
+    logLine(ws, '[repo] 清空 flows 基线 screenshots-baseline/flows/', 'warn');
+  } else {
+    if (!scriptKey) {
+      send(ws, 'error', { message: '清空基线需要 scriptKey' });
+      send(ws, 'repo:clear-baseline:done', { ok: false });
+      return;
+    }
+    args.push(`--script=${scriptKey}`);
+    logLine(ws, `[repo] 清空基线 ${scriptKey}`, 'warn');
+  }
+
+  const proc = spawn(npmCmd, args, {
+    cwd: repoRoot,
+    env: buildRepoSpawnEnv(session),
+    shell: false,
+  });
+  proc.stdout.on('data', (d) => {
+    const t = stripAnsi(d.toString());
+    if (t.trim()) logLine(ws, t.trimEnd(), 'dim');
+  });
+  proc.stderr.on('data', (d) => {
+    const t = stripAnsi(d.toString());
+    if (t.trim()) logLine(ws, t.trimEnd(), 'warn');
+  });
+  const exitCode = await new Promise((resolve) => {
+    proc.on('close', resolve);
+  });
+  if (exitCode !== 0) {
+    send(ws, 'error', { message: `清空基线失败，退出码 ${exitCode}` });
+    send(ws, 'repo:clear-baseline:done', { ok: false, scriptKey, scope });
+    return;
+  }
+  send(ws, 'repo:clear-baseline:done', { ok: true, scriptKey, scope });
+  logLine(ws, '[repo] 基线与 run 截图已清空', 'ok');
+}
+
 async function runRepoVisualReview(ws, session, msg, deps) {
   const { resolveRepoRoot, buildRepoSpawnEnv, spawn } = deps;
   const repoRoot = resolveRepoRoot();
@@ -106,4 +152,4 @@ async function runRepoVisualReview(ws, session, msg, deps) {
   logLine(ws, '[repo] Visual Review 已记录', 'ok');
 }
 
-module.exports = { runRepoPromoteBaseline, runRepoVisualReview };
+module.exports = { runRepoPromoteBaseline, runRepoClearBaseline, runRepoVisualReview };

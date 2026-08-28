@@ -7,7 +7,7 @@ import {
 import { isActionableNature, natureLabel, type ChangeNature } from './change-nature.js';
 import { buildPlainDescription } from './customer-report-plain.js';
 import { friendlyScriptLabel, friendlyStepLabel } from './customer-report-naming.js';
-import type { ScriptRunMeta } from './customer-report-run-meta.js';
+import type { ScriptRunMeta, ScriptRunHistoryEntry } from './customer-report-run-meta.js';
 
 export type CustomerStatus = CoverageStatus;
 
@@ -91,8 +91,10 @@ export type CustomerIssueGroup = {
 
 export type CustomerReportModel = {
   generatedAt: string;
-  /** 各业务流程脚本最近一次运行耗时 */
+  /** 各业务流程脚本最近一次运行元信息（开始时间等） */
   scriptRuns: Map<string, ScriptRunMeta>;
+  /** 各脚本历次 run 与验收基线的对比汇总 */
+  runHistory: Map<string, ScriptRunHistoryEntry[]>;
   coverage: CoverageStats;
   pages: CustomerPageCard[];
   regressions: CustomerPageCard[];
@@ -239,6 +241,7 @@ export function buildCustomerReportModel(
   coverage: CoverageStats,
   generatedAt?: string,
   scriptRuns: Map<string, ScriptRunMeta> = new Map(),
+  runHistory: Map<string, ScriptRunHistoryEntry[]> = new Map(),
 ): CustomerReportModel {
   const groups = new Map<string, CoverageSlot[]>();
   for (const slot of coverage.slots) {
@@ -283,6 +286,7 @@ export function buildCustomerReportModel(
   return {
     generatedAt: generatedAt ?? new Date().toLocaleString('zh-CN', { hour12: false }),
     scriptRuns,
+    runHistory,
     coverage,
     pages,
     regressions,

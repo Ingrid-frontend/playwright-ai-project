@@ -2,7 +2,8 @@ import { test as base, type BrowserContext, type Page } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'node:url';
-import { appendApiFailures, initWorkerRun } from '../../src/utils/flow-run-report.js';
+import { savePlaywrightVideo } from '../../src/runtime/flow-replay.js';
+import { appendApiFailures, flowRunsDir, initWorkerRun } from '../../src/utils/flow-run-report.js';
 import { HomePage } from '../pages/home.page';
 import { LoginPage } from '../pages/login.page';
 import { RequestListPage } from '../pages/request-list.page';
@@ -75,7 +76,15 @@ export const test = base.extend<AppFixtures, WorkerFixtures>({
         },
       });
       await use(context);
+      const page = context.pages()[0];
+      const video = page?.video();
       await context.close();
+      const runId = workerRun?.runId || process.env.FLOW_RUN_ID?.trim();
+      if (video && runId) {
+        const outDir = path.join(process.cwd(), flowRunsDir(FLOW_ID), runId);
+        fs.mkdirSync(outDir, { recursive: true });
+        await savePlaywrightVideo(video, path.join(outDir, 'flow.webm'));
+      }
     },
     { scope: 'worker' },
   ],

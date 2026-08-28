@@ -108,6 +108,60 @@ function runFlowUiAudit(repoRoot, flowId, limit = 24) {
   ]);
 }
 
+function flowRunVideoAbs(repoRoot, flowId, runId) {
+  return path.join(repoRoot, 'results', 'flow-runs', flowId, runId, 'flow.webm');
+}
+
+function flowRunReplayAbs(repoRoot, flowId, runId) {
+  return path.join(repoRoot, 'results', 'flow-runs', flowId, runId, 'flow.html');
+}
+
+function resolveFlowRunVideoRel(repoRoot, flowId, ...runIds) {
+  for (const id of runIds) {
+    if (!id) continue;
+    const abs = flowRunVideoAbs(repoRoot, flowId, id);
+    if (fs.existsSync(abs)) {
+      return path.relative(repoRoot, abs).replace(/\\/g, '/');
+    }
+  }
+  return '';
+}
+
+function ensureVideoReplayHtml(repoRoot, flowId, runId, title) {
+  const htmlAbs = flowRunReplayAbs(repoRoot, flowId, runId);
+  const videoAbs = flowRunVideoAbs(repoRoot, flowId, runId);
+  if (!fs.existsSync(videoAbs) || fs.existsSync(htmlAbs)) return;
+  fs.mkdirSync(path.dirname(htmlAbs), { recursive: true });
+  const safeTitle = String(title || '流程回放').replace(/[<>&"]/g, '');
+  fs.writeFileSync(
+    htmlAbs,
+    `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${safeTitle}</title>
+<style>
+  body { margin: 0; background: #0a0c10; color: #eef2f8; font: 13px/1.5 ui-sans-serif, system-ui, sans-serif; }
+  header { padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,.08); }
+  h1 { margin: 0; font-size: 15px; font-weight: 650; }
+  .hint { color: #8899b2; margin-top: 4px; }
+  video { display: block; width: 100%; max-height: 85vh; background: #000; }
+</style>
+</head>
+<body>
+<header>
+  <h1>${safeTitle}</h1>
+  <div class="hint">全程录像</div>
+</header>
+<video src="./flow.webm" controls autoplay></video>
+</body>
+</html>
+`,
+    'utf-8',
+  );
+}
+
 function alignRunTimes(payload) {
   const finishedAt = payload.finishedAt || new Date().toISOString();
   const durationSec = Number(payload.duration) || 0;
@@ -139,10 +193,14 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
   let customerReportRel = '';
   let uiAuditReportRel = '';
   let replayReportRel = '';
+  let videoReportRel = '';
   let baselinePromoted = false;
 
-  if (!payload.cancelled && hasFlowScreenshots(repoRoot)) {
-    if (pipeline === 'golden' || pipeline === 'default') {
+  videoReportRel = resolveFlowRunVideoRel(repoRoot, flowId, runId, payload.runId);
+
+  if (!payload.cancelled) {
+    const hasShots = hasFlowScreenshots(repoRoot);
+    if (hasShots && (pipeline === 'golden' || pipeline === 'default')) {
       const cmp = runNpmScript(repoRoot, 'compare-flow-screenshots');
       if (cmp.ok && fs.existsSync(path.join(repoRoot, FLOW_COMPARE_REL))) {
         compareReportRel = FLOW_COMPARE_REL;
@@ -152,17 +210,21 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
         customerReportRel = FLOW_CUSTOMER_REL;
       }
     }
-    const replayArgs = [
-      `--flow=${flowId}`,
-      `--run=${runId}`,
-      `--env=${payload.env || 'dev'}`,
-      `--spec=${payload.spec || ''}`,
-    ];
-    if (payload.roleSlug) replayArgs.push(`--role=${payload.roleSlug}`);
-    runNpmScript(repoRoot, 'report:flow-replay', replayArgs);
-    const replayAbs = path.join(repoRoot, 'results', 'flow-runs', flowId, runId, 'flow.html');
-    if (fs.existsSync(replayAbs)) {
-      replayReportRel = path.relative(repoRoot, replayAbs).replace(/\\/g, '/');
+    if (hasShots || videoReportRel) {
+      const replayArgs = [
+        `--flow=${flowId}`,
+        `--run=${runId}`,
+        `--env=${payload.env || 'dev'}`,
+        `--spec=${payload.spec || ''}`,
+      ];
+      if (payload.roleSlug) replayArgs.push(`--role=${payload.roleSlug}`);
+      runNpmScript(repoRoot, 'report:flow-replay', replayArgs);
+      ensureVideoReplayHtml(repoRoot, flowId, runId, `${flowLabel} · ${specSlug(payload.spec || '')}`);
+      const replayAbs = flowRunReplayAbs(repoRoot, flowId, runId);
+      if (fs.existsSync(replayAbs)) {
+        replayReportRel = path.relative(repoRoot, replayAbs).replace(/\\/g, '/');
+      }
+      videoReportRel = resolveFlowRunVideoRel(repoRoot, flowId, runId, payload.runId);
     }
   }
 
@@ -207,6 +269,7 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     customerReportRel: customerReportRel || undefined,
     uiAuditReportRel: uiAuditReportRel || undefined,
     replayReportRel: replayReportRel || undefined,
+    videoReportRel: videoReportRel || undefined,
     baselinePromoted: baselinePromoted || undefined,
     summaryReportRel: FLOW_SUMMARY_REL,
     apiFailureLogRel: apiFailures.length
@@ -233,6 +296,7 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     customerReportOpenPath: customerReportRel ? `/repo-report/${customerReportRel}` : '',
     uiAuditReportOpenPath: uiAuditReportRel ? `/repo-report/${UI_AUDIT_REPORT_REL.split(path.sep).join('/')}` : '',
     replayReportOpenPath: replayReportRel ? `/repo-report/${replayReportRel}` : '',
+    videoReportOpenPath: videoReportRel ? `/repo-report/${videoReportRel}` : '',
     summaryReportOpenPath: `/repo-report/${FLOW_SUMMARY_REL}`,
     apiFailureCount,
     apiFailures,

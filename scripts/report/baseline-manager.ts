@@ -502,6 +502,90 @@ export function revertGolden(scriptKey: string, browser?: string): number {
   return removed;
 }
 
+function countPngUnder(dir: string): number {
+  if (!fs.existsSync(dir)) return 0;
+  let n = 0;
+  const walk = (d: string) => {
+    for (const name of fs.readdirSync(d)) {
+      const p = path.join(d, name);
+      const st = fs.statSync(p);
+      if (st.isDirectory()) walk(p);
+      else if (name.endsWith('.png')) n++;
+    }
+  };
+  walk(dir);
+  return n;
+}
+
+export const SCREENSHOTS_ROOT = 'screenshots';
+export const DIFFS_ROOT = 'results/diffs';
+
+function assertSafeScriptKey(scriptKey: string): string {
+  const key = String(scriptKey || '').trim().replace(/^\/+/, '');
+  if (!key || key.includes('..')) {
+    throw new Error('无效的 scriptKey');
+  }
+  return key;
+}
+
+/** 删除 screenshots/<scriptKey> 下单次 run 截图及 results/diffs 缓存 */
+export function clearRunScreenshots(scriptKey: string): { removedPng: number } {
+  const key = assertSafeScriptKey(scriptKey);
+  const shotDir = path.join(SCREENSHOTS_ROOT, key);
+  const removedPng = countPngUnder(shotDir);
+  if (fs.existsSync(shotDir)) {
+    fs.rmSync(shotDir, { recursive: true, force: true });
+  }
+  const diffDir = path.join(DIFFS_ROOT, key);
+  if (fs.existsSync(diffDir)) {
+    fs.rmSync(diffDir, { recursive: true, force: true });
+  }
+  return { removedPng };
+}
+
+/** 删除 screenshots/flows 下全部单次 run 截图及对应 diff 缓存 */
+export function clearFlowRunScreenshots(): { removedPng: number } {
+  const shotDir = path.join(SCREENSHOTS_ROOT, 'flows');
+  const removedPng = countPngUnder(shotDir);
+  if (fs.existsSync(shotDir)) {
+    fs.rmSync(shotDir, { recursive: true, force: true });
+  }
+  const diffDir = path.join(DIFFS_ROOT, 'flows');
+  if (fs.existsSync(diffDir)) {
+    fs.rmSync(diffDir, { recursive: true, force: true });
+  }
+  return { removedPng };
+}
+
+/** 删除 screenshots-baseline/<scriptKey> 整棵目录（不依赖 manifest），并清理单次 run 截图 */
+export function clearGoldenBaseline(scriptKey: string): { removedPng: number; removedRunPng: number } {
+  const key = assertSafeScriptKey(scriptKey);
+  const base = path.join(BASELINE_ROOT, key);
+  const removedPng = countPngUnder(base);
+  if (fs.existsSync(base)) {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+  const manifest = loadManifest();
+  manifest.entries = manifest.entries.filter((e) => e.scriptKey !== key);
+  saveManifest(manifest);
+  const { removedPng: removedRunPng } = clearRunScreenshots(key);
+  return { removedPng, removedRunPng };
+}
+
+/** 删除 screenshots-baseline/flows/ 下全部 flow 基线，并清理单次 run 截图 */
+export function clearFlowGoldenBaselines(): { removedPng: number; removedRunPng: number } {
+  const base = path.join(BASELINE_ROOT, 'flows');
+  const removedPng = countPngUnder(base);
+  if (fs.existsSync(base)) {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+  const manifest = loadManifest();
+  manifest.entries = manifest.entries.filter((e) => !String(e.scriptKey || '').startsWith('flows/'));
+  saveManifest(manifest);
+  const { removedPng: removedRunPng } = clearFlowRunScreenshots();
+  return { removedPng, removedRunPng };
+}
+
 export function resolveScreenshotPath(
   screenshotsRoot: string,
   scriptKey: string,

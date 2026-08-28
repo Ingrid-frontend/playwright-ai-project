@@ -77,18 +77,27 @@ function main() {
     process.exit(1);
   }
 
+  const outDir = path.join(flowRunsDir(opts.flowId), opts.runId);
+  fs.mkdirSync(outDir, { recursive: true });
+  const videoAbs = path.join(outDir, 'flow.webm');
+  const hasVideo = fs.existsSync(videoAbs);
+
   const root = flowScreenshotRoot(opts.flowId, opts.env, opts.spec, opts.roleSlug || undefined);
   const runDir = resolveRunDir(root, opts.runId);
   const frames = collectFrames(runDir);
-  if (!frames.length) {
-    console.log('无步骤截图，跳过回放生成');
+  if (!frames.length && !hasVideo) {
+    console.log('无步骤截图或录像，跳过回放生成');
     process.exit(0);
   }
 
-  const outDir = path.join(flowRunsDir(opts.flowId), opts.runId);
-  fs.mkdirSync(outDir, { recursive: true });
   const title = opts.title || `${flowLabel(opts.flowId)} · ${specSlug(opts.spec)}`;
-  const { replayRel } = writeFlowReplay({ outputDir: outDir, title, frames });
+  const { replayRel, videoRel } = writeFlowReplay({
+    outputDir: outDir,
+    title,
+    frames,
+    videoAbs: hasVideo ? videoAbs : undefined,
+  });
+  if (videoRel) console.log(`已关联录像: ${videoRel}`);
   if (replayRel) console.log(`已生成回放: ${replayRel}`);
 }
 

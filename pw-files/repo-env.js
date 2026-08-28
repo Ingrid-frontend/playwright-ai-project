@@ -132,6 +132,30 @@ function storageExists(repoRoot, storageRel) {
   }
 }
 
+function listKnownProfileIds(repoRoot, envId) {
+  const cfg = getEnvAccountConfig(repoRoot, envId);
+  const keys = Object.keys(cfg?.profiles || {});
+  if (keys.length) return keys;
+  return ['default', 'golden', 'write'];
+}
+
+/** 返回环境中首个已落盘的 profile 登录态（含 golden / write 子路径） */
+function findAvailableProfileStorage(repoRoot, envId) {
+  for (const id of listKnownProfileIds(repoRoot, envId)) {
+    const rel = resolveStorageStateRelDirect(repoRoot, envId, id);
+    if (storageExists(repoRoot, rel)) {
+      return { profileId: id, storageState: rel };
+    }
+  }
+  return null;
+}
+
+function envHasAnyStorage(repoRoot, envId) {
+  const base = getBaseEnvConfig(repoRoot, envId);
+  if (base?.storageState && storageExists(repoRoot, base.storageState)) return true;
+  return Boolean(findAvailableProfileStorage(repoRoot, envId));
+}
+
 /** 批量查询 profile 登录态（用于 Golden / write 双线） */
 function normalizeEnvEntryToProfiles(entry) {
   if (!entry || typeof entry !== 'object') return null;
@@ -522,6 +546,8 @@ module.exports = {
   maskUsername,
   listAccountProfiles,
   storageExists,
+  findAvailableProfileStorage,
+  envHasAnyStorage,
   buildRecordingAccountHeader,
   prependRecordingAccountHeader,
 };

@@ -16,6 +16,25 @@ export type ScriptRunMeta = {
   durationSec?: number;
 };
 
+export type ScriptRunHistoryEntry = {
+  /** 从 1 开始，按开始时间升序 */
+  runIndex: number;
+  runId: string;
+  startedAt?: string;
+  finishedAt?: string;
+  durationSec?: number;
+  screenshotCount: number;
+  comparedSteps: number;
+  passSteps: number;
+  minorSteps: number;
+  regressSteps: number;
+  maxDifference: number;
+  verdict: 'pass' | 'minor' | 'regress' | 'uncovered' | 'empty';
+  verdictLabel: string;
+  isLatest: boolean;
+  ok?: boolean;
+};
+
 const FLOW_IDS: FlowId[] = ['request-flow', 'approval-flow'];
 
 function fmtClock(iso?: string): string {
@@ -23,6 +42,13 @@ function fmtClock(iso?: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleTimeString('zh-CN', { hour12: false });
+}
+
+export function formatScriptStartedAt(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString('zh-CN', { hour12: false });
 }
 
 export function formatDurationSec(sec?: number): string {
@@ -94,7 +120,13 @@ function parseRunDirStartedAt(runDirName: string): string | undefined {
 }
 
 function latestRunIdFromScreenshots(scriptPath: string): string {
-  if (!fs.existsSync(scriptPath)) return '';
+  const ids = listRunIdsFromScreenshots(scriptPath);
+  return ids[ids.length - 1] || '';
+}
+
+/** 列出 scriptPath 下全部 run 目录名，按开始时间升序 */
+export function listRunIdsFromScreenshots(scriptPath: string): string[] {
+  if (!fs.existsSync(scriptPath)) return [];
 
   let runRoot = '';
   for (const name of fs.readdirSync(scriptPath).filter((f) => !f.startsWith('.'))) {
@@ -103,20 +135,93 @@ function latestRunIdFromScreenshots(scriptPath: string): string {
     runRoot = p;
     break;
   }
-  if (!runRoot) return '';
+  if (!runRoot) return [];
 
-  let latestRun = '';
-  let latestKey = -1;
+  const hits: Array<{ id: string; key: number }> = [];
   for (const name of fs.readdirSync(runRoot).filter((f) => !f.startsWith('.'))) {
     const p = path.join(runRoot, name);
     if (!fs.statSync(p).isDirectory()) continue;
-    const key = fs.statSync(p).mtimeMs;
-    if (key > latestKey) {
-      latestKey = key;
-      latestRun = name;
-    }
+    const key = runTimestampSortKey(name) || fs.statSync(p).mtimeMs;
+    hits.push({ id: name, key });
   }
-  return latestRun;
+  hits.sort((a, b) => a.key - b.key || a.id.localeCompare(b.id));
+  return hits.map((h) => h.id);
+}
+
+function runTimestampSortKey(timestamp: string): number {
+  const iso = timestamp.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})/);
+  if (iso) {
+    const t = Date.parse(`${iso[1]}-${iso[2]}-${iso[3]}T${iso[4]}:${iso[5]}:${iso[6]}Z`);
+    if (!Number.isNaN(t)) return t;
+  }
+  return 0;
+}
+
+export function countRunScreenshots(scriptPath: string, runId: string): number {
+  if (!scriptPath || !runId) return 0;
+  const segments = findRunRootSegments(scriptPath);
+  const runDir = path.join(scriptPath, ...segments, runId);
+  if (!fs.existsSync(runDir)) return 0;
+  let n = 0;
+  const walk = (dir: string) => {
+    for (const name of fs.readdirSync(dir)) {
+      const p = path.join(dir, name);
+      const st = fs.statSync(p);
+      if (st.isDirectory()) {
+        walk(p);
+        continue;
+      }
+      if (name.endsWith('.png') && /^step-\d+/.test(name)) n++;
+    }
+  };
+  walk(runDir);
+  return n;
+}
+
+function metaForRun(manifests: FlowRunManifest[], scriptKey: string, runId: string): FlowRunManifest | undefined {
+  return manifests.find((m) => m.runId === runId && manifestScriptKey(m) === scriptKey);
+}
+
+export function resolveScriptRunHistory(
+  scriptKeys: string[],
+  scanTargets: Array<{ testDir: string; scriptPath: string }> = [],
+): Map<string, ScriptRunHistoryEntry[]> {
+  const unique = [...new Set(scriptKeys.filter(Boolean))];
+  const out = new Map<string, ScriptRunHistoryEntry[]>();
+  const manifests = loadFlowManifestRows();
+  const pathByKey = new Map(scanTargets.map((t) => [t.testDir, t.scriptPath]));
+
+  for (const scriptKey of unique) {
+    const scriptPath = pathByKey.get(scriptKey) || '';
+    if (!scriptPath) continue;
+    const runIds = listRunIdsFromScreenshots(scriptPath);
+    const rows: ScriptRunHistoryEntry[] = [];
+    runIds.forEach((runId, i) => {
+      const manifest = metaForRun(manifests, scriptKey, runId);
+      const startedAt = manifest?.startedAt || parseRunDirStartedAt(runId);
+      const finishedAt = manifest?.finishedAt;
+      const durationSec = manifest?.durationSec;
+      rows.push({
+        runIndex: i + 1,
+        runId,
+        startedAt,
+        finishedAt,
+        durationSec,
+        screenshotCount: countRunScreenshots(scriptPath, runId),
+        comparedSteps: 0,
+        passSteps: 0,
+        minorSteps: 0,
+        regressSteps: 0,
+        maxDifference: 0,
+        verdict: 'empty',
+        verdictLabel: '待对比',
+        isLatest: i === runIds.length - 1,
+        ok: manifest?.ok,
+      });
+    });
+    if (rows.length) out.set(scriptKey, rows);
+  }
+  return out;
 }
 
 function inferRunMetaFromScreenshots(scriptKey: string, scriptPath: string): ScriptRunMeta | null {

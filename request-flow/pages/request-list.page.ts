@@ -1,4 +1,5 @@
 import { type FrameLocator, type Locator, type Page, expect } from '@playwright/test';
+import { RequestEditPage } from './request-edit.page';
 import { waitForAppRoot, type AppRoot } from '../utils/app-frame';
 import {
   DOC_NO_RE,
@@ -106,18 +107,30 @@ export class RequestListPage {
 
   /** 清掉顶栏单号搜索与高级筛选，避免 Golden 串行用例读到空列表 */
   async clearListQuery() {
-    const input = this.searchInput();
-    if (await input.isVisible({ timeout: 2_000 }).catch(() => false)) {
-      const val = ((await input.inputValue().catch(() => '')) || '').trim();
-      if (val) {
-        const respP = this.waitListApi();
-        await input.click();
-        await input.fill('');
-        await input.press('Enter').catch(() => undefined);
-        await respP;
-      }
-    }
+    await this.clearDocNoSearch();
     await this.resetFilters();
+    await this.waitListSettled();
+  }
+
+  private async clearDocNoSearch() {
+    const input = this.searchInput();
+    if (!(await input.isVisible({ timeout: 2_000 }).catch(() => false))) return;
+    const val = ((await input.inputValue().catch(() => '')) || '').trim();
+    if (!val) return;
+
+    const clearBtn = input
+      .locator('xpath=ancestor::*[contains(@class,"ant-input-affix-wrapper") or contains(@class,"ant-input-group")][1]')
+      .locator('.ant-input-clear-icon, .anticon-close-circle')
+      .first();
+    const respP = this.waitListApi();
+    if (await clearBtn.isVisible({ timeout: 500 }).catch(() => false)) {
+      await clearBtn.click();
+    } else {
+      await input.click();
+      await input.fill('');
+      await input.press('Enter').catch(() => undefined);
+    }
+    await respP;
     await this.waitListSettled();
   }
 
@@ -185,6 +198,7 @@ export class RequestListPage {
   }
 
   async search(keyword: string) {
+    await this.clearListQuery();
     const input = this.searchInput();
     await expect(input).toBeVisible({ timeout: 15_000 });
     const respP = this.waitListApi();
@@ -238,6 +252,7 @@ export class RequestListPage {
   }
 
   async filterByReason(reason: string) {
+    await this.clearListQuery();
     await this.openFilterPanel();
     const input = this.reasonFilterInput();
     await expect(input, '筛选区未展开可见的「事由」输入框').toBeVisible({ timeout: 10_000 });
@@ -272,6 +287,33 @@ export class RequestListPage {
       .first();
   }
 
+  async reasonKeywordExists(keyword: string): Promise<boolean> {
+    if (!keyword) return false;
+    try {
+      const idx = await this.columnIndex(FILTER_LABELS.reason);
+      const rows = this.dataRows();
+      const n = await rows.count();
+      for (let i = 0; i < Math.min(n, 20); i += 1) {
+        const text = ((await rows.nth(i).locator('td').nth(idx).innerText()) || '')
+          .replace(/\s+/g, ' ')
+          .trim();
+        if (text.includes(keyword)) return true;
+      }
+    } catch {
+      return false;
+    }
+    return false;
+  }
+
+  async expectReasonFilterResult(keyword: string) {
+    await expect
+      .poll(async () => await this.dataRows().count().catch(() => 0), {
+        timeout: 20_000,
+        message: `事由筛选「${keyword}」后列表无数据行`,
+      })
+      .toBeGreaterThan(0);
+  }
+
   async expectRowContains(text: string) {
     await expect(this.rowByCode(text), `筛选后未看到「${text}」`).toBeVisible({
       timeout: 20_000,
@@ -285,7 +327,48 @@ export class RequestListPage {
     await this.page.waitForTimeout(1_000);
   }
 
+  /** 关掉仍打开的详情/全屏，避免「新建」落到旧单 */
+  private async closeDetailIfOpen() {
+    const back = this.scope().getByRole('button', { name: /^返\s*回$/ }).filter({ visible: true }).first();
+    if (await back.isVisible({ timeout: 1_500 }).catch(() => false)) {
+      await back.click();
+      await this.waitListSettled();
+      return;
+    }
+    const close = this.scope()
+      .locator(
+        '.slide-frame.slide-frame-open .anticon-close, .full-width-slideframe .ant-modal-close, [aria-label="Close"]',
+      )
+      .filter({ visible: true })
+      .first();
+    if (await close.isVisible({ timeout: 1_000 }).catch(() => false)) {
+      await close.click();
+      await this.waitListSettled();
+    }
+  }
+
+  /**
+   * 新建空白申请单。若汇联易复用「编辑中」草稿（单号已存在），先删草稿再重试一次。
+   */
+  async startNewRequest(formName?: string): Promise<RequestEditPage> {
+    await this.closeDetailIfOpen();
+    const edit = new RequestEditPage(this.page);
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await this.clickNewRequest();
+      await edit.confirmNewRequestModal(formName);
+      await edit.expectEditVisible();
+      const docNo = await edit.tryReadDocNo();
+      if (!docNo) return edit;
+      await edit.deleteDraftIfPresent();
+      await this.goto();
+      await this.expectLoaded();
+    }
+    const left = await edit.tryReadDocNo();
+    throw new Error(left ? `新建仍复用草稿单号 ${left}` : '新建后仍落到旧草稿');
+  }
+
   async clickNewRequest() {
+    await this.closeDetailIfOpen();
     const btn = this.scope().getByRole('button', { name: NEW_REQUEST_BTN }).first();
     await expect(btn, '未找到「新建申请单」按钮').toBeVisible({ timeout: 15_000 });
 

@@ -35,12 +35,11 @@ function loadRepoEnvironments(repoRoot) {
   const environments = Object.keys(raw).map((id) => {
     const c = raw[id] || {};
     const storageRel = typeof c.storageState === 'string' ? c.storageState : '';
-    const storageAbs = storageRel ? path.resolve(repoRoot, storageRel) : '';
     return {
       id,
       baseURL: typeof c.baseURL === 'string' ? c.baseURL : '',
       storageState: storageRel,
-      hasStorage: Boolean(storageAbs && fs.existsSync(storageAbs)),
+      hasStorage: repoEnv.envHasAnyStorage(repoRoot, id),
     };
   });
   const defaultEnv =

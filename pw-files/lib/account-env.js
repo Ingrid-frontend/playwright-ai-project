@@ -19,6 +19,23 @@ function createAccountEnvActions(deps) {
     specMeta,
   } = deps;
 
+  function logMissingStorageHint(ws, repoRoot, envId, storageRel) {
+    const avail = repoEnv.findAvailableProfileStorage(repoRoot, envId);
+    if (avail) {
+      logLine(
+        ws,
+        `[env] ${envId} 默认路径无登录态（${storageRel || '未配置'}）；可用角色 ${avail.profileId} → ${avail.storageState}`,
+        'dim',
+      );
+      return;
+    }
+    logLine(
+      ws,
+      `[env] ${envId} 尚无登录态。请在侧栏「账号」登录，或在申请单流程 Golden/调试 Tab 为角色完成登录`,
+      'warn',
+    );
+  }
+
   function sendAccountInfo(ws, session, repoRoot, repoReady) {
     if (!repoReady) {
       send(ws, 'account:info', {
@@ -79,6 +96,7 @@ function createAccountEnvActions(deps) {
       repoReady: true,
       baseURL: current?.baseURL || '',
       hasStorage: current?.hasStorage ?? false,
+      hasAnyStorage: repoEnv.envHasAnyStorage(repoRoot, session.playwrightEnv),
       storageState: current?.storageState || '',
       accountProfile: profile,
     });
@@ -145,8 +163,8 @@ function createAccountEnvActions(deps) {
       hasStorage: entry?.hasStorage ?? false,
     });
     logLine(ws, `[account] 已切换为 ${envId} / ${resolved}`, 'info');
-    if (!entry?.hasStorage && entry?.storageState) {
-      logLine(ws, `[account] 未找到 ${entry.storageState}，请开始录制后在浏览器登录并停止录制`, 'warn');
+    if (!entry?.hasStorage && entry?.storageState && !repoEnv.envHasAnyStorage(repoRoot, envId)) {
+      logMissingStorageHint(ws, repoRoot, envId, entry.storageState);
     }
   }
 
@@ -242,18 +260,15 @@ function createAccountEnvActions(deps) {
     const cfg = repoEnv.getEnvAccountConfig(repoRoot, entry.id);
     session.accountProfile = cfg?.defaultProfile || 'default';
     const resolved = getEnvEntryResolved(repoRoot, entry.id, session.accountProfile);
-    if (!resolved?.hasStorage) {
-      logLine(
-        ws,
-        `[env] ${entry.id} 的 storageState 不存在: ${resolved?.storageState || entry.storageState}，请开始录制后在浏览器登录并停止录制`,
-        'warn',
-      );
+    if (!resolved?.hasStorage && !repoEnv.envHasAnyStorage(repoRoot, entry.id)) {
+      logMissingStorageHint(ws, repoRoot, entry.id, resolved?.storageState || entry.storageState);
     }
     send(ws, 'env:changed', {
       env: entry.id,
       baseURL: entry.baseURL,
       storageState: resolved?.storageState || '',
       hasStorage: resolved?.hasStorage ?? false,
+      hasAnyStorage: repoEnv.envHasAnyStorage(repoRoot, entry.id),
       accountProfile: session.accountProfile,
       optimizedSpecs: listOptimizedSpecs(repoRoot, { limit: 40, env: entry.id }),
       optimizedSpecEntries: listOptimizedSpecEntries(repoRoot, { limit: 40, env: entry.id }),

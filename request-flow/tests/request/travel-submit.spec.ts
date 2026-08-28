@@ -36,11 +36,7 @@ async function createTravelAndSubmit(
       const list = new RequestListPage(page);
       await list.goto();
       await list.expectLoaded();
-      await list.clickNewRequest();
-
-      const edit = new RequestEditPage(page);
-      await edit.confirmNewRequestModal(FORM);
-      await edit.expectEditVisible();
+      const edit = await list.startNewRequest(FORM);
       await edit.fillReason(reason);
       await edit.save(env.requestApprover || undefined);
       await edit.submit(env.requestApprover || undefined);

@@ -16,7 +16,8 @@ import { discoverFlowScriptScanTargets } from './compare-screenshots-scan.js';
 import { buildCoverageStats } from './coverage-stats.js';
 import { buildCustomerReportModel } from './customer-report-model.js';
 import { renderCustomerReportHtml } from './customer-report-render.js';
-import { resolveScriptRunMeta } from './customer-report-run-meta.js';
+import { resolveScriptRunMeta, resolveScriptRunHistory } from './customer-report-run-meta.js';
+import { enrichRunHistoryComparisons } from './customer-report-run-history.js';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
@@ -55,12 +56,14 @@ async function main() {
   console.log(`  输出: ${outputPath}`);
 
   const testDirComparisons: TestDirComparisons[] = [];
+  const screenshotsByDir = new Map<string, ReturnType<typeof getAllScreenshots>>();
   let hasPng = false;
 
   for (let i = 0; i < scanTargets.length; i++) {
     const { testDir, scriptPath } = scanTargets[i]!;
     console.log(`\n[${i + 1}/${scanTargets.length}] ${testDir}`);
     const screenshots = getAllScreenshots(scriptPath, 'optimized', outputPath);
+    screenshotsByDir.set(testDir, screenshots);
     if (screenshots.size === 0) continue;
     hasPng = true;
     const comparisons = await generateTestComparisons(testDir, screenshots, outputPath);
@@ -75,7 +78,15 @@ async function main() {
   const coverage = buildCoverageStats(testDirComparisons);
   const scriptKeys = [...new Set(coverage.slots.map((s) => s.scriptKey))];
   const scriptRuns = resolveScriptRunMeta(scriptKeys, scanTargets);
-  const model = buildCustomerReportModel(coverage, undefined, scriptRuns);
+  const runHistory = resolveScriptRunHistory(scriptKeys, scanTargets);
+  for (const { testDir } of scanTargets) {
+    const rows = runHistory.get(testDir);
+    const shots = screenshotsByDir.get(testDir);
+    if (!rows?.length || !shots?.size) continue;
+    const enriched = await enrichRunHistoryComparisons(testDir, shots, rows, outputPath);
+    runHistory.set(testDir, enriched);
+  }
+  const model = buildCustomerReportModel(coverage, undefined, scriptRuns, runHistory);
   const html = renderCustomerReportHtml(model);
 
   const outAbs = path.resolve(outputPath);

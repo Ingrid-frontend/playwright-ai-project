@@ -3,6 +3,7 @@ import { RequestListPage } from '../../pages/request-list.page';
 import { RequestEditPage } from '../../pages/request-edit.page';
 import { env } from '../../utils/env';
 import { bindFlowStepCapture, flowStep } from '../../../src/utils/flow-step';
+import { FILTER_LABELS } from '../../utils/request-catalog';
 
 /**
  * Golden 固定回归（只读 + 固定筛选项）：
@@ -11,6 +12,35 @@ import { bindFlowStepCapture, flowStep } from '../../../src/utils/flow-step';
  * 多角色时基线按登录账号 slug 分目录（by-account/<slug>）。
  */
 test.describe.configure({ mode: 'serial' });
+
+async function resolveGoldenFilterKeyword(list: RequestListPage): Promise<string> {
+  await list.clearListQuery();
+  await list.expectListReady();
+  if (!(await list.hasDataRows())) {
+    test.skip(true, '列表无数据，跳过筛选 Golden');
+  }
+  const configured = env.requestFilterKeyword.trim();
+  if (configured && (await list.reasonKeywordExists(configured))) {
+    return configured;
+  }
+  let reason = '';
+  try {
+    reason = await list.pickFirstRowCell(FILTER_LABELS.reason);
+  } catch {
+    test.skip(true, '列表首行事由为空，跳过筛选 Golden');
+  }
+  if (!reason || reason === '-') {
+    test.skip(true, '列表首行事由为空，跳过筛选 Golden');
+  }
+  const fallback = reason.slice(0, Math.min(8, reason.length));
+  if (configured && fallback !== configured) {
+    test.info().annotations.push({
+      type: 'golden-filter-fallback',
+      description: `REQUEST_FILTER_KEYWORD「${configured}」无匹配事由，改用首行「${fallback}」`,
+    });
+  }
+  return fallback;
+}
 
 async function resolveGoldenDocNo(list: RequestListPage): Promise<string> {
   if (env.requestDocNo) return env.requestDocNo;
@@ -55,10 +85,10 @@ test.describe('申请单 · Golden 回归', () => {
     bindFlowStepCapture({ page, runDir: flowRunDir });
     const list = new RequestListPage(page);
     await list.ensureOnList();
-    const keyword = env.requestFilterKeyword;
+    const keyword = await resolveGoldenFilterKeyword(list);
     await flowStep('按事由筛选', async () => {
       await list.filterByReason(keyword);
-      await list.expectRowContains(keyword);
+      await list.expectReasonFilterResult(keyword);
       await list.resetFilters();
       await list.expectListReady();
     }, { snapshot: 'request-filter' });

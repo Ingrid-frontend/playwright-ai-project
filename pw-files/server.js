@@ -52,7 +52,7 @@ const { createWsDispatcher } = require('./lib/ws-dispatch');
 const { loadEnvFile } = require('./lib/load-env-file');
 const { getLlmStartupLines } = require('./lib/llm-env-status');
 const { buildHtmlReport } = require('./lib/report-html');
-const { runRepoPromoteBaseline, runRepoVisualReview } = require('./lib/repo-baseline');
+const { runRepoPromoteBaseline, runRepoClearBaseline, runRepoVisualReview } = require('./lib/repo-baseline');
 const { runIntent, listIntentDefinitions, getIntentDefinition, saveIntentDefinition, deleteIntentDefinitions } = require('./lib/intent-run');
 const { applyHealSuggest, sendTrustReport } = require('./lib/intent-boundary');
 const { runStyleDriftFullFlow } = require('./lib/style-drift-run');
@@ -412,6 +412,7 @@ const { sendHello, handleMessage } = createWsDispatcher({
     runRepoCustomerReport,
     sendCompareReportStatus,
     runRepoPromoteBaseline,
+    runRepoClearBaseline,
     runRepoVisualReview,
     sendRepoUiIssues,
     cancelRepoCompare,
