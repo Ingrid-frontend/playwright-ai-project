@@ -18,6 +18,7 @@ export const DETAIL_MARKERS = /单据状态|单据信息|申请明细|删除单�
 export const FILTER_TRIGGER = '.advanced-table-search, .advanced-search-filter-trigger';
 export const FILTER_POP = '.advanced-table-search-form, .advanced-search-filter-pop';
 export const COMBO_TRIGGER = '.combo-trigger';
+export const COMBO_CLEAR = '.combo-trigger__clear';
 export const SEARCH_ACTION_SEARCH = '.search-action-bar__search, button:has-text("搜")';
 export const SEARCH_ACTION_CLEAR = '.search-action-bar__clear';
 export const SEARCH_ACTION_RESET = 'button:has-text("重"), button:has-text("重置")';

@@ -189,6 +189,63 @@ function isJsonReportStart(line) {
   );
 }
 
+/** 过滤 Playwright 原始报错堆栈 / JSON 报告，避免 Job/Studio 日志刷屏 */
+function filterPlaywrightLogLine(line) {
+  const t = String(line || '').trim();
+  if (!t) return true;
+  if (/^\[\d+[AB]/.test(t)) return true;
+  if (/^Retry #\d+/i.test(t)) return true;
+  if (/^attachment #\d+/i.test(t)) return true;
+  if (/^Error Context:/i.test(t)) return true;
+  if (/^Usage:/i.test(t)) return true;
+  if (/^npx playwright show-trace/i.test(t)) return true;
+  if (/^─+$/.test(t)) return true;
+  if (/^Call log:/i.test(t)) return true;
+  if (/^Expected:/i.test(t)) return true;
+  if (/^Timeout:/i.test(t)) return true;
+  if (/^Locator:/i.test(t)) return true;
+  if (/^Error: element\(s\) not found/i.test(t)) return true;
+  if (/^expect\(locator\)/i.test(t)) return true;
+  if (/^\d+\)\s*\[/.test(t)) return true;
+  if (/^at .+\(.+:\d+/.test(t)) return true;
+  if (/^>\s*\d+\s*\|/.test(t)) return true;
+  if (/^\|\s*\^/.test(t)) return true;
+  if (/^"(config|suites|stats|errors|id|file|line|column|duration|expected|skipped|unexpected|flaky|startTime)"\s*:/.test(t)) {
+    return true;
+  }
+  if (/^[\]},\[]\s*$/.test(t)) return true;
+  if (t.startsWith('{') || t.startsWith('}') || t.startsWith('[')) return true;
+  return false;
+}
+
+function filterPlaywrightLogText(text) {
+  return String(text || '')
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .filter((line) => line.trim() && !filterPlaywrightLogLine(line));
+}
+
+function logConcisePlaywrightFailures(prefix, failures, opts = {}) {
+  const limit = opts.limit ?? 3;
+  const ws = opts.ws ?? null;
+  const emit = (text, level) => {
+    if (ws) logLine(ws, text, level);
+    else if (level === 'err') console.error(text);
+    else if (level === 'warn') console.warn(text);
+    else console.log(text);
+  };
+  if (!failures?.length) return;
+  for (const [i, item] of failures.entries()) {
+    if (i >= limit) break;
+    const msg = String(item.message || '').split('\n').find((l) => l.trim()) || '未知错误';
+    const title = item.title || '用例失败';
+    emit(`${prefix}${title} — ${msg.trim()}`, 'err');
+  }
+  if (failures.length > limit) {
+    emit(`${prefix}… 另有 ${failures.length - limit} 条，见 Playwright 报告`, 'warn');
+  }
+}
+
 /** headless 时流式输出 line reporter，整段 JSON 报告写入 stdout 但不刷到控制台 */
 function createPlaywrightLogStreamer(ws, headless) {
   let inJson = false;
@@ -202,6 +259,7 @@ function createPlaywrightLogStreamer(ws, headless) {
       if (!trimmed) continue;
 
       if (!headless) {
+        if (filterPlaywrightLogLine(line)) continue;
         logLine(ws, line.trimEnd(), 'dim');
         continue;
       }
@@ -213,6 +271,7 @@ function createPlaywrightLogStreamer(ws, headless) {
           if (depth <= 0) inJson = false;
           continue;
         }
+        if (filterPlaywrightLogLine(line)) continue;
         logLine(ws, line.trimEnd(), 'dim');
         continue;
       }
@@ -240,6 +299,9 @@ module.exports = {
   parsePlaywrightFailures,
   parsePlaywrightResultJson,
   logPlaywrightFailureReport,
+  filterPlaywrightLogLine,
+  filterPlaywrightLogText,
+  logConcisePlaywrightFailures,
   streamPlaywrightProcLog: createPlaywrightLogStreamer,
   createPlaywrightLogStreamer,
   headedFailurePlaceholder,

@@ -2694,23 +2694,51 @@ function hasFlowReplayPath(msg) {
   return Boolean(msg?.replayReportOpenPath || msg?.videoReportOpenPath);
 }
 
+const REQUEST_FLOW_REPORT_BTNS = [
+  { id: 'btnRequestOpenReport', path: (m) => m.reportOpenPath, always: true },
+  { id: 'btnRequestOpenCompare', path: (m) => m.compareReportOpenPath },
+  { id: 'btnRequestOpenCustomer', path: (m) => m.customerReportOpenPath },
+  { id: 'btnRequestOpenSummary', path: (m) => m.summaryReportOpenPath, always: true },
+  { id: 'btnRequestOpenReplayRun', path: (m) => m.replayReportOpenPath || m.videoReportOpenPath, always: true },
+  { id: 'btnRequestOpenUiAudit', path: (m) => m.uiAuditReportOpenPath },
+];
+
+const APPROVAL_FLOW_REPORT_BTNS = [
+  { id: 'btnApprovalOpenReport', path: (m) => m.reportOpenPath, always: true },
+  { id: 'btnApprovalOpenCompare', path: (m) => m.compareReportOpenPath },
+  { id: 'btnApprovalOpenCustomer', path: (m) => m.customerReportOpenPath },
+  { id: 'btnApprovalOpenSummary', path: (m) => m.summaryReportOpenPath, always: true },
+  { id: 'btnApprovalOpenReplay', path: (m) => m.replayReportOpenPath || m.videoReportOpenPath, always: true },
+];
+
+function setFlowReportButtons(config, msg) {
+  for (const item of config) {
+    const btn = document.getElementById(item.id);
+    if (!btn) continue;
+    const p = msg ? item.path(msg) : '';
+    const has = Boolean(p);
+    if (item.always) {
+      btn.style.display = '';
+      btn.disabled = !has;
+      btn.style.opacity = has ? '1' : '0.5';
+      btn.title = has ? '' : '暂无报告，请先运行用例';
+    } else {
+      btn.style.display = has ? '' : 'none';
+      btn.disabled = false;
+      btn.style.opacity = '1';
+      btn.title = '';
+    }
+  }
+}
+
 function openRequestFlowUiAuditReport() {
   openFlowReportPath(lastRequestFlowRun?.uiAuditReportOpenPath, 'UI 审计报告');
 }
 
 function updateRequestFlowReportBtn(msg) {
+  const data = msg || lastRequestFlowRun;
+  setFlowReportButtons(REQUEST_FLOW_REPORT_BTNS, data);
   const show = Boolean(msg && !msg.cancelled);
-  const ids = ['btnRequestOpenReport', 'btnRequestOpenCompare', 'btnRequestOpenCustomer', 'btnRequestOpenSummary', 'btnRequestOpenReplayRun', 'btnRequestOpenUiAudit'];
-  for (const id of ids) {
-    const btn = document.getElementById(id);
-    if (!btn) continue;
-    if (id === 'btnRequestOpenReport') btn.style.display = msg?.reportOpenPath ? '' : 'none';
-    else if (id === 'btnRequestOpenCompare') btn.style.display = msg?.compareReportOpenPath ? '' : 'none';
-    else if (id === 'btnRequestOpenCustomer') btn.style.display = msg?.customerReportOpenPath ? '' : 'none';
-    else if (id === 'btnRequestOpenSummary') btn.style.display = msg?.summaryReportOpenPath ? '' : 'none';
-    else if (id === 'btnRequestOpenReplayRun') btn.style.display = hasFlowReplayPath(msg) ? '' : 'none';
-    else if (id === 'btnRequestOpenUiAudit') btn.style.display = msg?.uiAuditReportOpenPath ? '' : 'none';
-  }
   if (show && msg?.apiFailureCount > 0) {
     log('warn', `[request-flow] 接口报错 ${msg.apiFailureCount} 条，见运行汇总`);
   }
@@ -2747,17 +2775,9 @@ function openApprovalFlowReplay() {
 }
 
 function updateApprovalFlowReportBtn(msg) {
+  const data = msg || lastApprovalFlowRun;
+  setFlowReportButtons(APPROVAL_FLOW_REPORT_BTNS, data);
   const show = Boolean(msg && !msg.cancelled);
-  const ids = ['btnApprovalOpenReport', 'btnApprovalOpenCompare', 'btnApprovalOpenCustomer', 'btnApprovalOpenSummary', 'btnApprovalOpenReplay'];
-  for (const id of ids) {
-    const btn = document.getElementById(id);
-    if (!btn) continue;
-    if (id === 'btnApprovalOpenReport') btn.style.display = msg?.reportOpenPath ? '' : 'none';
-    else if (id === 'btnApprovalOpenCompare') btn.style.display = msg?.compareReportOpenPath ? '' : 'none';
-    else if (id === 'btnApprovalOpenCustomer') btn.style.display = msg?.customerReportOpenPath ? '' : 'none';
-    else if (id === 'btnApprovalOpenSummary') btn.style.display = msg?.summaryReportOpenPath ? '' : 'none';
-    else if (id === 'btnApprovalOpenReplay') btn.style.display = hasFlowReplayPath(msg) ? '' : 'none';
-  }
   if (show && msg?.apiFailureCount > 0) {
     log('warn', `[approval-flow] 接口报错 ${msg.apiFailureCount} 条，见运行汇总`);
   }
@@ -6214,7 +6234,6 @@ function handleMessage(msg) {
       break;
     case 'request-flow:run:start':
       setRequestFlowBusy(true);
-      updateRequestFlowReportBtn(null);
       switchToRequestFlowTab();
       const roleNote = msg.roleSlug ? ` · role=${msg.roleSlug}` : '';
       log('info', `[request-flow] 运行开始 · profile=${msg.accountProfile || ''}${roleNote} · mode=${msg.mode || ''} · ${msg.spec || ''}`);
@@ -6294,7 +6313,6 @@ function handleMessage(msg) {
       break;
     case 'approval-flow:run:start':
       setApprovalFlowBusy(true);
-      updateApprovalFlowReportBtn(null);
       switchToApprovalFlowTab();
       log('info', `[approval-flow] 运行开始 · mode=${msg.mode || ''} · ${msg.spec || ''}`);
       break;
@@ -7554,6 +7572,10 @@ function renderRequestFlowStatus(msg, opts = {}) {
     if (hint) hint.textContent = `用例列表：${msg.testsError}`;
   }
   if (msg.profileStorage) renderRequestFlowProfileStorage(msg.profileStorage);
+  if (msg.lastRun) {
+    lastRequestFlowRun = msg.lastRun;
+    updateRequestFlowReportBtn(lastRequestFlowRun);
+  }
 }
 
 let requestFlowStatusTimer = null;
@@ -7986,6 +8008,10 @@ function renderApprovalFlowStatus(msg, opts = {}) {
   if (msg.testsError) {
     const hint = document.getElementById('approvalFlowHint');
     if (hint) hint.textContent = `用例列表：${msg.testsError}`;
+  }
+  if (msg.lastRun) {
+    lastApprovalFlowRun = msg.lastRun;
+    updateApprovalFlowReportBtn(lastApprovalFlowRun);
   }
 }
 

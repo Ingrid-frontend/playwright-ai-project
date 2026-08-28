@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const { send, logLine, stripAnsi, errText } = require('./ws-safe');
+const { filterPlaywrightLogLine } = require('./failure-report');
 const repoEnv = require('../repo-env');
 
 function createTestJobsActions(deps) {
@@ -372,11 +373,15 @@ function createTestJobsActions(deps) {
     send(ws, 'jobs:run:start', { jobId, playwrightEnv: runEnv, accountProfile: runProfile });
     const logChunks = [];
     const emitJobRunLog = (text, level = 'dim') => {
-      const line = String(text || '').trimEnd();
-      if (!line) return;
-      logLine(ws, line, level);
-      logChunks.push(line);
-      send(ws, 'jobs:run:log', { jobId, text: line });
+      const lines = String(text || '')
+        .split('\n')
+        .map((line) => line.trimEnd())
+        .filter((line) => line.trim() && !filterPlaywrightLogLine(line));
+      for (const line of lines) {
+        logLine(ws, line, level);
+        logChunks.push(line);
+        send(ws, 'jobs:run:log', { jobId, text: line });
+      }
     };
     emitJobRunLog(
       `[jobs] 开始执行 Job「${jobId}」(env=${runEnv}${runProfile ? `, profile=${runProfile}` : ''}${specRelatives.length ? `, ${specRelatives.length} 个选用例` : ''}${runEnv !== merged.playwrightEnv ? `, 覆盖默认 ${merged.playwrightEnv}` : ''})`,

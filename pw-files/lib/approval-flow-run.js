@@ -10,7 +10,7 @@ const {
   createPlaywrightLogStreamer,
   headedFailurePlaceholder,
 } = require('./failure-report');
-const { finalizeFlowRun } = require('./flow-run-common');
+const { finalizeFlowRun, readLastFlowRun } = require('./flow-run-common');
 
 const catalogCheckMod = (() => {
   try {
@@ -173,6 +173,7 @@ function getApprovalFlowStatus(repoRoot, session, deps, msg = {}) {
     spec: listed.spec,
     tests: listed.tests,
     testsError: listed.error || '',
+    lastRun: readLastFlowRun(repoRoot, 'approval-flow'),
   };
 }
 

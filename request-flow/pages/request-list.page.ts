@@ -2,6 +2,7 @@ import { type FrameLocator, type Locator, type Page, expect } from '@playwright/
 import { RequestEditPage } from './request-edit.page';
 import { waitForAppRoot, type AppRoot } from '../utils/app-frame';
 import {
+  COMBO_CLEAR,
   COMBO_TRIGGER,
   DOC_NO_RE,
   FILTER_LABELS,
@@ -111,26 +112,33 @@ export class RequestListPage {
   /** 清掉顶栏单号搜索与高级筛选，避免 Golden 串行用例读到空列表 */
   async clearListQuery() {
     await this.clearDocNoSearch();
-    await this.resetFilters();
     await this.clearExposedFilters();
-    await this.clearActiveFilterTags();
+    await this.clearFixedFilterTags();
+    await this.resetFilters();
+    await this.clearFixedFilterTags();
+    await this.clickFilterSearch();
     await this.waitListSettled();
   }
 
   /** 列表因默认筛选为空时，尝试去掉条件并重新搜索 */
   async recoverIfEmptyList(): Promise<boolean> {
     if (await this.hasDataRows()) return true;
-    await this.clearListQuery();
+    await this.clearDocNoSearch();
+    await this.clearExposedFilters();
+    await this.clearFixedFilterTags();
+    await this.page.waitForTimeout(400);
+    if (await this.hasDataRows()) return true;
+    await this.clickFilterSearch();
+    if (await this.hasDataRows()) return true;
+    await this.clearFixedFilterTags();
+    await this.page.waitForTimeout(400);
     if (await this.hasDataRows()) return true;
     await this.clickFilterSearch();
     return this.hasDataRows();
   }
 
-  private filterSearchBar(): Locator {
-    return this.scope()
-      .locator('.advanced-search, .advanced-table-search, .search-action-bar')
-      .filter({ visible: true })
-      .first();
+  private advancedSearchRoot(): Locator {
+    return this.scope().locator('.advanced-search, .advanced-table-search').filter({ visible: true }).first();
   }
 
   private async clearExposedFilters() {
@@ -142,20 +150,30 @@ export class RequestListPage {
     await this.waitListSettled();
   }
 
-  private async clearActiveFilterTags() {
-    const bar = this.filterSearchBar();
-    if (!(await bar.isVisible({ timeout: 1_000 }).catch(() => false))) return;
+  /** 点 fixed 外露项（如创建日期）上的 ×；重置只会恢复默认日期，不能代替这一步 */
+  private async clearFixedFilterTags() {
+    const root = this.advancedSearchRoot();
+    if (!(await root.isVisible({ timeout: 1_000 }).catch(() => false))) return;
 
     for (let i = 0; i < 8; i += 1) {
-      const close = bar
-        .locator(
-          `${COMBO_TRIGGER} .anticon-close, ${COMBO_TRIGGER} .anticon-close-circle, ${COMBO_TRIGGER}__close`,
-        )
-        .filter({ visible: true })
-        .first();
-      if (!(await close.isVisible({ timeout: 300 }).catch(() => false))) break;
+      const clear = root.locator(COMBO_CLEAR).filter({ visible: true }).first();
+      if (!(await clear.isVisible({ timeout: 300 }).catch(() => false))) break;
       const respP = this.waitListApi();
-      await close.click();
+      await clear.click();
+      await respP.catch(() => null);
+      await this.waitListSettled();
+      await this.page.waitForTimeout(350);
+    }
+
+    const createdDate = root
+      .locator(COMBO_TRIGGER)
+      .filter({ has: this.scope().locator('.combo-trigger__label', { hasText: FILTER_LABELS.createdDate }) })
+      .locator(COMBO_CLEAR)
+      .filter({ visible: true })
+      .first();
+    if (await createdDate.isVisible({ timeout: 300 }).catch(() => false)) {
+      const respP = this.waitListApi();
+      await createdDate.click();
       await respP.catch(() => null);
       await this.waitListSettled();
     }
@@ -418,18 +436,24 @@ export class RequestListPage {
   async startNewRequest(formName?: string): Promise<RequestEditPage> {
     await this.closeDetailIfOpen();
     const edit = new RequestEditPage(this.page);
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
       await this.clickNewRequest();
       await edit.confirmNewRequestModal(formName);
       await edit.expectEditVisible();
       const docNo = await edit.tryReadDocNo();
       if (!docNo) return edit;
-      await edit.deleteDraftIfPresent();
+      if (!(await edit.deleteDraftIfPresent())) {
+        throw new Error(`新建复用草稿单号 ${docNo}，且无法删除`);
+      }
       await this.goto();
       await this.expectLoaded();
     }
+    await this.clickNewRequest();
+    await edit.confirmNewRequestModal(formName);
+    await edit.expectEditVisible();
     const left = await edit.tryReadDocNo();
-    throw new Error(left ? `新建仍复用草稿单号 ${left}` : '新建后仍落到旧草稿');
+    if (!left) return edit;
+    throw new Error(`新建仍复用草稿单号 ${left}`);
   }
 
   async clickNewRequest() {

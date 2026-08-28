@@ -11,11 +11,17 @@ dotenv.config({ path: path.resolve(__dirname, '../.env'), quiet: true });
 
 const baseURL = process.env.BASE_URL || 'https://dev.huilianyi.com';
 
+function resolveRetries(): number {
+  const explicit = Number(process.env.PLAYWRIGHT_RETRIES);
+  if (Number.isFinite(explicit) && explicit >= 0) return explicit;
+  return process.env.CI ? 2 : 0;
+}
+
 export default defineConfig({
   testDir: './tests',
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
+  retries: resolveRetries(),
   workers: 1, // 必须为 1：fixtures 里 worker 级共用同一个浏览器窗口
   timeout: 180_000,
   expect: {

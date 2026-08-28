@@ -39,7 +39,7 @@ async function createTravelAndSubmit(
       const edit = await list.startNewRequest(FORM);
       await edit.fillReason(reason);
       await edit.save(env.requestApprover || undefined);
-      await edit.submit(env.requestApprover || undefined);
+      await edit.submit(env.requestApprover || undefined, { skipApprover: true });
 
       apiGuard.dismissMatching(AVAILABLE_RE);
 
@@ -57,7 +57,9 @@ async function createTravelAndSubmit(
       lastErr = err;
       apiGuard.dismissMatching(AVAILABLE_RE);
       if (attempt === 2) break;
-      await page.waitForTimeout(2_000);
+      const list = new RequestListPage(page);
+      await list.goto().catch(() => undefined);
+      await page.waitForTimeout(1_500);
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));

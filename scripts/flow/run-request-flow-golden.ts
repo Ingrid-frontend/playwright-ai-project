@@ -10,7 +10,11 @@ dotenv.config({ path: path.join(process.cwd(), ".env") });
 const require = createRequire(import.meta.url);
 const repoEnv = require("../../pw-files/repo-env.js");
 const { finalizeFlowRun } = require("../../pw-files/lib/flow-run-common.js");
-const { parsePlaywrightResultJson } = require("../../pw-files/lib/failure-report.js");
+const {
+  parsePlaywrightResultJson,
+  parsePlaywrightFailures,
+  logConcisePlaywrightFailures,
+} = require("../../pw-files/lib/failure-report.js");
 
 const FLOW_ID = "request-flow";
 const FLOW_LABEL = "申请单流程";
@@ -86,6 +90,7 @@ function runOne(
   spawnEnv.REQUEST_FILTER_KEYWORD = filterKeyword;
   if (roleSlug) spawnEnv.FLOW_ACCOUNT_SLUG = roleSlug;
   else delete spawnEnv.FLOW_ACCOUNT_SLUG;
+  spawnEnv.PLAYWRIGHT_RETRIES = "0";
   if (creds) {
     spawnEnv.LOGIN_USERNAME = creds.username;
     spawnEnv.LOGIN_PASSWORD = creds.password;
@@ -98,16 +103,18 @@ function runOne(
   const npx = process.platform === "win32" ? "npx.cmd" : "npx";
   const proc = spawnSync(
     npx,
-    ["playwright", "test", "--config", CONFIG_REL, SPEC, "--reporter=json,html"],
+    ["playwright", "test", "--config", CONFIG_REL, SPEC, "--reporter=json,html", "--retries=0"],
     {
       cwd: repoRoot,
       env: spawnEnv,
       encoding: "utf8",
       maxBuffer: 16 * 1024 * 1024,
+      stdio: ["inherit", "pipe", "pipe"],
     },
   );
 
   const stdout = proc.stdout || "";
+  const stderr = proc.stderr || "";
   const exitCode = proc.status ?? 1;
   const duration = ((Date.now() - startTime) / 1000).toFixed(1);
   const specRelative = path.join(FLOW_ID, "tests", SPEC).replace(/\\/g, "/");
@@ -127,6 +134,10 @@ function runOne(
     passed = expected + flaky;
     failed = unexpected;
     total = expected + unexpected + skipped + flaky;
+    failures = parsePlaywrightFailures(result, null, exitCode).map((item) => ({
+      title: item.title,
+      message: item.message,
+    }));
   } catch {
     passed = exitCode === 0 ? 1 : 0;
     failed = exitCode === 0 ? 0 : 1;
@@ -134,6 +145,19 @@ function runOne(
   }
 
   const ok = exitCode === 0 && failed === 0;
+  if (ok) {
+    console.log(`[request-flow:golden] 通过 ${passed}/${total} · ${duration}s`);
+  } else {
+    console.error(`[request-flow:golden] 失败 ${failed}/${total || 1} · ${duration}s`);
+    logConcisePlaywrightFailures("[request-flow:golden] · ", failures, { limit: 3 });
+    if (stderr.trim()) {
+      const hint = stderr
+        .split("\n")
+        .map((line) => line.trim())
+        .find((line) => line && !line.startsWith("["));
+      if (hint) console.error(`[request-flow:golden] · ${hint.slice(0, 160)}`);
+    }
+  }
   finalizeFlowRun(repoRoot, FLOW_ID, FLOW_LABEL, {
     ok,
     exitCode,

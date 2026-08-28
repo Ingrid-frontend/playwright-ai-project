@@ -307,6 +307,10 @@ export class RequestEditPage {
     await this.finishDetailSlideIfOpen();
 
     const keys = await this.approverKeywords(keyword);
+    if (await this.hasApproverReady(keys)) {
+      await this.exitDocInfoEditIfOpen();
+      return;
+    }
 
     const readonlyLabel = this.scope()
       .getByText(/自选审批人[：:]\s*\S+/)
@@ -433,10 +437,12 @@ export class RequestEditPage {
 
   private submitBtnLoc(): Locator {
     const inScope = this.scope().getByRole('button', { name: /^提\s*交$/ }).filter({ visible: true }).first();
+    const inEdit = this.editRoot().getByRole('button', { name: /^提\s*交$/ }).filter({ visible: true }).first();
+    const btn = inScope.or(inEdit);
     if (this.root?.inIframe) {
-      return inScope.or(this.page.getByRole('button', { name: /^提\s*交$/ }).filter({ visible: true }).first());
+      return btn.or(this.page.getByRole('button', { name: /^提\s*交$/ }).filter({ visible: true }).first());
     }
-    return inScope;
+    return btn;
   }
 
   /** 单据信息编辑侧滑挡住详情底栏时：先保存/返回，露出「提交」 */
@@ -465,10 +471,62 @@ export class RequestEditPage {
   }
 
   private async ensureSubmitReady() {
-    await this.finishDetailSlideIfOpen();
-    await this.dismissExpenseTypeIfOpen();
-    await this.exitDocInfoEditIfOpen();
-    await this.saveDocInfoIfEditing();
+    for (let i = 0; i < 5; i += 1) {
+      await this.ensureRoot();
+      await this.finishDetailSlideIfOpen();
+      await this.dismissExpenseTypeIfOpen();
+      await this.exitDocInfoEditIfOpen();
+      await this.saveDocInfoIfEditing();
+      await this.exitDocInfoEditIfOpen();
+      if (await this.submitBtnLoc().isVisible({ timeout: 2_000 }).catch(() => false)) return;
+
+      const back = this.scope()
+        .getByRole('button', { name: /^返\s*回$/ })
+        .filter({ visible: true })
+        .first()
+        .or(this.page.getByRole('button', { name: /^返\s*回$/ }).filter({ visible: true }).first());
+      const saveOnly = this.scope().getByRole('button', { name: /^保\s*存$/ }).filter({ visible: true }).last();
+      if (
+        (await back.isVisible({ timeout: 800 }).catch(() => false)) &&
+        (await saveOnly.isVisible({ timeout: 300 }).catch(() => false)) &&
+        !(await this.submitBtnLoc().isVisible({ timeout: 300 }).catch(() => false))
+      ) {
+        await back.click();
+        await this.page.waitForTimeout(600);
+        if (await this.submitBtnLoc().isVisible({ timeout: 3_000 }).catch(() => false)) return;
+      }
+
+      await this.page.keyboard.press('Escape').catch(() => undefined);
+      await this.page.waitForTimeout(400);
+    }
+  }
+
+  private async hasApproverReady(keywords: string[]): Promise<boolean> {
+    const readonlyLabel = this.scope()
+      .getByText(/自选审批人[：:]\s*\S+/)
+      .filter({ visible: true })
+      .filter({ hasNotText: /请选择/ })
+      .first();
+    if (await readonlyLabel.isVisible({ timeout: 1_500 }).catch(() => false)) {
+      const t = ((await readonlyLabel.innerText().catch(() => '')) || '').trim();
+      if (keywords.some((k) => t.includes(k))) return true;
+    }
+
+    const block = this.scope()
+      .locator('.ant-form-item, [class*="form-item"], [class*="counter-sign"], [class*="countersign"]')
+      .filter({ hasText: /自选审批人/ })
+      .filter({ visible: true })
+      .first();
+    if (!(await block.isVisible({ timeout: 1_000 }).catch(() => false))) return false;
+
+    const selected = block
+      .locator('.ant-select-selection-choice, .ant-select-selection-item, .ant-tag, [class*="avatar"], [class*="selected"]')
+      .filter({ hasText: /.{2,}/ })
+      .filter({ hasNotText: /请选择|请输入/ })
+      .first();
+    if (!(await selected.isVisible({ timeout: 800 }).catch(() => false))) return false;
+    const text = ((await selected.innerText().catch(() => '')) || '').trim();
+    return keywords.some((k) => text.includes(k));
   }
 
   private async clearApproverInBlock(block: Locator) {
@@ -654,9 +712,12 @@ export class RequestEditPage {
     await this.expectEditVisible();
     if (reason) await this.fillReason(reason);
     else await this.ensureReasonFilled();
-    await this.fillApproverIfNeeded(approverKeyword);
     const travel = await this.isTravelForm();
     if (travel) await this.ensureTravelItinerary();
+    const keys = await this.approverKeywords(approverKeyword);
+    if (!(await this.hasApproverReady(keys))) {
+      await this.fillApproverIfNeeded(approverKeyword);
+    }
     await this.ensureReasonFilled();
     const root = this.editRoot();
     // 优先纯「保存/暂存」；仅有「保存并添加明细」时再点它（会弹出费用类型弹窗）
@@ -668,8 +729,9 @@ export class RequestEditPage {
     await this.confirmIfNeeded();
     await this.waitSaveDone(travel ? 60_000 : 30_000);
     if (travel) {
-      // 「保存并添加明细」可能弹出费用类型；差旅靠行程，关掉即可
       await this.dismissExpenseTypeIfOpen();
+      await this.assertTripDatesFilled(this.editRoot());
+      await this.exitDocInfoEditIfOpen();
     } else {
       await this.ensureLineItem();
     }
@@ -1123,7 +1185,7 @@ export class RequestEditPage {
     await expect(
       locs.inScope.or(locs.inDetail).or(locs.toast).or(locs.toastScope).or(locs.expenseDlg).first(),
       `保存未出现成功提示（差旅等模板可能缺行程日期）${hint ? `；页面提示：${hint}` : ''}`,
-    ).toBeVisible({ timeout: 1_000 });
+    ).toBeVisible({ timeout: 8_000 });
   }
 
   private async handleSaveFollowUps() {
@@ -1353,15 +1415,21 @@ export class RequestEditPage {
     ).toBeVisible({ timeout: 30_000 });
   }
 
-  async submit(approverKeyword?: string) {
+  async submit(approverKeyword?: string, opts?: { skipApprover?: boolean }) {
     await this.expectEditVisible();
     await this.dismissBlockers();
     await this.dismissExpenseTypeIfOpen();
+    await this.finishDetailSlideIfOpen();
+    await this.exitDocInfoEditIfOpen();
     const travel = await this.isTravelForm();
     if (travel) await this.ensureTravelItinerary();
     else await this.ensureLineItem();
-    await this.fillApproverIfNeeded(approverKeyword);
+    const keys = await this.approverKeywords(approverKeyword);
+    if (!opts?.skipApprover && !(await this.hasApproverReady(keys))) {
+      await this.fillApproverIfNeeded(approverKeyword);
+    }
     await this.dismissExpenseTypeIfOpen();
+    await this.exitDocInfoEditIfOpen();
     await this.ensureSubmitReady();
     const btn = this.submitBtnLoc();
     await expect(btn, '未找到提交按钮（若在编辑侧滑请先保存退出）').toBeVisible({ timeout: 30_000 });

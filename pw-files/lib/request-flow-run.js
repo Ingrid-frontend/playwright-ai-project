@@ -4,13 +4,14 @@ const { spawnSync } = require('child_process');
 const { send, logLine, stripAnsi, errText } = require('./ws-safe');
 const { getEnvEntryResolved } = require('./repo-context');
 const {
-  logPlaywrightFailureReport,
+  logConcisePlaywrightFailures,
   parsePlaywrightFailures,
   parsePlaywrightResultJson,
   createPlaywrightLogStreamer,
   headedFailurePlaceholder,
+  filterPlaywrightLogLine,
 } = require('./failure-report');
-const { finalizeFlowRun, detectPipeline, flowScriptKey } = require('./flow-run-common');
+const { finalizeFlowRun, detectPipeline, flowScriptKey, readLastFlowRun } = require('./flow-run-common');
 const repoEnv = require('../repo-env');
 
 const catalogCheckMod = (() => {
@@ -198,6 +199,7 @@ function getRequestFlowStatus(repoRoot, session, deps, msg = {}) {
     tests: listed.tests,
     testsError: listed.error || '',
     profileStorage,
+    lastRun: readLastFlowRun(repoRoot, 'request-flow'),
   };
 }
 
@@ -267,8 +269,11 @@ async function streamProc(ws, session, procKey, cancelKey, label, cmd, args, opt
     if (t.trim()) logLine(ws, t.trimEnd(), 'dim');
   });
   proc.stderr.on('data', (d) => {
-    const t = stripAnsi(d.toString());
-    if (t.trim()) logLine(ws, t.trimEnd(), 'warn');
+    for (const line of stripAnsi(d.toString()).split('\n')) {
+      const trimmed = line.trimEnd();
+      if (!trimmed.trim() || filterPlaywrightLogLine(trimmed)) continue;
+      logLine(ws, trimmed, 'warn');
+    }
   });
   const exitCode = await new Promise((resolve) => proc.on('close', resolve));
   session[procKey] = null;
@@ -388,8 +393,11 @@ async function runRequestFlowTests(ws, session, msg, deps) {
     streamLog(raw);
   });
   proc.stderr.on('data', (d) => {
-    const t = stripAnsi(d.toString());
-    if (t.trim()) logLine(ws, t.trimEnd(), 'warn');
+    for (const line of stripAnsi(d.toString()).split('\n')) {
+      const trimmed = line.trimEnd();
+      if (!trimmed.trim() || filterPlaywrightLogLine(trimmed)) continue;
+      logLine(ws, trimmed, 'warn');
+    }
   });
 
   const exitCode = await new Promise((resolve) => proc.on('close', resolve));
@@ -427,7 +435,9 @@ async function runRequestFlowTests(ws, session, msg, deps) {
       failed = unexpected;
       total = expected + unexpected + skipped + flaky;
       if (exitCode !== 0 || failed > 0) {
-        failures = logPlaywrightFailureReport(ws, result, session, exitCode);
+        failures = parsePlaywrightFailures(result, session, exitCode);
+        session.lastRunFailures = failures;
+        logConcisePlaywrightFailures('[request-flow] · ', failures, { limit: 3, ws });
       } else {
         session.lastRunFailures = [];
       }

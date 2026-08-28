@@ -195,11 +195,12 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
   let replayReportRel = '';
   let videoReportRel = '';
   let baselinePromoted = false;
+  let hasShots = false;
 
   videoReportRel = resolveFlowRunVideoRel(repoRoot, flowId, runId, payload.runId);
 
   if (!payload.cancelled) {
-    const hasShots = hasFlowScreenshots(repoRoot);
+    hasShots = hasFlowScreenshots(repoRoot);
     if (hasShots && (pipeline === 'golden' || pipeline === 'default')) {
       const cmp = runNpmScript(repoRoot, 'compare-flow-screenshots');
       if (cmp.ok && fs.existsSync(path.join(repoRoot, FLOW_COMPARE_REL))) {
@@ -310,6 +311,37 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
   };
 }
 
+function readLastFlowRun(repoRoot, flowId) {
+  const manifest = readJsonSafe(path.join(repoRoot, 'results', 'flow-runs', flowId, 'last-run.json'));
+  if (!manifest) return null;
+  const pwRel = manifest.playwrightReportRel || `${flowId}/playwright-report/index.html`;
+  const href = (rel) => {
+    if (!rel) return '';
+    const norm = String(rel).replace(/\\/g, '/');
+    if (!fs.existsSync(path.join(repoRoot, norm))) return '';
+    return `/repo-report/${norm}`;
+  };
+  return {
+    runId: manifest.runId,
+    ok: Boolean(manifest.ok),
+    cancelled: false,
+    startedAt: manifest.startedAt,
+    finishedAt: manifest.finishedAt,
+    spec: manifest.spec,
+    pipeline: manifest.pipeline,
+    env: manifest.env,
+    mode: manifest.mode,
+    reportOpenPath: href(pwRel),
+    compareReportOpenPath: href(manifest.compareReportRel),
+    customerReportOpenPath: href(manifest.customerReportRel),
+    summaryReportOpenPath: href(manifest.summaryReportRel || FLOW_SUMMARY_REL),
+    replayReportOpenPath: href(manifest.replayReportRel),
+    videoReportOpenPath: href(manifest.videoReportRel),
+    uiAuditReportOpenPath: href(manifest.uiAuditReportRel),
+    apiFailureCount: manifest.apiFailureCount || 0,
+  };
+}
+
 module.exports = {
   FLOW_COMPARE_REL,
   FLOW_CUSTOMER_REL,
@@ -319,4 +351,5 @@ module.exports = {
   detectPipeline,
   flowScriptKey,
   specSlug,
+  readLastFlowRun,
 };

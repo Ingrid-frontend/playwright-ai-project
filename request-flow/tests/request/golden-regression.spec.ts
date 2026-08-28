@@ -14,8 +14,7 @@ import { FILTER_LABELS } from '../../utils/request-catalog';
 test.describe.configure({ mode: 'serial' });
 
 async function resolveGoldenFilterKeyword(list: RequestListPage): Promise<string> {
-  await list.clearListQuery();
-  await list.expectListReady();
+  await list.ensureOnList();
   if (!(await list.recoverIfEmptyList())) {
     test.skip(true, '列表无数据，跳过筛选 Golden');
   }
@@ -44,8 +43,7 @@ async function resolveGoldenFilterKeyword(list: RequestListPage): Promise<string
 
 async function resolveGoldenDocNo(list: RequestListPage): Promise<string> {
   if (env.requestDocNo) return env.requestDocNo;
-  await list.clearListQuery();
-  await list.expectListReady();
+  await list.ensureOnList();
   if (!(await list.recoverIfEmptyList())) {
     test.skip(true, '列表无数据且未设置 REQUEST_DOC_NO，跳过搜索/详情 Golden 步骤');
   }
@@ -64,6 +62,7 @@ test.describe('申请单 · Golden 回归', () => {
     await flowStep('打开申请单列表', async () => {
       await list.goto();
       await list.expectLoaded();
+      await list.recoverIfEmptyList();
     }, { snapshot: 'request-list' });
   });
 
