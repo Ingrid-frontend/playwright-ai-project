@@ -15,6 +15,17 @@ export function appFrame(page: Page): FrameLocator {
   return page.frameLocator('iframe[src*="openBySelf=zoom"]');
 }
 
+async function iframeHasBiz(scope: FrameLocator): Promise<boolean> {
+  const text = ((await scope.locator('body').innerText({ timeout: 2_000 }).catch(() => '')) || '').trim();
+  if (/账号登录|二维码登录|请使用.*APP扫码/.test(text)) return false;
+  if (/申请单|审批|待审批|新建申请单|单据信息|保存并添加明细/.test(text)) return true;
+  return scope
+    .locator('.application-list, .application-table, .request-edit, .one-screen-request, .full-screen, main')
+    .first()
+    .isVisible({ timeout: 1_500 })
+    .catch(() => false);
+}
+
 export async function waitForAppRoot(page: Page, timeout = 60_000): Promise<AppRoot> {
   const deadline = Date.now() + timeout;
   let lastError: unknown;
@@ -25,10 +36,11 @@ export async function waitForAppRoot(page: Page, timeout = 60_000): Promise<AppR
       if (await iframe.count()) {
         const scope = appFrame(page);
         await scope.locator('body').waitFor({ timeout: 5_000 });
-        return { page, scope, inIframe: true };
+        if (await iframeHasBiz(scope)) {
+          return { page, scope, inIframe: true };
+        }
       }
 
-      // 无 iframe：登录页或已登录主站直接渲染在顶层
       const bodyText = await page.locator('body').innerText({ timeout: 2_000 }).catch(() => '');
       if (
         /账号登录|二维码登录|工作台|数据分析|自定义报表|审批|待审批|已审批|我发起的|申请单/.test(

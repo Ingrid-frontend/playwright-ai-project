@@ -327,7 +327,11 @@ export class RequestEditPage {
       .first();
 
     if (!(await block.isVisible({ timeout: 2_000 }).catch(() => false))) {
-      if (await editBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      const hint = this.scope().getByText(/自选审批人/).filter({ visible: true }).first();
+      if (
+        (await hint.isVisible({ timeout: 1_000 }).catch(() => false)) &&
+        (await editBtn.isVisible({ timeout: 2_000 }).catch(() => false))
+      ) {
         await editBtn.click();
         await this.page.waitForTimeout(800);
       }
@@ -338,7 +342,10 @@ export class RequestEditPage {
         .first();
     }
 
-    if (!(await block.isVisible({ timeout: 3_000 }).catch(() => false))) return;
+    if (!(await block.isVisible({ timeout: 3_000 }).catch(() => false))) {
+      await this.exitDocInfoEditIfOpen();
+      return;
+    }
 
     const already = block
       .locator('.ant-select-selection-choice, .ant-select-selection-item, .ant-tag, [class*="avatar"], [class*="selected"]')
@@ -422,6 +429,46 @@ export class RequestEditPage {
 
     await expect(this.scope().locator('.slide-mask').first()).toBeHidden({ timeout: 15_000 }).catch(() => undefined);
     await expect(this.scope().getByRole('button', { name: /^提\s*交$/ }).first()).toBeVisible({ timeout: 15_000 });
+  }
+
+  private submitBtnLoc(): Locator {
+    const inScope = this.scope().getByRole('button', { name: /^提\s*交$/ }).filter({ visible: true }).first();
+    if (this.root?.inIframe) {
+      return inScope.or(this.page.getByRole('button', { name: /^提\s*交$/ }).filter({ visible: true }).first());
+    }
+    return inScope;
+  }
+
+  /** 单据信息编辑侧滑挡住详情底栏时：先保存/返回，露出「提交」 */
+  private async exitDocInfoEditIfOpen() {
+    const submit = this.submitBtnLoc();
+    if (await submit.isVisible({ timeout: 800 }).catch(() => false)) return;
+
+    await this.saveDocInfoIfEditing();
+    if (await submit.isVisible({ timeout: 1_500 }).catch(() => false)) return;
+
+    const saveOnly = this.scope().getByRole('button', { name: /^保\s*存$/ }).filter({ visible: true }).last();
+    const hasSaveNoSubmit =
+      (await saveOnly.isVisible({ timeout: 800 }).catch(() => false)) &&
+      !(await submit.isVisible({ timeout: 300 }).catch(() => false));
+    if (!hasSaveNoSubmit) return;
+
+    const back = this.scope()
+      .getByRole('button', { name: /^返\s*回$/ })
+      .filter({ visible: true })
+      .first()
+      .or(this.page.getByRole('button', { name: /^返\s*回$/ }).filter({ visible: true }).first());
+    if (await back.isVisible({ timeout: 1_500 }).catch(() => false)) {
+      await back.click();
+      await this.page.waitForTimeout(600);
+    }
+  }
+
+  private async ensureSubmitReady() {
+    await this.finishDetailSlideIfOpen();
+    await this.dismissExpenseTypeIfOpen();
+    await this.exitDocInfoEditIfOpen();
+    await this.saveDocInfoIfEditing();
   }
 
   private async clearApproverInBlock(block: Locator) {
@@ -581,10 +628,7 @@ export class RequestEditPage {
       .getByRole('button', { name: /^保\s*存$/ })
       .filter({ visible: true })
       .last();
-    const submitOnSameBar = this.scope()
-      .getByRole('button', { name: /^提\s*交$/ })
-      .filter({ visible: true })
-      .first();
+    const submitOnSameBar = this.submitBtnLoc();
 
     // 新建全屏/详情底栏已有「提交」时不是编辑侧滑；误点「保存」会因差旅缺日期等校验失败
     if (await submitOnSameBar.isVisible({ timeout: 1_000 }).catch(() => false)) return;
@@ -1317,11 +1361,8 @@ export class RequestEditPage {
     else await this.ensureLineItem();
     await this.fillApproverIfNeeded(approverKeyword);
     await this.dismissExpenseTypeIfOpen();
-    // 不要用 editRoot()：编辑侧滑 last() 会盖住详情，侧滑内没有「提交」
-    const btn = this.scope()
-      .getByRole('button', { name: /^提\s*交$/ })
-      .filter({ visible: true })
-      .first();
+    await this.ensureSubmitReady();
+    const btn = this.submitBtnLoc();
     await expect(btn, '未找到提交按钮（若在编辑侧滑请先保存退出）').toBeVisible({ timeout: 30_000 });
     const alreadySubmitted = await this.scope()
       .getByText(/审批中|已提交/)
