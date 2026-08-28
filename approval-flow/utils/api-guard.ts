@@ -47,6 +47,8 @@ const DEFAULT_URL_IGNORES: RegExp[] = [
   /\/monitor\/router\/config\b/i,
   // 工作台可选小组件，dev 上 404，与审批列表无关
   /\/mobile\/api\/work\/widget\/global-entry\/find\b/i,
+  // 打印/埋点日志，headless 切页时偶发 ERR_NETWORK_IO_SUSPENDED，不影响业务
+  /\/api\/common\/print\/log\b/i,
 ];
 
 /** 展示用 URL：保留 path + 有意义的 query，去掉 hlyRequestID 等噪声 */
@@ -132,8 +134,8 @@ export class ApiGuard {
     const url = request.url();
     if (!this.shouldWatch(url)) return;
     const failure: string | null = request.failure()?.errorText ?? 'requestfailed';
-    // 切页签会 abort 上一次列表请求，不算业务失败
-    if (failure && /ERR_ABORTED|NS_BINDING_ABORTED/i.test(failure)) return;
+    // 切页签会 abort 上一次列表请求；后台挂起时 print/log 等会 IO_SUSPENDED，不算业务失败
+    if (failure && /ERR_ABORTED|NS_BINDING_ABORTED|ERR_NETWORK_IO_SUSPENDED/i.test(failure)) return;
     this.failures.push({
       kind: 'requestfailed',
       url: pathnameOf(url),

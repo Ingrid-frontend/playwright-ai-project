@@ -2582,6 +2582,7 @@ function renderFailureDiagnosticsPanel(bundle) {
         <div class="failure-item-title">${escapeHtml(item.title || '失败')}</div>
         ${specLine}
         <div class="failure-item-meta">${item.location ? escapeHtml(item.location) : ''}${item.lastStep ? ` · 步骤: ${escapeHtml(item.lastStep)}` : ''}</div>
+        ${item.message ? `<div class="failure-item-meta" style="white-space:pre-wrap;margin-top:4px">${escapeHtml(item.message)}</div>` : ''}
         ${item.hint ? `<div class="failure-item-meta" style="color:var(--amber)">${escapeHtml(item.hint)}</div>` : ''}
       </div>`;
     })
@@ -2811,6 +2812,8 @@ function handleRunFailureFromMsg(msg) {
 
 function buildRequestFlowFailureBundle(msg) {
   const specRel = msg.specRelative || (msg.spec ? `request-flow/tests/${msg.spec}` : '');
+  const pwFailures = msg.failures || [];
+  const apiFailures = flowApiFailuresToItems(msg.apiFailures);
   return buildFailureBundle({
     kind: 'request-flow',
     specRelative: specRel,
@@ -2823,9 +2826,28 @@ function buildRequestFlowFailureBundle(msg) {
       duration: msg.duration ?? '',
       exitCode: msg.exitCode ?? (msg.ok ? 0 : 1),
     },
-    failures: msg.failures || [],
+    failures: pwFailures.length ? pwFailures : apiFailures,
     playwrightReportDir: msg.playwrightReportDir || 'request-flow/playwright-report',
   });
+}
+
+function flowApiFailuresToItems(apiFailures) {
+  const items = [];
+  for (const entry of apiFailures || []) {
+    const testTitle = entry.testTitle || '接口监听';
+    for (const f of entry.failures || []) {
+      items.push({
+        title: `[${testTitle}] ${f.method || 'GET'} ${f.url || ''}`,
+        message: [
+          f.kind ? `kind: ${f.kind}` : '',
+          f.errorText ? `error: ${f.errorText}` : '',
+          f.bodySummary ? `body: ${f.bodySummary}` : '',
+        ].filter(Boolean).join('\n'),
+        status: f.kind || 'requestfailed',
+      });
+    }
+  }
+  return items;
 }
 
 function handleRequestFlowFailureFromMsg(msg) {
@@ -2834,7 +2856,11 @@ function handleRequestFlowFailureFromMsg(msg) {
     return;
   }
   const bundle = buildRequestFlowFailureBundle(msg);
-  if (!bundle.failures?.length && msg.exitCode == null) return;
+  const apiN = Number(msg.apiFailureCount) || 0;
+  if (!bundle.failures?.length && apiN > 0) {
+    bundle.failures = flowApiFailuresToItems(msg.apiFailures);
+  }
+  if (!bundle.failures?.length && msg.exitCode == null && apiN === 0) return;
   renderFailureDiagnosticsPanel(bundle);
 }
 
@@ -6220,10 +6246,24 @@ function handleMessage(msg) {
         showToast(extras.length ? `申请单流程用例通过 · ${extras.join(' · ')}` : '申请单流程用例通过', 'ok');
         log('ok', `[request-flow] 用例通过 · mode=${msg.mode || ''}${msg.pipeline ? ` · pipeline=${msg.pipeline}` : ''}`);
       } else if (!msg.cancelled) {
-        showToast(`申请单流程用例失败（退出码 ${msg.exitCode ?? '?' }）`, 'err');
-        log('err', `[request-flow] 用例失败 · exit=${msg.exitCode ?? '?'}`);
+        const apiHint = msg.apiFailureCount > 0 ? `，${msg.apiFailureCount} 个接口报错` : '';
+        showToast(`申请单流程用例失败（退出码 ${msg.exitCode ?? '?' }${apiHint}）`, 'err');
+        log('err', `[request-flow] 用例失败 · exit=${msg.exitCode ?? '?'}${apiHint}`);
+        if (msg.apiFailures?.length) {
+          for (const entry of msg.apiFailures) {
+            for (const f of entry.failures || []) {
+              log(
+                'err',
+                `[request-flow] 接口 [${f.kind}] ${f.method} ${f.url}${f.errorText ? ` · ${f.errorText}` : ''}`,
+              );
+            }
+          }
+        }
         if (msg.reportOpenPath) {
           log('info', `[request-flow] 报告 ${msg.reportOpenPath}`);
+        }
+        if (msg.summaryReportOpenPath) {
+          log('info', `[request-flow] 运行汇总 ${msg.summaryReportOpenPath}`);
         }
         if (hasFlowReplayPath(msg)) {
           log('info', `[request-flow] 回放 ${msg.replayReportOpenPath || msg.videoReportOpenPath}`);

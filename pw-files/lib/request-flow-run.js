@@ -484,7 +484,16 @@ async function runRequestFlowTests(ws, session, msg, deps) {
 
   send(ws, 'request-flow:run:done', finalized);
   if (ok) logLine(ws, '[request-flow] 用例通过', 'ok');
-  else send(ws, 'error', { message: `用例退出码 ${exitCode}` });
+  else {
+    if (finalized.apiFailureCount > 0) {
+      logLine(ws, `[request-flow] 用例失败 · 接口报错 ${finalized.apiFailureCount} 条`, 'err');
+    }
+    send(ws, 'error', {
+      message: finalized.apiFailureCount > 0
+        ? `用例失败（退出码 ${exitCode}，${finalized.apiFailureCount} 个接口报错）`
+        : `用例退出码 ${exitCode}`,
+    });
+  }
 }
 
 async function runRequestFlowGoldenAll(ws, session, msg, deps) {
