@@ -172,6 +172,22 @@ function logPlaywrightFailureReport(ws, result, session, exitCode) {
   return failures;
 }
 
+function isPlaywrightJsonReportLine(line) {
+  const t = String(line || '').trim();
+  return t.startsWith('{') && t.includes('"suites"');
+}
+
+function streamPlaywrightProcLog(ws, raw, headless) {
+  const t = stripAnsi(raw);
+  if (!t.trim()) return;
+  for (const line of t.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (headless && isPlaywrightJsonReportLine(trimmed)) continue;
+    logLine(ws, line.trimEnd(), 'dim');
+  }
+}
+
 function headedFailurePlaceholder(specRel) {
   return [
     {
@@ -189,5 +205,6 @@ module.exports = {
   parsePlaywrightFailures,
   parsePlaywrightResultJson,
   logPlaywrightFailureReport,
+  streamPlaywrightProcLog,
   headedFailurePlaceholder,
 };

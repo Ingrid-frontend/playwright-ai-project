@@ -7,6 +7,7 @@ const {
   logPlaywrightFailureReport,
   parsePlaywrightFailures,
   parsePlaywrightResultJson,
+  streamPlaywrightProcLog,
   headedFailurePlaceholder,
 } = require('./failure-report');
 const { finalizeFlowRun } = require('./flow-run-common');
@@ -297,7 +298,7 @@ async function runApprovalFlowTests(ws, session, msg, deps) {
   if (mode === 'headed') args.push('--headed');
   else if (mode === 'debug') args.push('--debug');
   else if (mode === 'ui') args.push('--ui');
-  else if (headless) args.push('--reporter=json,html');
+  else if (headless) args.push('--reporter=line,json,html');
 
   const startTime = Date.now();
   const startedAt = new Date(startTime).toISOString();
@@ -325,10 +326,7 @@ async function runApprovalFlowTests(ws, session, msg, deps) {
   proc.stdout.on('data', (d) => {
     const raw = d.toString();
     stdout += raw;
-    if (!headless) {
-      const t = stripAnsi(raw);
-      if (t.trim()) logLine(ws, t.trimEnd(), 'dim');
-    }
+    streamPlaywrightProcLog(ws, raw, headless);
   });
   proc.stderr.on('data', (d) => {
     const t = stripAnsi(d.toString());
