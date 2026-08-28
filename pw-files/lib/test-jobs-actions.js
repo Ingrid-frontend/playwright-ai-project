@@ -49,7 +49,7 @@ function createTestJobsActions(deps) {
   }
 
   function isFlowRunnerJob(merged) {
-    return merged.runner === 'request-flow-golden';
+    return merged.runner === 'request-flow-golden' || merged.id === 'request-flow-golden';
   }
 
   function countRequestFlowGoldenProfiles(repoRoot, envId, profileFilter) {

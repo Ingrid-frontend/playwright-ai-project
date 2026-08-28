@@ -259,7 +259,7 @@ function cmdList(): void {
     const schedule = job.schedule ? `cron: ${job.schedule} (${job.timezone})` : '仅手动';
     const profileNote = job.accountProfile ? ` · profile=${JSON.stringify(job.accountProfile)}` : '';
     const specsLabel =
-      job.runner === 'request-flow-golden'
+      job.runner === 'request-flow-golden' || job.id === 'request-flow-golden'
         ? formatFlowGoldenSpecsLabel(process.cwd(), job.playwrightEnv, job.accountProfile)
         : job.specs === 'all'
           ? `全部 (${job.playwrightEnv}, ${countResolvedSpecs(job.specs, job.optimizedDir, job.playwrightEnv, job.accountProfile)} 个)`

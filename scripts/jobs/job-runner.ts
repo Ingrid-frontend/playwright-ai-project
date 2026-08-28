@@ -103,7 +103,7 @@ export async function runJobById(
   const effectiveEnv = resolveJobRunEnv(job, ctxPartial.playwrightEnv);
   const effectiveProfile = ctxPartial.accountProfile ?? job.accountProfile ?? null;
 
-  if (isFlowRunner(job.runner)) {
+  if (isFlowRunner(job.runner, job.id)) {
     return runFlowJob(job, {
       ...ctxPartial,
       playwrightEnv: effectiveEnv,

@@ -3897,6 +3897,19 @@ function applyJobPreview(preview) {
           .join(', ')}`
       : '';
   hintEl.textContent = `${preview.specsLabel || preview.specCount + ' 个用例'}${overrideNote}${profileNote}${groupNote}`;
+  const job = testJobsState.jobs.find((j) => j.id === preview.jobId);
+  if (isFlowGoldenJob(preview) || isFlowGoldenJob(job)) {
+    renderJobsSpecPicker({
+      ...preview,
+      ok: true,
+      runner: preview.runner || job?.runner || 'request-flow-golden',
+      specCount: preview.specCount ?? job?.specCount ?? 0,
+      specsLabel: preview.specsLabel || job?.specsLabel,
+      candidateSpecs: [],
+      configMatchedEmpty: false,
+    });
+    return;
+  }
   renderJobsSpecPicker(preview);
 }
 
@@ -3909,8 +3922,24 @@ function renderJobsSpecPicker(preview) {
   const wrap = document.getElementById('jobsSpecPickerWrap');
   const box = document.getElementById('jobsSpecPickerList');
   const hint = document.getElementById('jobsSpecPickerHint');
+  const toolbar = wrap?.querySelector('.batch-spec-toolbar');
   if (!wrap || !box) return;
   const jobId = testJobsState.selectedJobId;
+  const job = testJobsState.jobs.find((j) => j.id === jobId);
+  const flowGolden = isFlowGoldenJob(preview) || isFlowGoldenJob(job);
+  if (flowGolden) {
+    wrap.classList.remove('studio-hidden');
+    if (toolbar) toolbar.style.display = 'none';
+    const count = preview?.specCount ?? job?.specCount ?? 0;
+    if (hint) {
+      hint.textContent = '串行跑 request/golden-regression.spec.ts，无需勾选 optimized 用例';
+    }
+    box.innerHTML = count
+      ? `<div class="sidebar-hint" style="margin:0;padding:8px 0">已登录 <strong>golden*</strong> 角色：<strong>${count}</strong> 个<br>执行时将按角色串行回归并生成流程截图对比。</div>`
+      : `<div class="sidebar-hint" style="margin:0;padding:8px 0;color:var(--amber)">尚未检测到 golden* 登录态。<br>请先在侧栏为 golden / golden_2 等档案完成登录，再执行本任务。</div>`;
+    return;
+  }
+  if (toolbar) toolbar.style.display = '';
   const candidates = preview?.candidateSpecs || [];
   if (!preview?.ok || !jobId || !candidates.length) {
     wrap.classList.add('studio-hidden');
@@ -3985,6 +4014,8 @@ function persistJobSpecSelection(jobId) {
 }
 
 function getJobSpecRelativesForRun(jobId) {
+  const job = testJobsState.jobs.find((j) => j.id === jobId);
+  if (isFlowGoldenJob(job)) return undefined;
   const selected = getSelectedJobSpecsFromUI();
   const all = getAllJobSpecCandidatesFromUI();
   if (!selected.length || !all.length) return undefined;
@@ -4044,7 +4075,15 @@ function onJobRunProfileChange() {
   renderTestJobsList(testJobsState.jobs, { skipWorkspace: true });
 }
 
+function isFlowGoldenJob(jobOrPreview) {
+  return jobOrPreview?.runner === 'request-flow-golden' || jobOrPreview?.id === 'request-flow-golden';
+}
+
 function formatJobSpecsLabel(job) {
+  if (job?.specsLabel) return job.specsLabel;
+  if (isFlowGoldenJob(job)) {
+    return job.specCount ? `申请单 Golden · ${job.specCount} 个角色` : '请先为 golden* 档案登录';
+  }
   if (job.specs === 'all') return `全部 · ${job.specCount ?? 0} 个`;
   if (!job.specCount) return '请在下方选用例';
   return `${job.specCount} 个用例`;
@@ -4061,6 +4100,10 @@ function formatJobCardEnvSpecLine(job) {
     envShown !== configEnv
       ? `环境: ${envShown}（配置 ${configEnv}）`
       : `环境: ${envShown}`;
+  if (isFlowGoldenJob(job)) {
+    const label = (live && preview?.specsLabel) || job.specsLabel || formatJobSpecsLabel(job);
+    return `${envLabel} · ${label}`;
+  }
   const runCount = live ? preview.specCount : configCount;
   const overridden = live && (preview.envOverridden || preview.specsOverridden);
   const specLabel =
@@ -4113,7 +4156,7 @@ function renderJobsWorkspace(job, opts = {}) {
     ['账号档案', profileCfg],
     ['调度', formatJobSchedule(job)],
     ['用例范围', specsForDisplay],
-    ['Projects', Array.isArray(job.projects) ? job.projects.join(', ') : '—'],
+    ['Projects', isFlowGoldenJob(job) ? 'request-flow' : Array.isArray(job.projects) ? job.projects.join(', ') : '—'],
     ['最近 runId', lr?.runId || '—'],
     ['最近结果', sum ? formatJobRunDetail(lr) : st],
     ...(sum && (st === 'failed' || st === 'aborted')
@@ -4139,6 +4182,16 @@ function renderJobsWorkspace(job, opts = {}) {
       ? testJobsState.preview
       : null,
   );
+  if (isFlowGoldenJob(job)) {
+    renderJobsSpecPicker({
+      ok: true,
+      jobId: job.id,
+      runner: job.runner || 'request-flow-golden',
+      specCount: job.specCount,
+      candidateSpecs: [],
+      specsLabel: job.specsLabel,
+    });
+  }
   if (!skipPreview) previewSelectedJobEnv();
 }
 

@@ -20,8 +20,8 @@ type FlowJobCtx = {
   accountProfile?: AccountProfileFilter;
 };
 
-export function isFlowRunner(runner?: string | null): boolean {
-  return runner === "request-flow-golden";
+export function isFlowRunner(runner?: string | null, jobId?: string): boolean {
+  return runner === "request-flow-golden" || jobId === "request-flow-golden";
 }
 
 export async function runFlowJob(
