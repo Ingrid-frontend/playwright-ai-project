@@ -92,6 +92,46 @@
         "frame": "first",
         "required": false,
         "snapshotName": "approval-list"
+      },
+      {
+        "key": "request-list-root",
+        "selector": ".application-list",
+        "script": "flows/request-flow",
+        "frame": "first",
+        "required": true,
+        "snapshotName": "request-list"
+      },
+      {
+        "key": "request-list-table",
+        "selector": ".application-table-v2 .ant-table, .ant-table",
+        "script": "flows/request-flow",
+        "frame": "first",
+        "required": true,
+        "snapshotName": "request-list"
+      },
+      {
+        "key": "request-search-table",
+        "selector": ".application-table-v2 .ant-table, .ant-table",
+        "script": "flows/request-flow",
+        "frame": "first",
+        "required": true,
+        "snapshotName": "request-search"
+      },
+      {
+        "key": "request-filter-panel",
+        "selector": ".advanced-table-search-form, .advanced-search-filter-pop",
+        "script": "flows/request-flow",
+        "frame": "first",
+        "required": false,
+        "snapshotName": "request-filter"
+      },
+      {
+        "key": "request-detail-slide",
+        "selector": ".slide-frame.slide-frame-open, .full-width-slideframe, .one-screen-request, .request-edit",
+        "script": "flows/request-flow",
+        "frame": "first",
+        "required": true,
+        "snapshotName": "request-detail"
       }
     ]
   },

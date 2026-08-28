@@ -1,0 +1,493 @@
+{
+  "exportedAt": "2026-08-28T07:00:39.285Z",
+  "fileKey": "86WDjDbixGJ7WtrMvvdiZn",
+  "fileUrl": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System",
+  "pages": [
+    {
+      "id": "7875:33949",
+      "name": "通用",
+      "category": "foundation",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=7875-33949"
+    },
+    {
+      "id": "21156:130006",
+      "name": "字体/Font",
+      "category": "typography",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=21156-130006"
+    },
+    {
+      "id": "21156:134223",
+      "name": "布局/ Layout",
+      "category": "layout",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=21156-134223"
+    },
+    {
+      "id": "21156:130007",
+      "name": "阴影/Shadow",
+      "category": "shadow",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=21156-130007"
+    },
+    {
+      "id": "2856:6439",
+      "name": "功能图标/Functions Icon",
+      "category": "icon",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=2856-6439"
+    },
+    {
+      "id": "7875:33931",
+      "name": "图表/Chart",
+      "category": "other",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=7875-33931"
+    },
+    {
+      "id": "21156:130005",
+      "name": "颜色/Color",
+      "category": "color",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=21156-130005"
+    },
+    {
+      "id": "7875:33544",
+      "name": "空状态/Empty",
+      "category": "other",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=7875-33544"
+    },
+    {
+      "id": "24791:245",
+      "name": "公告/Notice",
+      "category": "other",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=24791-245"
+    },
+    {
+      "id": "29313:155247",
+      "name": "---",
+      "category": "other",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=29313-155247"
+    },
+    {
+      "id": "4:462",
+      "name": "桌面端",
+      "category": "other",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=4-462"
+    },
+    {
+      "id": "45419:14734",
+      "name": "数据录入控件",
+      "category": "other",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=45419-14734"
+    },
+    {
+      "id": "13972:100730",
+      "name": "A01 按钮/Button",
+      "category": "desktop-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=13972-100730"
+    },
+    {
+      "id": "13972:100731",
+      "name": "A02 开关/Switch",
+      "category": "desktop-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=13972-100731"
+    },
+    {
+      "id": "13996:101136",
+      "name": "A03 单选按钮/Radio",
+      "category": "desktop-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=13996-101136"
+    },
+    {
+      "id": "13996:101119",
+      "name": "A04 复选框/Checkbox",
+      "category": "desktop-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=13996-101119"
+    },
+    {
+      "id": "13996:101152",
+      "name": "A05 输入框/Input",
+      "category": "desktop-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=13996-101152"
+    },
+    {
+      "id": "13996:101257",
+      "name": "A06 表格/Table",
+      "category": "desktop-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=13996-101257"
+    },
+    {
+      "id": "13996:108958",
+      "name": "A07 弹窗+抽屉/Modal",
+      "category": "desktop-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=13996-108958"
+    },
+    {
+      "id": "15599:122732",
+      "name": "A08 通知对话框/alert-dialog",
+      "category": "desktop-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=15599-122732"
+    },
+    {
+      "id": "13996:112198",
+      "name": "A09 下拉选择/Dropdown Select",
+      "category": "desktop-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=13996-112198"
+    },
+    {
+      "id": "13996:114887",
+      "name": "A10 日期选择器/DatePicker",
+      "category": "desktop-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=13996-114887"
+    },
+    {
+      "id": "22560:11561",
+      "name": "A11 树选择/TreeSelect",
+      "category": "desktop-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=22560-11561"
+    },
+    {
+      "id": "17618:138705",
+      "name": "A12 树形控件/Tree",
+      "category": "desktop-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=17618-138705"
+    },
+    {
+      "id": "15599:120608",
+      "name": "A13 提示/Tips",
+      "category": "desktop-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=15599-120608"
+    },
+    {
+      "id": "15599:122835",
+      "name": "A14 文字提示/Tooltip",
+      "category": "desktop-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=15599-122835"
+    },
+    {
+      "id": "30654:22342",
+      "name": "A15 气泡卡片/Popover",
+      "category": "desktop-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=30654-22342"
+    },
+    {
+      "id": "17062:131008",
+      "name": "A16 分类/Tabs",
+      "category": "desktop-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=17062-131008"
+    },
+    {
+      "id": "13996:114908",
+      "name": "A17 附件上传/Upload",
+      "category": "desktop-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=13996-114908"
+    },
+    {
+      "id": "13996:114988",
+      "name": "A18 时间轴/Timeline（待完善）",
+      "category": "desktop-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=13996-114988"
+    },
+    {
+      "id": "15599:122677",
+      "name": "A19 面包屑/Breadcrumb",
+      "category": "desktop-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=15599-122677"
+    },
+    {
+      "id": "15599:118921",
+      "name": "A20 导航菜单/Menu",
+      "category": "desktop-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=15599-118921"
+    },
+    {
+      "id": "15624:118834",
+      "name": "A21 分页/Pagination（待完善）",
+      "category": "desktop-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=15624-118834"
+    },
+    {
+      "id": "17613:139227",
+      "name": "A22 步骤条/Steps（待完善）",
+      "category": "desktop-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=17613-139227"
+    },
+    {
+      "id": "21030:11040",
+      "name": "A23 锚点/Anchor（待完善）",
+      "category": "desktop-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=21030-11040"
+    },
+    {
+      "id": "28465:18530",
+      "name": "A24 头像/Avatar",
+      "category": "desktop-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=28465-18530"
+    },
+    {
+      "id": "28552:18829",
+      "name": "A25 徽标/Badge",
+      "category": "desktop-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=28552-18829"
+    },
+    {
+      "id": "16214:121249",
+      "name": "A26  标签/Tag",
+      "category": "desktop-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=16214-121249"
+    },
+    {
+      "id": "41191:9001",
+      "name": "A27  间距/Space",
+      "category": "desktop-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=41191-9001"
+    },
+    {
+      "id": "44955:10261",
+      "name": "A28 浏览器头部/Browser Header",
+      "category": "desktop-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=44955-10261"
+    },
+    {
+      "id": "29313:155248",
+      "name": "---",
+      "category": "other",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=29313-155248"
+    },
+    {
+      "id": "29568:3380",
+      "name": "移动端",
+      "category": "other",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=29568-3380"
+    },
+    {
+      "id": "45210:27211",
+      "name": "数据录入控件",
+      "category": "other",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=45210-27211"
+    },
+    {
+      "id": "13798:100456",
+      "name": "B01 按钮/Button",
+      "category": "mobile-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=13798-100456"
+    },
+    {
+      "id": "21228:28089",
+      "name": "B02 开关/Switch（同PC）",
+      "category": "mobile-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=21228-28089"
+    },
+    {
+      "id": "21228:34539",
+      "name": "B03 选择器/Picker",
+      "category": "mobile-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=21228-34539"
+    },
+    {
+      "id": "16392:127320",
+      "name": "B04 输入框/Input",
+      "category": "mobile-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=16392-127320"
+    },
+    {
+      "id": "15594:123113",
+      "name": "B05 导航布局/Navigative Layout",
+      "category": "mobile-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=15594-123113"
+    },
+    {
+      "id": "15594:123322",
+      "name": "B06 基础选项卡片/Option Card（待定）",
+      "category": "mobile-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=15594-123322"
+    },
+    {
+      "id": "26754:47095",
+      "name": "B07 动态面板/Dynamic Panel",
+      "category": "mobile-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=26754-47095"
+    },
+    {
+      "id": "15594:119582",
+      "name": "B08 轻提示/Toast",
+      "category": "mobile-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=15594-119582"
+    },
+    {
+      "id": "16580:131664",
+      "name": "B09 分类/Tabs",
+      "category": "mobile-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=16580-131664"
+    },
+    {
+      "id": "16444:124563",
+      "name": "B10 筛选/Screening（待完善）",
+      "category": "mobile-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=16444-124563"
+    },
+    {
+      "id": "16479:125220",
+      "name": "B11 公告栏/Notice Bar",
+      "category": "mobile-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=16479-125220"
+    },
+    {
+      "id": "15594:120278",
+      "name": "B12 日期选择器/Date Picker",
+      "category": "mobile-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=15594-120278"
+    },
+    {
+      "id": "15594:132041",
+      "name": "B13 对话框/Dialog（待完善）",
+      "category": "mobile-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=15594-132041"
+    },
+    {
+      "id": "15594:131984",
+      "name": "B14 分割线/Divider（待定）",
+      "category": "mobile-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=15594-131984"
+    },
+    {
+      "id": "16479:124678",
+      "name": "B15 加载/Loading（待完善）",
+      "category": "mobile-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=16479-124678"
+    },
+    {
+      "id": "15594:122042",
+      "name": "B16 键盘/Keyboard（待定）",
+      "category": "mobile-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=15594-122042"
+    },
+    {
+      "id": "15594:118937",
+      "name": "B17 时间轴/Timeline（待定）",
+      "category": "mobile-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=15594-118937"
+    },
+    {
+      "id": "17582:138157",
+      "name": "B18 步骤条/Steps（待完善）",
+      "category": "mobile-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=17582-138157"
+    },
+    {
+      "id": "7875:29843",
+      "name": "B19 单选多选/Radio Checkbox",
+      "category": "mobile-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=7875-29843"
+    },
+    {
+      "id": "29881:61617",
+      "name": "B20 附件上传/Upload",
+      "category": "mobile-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=29881-61617"
+    },
+    {
+      "id": "31664:62606",
+      "name": "B21  标签/Tag",
+      "category": "mobile-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=31664-62606"
+    },
+    {
+      "id": "29313:155249",
+      "name": "---",
+      "category": "other",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=29313-155249"
+    },
+    {
+      "id": "29313:76532",
+      "name": "业务组件（双端通用）",
+      "category": "foundation",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=29313-76532"
+    },
+    {
+      "id": "14173:100730",
+      "name": "C01 选人✅",
+      "category": "business-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=14173-100730"
+    },
+    {
+      "id": "21970:33849",
+      "name": "C02 选费用类型✅",
+      "category": "business-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=21970-33849"
+    },
+    {
+      "id": "25747:54987",
+      "name": "C03 选城市 ✅",
+      "category": "business-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=25747-54987"
+    },
+    {
+      "id": "25747:58169",
+      "name": "C04 选部门✅",
+      "category": "business-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=25747-58169"
+    },
+    {
+      "id": "25747:59120",
+      "name": "C05 选成本中心 ✅",
+      "category": "business-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=25747-59120"
+    },
+    {
+      "id": "25747:59122",
+      "name": "C06 选值列表  ✅",
+      "category": "business-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=25747-59122"
+    },
+    {
+      "id": "44646:27095",
+      "name": "C07 选开户行",
+      "category": "business-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=44646-27095"
+    },
+    {
+      "id": "35172:6152",
+      "name": "C08 AI相关",
+      "category": "business-component",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=35172-6152"
+    },
+    {
+      "id": "29313:155190",
+      "name": "---",
+      "category": "other",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=29313-155190"
+    },
+    {
+      "id": "7875:33545",
+      "name": "⭕️  Logo",
+      "category": "other",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=7875-33545"
+    },
+    {
+      "id": "21198:65485",
+      "name": "⭕️  封面",
+      "category": "other",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=21198-65485"
+    },
+    {
+      "id": "32084:194",
+      "name": "⭕️  工具箱",
+      "category": "other",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=32084-194"
+    },
+    {
+      "id": "44135:2857",
+      "name": "标准页面模版",
+      "category": "template",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=44135-2857"
+    },
+    {
+      "id": "2782:3487",
+      "name": "Cover",
+      "category": "other",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=2782-3487"
+    },
+    {
+      "id": "7875:36306",
+      "name": "草稿",
+      "category": "other",
+      "url": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=7875-36306"
+    }
+  ]
+}

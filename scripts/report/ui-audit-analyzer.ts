@@ -359,7 +359,10 @@ export async function auditStep(
 
   try {
     const text = await callVision(
-      buildAuditSystemPrompt({ hasFigma }),
+      buildAuditSystemPrompt({
+        hasFigma,
+        hasHelios: Boolean(ctx.helios?.tokensSummary || ctx.helios?.layoutRules?.length),
+      }),
       buildAuditUserPrompt(meta, ctx),
       visionImages,
       config,

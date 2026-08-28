@@ -200,6 +200,22 @@ async function main(): Promise<void> {
   assert.ok(mapped, '应按 script 匹配到 Figma 映射');
   console.log('✅ Figma URL 解析与配置匹配正确');
 
+  const { resolveFigmaBaseline } = await import('../report/figma-baseline.js');
+  const storeUrl = 'https://www.figma.com/design/AbCd1234/x?node-id=99-88';
+  const storePng = path.join(reportDir, 'screenshots-baseline', 'figma', 'images', 'AbCd1234_99-88.png');
+  fs.mkdirSync(path.dirname(storePng), { recursive: true });
+  fs.copyFileSync(pngPath, storePng);
+  const origCwd = process.cwd();
+  process.chdir(reportDir);
+  const offline = await resolveFigmaBaseline({
+    scriptKey: 'verify/self-test',
+    stepName: 'fixture',
+    cliFigmaUrl: storeUrl,
+  });
+  process.chdir(origCwd);
+  assert.equal(offline?.source, 'store', '应命中本地 Figma 缓存');
+  console.log('✅ 审计默认只读本地 Figma 缓存（无需 Token）');
+
   const figmaHtml = renderAuditReportHtml([{ ...steps[0], figmaRel: steps[0].screenshotRel }]);
   assert.ok(figmaHtml.includes('Figma 设计稿'), '有 Figma 基准时应并排展示设计稿');
   console.log('✅ 报告在有 Figma 基准时展示设计稿对照');
@@ -281,6 +297,13 @@ async function main(): Promise<void> {
   assert.equal(filtered.issues.length, 0, '应过滤低置信 noise/warning 与 dropPatterns');
   assert.equal(filtered.verdict, 'pass', '过滤后应恢复 pass');
   console.log('✅ 业务白名单后处理可过滤低置信 noise/warning');
+
+  const { resolveHeliosAuditContext } = await import('../report/helios-design-spec.js');
+  const helios = resolveHeliosAuditContext('flows/request-flow/dev/golden-regression', 'request-detail', 1);
+  assert.equal(helios.enabled, true);
+  assert.ok(helios.layoutRules && helios.layoutRules.length > 0);
+  assert.ok(helios.tokensSummary && helios.tokensSummary.includes('主题色'));
+  console.log('✅ Helios 设计规范可解析并注入审计上下文');
 
   // 清理
   fs.rmSync(reportDir, { recursive: true, force: true });

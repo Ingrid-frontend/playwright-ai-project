@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "syncedAt": "2026-08-28T06:42:25.791Z",
+  "entries": [
+    {
+      "script": "flows/request-flow",
+      "step": "request-detail",
+      "figmaUrl": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=44506-5676",
+      "fileKey": "86WDjDbixGJ7WtrMvvdiZn",
+      "nodeId": "44506:5676",
+      "note": "通用 / 单据详情-左右模式",
+      "syncedAt": "2026-08-28T06:42:25.791Z"
+    },
+    {
+      "script": "flows/request-flow",
+      "step": "request-filter",
+      "figmaUrl": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=13996-112198",
+      "fileKey": "86WDjDbixGJ7WtrMvvdiZn",
+      "nodeId": "13996:112198",
+      "note": "A09 下拉选择/Dropdown Select",
+      "syncedAt": "2026-08-28T06:42:25.791Z"
+    },
+    {
+      "script": "flows/request-flow",
+      "step": "request-list",
+      "figmaUrl": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=13996-101258",
+      "fileKey": "86WDjDbixGJ7WtrMvvdiZn",
+      "nodeId": "13996:101258",
+      "note": "A06 表格/Table",
+      "syncedAt": "2026-08-28T06:42:25.791Z"
+    },
+    {
+      "script": "flows/request-flow",
+      "step": "request-search",
+      "figmaUrl": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=13996-101258",
+      "fileKey": "86WDjDbixGJ7WtrMvvdiZn",
+      "nodeId": "13996:101258",
+      "note": "A06 表格/Table",
+      "syncedAt": "2026-08-28T06:42:25.791Z"
+    },
+    {
+      "script": "flows/request-flow",
+      "step": "request-submit",
+      "figmaUrl": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=44506-5676",
+      "fileKey": "86WDjDbixGJ7WtrMvvdiZn",
+      "nodeId": "44506:5676",
+      "note": "通用 / 单据详情-左右模式（新建/编辑态）",
+      "syncedAt": "2026-08-28T06:42:25.791Z"
+    },
+    {
+      "script": "flows/request-flow",
+      "step": "travel",
+      "figmaUrl": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=44506-5676",
+      "fileKey": "86WDjDbixGJ7WtrMvvdiZn",
+      "nodeId": "44506:5676",
+      "note": "通用 / 单据详情-左右模式",
+      "syncedAt": "2026-08-28T06:42:25.791Z"
+    }
+  ],
+  "images": {
+    "86WDjDbixGJ7WtrMvvdiZn:44506:5676": {
+      "imageFile": "images/86WDjDbixGJ7WtrMvvdiZn_44506-5676.png",
+      "syncedAt": "2026-08-28T06:42:25.791Z",
+      "figmaUrl": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=44506-5676"
+    },
+    "86WDjDbixGJ7WtrMvvdiZn:13996:112198": {
+      "imageFile": "images/86WDjDbixGJ7WtrMvvdiZn_13996-112198.png",
+      "syncedAt": "2026-08-28T06:42:25.791Z",
+      "figmaUrl": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=13996-112198"
+    },
+    "86WDjDbixGJ7WtrMvvdiZn:13996:101258": {
+      "imageFile": "images/86WDjDbixGJ7WtrMvvdiZn_13996-101258.png",
+      "syncedAt": "2026-08-28T06:42:25.791Z",
+      "figmaUrl": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System?node-id=13996-101258"
+    }
+  }
+}

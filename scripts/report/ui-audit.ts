@@ -10,6 +10,7 @@ import {
   type AuditStepReport,
 } from './ui-audit-report.js';
 import { resolveFigmaBaseline } from './figma-baseline.js';
+import { resolveHeliosAuditContext } from './helios-design-spec.js';
 import { applyAuditRules, resolveAuditRule } from './ui-audit-rules.js';
 
 // 必须在读取任何 AI_* 环境变量前加载，否则 .env 里配好的 Key 会被漏掉、永远降级 mock
@@ -167,10 +168,10 @@ async function main(): Promise<void> {
       stepNumber: cand.stepNumber,
       cliFigmaUrl: args.figma,
       cliFigmaImage: args.figmaImage,
-      cacheDir: path.join(outDir, 'figma-cache'),
     });
 
     const auditRule = resolveAuditRule(cand.scriptKey, cand.stepName, cand.stepNumber);
+    const helios = resolveHeliosAuditContext(cand.scriptKey, cand.stepName, cand.stepNumber);
 
     const rawResult = await auditStep(
       cand.pngPath,
@@ -181,6 +182,13 @@ async function main(): Promise<void> {
         stepNumber: cand.stepNumber,
         figmaUrl: figma?.url,
         expect: auditRule?.expect,
+        helios: helios.enabled
+          ? {
+              tokensSummary: helios.tokensSummary,
+              layoutRules: helios.layoutRules,
+              figmaPage: helios.figmaPage,
+            }
+          : undefined,
       },
       { figmaImagePath: figma?.imagePath },
     );
@@ -238,8 +246,11 @@ async function main(): Promise<void> {
   }
 
   const figmaCount = steps.filter((s) => s.figmaRel).length;
+  const heliosCount = steps.filter((s) =>
+    resolveHeliosAuditContext(s.scriptKey, s.stepName, s.stepNumber).enabled,
+  ).length;
   const html = renderAuditReportHtml(steps, {
-    mode: `${mock ? 'mock 规则分析' : 'AI 视觉分析'}${figmaCount ? ` · Figma 基准 ${figmaCount}` : ''}`,
+    mode: `${mock ? 'mock 规则分析' : 'AI 视觉分析'}${figmaCount ? ` · Figma 基准 ${figmaCount}` : ''}${heliosCount ? ` · Helios 规范 ${heliosCount}` : ''}`,
   });
   const htmlPath = path.join(outDir, 'index.html');
   fs.writeFileSync(htmlPath, html, 'utf-8');
@@ -253,6 +264,7 @@ async function main(): Promise<void> {
     fail: steps.filter((s) => s.result.verdict === 'fail').length,
     skipped: steps.filter((s) => s.result.verdict === 'skipped').length,
     figma: figmaCount,
+    helios: heliosCount,
     steps: steps.map((s) => ({
       scriptKey: s.scriptKey,
       stepName: s.stepName,

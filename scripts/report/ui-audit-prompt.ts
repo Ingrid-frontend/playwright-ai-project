@@ -9,6 +9,12 @@ export interface AuditStepContext {
   expect?: string[];
   /** 已提供 Figma 设计稿图时填写，供双图对比 */
   figmaUrl?: string;
+  /** Helios Design System 规范摘要（Token + 布局模版） */
+  helios?: {
+    tokensSummary?: string;
+    layoutRules?: string[];
+    figmaPage?: string;
+  };
 }
 
 /** 严格 JSON 输出契约 —— 单独抽出便于自测断言 */
@@ -27,7 +33,16 @@ export const AUDIT_RESULT_CONTRACT = `{
   ]
 }`;
 
-export function buildAuditSystemPrompt(opts?: { hasFigma?: boolean }): string {
+export function buildAuditSystemPrompt(opts?: { hasFigma?: boolean; hasHelios?: boolean }): string {
+  const heliosRules = opts?.hasHelios
+    ? `
+【Helios 设计规范】段落提供设计 Token 与页面布局模版约束：
+- 结构/层级/关键区块参照 Helios 布局说明；有 Figma 图时以设计稿为准
+- 主色/文本色/字号与 Token 明显偏离时，可报 design-mismatch 或 component（需有把握，非像素级）
+- Helios 布局说明与【业务白名单】中声明「设计如此」的项一律不报
+`
+    : '';
+
   const figmaRules = opts?.hasFigma
     ? `
 你会收到两张图：第一张是 **Figma 设计稿（基准）**，第二张是 **实际页面截图**。
@@ -45,7 +60,7 @@ export function buildAuditSystemPrompt(opts?: { hasFigma?: boolean }): string {
 `;
 
   return `你是资深 UI 审查工程师，负责判断一张页面截图是否存在**有意义的 UI 缺陷**。
-${figmaRules}
+${figmaRules}${heliosRules}
 只报告以下真实缺陷类型：
 - overflow：内容溢出容器或横向溢出视口
 - occlusion：元素被遮挡、重叠
@@ -134,6 +149,23 @@ export function buildAuditUserPrompt(meta: StepMeta, ctx: AuditStepContext): str
       ? `（含业务白名单，下列项不算缺陷）\n${expectLines.map((e) => `- ${e}`).join('\n')}`
       : '（未声明）';
 
+  const heliosLines: string[] = [];
+  if (ctx.helios?.figmaPage) heliosLines.push(`- 参照模版: ${ctx.helios.figmaPage}`);
+  if (ctx.helios?.tokensSummary) {
+    heliosLines.push('- 设计 Token:');
+    for (const line of ctx.helios.tokensSummary.split('\n')) {
+      heliosLines.push(`  ${line}`);
+    }
+  }
+  if (ctx.helios?.layoutRules?.length) {
+    heliosLines.push('- 布局约束:');
+    for (const rule of ctx.helios.layoutRules) {
+      heliosLines.push(`  · ${rule}`);
+    }
+  }
+  const heliosSection =
+    heliosLines.length > 0 ? heliosLines.join('\n') : '（未加载 Helios 规范，请先 npm run figma:export-helios）';
+
   return `【测试步骤】
 - 脚本: ${ctx.scriptKey}
 - 步骤: ${ctx.stepNumber != null ? `#${ctx.stepNumber} ` : ''}${ctx.stepName}
@@ -145,6 +177,9 @@ export function buildAuditUserPrompt(meta: StepMeta, ctx: AuditStepContext): str
 
 【业务期望】
 ${expectSection}
+
+【Helios 设计规范】
+${heliosSection}
 
 【DOM 摘要 / 元素几何】
 ${buildDomSection(meta)}

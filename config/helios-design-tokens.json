@@ -1,0 +1,755 @@
+{
+  "exportedAt": "2026-08-28T07:00:39.392Z",
+  "fileKey": "86WDjDbixGJ7WtrMvvdiZn",
+  "colors": [
+    {
+      "name": "警示/Warning-6（独立文本·图标）",
+      "hex": "#FF800B",
+      "styleType": "FILL"
+    },
+    {
+      "name": "克莱因蓝/Blue-4",
+      "hex": "#6EA0FE",
+      "styleType": "FILL"
+    },
+    {
+      "name": "克莱因蓝/Blue-5",
+      "hex": "#4988FE",
+      "styleType": "FILL"
+    },
+    {
+      "name": "克莱因蓝/Blue-6（主色）",
+      "hex": "#0F62FE",
+      "styleType": "FILL"
+    },
+    {
+      "name": "中性色/Neutral-7（文本—次要）",
+      "hex": "#71757E",
+      "styleType": "FILL"
+    },
+    {
+      "name": "克莱因蓝/Blue-1（选择器选中背景）",
+      "hex": "#E6EFFF",
+      "styleType": "FILL"
+    },
+    {
+      "name": "中性色/Neutral-10（文本—主要）",
+      "hex": "#252629",
+      "styleType": "FILL"
+    },
+    {
+      "name": "中性色/Neutral-5（文本—辅助·占位）",
+      "hex": "#969AA2",
+      "styleType": "FILL"
+    },
+    {
+      "name": "克莱因蓝/Blue-7（按钮 Hover）",
+      "hex": "#0A52D9",
+      "styleType": "FILL"
+    },
+    {
+      "name": "背景/背景色",
+      "hex": "#F1F3F5",
+      "styleType": "FILL"
+    },
+    {
+      "name": "基础/Light（白色背景·导航栏）",
+      "hex": "#FFFFFF",
+      "styleType": "FILL"
+    },
+    {
+      "name": "中性色/Neutral-1（元素—背景·表头）",
+      "hex": "#F9F9F9",
+      "styleType": "FILL"
+    },
+    {
+      "name": "中性色/Neutral-2（元素—分割线）",
+      "hex": "#F2F2F3",
+      "styleType": "FILL"
+    },
+    {
+      "name": "中性色/Neutral-2.5（元素-按下、分割线灰底）",
+      "hex": "#E3E4E5",
+      "styleType": "FILL"
+    },
+    {
+      "name": "中性色/Neutral-8",
+      "hex": "#585C63",
+      "styleType": "FILL"
+    },
+    {
+      "name": "危险/Danger-9",
+      "hex": "#7D090D",
+      "styleType": "FILL"
+    },
+    {
+      "name": "危险/Danger-6（独立文本·图标）",
+      "hex": "#F04134",
+      "styleType": "FILL"
+    },
+    {
+      "name": "基础/Mask（全局遮罩）",
+      "hex": "#000000",
+      "styleType": "FILL"
+    },
+    {
+      "name": "中性色/Neutral-3（元素—边框）",
+      "hex": "#D6D8DB",
+      "styleType": "FILL"
+    },
+    {
+      "name": "完成/Finish-1",
+      "hex": "#F4F6F8",
+      "styleType": "FILL"
+    },
+    {
+      "name": "中性色/Neutral-9",
+      "hex": "#44474C",
+      "styleType": "FILL"
+    },
+    {
+      "name": "中性色/Neutral-4（文本—不可用）",
+      "hex": "#C3C5CA",
+      "styleType": "FILL"
+    },
+    {
+      "name": "克莱因蓝/Blue-9",
+      "hex": "#053793",
+      "styleType": "FILL"
+    },
+    {
+      "name": "完成/Finish-2（标签底色）",
+      "hex": "#EDF0F2",
+      "styleType": "FILL"
+    },
+    {
+      "name": "危险/Danger-3",
+      "hex": "#FFBFB3",
+      "styleType": "FILL"
+    },
+    {
+      "name": "中性色/Neutral-6",
+      "hex": "#7C818B",
+      "styleType": "FILL"
+    },
+    {
+      "name": "危险/Danger-2（标签底色）",
+      "hex": "#FFE2DB",
+      "styleType": "FILL"
+    },
+    {
+      "name": "完成/Finish-6（独立文本·图标）",
+      "hex": "#566D7F",
+      "styleType": "FILL"
+    },
+    {
+      "name": "e档案-紫/紫-9",
+      "hex": "#20188C",
+      "styleType": "FILL"
+    },
+    {
+      "name": "克莱因蓝/Blue-10",
+      "hex": "#022B78",
+      "styleType": "FILL"
+    },
+    {
+      "name": "甄选-天青/天青-4",
+      "hex": "#4BEBD0",
+      "styleType": "FILL"
+    },
+    {
+      "name": "e档案-紫/紫-4",
+      "hex": "#B9A3FF",
+      "styleType": "FILL"
+    },
+    {
+      "name": "成功/Success-8",
+      "hex": "#1E822A",
+      "styleType": "FILL"
+    },
+    {
+      "name": "e档案-紫/紫-3",
+      "hex": "#DACCFF",
+      "styleType": "FILL"
+    },
+    {
+      "name": "通知/Info-6（独立文本·图标）",
+      "hex": "#208BEC",
+      "styleType": "FILL"
+    },
+    {
+      "name": "成功/Success-7（标签内文本·图标）",
+      "hex": "#2B9B2F",
+      "styleType": "FILL"
+    },
+    {
+      "name": "通知/Info-3",
+      "hex": "#AAD6F8",
+      "styleType": "FILL"
+    },
+    {
+      "name": "警示/Warning-3",
+      "hex": "#FFDC9C",
+      "styleType": "FILL"
+    },
+    {
+      "name": "甄选-天青/天青-8",
+      "hex": "#008580",
+      "styleType": "FILL"
+    },
+    {
+      "name": "e档案-紫/紫-6",
+      "hex": "#6F52FF",
+      "styleType": "FILL"
+    },
+    {
+      "name": "危险/Danger-10",
+      "hex": "#57050B",
+      "styleType": "FILL"
+    },
+    {
+      "name": "甄选-铬黄/铬黄-8",
+      "hex": "#B37519",
+      "styleType": "FILL"
+    },
+    {
+      "name": "完成/Finish-8",
+      "hex": "#3E4C5A",
+      "styleType": "FILL"
+    },
+    {
+      "name": "警示/Warning-9",
+      "hex": "#933302",
+      "styleType": "FILL"
+    },
+    {
+      "name": "甄选-天青/天青-5",
+      "hex": "#23DEC5",
+      "styleType": "FILL"
+    },
+    {
+      "name": "通知/Info-2（标签底色）",
+      "hex": "#CFE8FB",
+      "styleType": "FILL"
+    },
+    {
+      "name": "e档案-紫/紫-10",
+      "hex": "#131066",
+      "styleType": "FILL"
+    },
+    {
+      "name": "成功/Success-1",
+      "hex": "#F4FEEF",
+      "styleType": "FILL"
+    },
+    {
+      "name": "完成/Finish-4",
+      "hex": "#9FADB8",
+      "styleType": "FILL"
+    },
+    {
+      "name": "完成/Finish-7（标签内文本·图标）",
+      "hex": "#495C6D",
+      "styleType": "FILL"
+    },
+    {
+      "name": "通知/Info-5",
+      "hex": "#4DA5F0",
+      "styleType": "FILL"
+    },
+    {
+      "name": "甄选-铬黄/铬黄-9",
+      "hex": "#8C550D",
+      "styleType": "FILL"
+    },
+    {
+      "name": "警示/Warning-1",
+      "hex": "#FFFAF0",
+      "styleType": "FILL"
+    },
+    {
+      "name": "成功/Success-4",
+      "hex": "#9EE889",
+      "styleType": "FILL"
+    },
+    {
+      "name": "警示/Warning-5",
+      "hex": "#FFAA47",
+      "styleType": "FILL"
+    },
+    {
+      "name": "完成/Finish-3",
+      "hex": "#C1CBD1",
+      "styleType": "FILL"
+    },
+    {
+      "name": "成功/Success-3",
+      "hex": "#C8F7B3",
+      "styleType": "FILL"
+    },
+    {
+      "name": "警示/Warning-2（标签底色）",
+      "hex": "#FFEFCE",
+      "styleType": "FILL"
+    },
+    {
+      "name": "甄选-天青/天青-7",
+      "hex": "#00AB9F",
+      "styleType": "FILL"
+    },
+    {
+      "name": "通知/Info-9",
+      "hex": "#104186",
+      "styleType": "FILL"
+    },
+    {
+      "name": "e档案-紫/紫-8",
+      "hex": "#3527B3",
+      "styleType": "FILL"
+    },
+    {
+      "name": "危险/Danger-4",
+      "hex": "#FF998A",
+      "styleType": "FILL"
+    },
+    {
+      "name": "甄选-铬黄/铬黄-3",
+      "hex": "#FFEEB8",
+      "styleType": "FILL"
+    },
+    {
+      "name": "完成/Finish-5",
+      "hex": "#7B8D9C",
+      "styleType": "FILL"
+    },
+    {
+      "name": "e档案-紫/紫-5",
+      "hex": "#957AFF",
+      "styleType": "FILL"
+    },
+    {
+      "name": "甄选-天青/天青-1",
+      "hex": "#E6FFF8",
+      "styleType": "FILL"
+    },
+    {
+      "name": "通知/Info-1",
+      "hex": "#ECF6FD",
+      "styleType": "FILL"
+    },
+    {
+      "name": "甄选-铬黄/铬黄-5",
+      "hex": "#FFD166",
+      "styleType": "FILL"
+    },
+    {
+      "name": "危险/Danger-5",
+      "hex": "#FC7060",
+      "styleType": "FILL"
+    },
+    {
+      "name": "克莱因蓝/Blue-8",
+      "hex": "#0745B7",
+      "styleType": "FILL"
+    },
+    {
+      "name": "通知/Info-10",
+      "hex": "#0A2A66",
+      "styleType": "FILL"
+    },
+    {
+      "name": "甄选-铬黄/铬黄-4",
+      "hex": "#FFE18F",
+      "styleType": "FILL"
+    },
+    {
+      "name": "通知/Info-4",
+      "hex": "#7CBEF5",
+      "styleType": "FILL"
+    },
+    {
+      "name": "成功/Success-5",
+      "hex": "#76D168",
+      "styleType": "FILL"
+    },
+    {
+      "name": "成功/Success-9",
+      "hex": "#136825",
+      "styleType": "FILL"
+    },
+    {
+      "name": "警示/Warning-8",
+      "hex": "#B84806",
+      "styleType": "FILL"
+    },
+    {
+      "name": "甄选-铬黄/铬黄-6",
+      "hex": "#FFBE3C",
+      "styleType": "FILL"
+    },
+    {
+      "name": "甄选-天青/天青-10",
+      "hex": "#003638",
+      "styleType": "FILL"
+    },
+    {
+      "name": "完成/Finish-9",
+      "hex": "#323C48",
+      "styleType": "FILL"
+    },
+    {
+      "name": "甄选-天青/天青-2",
+      "hex": "#A3FFEA",
+      "styleType": "FILL"
+    },
+    {
+      "name": "成功/Success-2（标签底色）",
+      "hex": "#E6FBDA",
+      "styleType": "FILL"
+    },
+    {
+      "name": "危险/Danger-1",
+      "hex": "#FFF3F0",
+      "styleType": "FILL"
+    },
+    {
+      "name": "警示/Warning-4",
+      "hex": "#FFC16C",
+      "styleType": "FILL"
+    },
+    {
+      "name": "成功/Success-10",
+      "hex": "#0B5520",
+      "styleType": "FILL"
+    },
+    {
+      "name": "危险/Danger-8",
+      "hex": "#A31414",
+      "styleType": "FILL"
+    },
+    {
+      "name": "甄选-天青/天青-6",
+      "hex": "#00D2BE",
+      "styleType": "FILL"
+    },
+    {
+      "name": "e档案-紫/紫-7",
+      "hex": "#503BD9",
+      "styleType": "FILL"
+    },
+    {
+      "name": "e档案-紫/紫-2",
+      "hex": "#EAE2FF",
+      "styleType": "FILL"
+    },
+    {
+      "name": "克莱因蓝/Blue-3（按钮 Disable）",
+      "hex": "#9FC0FD",
+      "styleType": "FILL"
+    },
+    {
+      "name": "甄选-铬黄/铬黄-10",
+      "hex": "#663A08",
+      "styleType": "FILL"
+    },
+    {
+      "name": "克莱因蓝/Blue-2",
+      "hex": "#CEDFFE",
+      "styleType": "FILL"
+    },
+    {
+      "name": "危险/Danger-7（标签内文本·图标）",
+      "hex": "#C92822",
+      "styleType": "FILL"
+    },
+    {
+      "name": "甄选-天青/天青-9",
+      "hex": "#005E5E",
+      "styleType": "FILL"
+    },
+    {
+      "name": "甄选-铬黄/铬黄-7",
+      "hex": "#D99829",
+      "styleType": "FILL"
+    },
+    {
+      "name": "完成/Finish-10",
+      "hex": "#272D37",
+      "styleType": "FILL"
+    },
+    {
+      "name": "甄选-天青/天青-3",
+      "hex": "#77F7DE",
+      "styleType": "FILL"
+    },
+    {
+      "name": "甄选-铬黄/铬黄-2",
+      "hex": "#FFF9E0",
+      "styleType": "FILL"
+    },
+    {
+      "name": "警示/Warning-7（标签内文本·图标）",
+      "hex": "#DB6207",
+      "styleType": "FILL"
+    },
+    {
+      "name": "成功/Success-6（独立文本·图标）",
+      "hex": "#41B43C",
+      "styleType": "FILL"
+    },
+    {
+      "name": "通知/Info-8",
+      "hex": "#1559A8",
+      "styleType": "FILL"
+    },
+    {
+      "name": "甄选-铬黄/铬黄-1",
+      "hex": "#FFFCF0",
+      "styleType": "FILL"
+    },
+    {
+      "name": "通知/Info-7（标签内文本·图标）",
+      "hex": "#1A72CA",
+      "styleType": "FILL"
+    },
+    {
+      "name": "警示/Warning-10",
+      "hex": "#792300",
+      "styleType": "FILL"
+    },
+    {
+      "name": "e档案-紫/紫-1",
+      "hex": "#F5F0FF",
+      "styleType": "FILL"
+    },
+    {
+      "name": "背景/操作底色",
+      "hex": "#252629",
+      "styleType": "FILL"
+    }
+  ],
+  "typography": [
+    {
+      "name": "APP专用（15）/常规",
+      "fontSize": 15,
+      "fontWeight": 400,
+      "lineHeightPx": 23,
+      "fontFamily": "PingFang SC"
+    },
+    {
+      "name": "APP专用（18）/加粗",
+      "fontSize": 18,
+      "fontWeight": 500,
+      "lineHeightPx": 26,
+      "fontFamily": "PingFang SC"
+    },
+    {
+      "name": "APP专用（17）/常规",
+      "fontSize": 17,
+      "fontWeight": 400,
+      "lineHeightPx": 25,
+      "fontFamily": "PingFang SC"
+    },
+    {
+      "name": "二级标题（20）/常规",
+      "fontSize": 20,
+      "fontWeight": 400,
+      "lineHeightPx": 28,
+      "fontFamily": "PingFang SC"
+    },
+    {
+      "name": "小辅助文字（10）/常规",
+      "fontSize": 10,
+      "fontWeight": 400,
+      "lineHeightPx": 16,
+      "fontFamily": "PingFang SC"
+    },
+    {
+      "name": "APP常用（13）/常规",
+      "fontSize": 13,
+      "fontWeight": 400,
+      "lineHeightPx": 20,
+      "fontFamily": "PingFang SC"
+    },
+    {
+      "name": "一级标题（24）/加粗",
+      "fontSize": 24,
+      "fontWeight": 500,
+      "lineHeightPx": 32,
+      "fontFamily": "PingFang SC"
+    },
+    {
+      "name": "二级标题（20）/加粗",
+      "fontSize": 20,
+      "fontWeight": 500,
+      "lineHeightPx": 28,
+      "fontFamily": "PingFang SC"
+    },
+    {
+      "name": "APP专用（17）/加粗",
+      "fontSize": 17,
+      "fontWeight": 500,
+      "lineHeightPx": 25,
+      "fontFamily": "PingFang SC"
+    },
+    {
+      "name": "辅助标题，正文（14）/加粗",
+      "fontSize": 14,
+      "fontWeight": 500,
+      "lineHeightPx": 22,
+      "fontFamily": "PingFang SC"
+    },
+    {
+      "name": "辅助标题，正文（14）/常规",
+      "fontSize": 14,
+      "fontWeight": 400,
+      "lineHeightPx": 22,
+      "fontFamily": "PingFang SC"
+    },
+    {
+      "name": "说明文字（12）/加粗",
+      "fontSize": 12,
+      "fontWeight": 500,
+      "lineHeightPx": 18,
+      "fontFamily": "PingFang SC"
+    },
+    {
+      "name": "说明文字（12）/常规",
+      "fontSize": 12,
+      "fontWeight": 400,
+      "lineHeightPx": 18,
+      "fontFamily": "PingFang SC"
+    },
+    {
+      "name": "APP专用（15）/加粗",
+      "fontSize": 15,
+      "fontWeight": 500,
+      "lineHeightPx": 23,
+      "fontFamily": "PingFang SC"
+    },
+    {
+      "name": "小辅助文字（10）/加粗",
+      "fontSize": 10,
+      "fontWeight": 500,
+      "lineHeightPx": 16,
+      "fontFamily": "PingFang SC"
+    },
+    {
+      "name": "APP常用（13）/加粗",
+      "fontSize": 13,
+      "fontWeight": 500,
+      "lineHeightPx": 20,
+      "fontFamily": "PingFang SC"
+    },
+    {
+      "name": "三级标题（16）/加粗",
+      "fontSize": 16,
+      "fontWeight": 500,
+      "lineHeightPx": 24,
+      "fontFamily": "PingFang SC"
+    },
+    {
+      "name": "三级标题（16）/常规",
+      "fontSize": 16,
+      "fontWeight": 400,
+      "lineHeightPx": 24,
+      "fontFamily": "PingFang SC"
+    },
+    {
+      "name": "一级标题（24）/常规",
+      "fontSize": 24,
+      "fontWeight": 400,
+      "lineHeightPx": 32,
+      "fontFamily": "PingFang SC"
+    },
+    {
+      "name": "特大标题（36）/加粗",
+      "fontSize": 36,
+      "fontWeight": 500,
+      "lineHeightPx": 44,
+      "fontFamily": "PingFang SC"
+    },
+    {
+      "name": "特大标题（36）/常规",
+      "fontSize": 36,
+      "fontWeight": 400,
+      "lineHeightPx": 44,
+      "fontFamily": "PingFang SC"
+    },
+    {
+      "name": "APP专用（18）/常规",
+      "fontSize": 18,
+      "fontWeight": 400,
+      "lineHeightPx": 26,
+      "fontFamily": "PingFang SC"
+    }
+  ],
+  "effects": [
+    {
+      "name": "上层投影",
+      "styleType": "EFFECT"
+    },
+    {
+      "name": "列表内容",
+      "styleType": "EFFECT"
+    },
+    {
+      "name": "分割线（上）",
+      "styleType": "EFFECT"
+    },
+    {
+      "name": "基础投影",
+      "styleType": "EFFECT"
+    },
+    {
+      "name": "表头",
+      "styleType": "EFFECT"
+    },
+    {
+      "name": "分割线（下）",
+      "styleType": "EFFECT"
+    }
+  ],
+  "grids": [
+    {
+      "name": "24栅格（水槽20、边距20）",
+      "styleType": "GRID"
+    },
+    {
+      "name": "24栅格（水槽12、边距12）",
+      "styleType": "GRID"
+    },
+    {
+      "name": "24栅格（水槽12、边距0）",
+      "styleType": "GRID"
+    },
+    {
+      "name": "24栅格（水槽12、边距20）",
+      "styleType": "GRID"
+    },
+    {
+      "name": "24栅格（水槽20、边距12）",
+      "styleType": "GRID"
+    }
+  ],
+  "semantic": {
+    "text": [
+      "主要文本 → 中性色/Neutral-10",
+      "次要文本 → 中性色/Neutral-7",
+      "辅助/占位 → 中性色/Neutral-5",
+      "链接/主题色 → 克莱因蓝/Blue-6",
+      "错误提示 → 警示/Warning-6"
+    ],
+    "background": [
+      "白底",
+      "浅灰底",
+      "中灰底"
+    ],
+    "icon": [
+      "主要",
+      "次要",
+      "辅助",
+      "主题色"
+    ]
+  }
+}

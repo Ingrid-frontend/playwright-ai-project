@@ -32,7 +32,9 @@
       "expect": [
         "列表中单号、事由、金额等列内容被省略号截断是表格列宽规范，不要报 truncation",
         "申请单列表分页「跳至」、底部操作栏与悬浮按钮叠压是常见布局，不要报 occlusion",
-        "筛选面板展开时遮罩层覆盖列表是正常交互，不要报 overlay"
+        "筛选面板展开时遮罩层覆盖列表是正常交互，不要报 overlay",
+        "右侧悬浮 AI 入口贴视口右缘、部分图标裁切是产品设计，不要报 overflow/occlusion",
+        "右下角悬浮设置/调试按钮是开发工具，不要报 occlusion"
       ],
       "dropPatterns": [
         "跳至",
@@ -41,7 +43,12 @@
         "悬浮",
         "遮挡",
         "overlay",
-        "遮罩"
+        "遮罩",
+        "悬浮AI",
+        "悬浮 AI",
+        "贴视口右",
+        "悬浮设置",
+        "调试"
       ]
     },
     {
@@ -49,6 +56,21 @@
       "step": "request-list",
       "expect": [
         "空列表占位文案或加载骨架屏是数据状态，不是 layout 缺陷"
+      ]
+    },
+    {
+      "script": "flows/request-flow",
+      "step": "request-filter",
+      "expect": [
+        "高级筛选面板展开时覆盖列表是正常交互，不要报 occlusion/overlay"
+      ]
+    },
+    {
+      "script": "flows/request-flow",
+      "step": "request-detail",
+      "expect": [
+        "详情侧滑层覆盖列表是正常交互，不要报 occlusion",
+        "左右模式左侧信息区约 360px、右侧明细区是 Helios 单据详情模版"
       ]
     },
     {

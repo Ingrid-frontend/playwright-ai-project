@@ -244,6 +244,41 @@ results/ui-audit/
 2. `--figma=<url>` / Studio 输入框：本轮所有步骤共用同一节点
 3. `config/figma-baselines.json`：按 `script` 子串匹配，可再按 `step` 收窄
 
+`figma-baselines.json` 可由 `npm run figma:export-helios` 从 `config/helios-audit-bindings.json` 自动合并生成。
+
+## Helios Design System 规范打通
+
+设计规范与 AI 审计三层接入：
+
+| 配置 | 作用 |
+|------|------|
+| `config/helios-design-tokens.json` | 颜色/字体 Token（`figma:export-helios` 导出） |
+| `config/helios-design-catalog.json` | 全量 81 页索引 |
+| `config/helios-component-catalog.json` | **桌面端**可 sync 目录（A+C+基础，排除 B 移动端） |
+| `config/helios-audit-bindings.json` | script/step → Figma 节点 + 布局约束 |
+| `config/figma-baselines.json` | 审计时自动拉取设计稿 PNG |
+
+### 同步设计规范
+
+```bash
+# 1) 导出 Token + 目录 + figma-baselines 映射（需 Token，偶尔跑）
+npm run figma:export-helios
+
+# 2) 拉取设计稿 PNG 到本地缓存（需 Token，设计稿更新时手动跑）
+npm run figma:sync-baselines                              # 仅审计映射（request-flow 等）
+npm run figma:sync-baselines -- --list                    # 查看桌面端全量组件目录
+npm run figma:sync-baselines -- --catalog --code A06      # 按需 sync 单个组件
+npm run figma:sync-baselines -- --catalog --all-desktop   # sync 全部桌面目录（不含 B 移动端）
+# 强制覆盖：加 --force
+
+# 3) 审计（只读本地缓存 + Helios 规范，不需要 Token）
+npm run ui-audit -- --script=flows/request-flow --limit=8
+```
+
+设计稿 PNG 缓存在 `screenshots-baseline/figma/images/`，清单在 `manifest.json`。**审计不会访问 Figma API**；缓存缺失时跳过双图对比并提示运行 `figma:sync-baselines`。
+
+审计 prompt 会多出 **【Helios 设计规范】** 段落；`summary.json` 含 `helios` 字段统计已注入规范的步骤数。
+
 ```json
 {
   "mappings": [
@@ -258,8 +293,9 @@ results/ui-audit/
 约束：
 
 - URL 必须带 `node-id`（指向具体 Frame/节点，不能只给文件链接）
-- 需要 `FIGMA_ACCESS_TOKEN`（Figma 个人 Access Token）才能拉导出图
-- Token 缺失、URL 无法解析、接口失败 → 打警告并回退单图审计，不中断
+- **拉取设计稿 PNG** 需 `FIGMA_ACCESS_TOKEN`，通过 `npm run figma:sync-baselines` 一次性写入本地；**日常审计不访问 Figma API**
+- 本地缓存路径：`screenshots-baseline/figma/`（`images/*.png` + `manifest.json`）
+- 缓存缺失 → 打警告并回退单图审计，不中断
 - mock 模式看不了图：即使给了 Figma，无规则信号时仍是 ⚪ skipped，不会假绿
 - 对比只报结构/层级/关键区块的有意义偏差，不把动态数据与设计稿占位差异当缺陷
 
@@ -304,6 +340,16 @@ AI 把「设计如此 / 规范允许」报成 `truncation` / `layout` / `overflo
 - **P4**：把审计结论接入飞书通知与 CI 卡口
 
 ## Change Log
+
+### 2026-08-28
+
+- 桌面端全量组件目录：`helios-component-catalog.json`（排除 B 移动端），`figma:sync-baselines --catalog` 按需 sync
+- Figma 设计稿改为本地持久缓存：`screenshots-baseline/figma/`，`npm run figma:sync-baselines` 手动同步
+- 审计默认只读本地缓存，不再每次请求 Figma API
+- Helios Design System 与 AI 审计打通：`figma:export-helios` 导出 Token/目录并合并 `figma-baselines.json`
+- 新增 `helios-audit-bindings.json`：request-flow 各 step 的布局约束 + Figma 节点映射
+- 审计 prompt 注入【Helios 设计规范】；`summary.json` 增加 `helios` 计数
+- `ui-regression.json` 为 `flows/request-flow` 补充 structureChecks 选择器
 
 ### 2026-08-24
 

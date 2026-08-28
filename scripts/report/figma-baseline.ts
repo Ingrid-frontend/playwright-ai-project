@@ -12,12 +12,30 @@ export interface FigmaMapping {
   script: string;
   step?: string;
   figmaUrl: string;
+  note?: string;
 }
 
 export interface FigmaBaselineHit {
   imagePath: string;
   url: string;
-  source: 'cli-url' | 'cli-image' | 'config';
+  source: 'cli-url' | 'cli-image' | 'config' | 'store';
+}
+
+export interface FigmaBaselineManifestEntry {
+  script: string;
+  step?: string;
+  figmaUrl: string;
+  fileKey: string;
+  nodeId: string;
+  note?: string;
+  syncedAt: string;
+}
+
+export interface FigmaBaselineManifest {
+  version: number;
+  syncedAt?: string;
+  entries: FigmaBaselineManifestEntry[];
+  images: Record<string, { imageFile: string; syncedAt: string; figmaUrl: string }>;
 }
 
 interface FigmaBaselineConfig {
@@ -25,6 +43,9 @@ interface FigmaBaselineConfig {
 }
 
 const DEFAULT_CONFIG = path.join('config', 'figma-baselines.json');
+export const FIGMA_BASELINE_STORE_DIR = path.join('screenshots-baseline', 'figma');
+export const FIGMA_BASELINE_IMAGES_DIR = path.join(FIGMA_BASELINE_STORE_DIR, 'images');
+export const FIGMA_BASELINE_MANIFEST_PATH = path.join(FIGMA_BASELINE_STORE_DIR, 'manifest.json');
 
 export function parseFigmaUrl(input: string): FigmaNodeRef | null {
   const raw = String(input || '').trim();
@@ -53,6 +74,18 @@ export function resolveFigmaToken(): string | undefined {
   return undefined;
 }
 
+export function baselineImageFileName(ref: FigmaNodeRef): string {
+  return `${ref.fileKey}_${ref.nodeId.replace(/:/g, '-')}.png`;
+}
+
+export function baselineImageAbsPath(ref: FigmaNodeRef, root = process.cwd()): string {
+  return path.join(root, FIGMA_BASELINE_IMAGES_DIR, baselineImageFileName(ref));
+}
+
+export function nodeCacheKey(ref: FigmaNodeRef): string {
+  return `${ref.fileKey}:${ref.nodeId}`;
+}
+
 export function loadFigmaBaselineConfig(configPath = DEFAULT_CONFIG): FigmaMapping[] {
   const abs = path.resolve(process.cwd(), configPath);
   if (!fs.existsSync(abs)) return [];
@@ -62,6 +95,46 @@ export function loadFigmaBaselineConfig(configPath = DEFAULT_CONFIG): FigmaMappi
   } catch {
     return [];
   }
+}
+
+export function loadFigmaBaselineManifest(manifestPath = FIGMA_BASELINE_MANIFEST_PATH): FigmaBaselineManifest | null {
+  const abs = path.resolve(process.cwd(), manifestPath);
+  if (!fs.existsSync(abs)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(abs, 'utf-8')) as FigmaBaselineManifest;
+  } catch {
+    return null;
+  }
+}
+
+export function syncFigmaBaselineManifest(manifest: Omit<FigmaBaselineManifest, 'version'>): void {
+  const abs = path.resolve(process.cwd(), FIGMA_BASELINE_MANIFEST_PATH);
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  const payload: FigmaBaselineManifest = { version: 1, ...manifest };
+  fs.writeFileSync(abs, JSON.stringify(payload, null, 2), 'utf-8');
+}
+
+/** 合并写入 manifest（保留既有 audit entries，追加 images） */
+export function mergeFigmaBaselineManifest(
+  patch: Partial<Omit<FigmaBaselineManifest, 'version'>> & {
+    images?: Record<string, { imageFile: string; syncedAt: string; figmaUrl: string }>;
+    entries?: FigmaBaselineManifestEntry[];
+  },
+): void {
+  const prev = loadFigmaBaselineManifest();
+  const entries = [...(prev?.entries ?? [])];
+  const entryKeys = new Set(entries.map((e) => `${e.script}\0${e.step ?? ''}`));
+  for (const e of patch.entries ?? []) {
+    const k = `${e.script}\0${e.step ?? ''}`;
+    if (entryKeys.has(k)) continue;
+    entries.push(e);
+    entryKeys.add(k);
+  }
+  syncFigmaBaselineManifest({
+    syncedAt: patch.syncedAt ?? prev?.syncedAt,
+    entries,
+    images: { ...(prev?.images ?? {}), ...(patch.images ?? {}) },
+  });
 }
 
 export function matchFigmaMapping(
@@ -85,6 +158,18 @@ export function matchFigmaMapping(
   return fallback;
 }
 
+function readStoreImage(ref: FigmaNodeRef): string | null {
+  const abs = baselineImageAbsPath(ref);
+  if (fs.existsSync(abs) && fs.statSync(abs).size > 32) return abs;
+
+  const manifest = loadFigmaBaselineManifest();
+  const hit = manifest?.images?.[nodeCacheKey(ref)];
+  if (!hit?.imageFile) return null;
+  const fromManifest = path.resolve(process.cwd(), FIGMA_BASELINE_STORE_DIR, hit.imageFile);
+  if (fs.existsSync(fromManifest) && fs.statSync(fromManifest).size > 32) return fromManifest;
+  return null;
+}
+
 async function downloadPng(url: string, dest: string): Promise<void> {
   const res = await fetchWithRetry(url, { timeout: 45_000, retries: 1 });
   if (!res.ok) throw new Error(`下载 Figma 图失败 HTTP ${res.status}`);
@@ -94,14 +179,18 @@ async function downloadPng(url: string, dest: string): Promise<void> {
   fs.writeFileSync(dest, buf);
 }
 
+/** 仅 sync 脚本调用：从 Figma API 拉取并写入 screenshots-baseline/figma/images/ */
 export async function fetchFigmaPng(
   ref: FigmaNodeRef,
-  cacheDir: string,
-  token: string,
+  opts?: { force?: boolean },
 ): Promise<string> {
-  const cacheName = `${ref.fileKey}_${ref.nodeId.replace(/:/g, '-')}.png`;
-  const cachePath = path.join(cacheDir, cacheName);
-  if (fs.existsSync(cachePath) && fs.statSync(cachePath).size > 32) return cachePath;
+  const cachePath = baselineImageAbsPath(ref);
+  if (!opts?.force && fs.existsSync(cachePath) && fs.statSync(cachePath).size > 32) {
+    return cachePath;
+  }
+
+  const token = resolveFigmaToken();
+  if (!token) throw new Error('未配置 FIGMA_ACCESS_TOKEN');
 
   const api = `https://api.figma.com/v1/images/${encodeURIComponent(ref.fileKey)}?ids=${encodeURIComponent(ref.nodeId)}&format=png&scale=2`;
   const res = await fetchWithRetry(api, {
@@ -114,21 +203,28 @@ export async function fetchFigmaPng(
   }
   const json = (await res.json()) as { err?: string; images?: Record<string, string | null> };
   if (json.err) throw new Error(json.err);
-  const imageUrl = json.images?.[ref.nodeId] || json.images?.[ref.nodeId.replace(/:/g, '-')] || Object.values(json.images || {})[0];
+  const imageUrl =
+    json.images?.[ref.nodeId] ||
+    json.images?.[ref.nodeId.replace(/:/g, '-')] ||
+    Object.values(json.images || {})[0];
   if (!imageUrl) throw new Error(`Figma 未返回节点 ${ref.nodeId} 的导出地址`);
   await downloadPng(imageUrl, cachePath);
   return cachePath;
 }
 
-let missingTokenWarned = false;
+let missingCacheWarned = false;
 
+/**
+ * 解析审计用 Figma 基准图。
+ * 默认只读本地 screenshots-baseline/figma/，不访问 Figma API。
+ * 设计稿更新后请运行：npm run figma:sync-baselines
+ */
 export async function resolveFigmaBaseline(opts: {
   scriptKey: string;
   stepName: string;
   stepNumber?: number;
   cliFigmaUrl?: string;
   cliFigmaImage?: string;
-  cacheDir: string;
   configPath?: string;
 }): Promise<FigmaBaselineHit | null> {
   if (opts.cliFigmaImage) {
@@ -159,20 +255,17 @@ export async function resolveFigmaBaseline(opts: {
     console.log(`⚠️  无法解析 Figma URL（需要含 node-id）: ${url}`);
     return null;
   }
-  const token = resolveFigmaToken();
-  if (!token) {
-    if (!missingTokenWarned) {
-      console.log('⚠️  未配置 FIGMA_ACCESS_TOKEN，跳过 Figma 设计稿拉取');
-      missingTokenWarned = true;
-    }
-    return null;
+
+  const storePath = readStoreImage(ref);
+  if (storePath) {
+    return { imagePath: storePath, url, source: 'store' };
   }
-  try {
-    const imagePath = await fetchFigmaPng(ref, opts.cacheDir, token);
-    return { imagePath, url, source };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.log(`⚠️  拉取 Figma 设计稿失败: ${msg.slice(0, 160)}`);
-    return null;
+
+  if (!missingCacheWarned) {
+    console.log(
+      '⚠️  本地无 Figma 设计稿缓存，跳过双图对比。请运行: npm run figma:sync-baselines',
+    );
+    missingCacheWarned = true;
   }
+  return null;
 }

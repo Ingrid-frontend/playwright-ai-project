@@ -1,0 +1,70 @@
+{
+  "source": "Helios Design System",
+  "fileKey": "86WDjDbixGJ7WtrMvvdiZn",
+  "fileUrl": "https://www.figma.com/design/86WDjDbixGJ7WtrMvvdiZn/Helios-Design-System",
+  "bindings": [
+    {
+      "script": "flows/request-flow",
+      "step": "request-list",
+      "figmaNodeId": "13996:101258",
+      "figmaPage": "A06 表格/Table",
+      "layout": [
+        "标准列表页：顶栏搜索区 + 表格主体 + 底部分页操作栏",
+        "表格列固定宽度，单号/事由/金额等列省略号截断是列宽规范，不是 truncation 缺陷",
+        "列表数据行数、单号、状态为动态数据，与设计稿占位不同不算 design-mismatch"
+      ]
+    },
+    {
+      "script": "flows/request-flow",
+      "step": "request-search",
+      "figmaNodeId": "13996:101258",
+      "figmaPage": "A06 表格/Table",
+      "layout": [
+        "搜索后列表仅保留匹配行是正常筛选结果，不要报 missing-element",
+        "搜索框内单号与列表展示一致即可，不要因数据变化报 component/layout"
+      ]
+    },
+    {
+      "script": "flows/request-flow",
+      "step": "request-filter",
+      "figmaNodeId": "13996:112198",
+      "figmaPage": "A09 下拉选择/Dropdown Select",
+      "layout": [
+        "高级筛选面板展开时覆盖列表区域是正常交互，不要报 occlusion/overlay",
+        "筛选表单字段标签在面板内截断是宽度规范，不要报 truncation"
+      ]
+    },
+    {
+      "script": "flows/request-flow",
+      "step": "request-detail",
+      "figmaNodeId": "44506:5676",
+      "figmaPage": "通用 / 单据详情-左右模式",
+      "layout": [
+        "左右模式：左侧信息区宽 360px（单据头 + 单据信息），右侧为明细区",
+        "顶栏高 52px，左侧导航宽 220px，底部操作栏高 52px，主按钮间距 8px",
+        "详情侧滑层覆盖列表是正常交互，不要报 occlusion",
+        "表单字段随单据类型变化，不要报 missing-element；动态单号/事由不算 design-mismatch"
+      ]
+    },
+    {
+      "script": "flows/request-flow",
+      "step": "request-submit",
+      "figmaNodeId": "44506:5676",
+      "figmaPage": "通用 / 单据详情-左右模式（新建/编辑态）",
+      "layout": [
+        "新建/编辑表单字段随业务配置变化，不要报 missing-element",
+        "审批人选择弹窗、保存成功提示文案变化不算 layout 缺陷"
+      ]
+    },
+    {
+      "script": "flows/request-flow",
+      "step": "travel",
+      "figmaNodeId": "44506:5676",
+      "figmaPage": "通用 / 单据详情-左右模式",
+      "layout": [
+        "差旅/差补申请表单字段随业务配置变化，不要报 missing-element",
+        "审批意见弹窗、成功提示文案变化不算 layout 缺陷"
+      ]
+    }
+  ]
+}
