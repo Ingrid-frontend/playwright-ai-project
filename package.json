@@ -30,6 +30,7 @@
     "report:dashboard": "tsx scripts/report/generate-quality-dashboard.ts",
     "report:replay-summary": "tsx scripts/report/flow-replay-summary.ts",
     "compare-flow-screenshots": "tsx scripts/report/compare-flow-screenshots.ts",
+    "prune-flow-golden-runs": "tsx scripts/report/prune-flow-golden-runs.ts",
     "report:flow-customer": "tsx scripts/report/flow-customer-report.ts",
     "report:flow-summary": "tsx scripts/report/flow-run-summary.ts",
     "report:flow-replay": "tsx scripts/report/flow-run-replay.ts",

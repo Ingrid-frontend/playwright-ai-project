@@ -232,6 +232,12 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     const scriptKey = flowScriptKey(flowId, payload.env, payload.spec, payload.roleSlug);
     const promoted = tryPromoteFlowBaseline(repoRoot, scriptKey);
     baselinePromoted = promoted.seeded;
+    if (hasShots) {
+      runNpmScript(repoRoot, 'prune-flow-golden-runs', [
+        `--script=${scriptKey}`,
+        `--run=${runId}`,
+      ]);
+    }
   }
 
   if (pipeline === 'probe' && payload.runUiAudit && payload.ok && !payload.cancelled) {
