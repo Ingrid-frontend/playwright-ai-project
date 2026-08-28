@@ -7,7 +7,7 @@ const {
   logPlaywrightFailureReport,
   parsePlaywrightFailures,
   parsePlaywrightResultJson,
-  streamPlaywrightProcLog,
+  createPlaywrightLogStreamer,
   headedFailurePlaceholder,
 } = require('./failure-report');
 const { finalizeFlowRun, detectPipeline, flowScriptKey } = require('./flow-run-common');
@@ -381,10 +381,11 @@ async function runRequestFlowTests(ws, session, msg, deps) {
   session.requestFlowProc = proc;
 
   let stdout = '';
+  const streamLog = createPlaywrightLogStreamer(ws, headless);
   proc.stdout.on('data', (d) => {
     const raw = d.toString();
     stdout += raw;
-    streamPlaywrightProcLog(ws, raw, headless);
+    streamLog(raw);
   });
   proc.stderr.on('data', (d) => {
     const t = stripAnsi(d.toString());

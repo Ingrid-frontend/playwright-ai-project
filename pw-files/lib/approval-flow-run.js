@@ -7,7 +7,7 @@ const {
   logPlaywrightFailureReport,
   parsePlaywrightFailures,
   parsePlaywrightResultJson,
-  streamPlaywrightProcLog,
+  createPlaywrightLogStreamer,
   headedFailurePlaceholder,
 } = require('./failure-report');
 const { finalizeFlowRun } = require('./flow-run-common');
@@ -323,10 +323,11 @@ async function runApprovalFlowTests(ws, session, msg, deps) {
   session.approvalFlowProc = proc;
 
   let stdout = '';
+  const streamLog = createPlaywrightLogStreamer(ws, headless);
   proc.stdout.on('data', (d) => {
     const raw = d.toString();
     stdout += raw;
-    streamPlaywrightProcLog(ws, raw, headless);
+    streamLog(raw);
   });
   proc.stderr.on('data', (d) => {
     const t = stripAnsi(d.toString());

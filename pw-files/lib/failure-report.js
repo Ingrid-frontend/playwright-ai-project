@@ -172,20 +172,55 @@ function logPlaywrightFailureReport(ws, result, session, exitCode) {
   return failures;
 }
 
-function isPlaywrightJsonReportLine(line) {
-  const t = String(line || '').trim();
-  return t.startsWith('{') && t.includes('"suites"');
+function braceDelta(text) {
+  let n = 0;
+  for (const ch of text) {
+    if (ch === '{') n += 1;
+    else if (ch === '}') n -= 1;
+  }
+  return n;
 }
 
-function streamPlaywrightProcLog(ws, raw, headless) {
-  const t = stripAnsi(raw);
-  if (!t.trim()) return;
-  for (const line of t.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    if (headless && isPlaywrightJsonReportLine(trimmed)) continue;
-    logLine(ws, line.trimEnd(), 'dim');
-  }
+function isJsonReportStart(line) {
+  const t = String(line || '').trim();
+  return (
+    t === '{' ||
+    (t.startsWith('{') && (t.includes('"config"') || t.includes('"suites"')))
+  );
+}
+
+/** headless 时流式输出 line reporter，整段 JSON 报告写入 stdout 但不刷到控制台 */
+function createPlaywrightLogStreamer(ws, headless) {
+  let inJson = false;
+  let depth = 0;
+
+  return function streamPlaywrightProcLog(raw) {
+    const t = stripAnsi(raw);
+    if (!t.trim()) return;
+    for (const line of t.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      if (!headless) {
+        logLine(ws, line.trimEnd(), 'dim');
+        continue;
+      }
+
+      if (!inJson) {
+        if (isJsonReportStart(trimmed)) {
+          inJson = true;
+          depth = braceDelta(trimmed);
+          if (depth <= 0) inJson = false;
+          continue;
+        }
+        logLine(ws, line.trimEnd(), 'dim');
+        continue;
+      }
+
+      depth += braceDelta(trimmed);
+      if (depth <= 0) inJson = false;
+    }
+  };
 }
 
 function headedFailurePlaceholder(specRel) {
@@ -205,6 +240,7 @@ module.exports = {
   parsePlaywrightFailures,
   parsePlaywrightResultJson,
   logPlaywrightFailureReport,
-  streamPlaywrightProcLog,
+  streamPlaywrightProcLog: createPlaywrightLogStreamer,
+  createPlaywrightLogStreamer,
   headedFailurePlaceholder,
 };
