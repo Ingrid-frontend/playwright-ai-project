@@ -58,7 +58,7 @@ test.describe('申请单 · Golden 回归', () => {
     const keyword = env.requestFilterKeyword;
     await flowStep('按事由筛选', async () => {
       await list.filterByReason(keyword);
-      await list.expectListReady();
+      await list.expectRowContains(keyword);
       await list.resetFilters();
       await list.expectListReady();
     }, { snapshot: 'request-filter' });

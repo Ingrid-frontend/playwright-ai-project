@@ -196,14 +196,28 @@ export class RequestListPage {
     await this.waitListSettled();
   }
 
-  private reasonFilterInput(): Locator {
+  private filterPanel(): Locator {
     return this.scope()
-      .locator('.advanced-search input#title, .advanced-search .ant-form-item')
-      .filter({ has: this.scope().locator('input#title, label:text-is("事由"), .ant-form-item-label:has-text("事由")') })
-      .locator('input#title, input, textarea')
-      .or(this.scope().locator('.advanced-search input#title'))
+      .locator('.advanced-search, .advanced-table-search-form, .advanced-search-filter-pop')
       .filter({ visible: true })
-      .first();
+      .last();
+  }
+
+  private reasonFilterInput(): Locator {
+    const panel = this.filterPanel();
+    return panel
+      .locator('.ant-form-item, [class*="form-item"]')
+      .filter({ hasText: /事\s*由/ })
+      .locator('input#title, input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]), textarea')
+      .filter({ visible: true })
+      .first()
+      .or(panel.locator('input#title').filter({ visible: true }).first())
+      .or(
+        this.scope()
+          .locator('.advanced-search input#title, .advanced-table-search-form input#title')
+          .filter({ visible: true })
+          .first(),
+      );
   }
 
   /** AdvancedSearch：重置/搜索左侧的「展开所有条件」下拉箭头 */
@@ -227,9 +241,18 @@ export class RequestListPage {
     await this.openFilterPanel();
     const input = this.reasonFilterInput();
     await expect(input, '筛选区未展开可见的「事由」输入框').toBeVisible({ timeout: 10_000 });
+    await input.click();
+    await input.fill('');
     await input.fill(reason);
+    await expect(input, '事由筛选关键字未写入').toHaveValue(reason, { timeout: 3_000 });
+    const panel = this.filterPanel();
+    const searchBtn = panel
+      .getByRole('button', { name: /搜\s*索|查\s*询/ })
+      .filter({ visible: true })
+      .first();
     const respP = this.waitListApi();
-    await this.scope().getByRole('button', { name: /搜\s*索/ }).filter({ visible: true }).first().click();
+    await expect(searchBtn, '筛选区未找到「搜索/查询」按钮').toBeVisible({ timeout: 5_000 });
+    await searchBtn.click();
     await respP;
     await this.waitListSettled();
   }
