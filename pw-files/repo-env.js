@@ -527,6 +527,7 @@ function resolveAccountCredentials(repoRoot, envId, profileId) {
 
 module.exports = {
   getEnvAccountConfig,
+  getBaseEnvConfig,
   resolveAccountProfile,
   resolveStorageStateRel,
   resolveStorageStateRelDirect,
