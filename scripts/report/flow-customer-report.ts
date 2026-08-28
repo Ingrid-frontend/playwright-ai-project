@@ -79,11 +79,13 @@ async function main() {
   const scriptKeys = [...new Set(coverage.slots.map((s) => s.scriptKey))];
   const scriptRuns = resolveScriptRunMeta(scriptKeys, scanTargets);
   const runHistory = resolveScriptRunHistory(scriptKeys, scanTargets);
-  for (const { testDir } of scanTargets) {
+  for (const { testDir, scriptPath } of scanTargets) {
     const rows = runHistory.get(testDir);
     const shots = screenshotsByDir.get(testDir);
-    if (!rows?.length || !shots?.size) continue;
-    const enriched = await enrichRunHistoryComparisons(testDir, shots, rows, outputPath);
+    if (!rows?.length) continue;
+    const enriched = await enrichRunHistoryComparisons(testDir, shots || new Map(), rows, outputPath, {
+      scriptPath,
+    });
     runHistory.set(testDir, enriched);
   }
   const model = buildCustomerReportModel(coverage, undefined, scriptRuns, runHistory);

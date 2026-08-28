@@ -2,6 +2,7 @@ import type { ScreenshotInfo } from './compare-screenshots-utils.js';
 import { generateTestComparisons } from './compare-screenshots-engine.js';
 import { buildCoverageStats } from './coverage-stats.js';
 import type { ScriptRunHistoryEntry } from './customer-report-run-meta.js';
+import { readGoldenMatchVerdictForScriptRun, type GoldenMatchVerdict } from './prune-flow-golden-runs.js';
 
 const DEFAULT_MAX_RUNS = 30;
 
@@ -42,12 +43,41 @@ function verdictFromCoverage(c: ReturnType<typeof buildCoverageStats>): {
   return { verdict: 'pass', verdictLabel: '完全一致', maxDifference: 0 };
 }
 
+function rowFromGoldenVerdict(
+  row: ScriptRunHistoryEntry,
+  verdict: GoldenMatchVerdict,
+): ScriptRunHistoryEntry {
+  if (verdict.match) {
+    return {
+      ...row,
+      comparedSteps: verdict.steps,
+      passSteps: verdict.steps,
+      minorSteps: 0,
+      regressSteps: 0,
+      maxDifference: verdict.maxDifference,
+      verdict: 'pass',
+      verdictLabel: '完全一致',
+    };
+  }
+  const regress = verdict.maxDifference > 0;
+  return {
+    ...row,
+    comparedSteps: verdict.steps,
+    passSteps: 0,
+    minorSteps: regress ? 0 : verdict.steps,
+    regressSteps: regress ? verdict.steps : 0,
+    maxDifference: verdict.maxDifference,
+    verdict: regress ? 'regress' : 'minor',
+    verdictLabel: regress ? '明显衰退' : '轻微变化',
+  };
+}
+
 export async function enrichRunHistoryComparisons(
   testDir: string,
   screenshots: Map<number, ScreenshotInfo[]>,
   rows: ScriptRunHistoryEntry[],
   outputPath: string,
-  opts?: { maxRuns?: number },
+  opts?: { maxRuns?: number; scriptPath?: string },
 ): Promise<ScriptRunHistoryEntry[]> {
   if (!rows.length) return rows;
   const maxRuns = opts?.maxRuns ?? DEFAULT_MAX_RUNS;
@@ -57,6 +87,13 @@ export async function enrichRunHistoryComparisons(
   for (const row of targets) {
     const filtered = filterScreenshotsByRun(screenshots, row.runId);
     if (filtered.size === 0) {
+      const saved = opts?.scriptPath
+        ? readGoldenMatchVerdictForScriptRun(opts.scriptPath, row.runId)
+        : null;
+      if (saved) {
+        out.push(rowFromGoldenVerdict(row, saved));
+        continue;
+      }
       out.push({ ...row, verdict: 'empty', verdictLabel: '无截图' });
       continue;
     }

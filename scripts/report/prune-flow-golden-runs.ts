@@ -34,6 +34,20 @@ export type PruneFlowGoldenResult = {
   skipped?: string;
 };
 
+export function readGoldenMatchVerdict(runDir: string): GoldenMatchVerdict | null {
+  return readVerdict(runDir);
+}
+
+export function readGoldenMatchVerdictForScriptRun(
+  scriptPath: string,
+  runId: string,
+  browser = 'chrome',
+): GoldenMatchVerdict | null {
+  const runDir = path.join(scriptPath, browserToFlowRunSegment(browser), runId);
+  if (!fs.existsSync(runDir)) return null;
+  return readVerdict(runDir);
+}
+
 function readVerdict(runDir: string): GoldenMatchVerdict | null {
   const p = path.join(runDir, GOLDEN_MATCH_VERDICT);
   if (!fs.existsSync(p)) return null;
