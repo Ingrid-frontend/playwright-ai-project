@@ -1320,6 +1320,7 @@ export class RequestEditPage {
       await amount.press('ControlOrMeta+a');
       await amount.press('Backspace');
       await amount.pressSequentially(val, { delay: 25 });
+      await this.page.waitForTimeout(200);
       await amount.blur();
       await expect(amount).not.toHaveValue(/^(0(\.0+)?|)$/, { timeout: 3_000 });
 
