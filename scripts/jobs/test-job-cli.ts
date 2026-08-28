@@ -14,6 +14,7 @@ import { runJobById, stopJob } from './job-runner.js';
 import { buildJobFailReasons } from './job-notify.js';
 import { listJobs, loadTestJobsConfig, resolveJob, resolveJobRunEnv } from './test-jobs-config.js';
 import { countResolvedSpecs, formatRunId } from './job-utils.js';
+import { countRequestFlowGoldenProfiles, formatFlowGoldenSpecsLabel } from './flow-golden-count.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const CLI_PATH = path.resolve(__filename);
@@ -256,17 +257,13 @@ function cmdList(): void {
   for (const job of jobs) {
     const running = isJobRunning(job.id) ? '🟢 运行中' : job.enabled ? '⚪ 空闲' : '⏸️  已禁用';
     const schedule = job.schedule ? `cron: ${job.schedule} (${job.timezone})` : '仅手动';
-    const specCount = countResolvedSpecs(
-      job.specs,
-      job.optimizedDir,
-      job.playwrightEnv,
-      job.accountProfile,
-    );
     const profileNote = job.accountProfile ? ` · profile=${JSON.stringify(job.accountProfile)}` : '';
     const specsLabel =
-      job.specs === 'all'
-        ? `全部 (${job.playwrightEnv}, ${specCount} 个)`
-        : `${JSON.stringify(job.specs)} (${specCount} 个)`;
+      job.runner === 'request-flow-golden'
+        ? formatFlowGoldenSpecsLabel(process.cwd(), job.playwrightEnv, job.accountProfile)
+        : job.specs === 'all'
+          ? `全部 (${job.playwrightEnv}, ${countResolvedSpecs(job.specs, job.optimizedDir, job.playwrightEnv, job.accountProfile)} 个)`
+          : `${JSON.stringify(job.specs)} (${countResolvedSpecs(job.specs, job.optimizedDir, job.playwrightEnv, job.accountProfile)} 个)`;
     console.log(`  ${job.id}`);
     console.log(`    状态: ${running}`);
     console.log(`    说明: ${job.description || '—'}`);

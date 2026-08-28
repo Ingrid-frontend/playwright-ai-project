@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { isKnownEnv } from '../../src/utils/test-env-path.js';
 import { countResolvedSpecs, type AccountProfileFilter } from './job-utils.js';
+import { countRequestFlowGoldenProfiles } from './flow-golden-count.js';
 
 export type { AccountProfileFilter };
 
@@ -42,6 +43,8 @@ export type TestJobDefinition = {
   projects?: string[];
   optimizedDir?: string;
   specs?: JobSpecs;
+  /** request-flow-golden 等流程型 runner，不走 optimized 用例扫描 */
+  runner?: string | null;
   /** 仅执行指定账号档案的用例；不传则跑全部并按 meta 分组 login */
   accountProfile?: AccountProfileFilter;
   stopOnTestFailure?: boolean;
@@ -65,6 +68,7 @@ export type ResolvedTestJob = TestJobDefaults & {
   schedule: string | null;
   timezone: string;
   specs: JobSpecs;
+  runner: string | null;
   accountProfile: AccountProfileFilter;
 };
 
@@ -158,6 +162,7 @@ export function resolveJob(jobId: string): ResolvedTestJob {
     projects: job.projects?.length ? [...job.projects] : [...d.projects],
     optimizedDir: job.optimizedDir ?? d.optimizedDir,
     specs: job.specs ?? 'all',
+    runner: job.runner ?? null,
     accountProfile: job.accountProfile ?? null,
     stopOnTestFailure: job.stopOnTestFailure ?? d.stopOnTestFailure,
     stopOnCompareGate: job.stopOnCompareGate ?? d.stopOnCompareGate,
@@ -186,11 +191,19 @@ export function countJobSpecsForEnv(
   playwrightEnv: string,
   accountProfile?: AccountProfileFilter,
 ): number {
+  if (job.runner === 'request-flow-golden') {
+    const filter = accountProfile ?? job.accountProfile;
+    return countRequestFlowGoldenProfiles(process.cwd(), playwrightEnv, filter);
+  }
   const filter = accountProfile ?? job.accountProfile;
   return countResolvedSpecs(job.specs, job.optimizedDir, playwrightEnv, filter);
 }
 
 export function countJobSpecs(job: ResolvedTestJob, accountProfile?: AccountProfileFilter): number {
+  if (job.runner === 'request-flow-golden') {
+    const filter = accountProfile ?? job.accountProfile;
+    return countRequestFlowGoldenProfiles(process.cwd(), job.playwrightEnv, filter);
+  }
   const filter = accountProfile ?? job.accountProfile;
   return countResolvedSpecs(job.specs, job.optimizedDir, job.playwrightEnv, filter);
 }

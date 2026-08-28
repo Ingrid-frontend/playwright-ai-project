@@ -30,6 +30,7 @@ import {
 } from './job-utils.js';
 import { assertSpecEnvMatch, listKnownEnvs } from '../../src/utils/test-env-path.js';
 import { executeTests, runCommandBool, type DirectRunOptions } from './job-runner-execute.js';
+import { isFlowRunner, runFlowJob } from './job-runner-flow.js';
 
 export type { DirectRunOptions } from './job-runner-execute.js';
 
@@ -101,6 +102,14 @@ export async function runJobById(
 
   const effectiveEnv = resolveJobRunEnv(job, ctxPartial.playwrightEnv);
   const effectiveProfile = ctxPartial.accountProfile ?? job.accountProfile ?? null;
+
+  if (isFlowRunner(job.runner)) {
+    return runFlowJob(job, {
+      ...ctxPartial,
+      playwrightEnv: effectiveEnv,
+      accountProfile: effectiveProfile,
+    });
+  }
 
   const runId = ctxPartial.runId ?? formatRunId();
   const ctx: JobRunContext = {

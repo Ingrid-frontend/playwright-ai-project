@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const { send, logLine, stripAnsi, errText } = require('./ws-safe');
+const repoEnv = require('../repo-env');
 
 function createTestJobsActions(deps) {
   const {
@@ -47,7 +48,24 @@ function createTestJobsActions(deps) {
     return found.sort((a, b) => a.localeCompare(b));
   }
 
+  function isFlowRunnerJob(merged) {
+    return merged.runner === 'request-flow-golden';
+  }
+
+  function countRequestFlowGoldenProfiles(repoRoot, envId, profileFilter) {
+    let ids = repoEnv.listGoldenProfileIds(repoRoot, envId);
+    if (profileFilter && profileFilter !== 'all') {
+      const allowed = Array.isArray(profileFilter) ? profileFilter : [String(profileFilter)];
+      ids = ids.filter((id) => allowed.includes(id));
+    }
+    return ids.filter((id) => {
+      const rel = repoEnv.resolveStorageStateRelDirect(repoRoot, envId, id);
+      return repoEnv.storageExists(repoRoot, rel);
+    }).length;
+  }
+
   function resolveJobSpecRelsForMerged(repoRoot, merged, accountProfileOverride) {
+    if (isFlowRunnerJob(merged)) return [];
     const all = listAllOptimizedSpecsForJob(repoRoot, merged.playwrightEnv, merged.optimizedDir);
     let matched = all;
     if (merged.specs !== 'all') {
@@ -71,6 +89,10 @@ function createTestJobsActions(deps) {
   }
 
   function countSpecsForMergedJob(repoRoot, merged, accountProfileOverride) {
+    if (isFlowRunnerJob(merged)) {
+      const profileFilter = accountProfileOverride ?? merged.accountProfile ?? null;
+      return countRequestFlowGoldenProfiles(repoRoot, merged.playwrightEnv, profileFilter);
+    }
     return resolveJobSpecRelsForMerged(repoRoot, merged, accountProfileOverride).length;
   }
 
@@ -81,6 +103,9 @@ function createTestJobsActions(deps) {
   }
 
   function formatJobSpecsDisplay(merged, specCount) {
+    if (isFlowRunnerJob(merged)) {
+      return specCount ? `申请单 Golden · ${specCount} 个角色` : '请先为 golden* 档案登录';
+    }
     if (merged.specs === 'all') return `全部 · ${specCount} 个`;
     if (specCount === 0) return '请在下方选用例';
     return `${specCount} 个用例`;
@@ -104,6 +129,7 @@ function createTestJobsActions(deps) {
       projects: merged.projects,
       optimizedDir: merged.optimizedDir,
       specs: merged.specs,
+      runner: merged.runner ?? null,
       specsLabel: formatJobSpecsDisplay(merged, specCount),
       specCount,
       stopOnTestFailure: merged.stopOnTestFailure,
@@ -140,6 +166,27 @@ function createTestJobsActions(deps) {
         ? String(accountProfile).trim()
         : merged.accountProfile ?? null;
     const previewMerged = { ...merged, playwrightEnv: env, accountProfile: profileFilter };
+    if (isFlowRunnerJob(previewMerged)) {
+      const specCount = countRequestFlowGoldenProfiles(repoRoot, env, profileFilter);
+      return {
+        jobId: merged.id,
+        playwrightEnv: env,
+        configPlaywrightEnv: merged.playwrightEnv,
+        configAccountProfile: merged.accountProfile ?? null,
+        accountProfile: profileFilter,
+        envOverridden: env !== merged.playwrightEnv,
+        profileOverridden:
+          profileFilter != null &&
+          JSON.stringify(profileFilter) !== JSON.stringify(merged.accountProfile ?? null),
+        specCount,
+        profileCounts: {},
+        specsLabel: formatJobSpecsDisplay(previewMerged, specCount),
+        specsOverridden: false,
+        configMatchedEmpty: false,
+        candidateSpecs: [],
+        runner: merged.runner,
+      };
+    }
     let candidateSpecs = resolveJobSpecRelsForMerged(repoRoot, previewMerged, profileFilter);
     const configMatchedEmpty = candidateSpecs.length === 0 && merged.specs !== 'all';
     if (configMatchedEmpty) {

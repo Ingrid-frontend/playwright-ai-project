@@ -14,6 +14,7 @@ function mergeTestJobDef(config, jobDef) {
     projects: jobDef.projects?.length ? [...jobDef.projects] : [...(d.projects || ['optimized', 'optimized-webkit'])],
     optimizedDir: jobDef.optimizedDir ?? d.optimizedDir ?? 'tests/optimized',
     specs: jobDef.specs ?? d.specs ?? 'all',
+    runner: jobDef.runner ?? null,
     accountProfile: jobDef.accountProfile ?? d.accountProfile ?? null,
     stopOnTestFailure: jobDef.stopOnTestFailure ?? d.stopOnTestFailure ?? true,
     stopOnCompareGate: jobDef.stopOnCompareGate ?? d.stopOnCompareGate ?? true,
