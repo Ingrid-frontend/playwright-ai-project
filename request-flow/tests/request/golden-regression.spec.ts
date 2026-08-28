@@ -16,7 +16,7 @@ test.describe.configure({ mode: 'serial' });
 async function resolveGoldenFilterKeyword(list: RequestListPage): Promise<string> {
   await list.clearListQuery();
   await list.expectListReady();
-  if (!(await list.hasDataRows())) {
+  if (!(await list.recoverIfEmptyList())) {
     test.skip(true, '列表无数据，跳过筛选 Golden');
   }
   const configured = env.requestFilterKeyword.trim();
@@ -46,7 +46,7 @@ async function resolveGoldenDocNo(list: RequestListPage): Promise<string> {
   if (env.requestDocNo) return env.requestDocNo;
   await list.clearListQuery();
   await list.expectListReady();
-  if (!(await list.hasDataRows())) {
+  if (!(await list.recoverIfEmptyList())) {
     test.skip(true, '列表无数据且未设置 REQUEST_DOC_NO，跳过搜索/详情 Golden 步骤');
   }
   return list.pickFirstDocNo();

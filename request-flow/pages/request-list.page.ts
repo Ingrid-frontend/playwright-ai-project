@@ -2,12 +2,15 @@ import { type FrameLocator, type Locator, type Page, expect } from '@playwright/
 import { RequestEditPage } from './request-edit.page';
 import { waitForAppRoot, type AppRoot } from '../utils/app-frame';
 import {
+  COMBO_TRIGGER,
   DOC_NO_RE,
   FILTER_LABELS,
   LIST_API_RE,
   LIST_PATH,
   NEW_REQUEST_BTN,
   ROW,
+  SEARCH_ACTION_CLEAR,
+  SEARCH_ACTION_SEARCH,
   SEARCH_PLACEHOLDER,
   TABLE,
 } from '../utils/request-catalog';
@@ -109,6 +112,65 @@ export class RequestListPage {
   async clearListQuery() {
     await this.clearDocNoSearch();
     await this.resetFilters();
+    await this.clearExposedFilters();
+    await this.clearActiveFilterTags();
+    await this.waitListSettled();
+  }
+
+  /** 列表因默认筛选为空时，尝试去掉条件并重新搜索 */
+  async recoverIfEmptyList(): Promise<boolean> {
+    if (await this.hasDataRows()) return true;
+    await this.clearListQuery();
+    if (await this.hasDataRows()) return true;
+    await this.clickFilterSearch();
+    return this.hasDataRows();
+  }
+
+  private filterSearchBar(): Locator {
+    return this.scope()
+      .locator('.advanced-search, .advanced-table-search, .search-action-bar')
+      .filter({ visible: true })
+      .first();
+  }
+
+  private async clearExposedFilters() {
+    const btn = this.scope().locator(SEARCH_ACTION_CLEAR).first();
+    if (!(await btn.isVisible({ timeout: 1_000 }).catch(() => false))) return;
+    const respP = this.waitListApi();
+    await btn.click();
+    await respP;
+    await this.waitListSettled();
+  }
+
+  private async clearActiveFilterTags() {
+    const bar = this.filterSearchBar();
+    if (!(await bar.isVisible({ timeout: 1_000 }).catch(() => false))) return;
+
+    for (let i = 0; i < 8; i += 1) {
+      const close = bar
+        .locator(
+          `${COMBO_TRIGGER} .anticon-close, ${COMBO_TRIGGER} .anticon-close-circle, ${COMBO_TRIGGER}__close`,
+        )
+        .filter({ visible: true })
+        .first();
+      if (!(await close.isVisible({ timeout: 300 }).catch(() => false))) break;
+      const respP = this.waitListApi();
+      await close.click();
+      await respP.catch(() => null);
+      await this.waitListSettled();
+    }
+  }
+
+  private async clickFilterSearch() {
+    const btn = this.scope()
+      .locator(SEARCH_ACTION_SEARCH)
+      .or(this.scope().getByRole('button', { name: /搜\s*索|查\s*询/ }))
+      .filter({ visible: true })
+      .first();
+    if (!(await btn.isVisible({ timeout: 1_000 }).catch(() => false))) return;
+    const respP = this.waitListApi();
+    await btn.click();
+    await respP;
     await this.waitListSettled();
   }
 
@@ -160,6 +222,9 @@ export class RequestListPage {
 
   async pickFirstDocNo(): Promise<string> {
     await this.clearListQuery();
+    if (!(await this.hasDataRows())) {
+      await this.clickFilterSearch();
+    }
     await expect
       .poll(async () => await this.dataRows().count().catch(() => 0), {
         timeout: 20_000,
