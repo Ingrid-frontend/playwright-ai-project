@@ -1210,7 +1210,7 @@
 
               <div class="request-flow-sub-tabs" role="tablist" aria-label="申请单流程子模式">
                 <button type="button" class="request-flow-sub-tab active" data-sub="golden" id="requestFlowSubGolden" onclick="setRequestFlowSubTab('golden', this)">Golden 回归</button>
-                <button type="button" class="request-flow-sub-tab" data-sub="probe" id="requestFlowSubProbe" onclick="setRequestFlowSubTab('probe', this)">流程调试 + AI 审计</button>
+                <button type="button" class="request-flow-sub-tab" data-sub="probe" id="requestFlowSubProbe" onclick="setRequestFlowSubTab('probe', this)">流程调试</button>
               </div>
 
               <div class="request-flow-pane active" id="requestFlowPaneGolden" data-sub="golden">
@@ -1278,8 +1278,15 @@
                     <option value="">加载中…</option>
                   </select>
                   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                    <button type="button" class="btn" id="btnRequestTravelProbe" onclick="runRequestFlowTravelProbe()" style="border-color:rgba(167,139,250,.45);color:var(--purple,#a78bfa)">差旅全流程 + AI 审计</button>
-                    <button type="button" class="btn" id="btnRequestProbeAudit" onclick="runRequestFlowProbeAudit()" style="border-color:rgba(167,139,250,.45);color:var(--purple,#a78bfa)">申请单全流程 + AI 审计</button>
+                    <button type="button" class="btn" id="btnRequestTravelProbe" onclick="runRequestFlowTravelProbe()" style="border-color:rgba(167,139,250,.45);color:var(--purple,#a78bfa)">差旅全流程</button>
+                    <button type="button" class="btn" id="btnRequestProbeFlow" onclick="runRequestFlowProbeFlow()" style="border-color:rgba(167,139,250,.45);color:var(--purple,#a78bfa)">申请单全流程</button>
+                    <span class="sidebar-hint" style="margin:0;color:var(--text-tertiary)">快捷</span>
+                    <button type="button" class="btn" id="btnRequestTravelProbeChain" onclick="runRequestFlowTravelProbeChain()" style="font-size:var(--fs-xs);padding:4px 10px;border-color:rgba(167,139,250,.3);color:var(--purple,#a78bfa)">差旅并审计</button>
+                    <button type="button" class="btn" id="btnRequestProbeChain" onclick="runRequestFlowProbeChain()" style="font-size:var(--fs-xs);padding:4px 10px;border-color:rgba(167,139,250,.3);color:var(--purple,#a78bfa)">申请单并审计</button>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
+                    <button type="button" class="btn" id="btnRequestProbeRunUiAudit" onclick="runRequestFlowProbeUiAudit()" style="font-size:var(--fs-sm)">AI 审计</button>
+                    <button type="button" class="btn" id="btnRequestProbeOpenUiAudit" onclick="openExistingUiAuditReport()" style="font-size:var(--fs-sm)">打开已有审计报告</button>
                   </div>
                 </div>
               </div>
@@ -6132,6 +6139,7 @@ function handleMessage(msg) {
         if (msg.pipeline === 'golden' && msg.baselinePromoted) extras.push('已 seed Golden 基线');
         if (msg.replayReportOpenPath) extras.push('回放已生成');
         if (msg.pipeline === 'probe' && msg.uiAuditReportOpenPath) extras.push('UI 审计报告已生成');
+        else if (msg.pipeline === 'probe' && msg.ok) extras.push('可对截图点「AI 审计」');
         if (msg.accountProfile) extras.push(`profile=${msg.accountProfile}`);
         if (msg.roleSlug) extras.push(`role=${msg.roleSlug}`);
         showToast(extras.length ? `申请单流程用例通过 · ${extras.join(' · ')}` : '申请单流程用例通过', 'ok');
@@ -7023,7 +7031,7 @@ function refreshUiAuditStatus() {
 }
 
 function setRequestFlowBusy(busy) {
-  ['btnRequestProbe', 'btnRequestPresetPreview', 'btnRequestPresetReadOnly', 'btnRequestPresetWrite', 'btnRequestPresetSubmitApprove', 'btnRequestRunSelected', 'btnRequestGoldenRun', 'btnRequestGoldenRunAll', 'btnRequestTravelProbe', 'btnRequestProbeAudit', 'btnRequestPromoteBaseline', 'btnAddGoldenProfile', 'btnAddWriteProfile'].forEach((id) => {
+  ['btnRequestProbe', 'btnRequestPresetPreview', 'btnRequestPresetReadOnly', 'btnRequestPresetWrite', 'btnRequestPresetSubmitApprove', 'btnRequestRunSelected', 'btnRequestGoldenRun', 'btnRequestGoldenRunAll', 'btnRequestTravelProbe', 'btnRequestProbeFlow', 'btnRequestTravelProbeChain', 'btnRequestProbeChain', 'btnRequestProbeRunUiAudit', 'btnRequestPromoteBaseline', 'btnAddGoldenProfile', 'btnAddWriteProfile'].forEach((id) => {
     const btn = document.getElementById(id);
     if (!btn) return;
     btn.disabled = busy;
@@ -7276,8 +7284,8 @@ const REQUEST_FLOW_PRESETS = {
   write: { spec: 'request/full-flow.spec.ts', grep: '新建申请单', mode: 'headless' },
   submitApprove: { spec: 'request/submit-then-approve.spec.ts', grep: '', mode: 'headed', write: true },
   golden: { spec: 'request/golden-regression.spec.ts', grep: '', mode: 'headless', pipeline: 'golden', accountProfile: 'golden' },
-  travelProbe: { spec: 'request/travel-submit.spec.ts', grep: '', mode: 'headless', write: true, pipeline: 'probe', runUiAudit: true },
-  probe: { spec: 'request/full-flow.spec.ts', grep: '', mode: 'headless', write: true, pipeline: 'probe', runUiAudit: true },
+  travelProbe: { spec: 'request/travel-submit.spec.ts', grep: '', mode: 'headless', write: true, pipeline: 'probe', runUiAudit: false },
+  probe: { spec: 'request/full-flow.spec.ts', grep: '', mode: 'headless', write: true, pipeline: 'probe', runUiAudit: false },
 };
 let requestFlowDraft = null;
 
@@ -7602,42 +7610,48 @@ function runRequestFlowGoldenAll() {
   }
 }
 
-function runRequestFlowTravelProbe() {
+function runRequestFlowProbePreset(presetKey, chain) {
   switchToRequestFlowSubTab('probe');
   const p = getSelectedWriteProfile();
   if (!p?.hasStorage) {
     showToast('请先选择并已登录流程调试角色', 'err');
     return;
   }
-  applyRequestFlowPreset('travelProbe');
+  applyRequestFlowPreset(presetKey);
   const cb = document.getElementById('requestWriteEnabled');
   if (cb) cb.checked = true;
   runSelectedRequestFlow('headless', {
-    preset: 'travelProbe',
+    preset: presetKey,
     pipeline: 'probe',
-    runUiAudit: true,
+    runUiAudit: chain,
     writeEnabled: true,
     accountProfile: p.id,
   });
 }
 
-function runRequestFlowProbeAudit() {
-  switchToRequestFlowSubTab('probe');
-  const p = getSelectedWriteProfile();
-  if (!p?.hasStorage) {
-    showToast('请先选择并已登录流程调试角色', 'err');
-    return;
+function runRequestFlowTravelProbe() {
+  runRequestFlowProbePreset('travelProbe', false);
+}
+
+function runRequestFlowTravelProbeChain() {
+  runRequestFlowProbePreset('travelProbe', true);
+}
+
+function runRequestFlowProbeFlow() {
+  runRequestFlowProbePreset('probe', false);
+}
+
+function runRequestFlowProbeChain() {
+  runRequestFlowProbePreset('probe', true);
+}
+
+function runRequestFlowProbeUiAudit() {
+  openReportHub('compare');
+  const limit = Math.max(1, Math.min(100, Number(document.getElementById('uiAuditLimit')?.value) || 24));
+  setUiAuditBusy(true);
+  if (!send('ui-audit:run', { limit, script: 'request-flow', dir: 'screenshots/flows' })) {
+    setUiAuditBusy(false);
   }
-  applyRequestFlowPreset('probe');
-  const cb = document.getElementById('requestWriteEnabled');
-  if (cb) cb.checked = true;
-  runSelectedRequestFlow('headless', {
-    preset: 'probe',
-    pipeline: 'probe',
-    runUiAudit: true,
-    writeEnabled: true,
-    accountProfile: p.id,
-  });
 }
 
 function promoteRequestFlowBaseline() {

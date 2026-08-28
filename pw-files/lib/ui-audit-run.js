@@ -94,6 +94,8 @@ async function runUiAudit(ws, session, msg = {}, deps) {
 
   const args = ['run', 'ui-audit', '--', `--limit=${limit}`];
   if (scriptFilter) args.push(`--script=${scriptFilter}`);
+  const dirFilter = String(msg.dir || '').trim();
+  if (dirFilter) args.push(`--dir=${dirFilter}`);
   if (gate) args.push('--gate');
   const figmaUrl = String(msg.figma || '').trim();
   if (figmaUrl) args.push(`--figma=${figmaUrl}`);

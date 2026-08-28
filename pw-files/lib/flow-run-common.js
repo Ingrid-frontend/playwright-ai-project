@@ -103,7 +103,7 @@ function tryPromoteFlowBaseline(repoRoot, scriptKey) {
 function runFlowUiAudit(repoRoot, flowId, limit = 24) {
   return runNpmScript(repoRoot, 'ui-audit', [
     '--dir=screenshots/flows',
-    `--script=flows/${flowId}`,
+    `--script=${flowId}`,
     `--limit=${limit}`,
   ]);
 }
@@ -172,7 +172,7 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     baselinePromoted = promoted.seeded;
   }
 
-  if (pipeline === 'probe' && payload.ok && !payload.cancelled) {
+  if (pipeline === 'probe' && payload.runUiAudit && payload.ok && !payload.cancelled) {
     const audit = runFlowUiAudit(repoRoot, flowId, payload.uiAuditLimit || 24);
     if (audit.ok && fs.existsSync(path.join(repoRoot, UI_AUDIT_REPORT_REL))) {
       uiAuditReportRel = UI_AUDIT_REPORT_REL;

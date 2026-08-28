@@ -215,8 +215,9 @@ export function renderAuditReportHtml(
  .src.ai{background:#eef4ff;color:#0a66c2}.src.err{background:#fdecec;color:#e5484d}.src.figma{background:#f3e8ff;color:#7c3aed}
  .compare{display:grid;grid-template-columns:1fr 1fr;gap:8px}
  .cap{font-size:11px;color:#888;padding:4px 6px;background:#f7f8fa;line-height:1.4}
- .shot{position:relative;line-height:0;border:1px solid #eee;border-radius:6px;overflow:hidden;background:#fafafa}
- .shot img{width:100%;display:block}
+ .shot{position:relative;line-height:0;border:1px solid #eee;border-radius:6px;overflow:hidden;background:#fafafa;cursor:zoom-in}
+ .shot:hover{border-color:#c5cad3}
+ .shot img{width:100%;display:block;pointer-events:none}
  .overlay{position:absolute;inset:0}
  .box{position:absolute;border:2px solid;border-radius:3px;box-sizing:border-box}
  .box .tag{position:absolute;top:-17px;left:0;color:#fff;font-size:10px;padding:1px 5px;border-radius:3px;white-space:nowrap;line-height:1.4}
@@ -229,6 +230,14 @@ export function renderAuditReportHtml(
  .issue .conf{color:#999;font-size:11px}
  .issue.ok{color:#18794e}
  .empty{background:#fff;border:1px dashed #ccc;border-radius:10px;padding:32px;text-align:center;color:#888}
+ .lightbox{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.82);display:none;align-items:center;justify-content:center;padding:24px;box-sizing:border-box}
+ .lightbox.open{display:flex}
+ .lightbox-inner{position:relative;max-width:96vw;max-height:92vh;line-height:0}
+ .lightbox-inner img{max-width:96vw;max-height:92vh;display:block;border-radius:6px;box-shadow:0 8px 32px rgba(0,0,0,.4)}
+ .lightbox-inner .overlay{position:absolute;inset:0}
+ .lightbox-close{position:fixed;top:16px;right:20px;width:36px;height:36px;border:none;border-radius:50%;background:rgba(255,255,255,.15);color:#fff;font-size:22px;line-height:1;cursor:pointer}
+ .lightbox-close:hover{background:rgba(255,255,255,.28)}
+ .lightbox-cap{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.75);font-size:13px;max-width:80vw;text-align:center;word-break:break-all}
 </style></head>
 <body>
  <div class="top"><h1>AI UI 审计报告</h1><div class="time">${escapeHtml(when)}${modeText}</div></div>
@@ -244,6 +253,60 @@ export function renderAuditReportHtml(
      ? '<div class="empty">没有找到可审计的截图（需要 .png 及同名 .meta.json）</div>'
      : `<div class="grid">${steps.map(renderCard).join('')}</div>`
  }
+ <div id="lightbox" class="lightbox" aria-hidden="true">
+   <button type="button" class="lightbox-close" aria-label="关闭">×</button>
+   <div class="lightbox-inner">
+     <img id="lightbox-img" alt="" />
+     <div id="lightbox-overlay" class="overlay"></div>
+   </div>
+   <div id="lightbox-cap" class="lightbox-cap"></div>
+ </div>
+ <script>
+ (function () {
+   var lb = document.getElementById('lightbox');
+   var lbImg = document.getElementById('lightbox-img');
+   var lbOverlay = document.getElementById('lightbox-overlay');
+   var lbCap = document.getElementById('lightbox-cap');
+   if (!lb || !lbImg || !lbOverlay) return;
+
+   function close() {
+     lb.classList.remove('open');
+     lb.setAttribute('aria-hidden', 'true');
+     lbImg.removeAttribute('src');
+     lbOverlay.innerHTML = '';
+     lbCap.textContent = '';
+   }
+
+   function openFromShot(shot, cap) {
+     var img = shot.querySelector('img');
+     if (!img || !img.src) return;
+     var overlay = shot.querySelector('.overlay');
+     lbImg.src = img.src;
+     lbOverlay.innerHTML = overlay ? overlay.innerHTML : '';
+     lbCap.textContent = cap || '';
+     lb.classList.add('open');
+     lb.setAttribute('aria-hidden', 'false');
+   }
+
+   document.querySelectorAll('.shot').forEach(function (shot) {
+     shot.addEventListener('click', function () {
+       var capEl = shot.previousElementSibling;
+       var cap = capEl && capEl.classList.contains('cap') ? capEl.textContent : '';
+       var card = shot.closest('.card');
+       var title = card ? (card.querySelector('h3') || {}).textContent || '' : '';
+       openFromShot(shot, [title, cap].filter(Boolean).join(' · '));
+     });
+   });
+
+   lb.querySelector('.lightbox-close').addEventListener('click', close);
+   lb.addEventListener('click', function (e) {
+     if (e.target === lb) close();
+   });
+   document.addEventListener('keydown', function (e) {
+     if (e.key === 'Escape') close();
+   });
+ })();
+ </script>
 </body></html>`;
 }
 
