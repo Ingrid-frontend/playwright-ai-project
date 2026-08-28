@@ -71,14 +71,15 @@
   /* Main grid */
   .main {
     display: grid;
-    grid-template-columns: 280px minmax(0, 1fr) 340px;
+    grid-template-columns: 340px minmax(0, 1fr) 300px;
     grid-template-rows: minmax(0, 1fr);
     overflow: hidden;
     min-height: 0;
   }
 
-  /* Sidebar：整块一列可滚动，避免顶部区块撑出视口后无法下拉 */
+  /* Sidebar：环境区 + 用例工作流，整列单滚动条 */
   .sidebar { border-right: 1px solid var(--border); background: var(--bg2); display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+  .sidebar > .sidebar-scroll { flex: 1; min-height: 0; }
   .env-chip.on { border-color: rgba(0,196,180,.45); color: var(--teal); background: rgba(0,196,180,.08); }
   .env-chip.missing-storage { opacity: .85; border-style: dashed; }
   .sidebar-panel { display: none; flex: 1; flex-direction: column; min-height: 0; overflow: hidden; }
@@ -548,17 +549,16 @@
   .report-body.active { display: block; }
 
   .workflow-body {
-    flex: 1; min-height: 0; display: none; flex-direction: column; overflow: hidden;
+    display: flex; flex-direction: column;
   }
-  .workflow-body.active { display: flex; }
 
 
   .workflow-sub-tabs {
     display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px;
-    border-bottom: 1px solid var(--border); flex-shrink: 0;
+    border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); flex-shrink: 0;
   }
   .workflow-scroll {
-    flex: 1; min-height: 0; overflow-y: auto;
+    overflow: visible;
   }
   .workflow-scroll .sidebar-section { padding: 12px 16px; border-bottom: 1px solid var(--border); }
   .workflow-scroll .pipeline { padding: 12px 16px; }
@@ -566,6 +566,10 @@
     display: flex; flex-direction: column; min-height: 0; border-bottom: none;
   }
   #workflowPanel #pipelineJobs:not(.studio-hidden) { display: flex; }
+  #workflowPanel .batch-spec-list,
+  #workflowPanel .test-job-list {
+    max-height: none; overflow: visible;
+  }
 
   .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
   .stat-card {
@@ -719,7 +723,7 @@
   .raw-empty-overlay .btn { margin-top: 4px; }
 
   @media (max-width: 1100px) {
-    .main { grid-template-columns: 260px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(200px, 32vh); }
+    .main { grid-template-columns: 300px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(200px, 32vh); }
     .right-panel { grid-column: 1 / -1; border-left: none; border-top: 1px solid var(--border); min-height: 0; }
     .sidebar { min-height: 0; }
   }
@@ -800,6 +804,269 @@
         </div>
       </div>
 
+<div class="workflow-body" id="workflowPanel">
+            <div class="workflow-sub-tabs provider-row step-branch-row" role="group" aria-label="用例工作流">
+              <button type="button" class="step-branch-chip active" data-workflow="new" id="workflowModeNew" onclick="setWorkflowMode('new', this)">新建用例</button>
+              <button type="button" class="step-branch-chip" data-workflow="run" id="workflowModeRun" onclick="setWorkflowMode('run', this)">运行用例</button>
+              <button type="button" class="step-branch-chip" data-workflow="jobs" id="workflowModeJobs" onclick="setWorkflowMode('jobs', this)">定时任务</button>
+            </div>
+            <div class="workflow-scroll" id="workflowPanelScroll">
+          <div class="sidebar-accordion" id="accordionRun">
+                  <button type="button" class="accordion-trigger" aria-expanded="false">
+                    执行设置 <span class="acc-chevron">›</span>
+                  </button>
+                  <div class="accordion-body">
+                    <p class="exec-scope-hint" id="execScopeHint">—</p>
+                    <p class="sidebar-hint">运行模式四选一；浏览器可多选（至少保留一个）。</p>
+                    <div class="opt-grid provider-row run-mode-row">
+                      <label class="opt-chip on" title="弹出浏览器窗口，脚本自动执行"><input type="radio" name="pwRunMode" value="headed" checked> 有界面</label>
+                      <label class="opt-chip" title="Playwright Inspector 单步调试"><input type="radio" name="pwRunMode" value="debug"> 调试</label>
+                      <label class="opt-chip" title="Playwright Test UI 可视化面板"><input type="radio" name="pwRunMode" value="ui"> UI 模式</label>
+                      <label class="opt-chip" title="无头运行并输出 JSON 报告"><input type="radio" name="pwRunMode" value="headless"> 无头</label>
+                    </div>
+                    <p class="sidebar-hint" style="margin-top:12px;margin-bottom:8px">浏览器（可多选，至少保留一个）</p>
+                    <div class="opt-grid provider-row" id="browserProjectRow">
+                      <label class="opt-chip on"><input type="checkbox" name="pwBrowserProject" value="optimized" checked> Chrome</label>
+                      <label class="opt-chip on"><input type="checkbox" name="pwBrowserProject" value="optimized-webkit" checked> Safari</label>
+                      <label class="opt-chip"><input type="checkbox" name="pwBrowserProject" value="optimized-firefox"> Firefox</label>
+                    </div>
+                  </div>
+                </div>
+                <div class="sidebar-section studio-hidden" id="repoSpecPickerWrap">
+                  <div class="sidebar-label">测试用例</div>
+                  <p class="sidebar-hint" style="margin-bottom:8px">选择单个或批量用例后，在下方「运行流程」执行。</p>
+<div id="repoSpecPickerSection">
+                <select class="url-input" id="repoProfileFilter" style="margin-bottom:8px;width:100%" onchange="onRepoProfileFilterChange()" title="按录制时的账号档案筛选">
+                  <option value="all">全部账号档案</option>
+                </select>
+                <div class="provider-row step-branch-row" role="group" aria-label="运行方式" style="margin-bottom:10px">
+                  <button type="button" class="step-branch-chip active" data-run-sub="single" id="runSubSingle" onclick="setRunSubMode('single', this)">单个</button>
+                  <button type="button" class="step-branch-chip" data-run-sub="batch" id="runSubBatch" onclick="setRunSubMode('batch', this)">批量</button>
+                </div>
+                <div id="runSpecSingle">
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:8px">
+                    <span class="sidebar-hint" style="margin:0">选择用例</span>
+                    <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px;flex-shrink:0" onclick="refreshRepoOptimizedList()">刷新</button>
+                  </div>
+                  <input type="text" class="url-input" id="repoSpecSearch" placeholder="搜索用例路径…" style="margin-bottom:6px;width:100%" spellcheck="false">
+                  <select class="url-input" id="repoOptimizedPick" style="margin-bottom:6px;width:100%;color:var(--text)"></select>
+                  <div style="display:flex;gap:6px;margin-bottom:6px">
+                    <button type="button" class="btn btn-full" style="flex:1" onclick="loadSelectedOptimizedToEditor()">载入到编辑器</button>
+                    <button type="button" class="btn btn-full" id="btnDeleteSpecSingle" style="flex:1;border-color:rgba(248,113,113,.35);color:var(--red)" onclick="deleteSelectedOptimizedSpecs()">删除所选用例</button>
+                  </div>
+                  <div style="display:flex;gap:6px;margin-bottom:6px">
+                    <button type="button" class="btn btn-full" id="btnCleanLatestRunSingle" style="flex:1;font-size:var(--fs-xs)" onclick="cleanSelectedSpecScreenshots('latest')" title="删除 chrome/webkit 最近一次 run 的 timestamp 目录">清理最近 run</button>
+                    <button type="button" class="btn btn-full" id="btnCleanAllScreenshotsSingle" style="flex:1;font-size:var(--fs-xs);border-color:rgba(251,191,36,.35);color:var(--amber,#d97706)" onclick="cleanSelectedSpecScreenshots('all')" title="删除该用例 screenshots/ 目录及 results/diffs 缓存">清理全部截图</button>
+                  </div>
+                </div>
+                <div id="runSpecBatch" class="studio-hidden">
+                  <input type="text" class="url-input" id="repoBatchSpecSearch" placeholder="筛选批量列表…" style="margin-bottom:6px;width:100%" spellcheck="false">
+                  <div class="batch-spec-toolbar">
+                    <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="refreshRepoOptimizedList()">刷新</button>
+                    <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="selectAllBatchSpecs(true)">全选</button>
+                    <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="selectAllBatchSpecs(false)">全不选</button>
+                    <button type="button" class="btn" id="btnDeleteSpecBatch" style="font-size:var(--fs-xs);padding:4px 8px;color:var(--red)" onclick="deleteSelectedOptimizedSpecs()">删除所选</button>
+                    <button type="button" class="btn" id="btnCleanLatestRunBatch" style="font-size:var(--fs-xs);padding:4px 8px" onclick="cleanSelectedSpecScreenshots('latest')" title="清理所选用例最近一次 run">清理最近 run</button>
+                    <button type="button" class="btn" id="btnCleanAllScreenshotsBatch" style="font-size:var(--fs-xs);padding:4px 8px;color:var(--amber,#d97706)" onclick="cleanSelectedSpecScreenshots('all')" title="清理所选用例全部截图">清理全部截图</button>
+                  </div>
+                  <div id="repoBatchSpecList" class="batch-spec-list"></div>
+                  <label class="opt-chip" style="margin:0"><input type="checkbox" id="batchStopOnError"> 遇错停止</label>
+                </div>
+              </div>
+                </div>
+
+          
+                <div class="pipeline studio-hidden" id="pipelineJobs">
+                  <div class="sidebar-section" style="padding-bottom:10px">
+                    <div class="sidebar-label">任务列表</div>
+                    <p class="sidebar-hint">读取 <code>config/test-jobs.json</code>。可选环境 / 账号档案 / 用例子集执行；多账号 Job 会按 meta 分组 login。</p>
+                    <button type="button" class="btn btn-full" style="margin-top:4px" onclick="refreshTestJobsList()">刷新任务</button>
+                  </div>
+                  <div id="testJobsList" class="test-job-list jobs-panel-list"></div>
+                </div>
+          
+                <div class="pipeline" id="pipelineNew">
+                  <div class="sidebar-label">新建流程</div>
+                  <div class="step-item active" id="step1" data-step="1" role="button" tabindex="0">
+                    <div class="step-bullet">1</div>
+                    <div class="step-info">
+                      <div class="step-name">开始录制</div>
+                      <div class="step-sub" id="stepSub1">在浏览器中录制操作</div>
+                    </div>
+                  </div>
+          
+                  <div class="step-action-panel active" id="step1Panel" data-step-panel="1">
+                    <p class="sidebar-hint" style="margin-bottom:8px">在弹出窗口中操作，停止后会自动生成并执行优化脚本。</p>
+                    <button type="button" class="btn btn-record btn-full" id="btnRecord" onclick="event.stopPropagation(); startRecord()">
+                      <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
+                      开始录制
+                    </button>
+                    <div class="sidebar-accordion studio-hidden" id="accordionRecordingNames" hidden aria-hidden="true">
+                      <button type="button" class="accordion-trigger" aria-expanded="false">
+                        保存命名（可选） <span class="acc-chevron">›</span>
+                      </button>
+                      <div class="accordion-body">
+                        <p class="sidebar-hint" style="margin-bottom:6px">留空则按录制内容自动命名。</p>
+                        <input type="text" class="url-input" id="recordingFeatureName" style="margin-bottom:6px;width:100%" placeholder="功能名，如：我的审批" spellcheck="false">
+                        <input type="text" class="url-input" id="recordingBehaviorName" style="width:100%" placeholder="行为，如：click（普通点击可留空）" spellcheck="false">
+                        <button type="button" class="sidebar-link-btn" onclick="openDateCategoriesEditor()">管理迭代 ›</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="step-item" id="step2" data-step="2" role="button" tabindex="0">
+                    <div class="step-bullet">2</div>
+                    <div class="step-info">
+                      <div class="step-name">自动生成用例</div>
+                      <div class="step-sub" id="stepSub2">录制完成后自动生成优化脚本</div>
+                      <div class="step-branch-row studio-hidden" role="group" aria-label="第二步方式" hidden aria-hidden="true">
+                        <button type="button" class="step-branch-chip active" data-mode="ai" id="step2ModeAi" onclick="event.stopPropagation(); setStep2Mode('ai', this)">AI 优化脚本</button>
+                        <button type="button" class="step-branch-chip" data-mode="repo" id="step2ModeRepo" onclick="event.stopPropagation(); setStep2Mode('repo', this)">保存并生成用例</button>
+                      </div>
+                    </div>
+                  </div>
+          
+                  <div class="step-action-panel studio-hidden" id="step2PanelAi" data-mode="ai" hidden aria-hidden="true">
+                    <p class="sidebar-hint" style="margin-bottom:8px">对当前录制脚本做 AI 重构，请先配置模型与优化选项。</p>
+                    <div class="sidebar-accordion" id="accordionAi">
+                      <button type="button" class="accordion-trigger" aria-expanded="false">
+                        AI 与优化 <span class="acc-chevron">›</span>
+                      </button>
+                      <div class="accordion-body">
+                        <p class="sidebar-hint">选择模型并填写对应密钥；留空则使用服务器环境变量。</p>
+                        <div class="provider-row" style="margin-bottom:10px">
+                          <label class="opt-chip on"><input type="radio" name="aiProvider" id="providerClaude" value="claude" checked> Claude</label>
+                          <label class="opt-chip"><input type="radio" name="aiProvider" id="providerDeepseek" value="deepseek"> DeepSeek</label>
+                        </div>
+                        <div class="api-key-summary" id="apiKeySummaryAnthropic" data-provider="claude" style="display:none"></div>
+                        <div class="api-key-block expanded active" id="apiKeyBlockAnthropic" data-provider="claude">
+                          <div class="api-key-label">Anthropic（Claude）</div>
+                          <input type="password" class="url-input" id="apiKeyAnthropic" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
+                        </div>
+                        <div class="api-key-summary" id="apiKeySummaryDeepseek" data-provider="deepseek"></div>
+                        <div class="api-key-block collapsed" id="apiKeyBlockDeepseek" data-provider="deepseek">
+                          <div class="api-key-label">DeepSeek</div>
+                          <input type="password" class="url-input" id="apiKeyDeepseek" placeholder="sk-..." autocomplete="off" spellcheck="false">
+                        </div>
+                        <p id="apiKeyStatus" class="api-key-status-line">Claude · 使用环境变量或界面密钥</p>
+                        <div class="key-tools">
+                          <label class="opt-chip"><input type="checkbox" id="showApiKeys">显示密钥</label>
+                          <label class="opt-chip"><input type="checkbox" id="persistEncryptedApiKeys">加密保存到浏览器</label>
+                        </div>
+                        <details class="api-key-details">
+                          <summary>密钥与保存说明</summary>
+                          仅当前选中的模型会使用对应密钥；两个都填时不会混用。加密保存使用 AES-GCM 写入 localStorage，解密密钥在 sessionStorage，关闭浏览器后需重新输入。
+                        </details>
+                        <div class="sidebar-label" style="margin-top:14px;margin-bottom:8px">优化选项</div>
+                        <div class="opt-grid">
+                          <label class="opt-chip on"><input type="checkbox" id="optSelector" checked>选择器优化</label>
+                          <label class="opt-chip on"><input type="checkbox" id="optAssert" checked>补充断言</label>
+                          <label class="opt-chip on"><input type="checkbox" id="optWait" checked>移除硬等待</label>
+                          <label class="opt-chip on"><input type="checkbox" id="optEnv" checked>环境变量</label>
+                          <label class="opt-chip"><input type="checkbox" id="optPom">Page Object</label>
+                          <label class="opt-chip"><input type="checkbox" id="optComment">中文注释</label>
+                        </div>
+                      </div>
+                    </div>
+                    <button type="button" class="btn btn-optimize btn-full" id="btnOptimize" onclick="event.stopPropagation(); handleOptimizeClick()" disabled data-default-label="AI 优化脚本">
+                      <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2 7h7l-5.5 4 2 7L12 16l-5.5 4 2-7L3 9h7z"/></svg>
+                      <span class="btn-label">AI 优化脚本</span>
+                    </button>
+                  </div>
+          
+                  <div class="step-action-panel" id="step2PanelRepo" data-mode="repo">
+                    <p class="sidebar-hint" style="margin-bottom:8px">录制完成后会自动生成优化脚本并继续执行，无需保存。</p>
+                    <button type="button" class="btn btn-full studio-hidden" id="btnRepoSave" onclick="commitRepoArtifacts()" style="border-color:rgba(77,159,255,.35);color:var(--blue);margin-bottom:8px" hidden aria-hidden="true">保存到项目</button>
+                    <div style="display:flex;gap:6px">
+                      <button type="button" class="btn studio-hidden" style="flex:1" id="btnRepoPipeline" onclick="runRepoPipelineClick()" hidden aria-hidden="true">生成用例</button>
+                      <button type="button" class="btn" style="flex:1" id="btnRepoPipelineCancel" onclick="send('cancel:repo-pipeline')">取消自动生成</button>
+                    </div>
+                  </div>
+                  <div class="step-item" id="step3" data-step="3" role="button" tabindex="0">
+                    <div class="step-bullet">3</div>
+                    <div class="step-info">
+                      <div class="step-name">执行用例（含截图）</div>
+                      <div class="step-sub" id="stepSub3">执行用例并自动截取步骤图</div>
+                    </div>
+                  </div>
+          
+                  <div class="step-action-panel" id="step3PanelRepo">
+                    <p class="sidebar-hint" style="margin-bottom:8px">运行模式见「执行设置」。</p>
+                    <button type="button" class="btn btn-run btn-full" id="btnRepoTest" onclick="event.stopPropagation(); handleRepoTestClick()" data-default-label="执行（含截图）">执行（含截图）</button>
+                    <button type="button" class="btn btn-full" id="btnRepoRerunKeep" onclick="event.stopPropagation(); handleRepoRerunKeepClick()" data-default-label="追加 run（保留截图）" style="border-color:rgba(82,196,26,.35);color:#52c41a">追加 run（保留截图）</button>
+                    <ul class="compare-checklist" id="compareChecklistNew"></ul>
+                    <button type="button" class="btn btn-full" id="btnRepoCompare" onclick="openScreenshotCompareHub()" style="border-color:rgba(77,159,255,.35);color:var(--blue)">截图对比报告</button>
+                    <button type="button" class="btn btn-full" id="btnRepoCompareCancel" style="font-size:var(--fs-sm);padding:6px 10px;margin-top:6px" disabled onclick="send('cancel:repo-compare')">取消对比报告生成</button>
+                  </div>
+          
+          
+                  <div class="step-item" id="step4" data-step="4" role="button" tabindex="0">
+                    <div class="step-bullet">4</div>
+                    <div class="step-info">
+                      <div class="step-name">生成报告</div>
+                      <div class="step-sub" id="stepSub4">查看结果并下载脚本</div>
+                    </div>
+                  </div>
+          
+                  <div class="step-action-panel" id="step4Panel" data-step-panel="4">
+                    <p class="sidebar-hint" style="margin-bottom:8px">生成报告后可在右侧「报告」面板查看。</p>
+                    <button type="button" class="btn btn-report btn-full" id="btnReport" onclick="event.stopPropagation(); generateReport()" disabled>
+                      <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>
+                      生成报告
+                    </button>
+                  </div>
+                </div>
+          
+                <div class="pipeline studio-hidden" id="pipelineRun">
+                  <div class="sidebar-label">运行流程</div>
+                  <div class="step-item active" id="runStep1" data-run-step="1" role="button" tabindex="0">
+                    <div class="step-bullet">1</div>
+                    <div class="step-info">
+                      <div class="step-name">选择用例</div>
+                      <div class="step-sub" id="runStepSub1">在「用例」面板选择单个或批量用例</div>
+                    </div>
+                  </div>
+                  <div class="step-action-panel active" id="runStep1Panel">
+                    <div class="run-spec-summary" id="runStep1Summary">请在「用例」面板「测试用例」中选择要运行的用例。</div>
+                  </div>
+                  <div class="step-item" id="runStep2" data-run-step="2" role="button" tabindex="0">
+                    <div class="step-bullet">2</div>
+                    <div class="step-info">
+                      <div class="step-name">执行</div>
+                      <div class="step-sub" id="runStepSub2">运行所选用例并截取步骤图</div>
+                    </div>
+                  </div>
+                  <div class="step-action-panel" id="runStep2Panel">
+                    <p class="sidebar-hint" style="margin-bottom:8px">运行模式见「执行设置」。</p>
+                    <p class="batch-progress" id="batchProgressText"></p>
+                    <div class="batch-fail-actions studio-hidden" id="batchFailCopyBar">
+                      <button type="button" class="btn btn-full" style="font-size:var(--fs-sm);padding:6px 10px;margin-bottom:6px" onclick="copyAllBatchFailures()">复制全部失败信息</button>
+                    </div>
+                    <div class="batch-results-wrap studio-hidden" id="batchResultsWrap">
+                      <table class="batch-results-table" id="batchResultsTable">
+                        <thead><tr><th>用例</th><th>结果</th><th>操作</th></tr></thead>
+                        <tbody id="batchResultsBody"></tbody>
+                      </table>
+                    </div>
+                    <button type="button" class="btn btn-run btn-full" id="btnRunExecute" onclick="event.stopPropagation(); handleRunExecuteClick()" data-default-label="执行（含截图）">执行（含截图）</button>
+                    <button type="button" class="btn btn-full" id="btnRunRerunKeep" onclick="event.stopPropagation(); handleRepoRerunKeepClick()" data-default-label="追加 run（保留截图）" style="border-color:rgba(82,196,26,.35);color:#52c41a">追加 run（保留截图）</button>
+                  </div>
+                  <div class="step-item" id="runStep3" data-run-step="3" role="button" tabindex="0">
+                    <div class="step-bullet">3</div>
+                    <div class="step-info">
+                      <div class="step-name">报告</div>
+                      <div class="step-sub" id="runStepSub3">生成截图对比报告</div>
+                    </div>
+                  </div>
+                  <div class="step-action-panel" id="runStep3Panel">
+                    <ul class="compare-checklist" id="compareChecklistRun"></ul>
+                    <button type="button" class="btn btn-full" id="btnRunRerunKeepReport" onclick="event.stopPropagation(); handleRepoRerunKeepClick()" data-default-label="追加 run（保留截图）" style="border-color:rgba(82,196,26,.35);color:#52c41a;margin-bottom:6px">追加 run（保留截图）</button>
+                    <button type="button" class="btn btn-full" id="btnRunCompare" onclick="openScreenshotCompareHub()" style="border-color:rgba(77,159,255,.35);color:var(--blue)">截图对比报告</button>
+                    <button type="button" class="btn btn-full" id="btnRunCompareCancel" style="font-size:var(--fs-sm);padding:6px 10px;margin-top:6px" disabled onclick="send('cancel:repo-compare')">取消对比报告生成</button>
+                  </div>
+                </div>
+        </div>
+      </div>
+
       </div>
 
     </aside>
@@ -809,10 +1076,10 @@
       <div class="jobs-workspace studio-hidden" id="jobsWorkspace">
         <div class="jobs-workspace-head">
           <div class="jobs-workspace-title" id="jobsWorkspaceTitle">定时任务</div>
-          <div class="jobs-workspace-sub" id="jobsWorkspaceSub">在右侧「用例」面板选择任务，查看配置、运行状态与日志</div>
+          <div class="jobs-workspace-sub" id="jobsWorkspaceSub">在左侧「用例」面板选择任务，查看配置、运行状态与日志</div>
         </div>
         <div class="jobs-workspace-body">
-          <div class="jobs-workspace-empty" id="jobsWorkspaceEmpty">← 从右侧「用例」面板选择一个任务</div>
+          <div class="jobs-workspace-empty" id="jobsWorkspaceEmpty">← 从左侧「用例」面板选择一个任务</div>
           <div id="jobsWorkspaceDetail" class="studio-hidden" style="display:flex;flex-direction:column;gap:16px;flex:1;min-height:0">
             <div class="jobs-run-bar" id="jobsRunBar">
               <label class="jobs-run-label" for="jobsRunEnvSelect">执行环境</label>
@@ -1408,7 +1675,6 @@
         <div class="panel-tabs">
           <div class="ptab active" id="ptabLog" onclick="switchPanel('log',this)">日志</div>
           <div class="ptab" onclick="switchPanel('report',this)">报告</div>
-          <div class="ptab" id="ptabWorkflow" onclick="switchPanel('workflow',this)">用例</div>
         </div>
       </div>
 
@@ -1508,268 +1774,6 @@
         </div>
       </div>
 
-<div class="workflow-body" id="workflowPanel">
-            <div class="workflow-sub-tabs provider-row step-branch-row" role="group" aria-label="用例工作流">
-              <button type="button" class="step-branch-chip active" data-workflow="new" id="workflowModeNew" onclick="setWorkflowMode('new', this)">新建用例</button>
-              <button type="button" class="step-branch-chip" data-workflow="run" id="workflowModeRun" onclick="setWorkflowMode('run', this)">运行用例</button>
-              <button type="button" class="step-branch-chip" data-workflow="jobs" id="workflowModeJobs" onclick="setWorkflowMode('jobs', this)">定时任务</button>
-            </div>
-            <div class="workflow-scroll" id="workflowPanelScroll">
-          <div class="sidebar-accordion" id="accordionRun">
-                  <button type="button" class="accordion-trigger" aria-expanded="false">
-                    执行设置 <span class="acc-chevron">›</span>
-                  </button>
-                  <div class="accordion-body">
-                    <p class="exec-scope-hint" id="execScopeHint">—</p>
-                    <p class="sidebar-hint">运行模式四选一；浏览器可多选（至少保留一个）。</p>
-                    <div class="opt-grid provider-row run-mode-row">
-                      <label class="opt-chip on" title="弹出浏览器窗口，脚本自动执行"><input type="radio" name="pwRunMode" value="headed" checked> 有界面</label>
-                      <label class="opt-chip" title="Playwright Inspector 单步调试"><input type="radio" name="pwRunMode" value="debug"> 调试</label>
-                      <label class="opt-chip" title="Playwright Test UI 可视化面板"><input type="radio" name="pwRunMode" value="ui"> UI 模式</label>
-                      <label class="opt-chip" title="无头运行并输出 JSON 报告"><input type="radio" name="pwRunMode" value="headless"> 无头</label>
-                    </div>
-                    <p class="sidebar-hint" style="margin-top:12px;margin-bottom:8px">浏览器（可多选，至少保留一个）</p>
-                    <div class="opt-grid provider-row" id="browserProjectRow">
-                      <label class="opt-chip on"><input type="checkbox" name="pwBrowserProject" value="optimized" checked> Chrome</label>
-                      <label class="opt-chip on"><input type="checkbox" name="pwBrowserProject" value="optimized-webkit" checked> Safari</label>
-                      <label class="opt-chip"><input type="checkbox" name="pwBrowserProject" value="optimized-firefox"> Firefox</label>
-                    </div>
-                  </div>
-                </div>
-                <div class="sidebar-section studio-hidden" id="repoSpecPickerWrap">
-                  <div class="sidebar-label">测试用例</div>
-                  <p class="sidebar-hint" style="margin-bottom:8px">选择单个或批量用例后，在下方「运行流程」执行。</p>
-<div id="repoSpecPickerSection">
-                <select class="url-input" id="repoProfileFilter" style="margin-bottom:8px;width:100%" onchange="onRepoProfileFilterChange()" title="按录制时的账号档案筛选">
-                  <option value="all">全部账号档案</option>
-                </select>
-                <div class="provider-row step-branch-row" role="group" aria-label="运行方式" style="margin-bottom:10px">
-                  <button type="button" class="step-branch-chip active" data-run-sub="single" id="runSubSingle" onclick="setRunSubMode('single', this)">单个</button>
-                  <button type="button" class="step-branch-chip" data-run-sub="batch" id="runSubBatch" onclick="setRunSubMode('batch', this)">批量</button>
-                </div>
-                <div id="runSpecSingle">
-                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:8px">
-                    <span class="sidebar-hint" style="margin:0">选择用例</span>
-                    <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px;flex-shrink:0" onclick="refreshRepoOptimizedList()">刷新</button>
-                  </div>
-                  <input type="text" class="url-input" id="repoSpecSearch" placeholder="搜索用例路径…" style="margin-bottom:6px;width:100%" spellcheck="false">
-                  <select class="url-input" id="repoOptimizedPick" style="margin-bottom:6px;width:100%;color:var(--text)"></select>
-                  <div style="display:flex;gap:6px;margin-bottom:6px">
-                    <button type="button" class="btn btn-full" style="flex:1" onclick="loadSelectedOptimizedToEditor()">载入到编辑器</button>
-                    <button type="button" class="btn btn-full" id="btnDeleteSpecSingle" style="flex:1;border-color:rgba(248,113,113,.35);color:var(--red)" onclick="deleteSelectedOptimizedSpecs()">删除所选用例</button>
-                  </div>
-                  <div style="display:flex;gap:6px;margin-bottom:6px">
-                    <button type="button" class="btn btn-full" id="btnCleanLatestRunSingle" style="flex:1;font-size:var(--fs-xs)" onclick="cleanSelectedSpecScreenshots('latest')" title="删除 chrome/webkit 最近一次 run 的 timestamp 目录">清理最近 run</button>
-                    <button type="button" class="btn btn-full" id="btnCleanAllScreenshotsSingle" style="flex:1;font-size:var(--fs-xs);border-color:rgba(251,191,36,.35);color:var(--amber,#d97706)" onclick="cleanSelectedSpecScreenshots('all')" title="删除该用例 screenshots/ 目录及 results/diffs 缓存">清理全部截图</button>
-                  </div>
-                </div>
-                <div id="runSpecBatch" class="studio-hidden">
-                  <input type="text" class="url-input" id="repoBatchSpecSearch" placeholder="筛选批量列表…" style="margin-bottom:6px;width:100%" spellcheck="false">
-                  <div class="batch-spec-toolbar">
-                    <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="refreshRepoOptimizedList()">刷新</button>
-                    <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="selectAllBatchSpecs(true)">全选</button>
-                    <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="selectAllBatchSpecs(false)">全不选</button>
-                    <button type="button" class="btn" id="btnDeleteSpecBatch" style="font-size:var(--fs-xs);padding:4px 8px;color:var(--red)" onclick="deleteSelectedOptimizedSpecs()">删除所选</button>
-                    <button type="button" class="btn" id="btnCleanLatestRunBatch" style="font-size:var(--fs-xs);padding:4px 8px" onclick="cleanSelectedSpecScreenshots('latest')" title="清理所选用例最近一次 run">清理最近 run</button>
-                    <button type="button" class="btn" id="btnCleanAllScreenshotsBatch" style="font-size:var(--fs-xs);padding:4px 8px;color:var(--amber,#d97706)" onclick="cleanSelectedSpecScreenshots('all')" title="清理所选用例全部截图">清理全部截图</button>
-                  </div>
-                  <div id="repoBatchSpecList" class="batch-spec-list"></div>
-                  <label class="opt-chip" style="margin:0"><input type="checkbox" id="batchStopOnError"> 遇错停止</label>
-                </div>
-              </div>
-                </div>
-
-          
-                <div class="pipeline studio-hidden" id="pipelineJobs">
-                  <div class="sidebar-section" style="padding-bottom:10px">
-                    <div class="sidebar-label">任务列表</div>
-                    <p class="sidebar-hint">读取 <code>config/test-jobs.json</code>。可选环境 / 账号档案 / 用例子集执行；多账号 Job 会按 meta 分组 login。</p>
-                    <button type="button" class="btn btn-full" style="margin-top:4px" onclick="refreshTestJobsList()">刷新任务</button>
-                  </div>
-                  <div id="testJobsList" class="test-job-list jobs-panel-list"></div>
-                </div>
-          
-                <div class="pipeline" id="pipelineNew">
-                  <div class="sidebar-label">新建流程</div>
-                  <div class="step-item active" id="step1" data-step="1" role="button" tabindex="0">
-                    <div class="step-bullet">1</div>
-                    <div class="step-info">
-                      <div class="step-name">开始录制</div>
-                      <div class="step-sub" id="stepSub1">在浏览器中录制操作</div>
-                    </div>
-                  </div>
-          
-                  <div class="step-action-panel active" id="step1Panel" data-step-panel="1">
-                    <p class="sidebar-hint" style="margin-bottom:8px">在弹出窗口中操作，停止后会自动生成并执行优化脚本。</p>
-                    <button type="button" class="btn btn-record btn-full" id="btnRecord" onclick="event.stopPropagation(); startRecord()">
-                      <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
-                      开始录制
-                    </button>
-                    <div class="sidebar-accordion studio-hidden" id="accordionRecordingNames" hidden aria-hidden="true">
-                      <button type="button" class="accordion-trigger" aria-expanded="false">
-                        保存命名（可选） <span class="acc-chevron">›</span>
-                      </button>
-                      <div class="accordion-body">
-                        <p class="sidebar-hint" style="margin-bottom:6px">留空则按录制内容自动命名。</p>
-                        <input type="text" class="url-input" id="recordingFeatureName" style="margin-bottom:6px;width:100%" placeholder="功能名，如：我的审批" spellcheck="false">
-                        <input type="text" class="url-input" id="recordingBehaviorName" style="width:100%" placeholder="行为，如：click（普通点击可留空）" spellcheck="false">
-                        <button type="button" class="sidebar-link-btn" onclick="openDateCategoriesEditor()">管理迭代 ›</button>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="step-item" id="step2" data-step="2" role="button" tabindex="0">
-                    <div class="step-bullet">2</div>
-                    <div class="step-info">
-                      <div class="step-name">自动生成用例</div>
-                      <div class="step-sub" id="stepSub2">录制完成后自动生成优化脚本</div>
-                      <div class="step-branch-row studio-hidden" role="group" aria-label="第二步方式" hidden aria-hidden="true">
-                        <button type="button" class="step-branch-chip active" data-mode="ai" id="step2ModeAi" onclick="event.stopPropagation(); setStep2Mode('ai', this)">AI 优化脚本</button>
-                        <button type="button" class="step-branch-chip" data-mode="repo" id="step2ModeRepo" onclick="event.stopPropagation(); setStep2Mode('repo', this)">保存并生成用例</button>
-                      </div>
-                    </div>
-                  </div>
-          
-                  <div class="step-action-panel studio-hidden" id="step2PanelAi" data-mode="ai" hidden aria-hidden="true">
-                    <p class="sidebar-hint" style="margin-bottom:8px">对当前录制脚本做 AI 重构，请先配置模型与优化选项。</p>
-                    <div class="sidebar-accordion" id="accordionAi">
-                      <button type="button" class="accordion-trigger" aria-expanded="false">
-                        AI 与优化 <span class="acc-chevron">›</span>
-                      </button>
-                      <div class="accordion-body">
-                        <p class="sidebar-hint">选择模型并填写对应密钥；留空则使用服务器环境变量。</p>
-                        <div class="provider-row" style="margin-bottom:10px">
-                          <label class="opt-chip on"><input type="radio" name="aiProvider" id="providerClaude" value="claude" checked> Claude</label>
-                          <label class="opt-chip"><input type="radio" name="aiProvider" id="providerDeepseek" value="deepseek"> DeepSeek</label>
-                        </div>
-                        <div class="api-key-summary" id="apiKeySummaryAnthropic" data-provider="claude" style="display:none"></div>
-                        <div class="api-key-block expanded active" id="apiKeyBlockAnthropic" data-provider="claude">
-                          <div class="api-key-label">Anthropic（Claude）</div>
-                          <input type="password" class="url-input" id="apiKeyAnthropic" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
-                        </div>
-                        <div class="api-key-summary" id="apiKeySummaryDeepseek" data-provider="deepseek"></div>
-                        <div class="api-key-block collapsed" id="apiKeyBlockDeepseek" data-provider="deepseek">
-                          <div class="api-key-label">DeepSeek</div>
-                          <input type="password" class="url-input" id="apiKeyDeepseek" placeholder="sk-..." autocomplete="off" spellcheck="false">
-                        </div>
-                        <p id="apiKeyStatus" class="api-key-status-line">Claude · 使用环境变量或界面密钥</p>
-                        <div class="key-tools">
-                          <label class="opt-chip"><input type="checkbox" id="showApiKeys">显示密钥</label>
-                          <label class="opt-chip"><input type="checkbox" id="persistEncryptedApiKeys">加密保存到浏览器</label>
-                        </div>
-                        <details class="api-key-details">
-                          <summary>密钥与保存说明</summary>
-                          仅当前选中的模型会使用对应密钥；两个都填时不会混用。加密保存使用 AES-GCM 写入 localStorage，解密密钥在 sessionStorage，关闭浏览器后需重新输入。
-                        </details>
-                        <div class="sidebar-label" style="margin-top:14px;margin-bottom:8px">优化选项</div>
-                        <div class="opt-grid">
-                          <label class="opt-chip on"><input type="checkbox" id="optSelector" checked>选择器优化</label>
-                          <label class="opt-chip on"><input type="checkbox" id="optAssert" checked>补充断言</label>
-                          <label class="opt-chip on"><input type="checkbox" id="optWait" checked>移除硬等待</label>
-                          <label class="opt-chip on"><input type="checkbox" id="optEnv" checked>环境变量</label>
-                          <label class="opt-chip"><input type="checkbox" id="optPom">Page Object</label>
-                          <label class="opt-chip"><input type="checkbox" id="optComment">中文注释</label>
-                        </div>
-                      </div>
-                    </div>
-                    <button type="button" class="btn btn-optimize btn-full" id="btnOptimize" onclick="event.stopPropagation(); handleOptimizeClick()" disabled data-default-label="AI 优化脚本">
-                      <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2 7h7l-5.5 4 2 7L12 16l-5.5 4 2-7L3 9h7z"/></svg>
-                      <span class="btn-label">AI 优化脚本</span>
-                    </button>
-                  </div>
-          
-                  <div class="step-action-panel" id="step2PanelRepo" data-mode="repo">
-                    <p class="sidebar-hint" style="margin-bottom:8px">录制完成后会自动生成优化脚本并继续执行，无需保存。</p>
-                    <button type="button" class="btn btn-full studio-hidden" id="btnRepoSave" onclick="commitRepoArtifacts()" style="border-color:rgba(77,159,255,.35);color:var(--blue);margin-bottom:8px" hidden aria-hidden="true">保存到项目</button>
-                    <div style="display:flex;gap:6px">
-                      <button type="button" class="btn studio-hidden" style="flex:1" id="btnRepoPipeline" onclick="runRepoPipelineClick()" hidden aria-hidden="true">生成用例</button>
-                      <button type="button" class="btn" style="flex:1" id="btnRepoPipelineCancel" onclick="send('cancel:repo-pipeline')">取消自动生成</button>
-                    </div>
-                  </div>
-                  <div class="step-item" id="step3" data-step="3" role="button" tabindex="0">
-                    <div class="step-bullet">3</div>
-                    <div class="step-info">
-                      <div class="step-name">执行用例（含截图）</div>
-                      <div class="step-sub" id="stepSub3">执行用例并自动截取步骤图</div>
-                    </div>
-                  </div>
-          
-                  <div class="step-action-panel" id="step3PanelRepo">
-                    <p class="sidebar-hint" style="margin-bottom:8px">运行模式见「执行设置」。</p>
-                    <button type="button" class="btn btn-run btn-full" id="btnRepoTest" onclick="event.stopPropagation(); handleRepoTestClick()" data-default-label="执行（含截图）">执行（含截图）</button>
-                    <button type="button" class="btn btn-full" id="btnRepoRerunKeep" onclick="event.stopPropagation(); handleRepoRerunKeepClick()" data-default-label="追加 run（保留截图）" style="border-color:rgba(82,196,26,.35);color:#52c41a">追加 run（保留截图）</button>
-                    <ul class="compare-checklist" id="compareChecklistNew"></ul>
-                    <button type="button" class="btn btn-full" id="btnRepoCompare" onclick="openScreenshotCompareHub()" style="border-color:rgba(77,159,255,.35);color:var(--blue)">截图对比报告</button>
-                    <button type="button" class="btn btn-full" id="btnRepoCompareCancel" style="font-size:var(--fs-sm);padding:6px 10px;margin-top:6px" disabled onclick="send('cancel:repo-compare')">取消对比报告生成</button>
-                  </div>
-          
-          
-                  <div class="step-item" id="step4" data-step="4" role="button" tabindex="0">
-                    <div class="step-bullet">4</div>
-                    <div class="step-info">
-                      <div class="step-name">生成报告</div>
-                      <div class="step-sub" id="stepSub4">查看结果并下载脚本</div>
-                    </div>
-                  </div>
-          
-                  <div class="step-action-panel" id="step4Panel" data-step-panel="4">
-                    <p class="sidebar-hint" style="margin-bottom:8px">生成报告后可在右侧「报告」面板查看。</p>
-                    <button type="button" class="btn btn-report btn-full" id="btnReport" onclick="event.stopPropagation(); generateReport()" disabled>
-                      <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>
-                      生成报告
-                    </button>
-                  </div>
-                </div>
-          
-                <div class="pipeline studio-hidden" id="pipelineRun">
-                  <div class="sidebar-label">运行流程</div>
-                  <div class="step-item active" id="runStep1" data-run-step="1" role="button" tabindex="0">
-                    <div class="step-bullet">1</div>
-                    <div class="step-info">
-                      <div class="step-name">选择用例</div>
-                      <div class="step-sub" id="runStepSub1">在「用例」面板选择单个或批量用例</div>
-                    </div>
-                  </div>
-                  <div class="step-action-panel active" id="runStep1Panel">
-                    <div class="run-spec-summary" id="runStep1Summary">请在「用例」面板「测试用例」中选择要运行的用例。</div>
-                  </div>
-                  <div class="step-item" id="runStep2" data-run-step="2" role="button" tabindex="0">
-                    <div class="step-bullet">2</div>
-                    <div class="step-info">
-                      <div class="step-name">执行</div>
-                      <div class="step-sub" id="runStepSub2">运行所选用例并截取步骤图</div>
-                    </div>
-                  </div>
-                  <div class="step-action-panel" id="runStep2Panel">
-                    <p class="sidebar-hint" style="margin-bottom:8px">运行模式见「执行设置」。</p>
-                    <p class="batch-progress" id="batchProgressText"></p>
-                    <div class="batch-fail-actions studio-hidden" id="batchFailCopyBar">
-                      <button type="button" class="btn btn-full" style="font-size:var(--fs-sm);padding:6px 10px;margin-bottom:6px" onclick="copyAllBatchFailures()">复制全部失败信息</button>
-                    </div>
-                    <div class="batch-results-wrap studio-hidden" id="batchResultsWrap">
-                      <table class="batch-results-table" id="batchResultsTable">
-                        <thead><tr><th>用例</th><th>结果</th><th>操作</th></tr></thead>
-                        <tbody id="batchResultsBody"></tbody>
-                      </table>
-                    </div>
-                    <button type="button" class="btn btn-run btn-full" id="btnRunExecute" onclick="event.stopPropagation(); handleRunExecuteClick()" data-default-label="执行（含截图）">执行（含截图）</button>
-                    <button type="button" class="btn btn-full" id="btnRunRerunKeep" onclick="event.stopPropagation(); handleRepoRerunKeepClick()" data-default-label="追加 run（保留截图）" style="border-color:rgba(82,196,26,.35);color:#52c41a">追加 run（保留截图）</button>
-                  </div>
-                  <div class="step-item" id="runStep3" data-run-step="3" role="button" tabindex="0">
-                    <div class="step-bullet">3</div>
-                    <div class="step-info">
-                      <div class="step-name">报告</div>
-                      <div class="step-sub" id="runStepSub3">生成截图对比报告</div>
-                    </div>
-                  </div>
-                  <div class="step-action-panel" id="runStep3Panel">
-                    <ul class="compare-checklist" id="compareChecklistRun"></ul>
-                    <button type="button" class="btn btn-full" id="btnRunRerunKeepReport" onclick="event.stopPropagation(); handleRepoRerunKeepClick()" data-default-label="追加 run（保留截图）" style="border-color:rgba(82,196,26,.35);color:#52c41a;margin-bottom:6px">追加 run（保留截图）</button>
-                    <button type="button" class="btn btn-full" id="btnRunCompare" onclick="openScreenshotCompareHub()" style="border-color:rgba(77,159,255,.35);color:var(--blue)">截图对比报告</button>
-                    <button type="button" class="btn btn-full" id="btnRunCompareCancel" style="font-size:var(--fs-sm);padding:6px 10px;margin-top:6px" disabled onclick="send('cancel:repo-compare')">取消对比报告生成</button>
-                  </div>
-                </div>
-        </div>
-      </div>
 
 
       
@@ -3813,9 +3817,7 @@ function applyWorkflowLayout() {
   document.getElementById('centerEditorWrap')?.classList.toggle('studio-hidden', isJobs);
 }
 
-function openWorkflowPanel() {
-  switchPanel('workflow', document.getElementById('ptabWorkflow'));
-}
+function openWorkflowPanel() {}
 
 function getJobRunEnv(job) {
   if (!job) return envState.current || 'stage';
@@ -4124,7 +4126,7 @@ function renderJobsWorkspace(job, opts = {}) {
     emptyEl?.classList.remove('studio-hidden');
     detailEl?.classList.add('studio-hidden');
     if (titleEl) titleEl.textContent = '定时任务';
-    if (subEl) subEl.textContent = '在右侧「用例」面板选择任务，查看配置、运行状态与日志';
+    if (subEl) subEl.textContent = '在左侧「用例」面板选择任务，查看配置、运行状态与日志';
     return;
   }
   emptyEl?.classList.add('studio-hidden');
@@ -8899,15 +8901,10 @@ function switchPanel(name, el) {
   if (el) el.classList.add('active');
   const log = document.getElementById('logStream');
   const report = document.getElementById('reportPanel');
-  const workflow = document.getElementById('workflowPanel');
   if (log) log.style.display = name === 'log' ? 'block' : 'none';
   if (report) {
     report.style.display = name === 'report' ? 'block' : 'none';
     report.classList.toggle('active', name === 'report');
-  }
-  if (workflow) {
-    workflow.style.display = name === 'workflow' ? 'flex' : 'none';
-    workflow.classList.toggle('active', name === 'workflow');
   }
 }
 
