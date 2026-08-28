@@ -129,8 +129,10 @@ function renderCard(step: AuditStepReport): string {
         : '<span class="src err">分析失败</span>';
 
   const figmaBadge = step.figmaRel
-    ? '<span class="src figma">Figma 基准</span>'
-    : '';
+    ? '<span class="src figma">Figma 双图</span>'
+    : step.result.baseline === 'figma-spec'
+      ? '<span class="src figma">Figma 规范</span>'
+      : '';
 
   const title = `${step.stepNumber != null ? `#${step.stepNumber} ` : ''}${step.stepName}`;
 

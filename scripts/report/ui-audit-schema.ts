@@ -42,8 +42,8 @@ export interface AuditResult {
   issues: AuditIssue[];
   /** mock=规则推断，ai=视觉模型，error=分析失败 */
   source: 'mock' | 'ai' | 'error';
-  /** 本步是否实际用上了 Figma 双图对比 */
-  baseline?: 'none' | 'figma';
+  /** figma=双图视觉对比；figma-spec=Helios/Figma 文本规范 + 单图 */
+  baseline?: 'none' | 'figma' | 'figma-spec';
 }
 
 const ISSUE_TYPES = new Set<AuditIssueType>([

@@ -216,22 +216,50 @@ async function main(): Promise<void> {
   assert.equal(offline?.source, 'store', '应命中本地 Figma 缓存');
   console.log('✅ 审计默认只读本地 Figma 缓存（无需 Token）');
 
-  const figmaHtml = renderAuditReportHtml([{ ...steps[0], figmaRel: steps[0].screenshotRel }]);
-  assert.ok(figmaHtml.includes('Figma 设计稿'), '有 Figma 基准时应并排展示设计稿');
-  console.log('✅ 报告在有 Figma 基准时展示设计稿对照');
+  const specOnly = await resolveFigmaBaseline({
+    scriptKey: 'verify/self-test',
+    stepName: 'no-cache',
+    cliFigmaUrl: 'https://www.figma.com/design/AbCd1234/x?node-id=77-66',
+  });
+  assert.ok(specOnly?.url, '无 PNG 缓存时仍应返回 Figma 映射供文本规范审计');
+  assert.equal(specOnly?.imagePath, undefined, '默认模式不传设计稿 PNG');
+  console.log('✅ 无 PNG 缓存时仍可用 Figma 文本规范');
 
+  const figmaHtml = renderAuditReportHtml([{ ...steps[0], figmaRel: steps[0].screenshotRel }]);
+  assert.ok(figmaHtml.includes('Figma 设计稿'), '有 Figma 双图基准时应并排展示设计稿');
+  console.log('✅ 报告在有 Figma 双图基准时展示设计稿对照');
+
+  const mockWithFigmaSpec = await auditStep(
+    pngPath,
+    JSON.parse(fs.readFileSync(emptyMetaPath, 'utf-8')),
+    {
+      scriptKey: 'verify/self-test',
+      stepName: '无信号页面',
+      figmaUrl: storeUrl,
+      figmaNote: 'A09 Dropdown Select',
+    },
+  );
+  assert.equal(mockWithFigmaSpec.verdict, 'skipped', 'mock 有 Figma 规范但仍无规则信号时保持 skipped');
+  assert.ok(
+    mockWithFigmaSpec.issues.some((i: { description: string }) => i.description.includes('Figma 文本规范')),
+    'mock 应提示 Figma 文本规范未被对照',
+  );
+  console.log('✅ mock + Figma 文本规范不会把无信号步骤谎报为通过');
+
+  process.env.AI_AUDIT_FIGMA_VISION = '1';
   const mockWithFigma = await auditStep(
     pngPath,
     JSON.parse(fs.readFileSync(emptyMetaPath, 'utf-8')),
     { scriptKey: 'verify/self-test', stepName: '无信号页面' },
     { figmaImagePath: pngPath },
   );
+  delete process.env.AI_AUDIT_FIGMA_VISION;
   assert.equal(mockWithFigma.verdict, 'skipped', 'mock 有 Figma 图但仍无规则信号时保持 skipped');
   assert.ok(
-    mockWithFigma.issues.some((i: { description: string }) => i.description.includes('Figma')),
-    'mock 应提示 Figma 基准未被对比',
+    mockWithFigma.issues.some((i: { description: string }) => i.description.includes('Figma 基准图')),
+    'mock 应提示 Figma 双图未被对比',
   );
-  console.log('✅ mock + Figma 不会把无信号步骤谎报为通过');
+  console.log('✅ mock + Figma 双图不会把无信号步骤谎报为通过');
 
   const { applyAuditRules: applyRules, resolveAuditRule } = await import('../report/ui-audit-rules.js');
 

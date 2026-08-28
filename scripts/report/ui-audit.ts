@@ -3,7 +3,7 @@ import path from 'path';
 import dotenv from 'dotenv';
 import { PNG } from 'pngjs';
 import type { StepMeta } from './structure-check.js';
-import { auditStep, shouldUseMock, resolveVisionConfig } from './ui-audit-analyzer.js';
+import { auditStep, shouldUseMock, shouldUseFigmaVision, resolveVisionConfig } from './ui-audit-analyzer.js';
 import {
   renderAuditReportHtml,
   relativeAssetPath,
@@ -127,9 +127,13 @@ async function main(): Promise<void> {
   const assetDir = path.join(outDir, 'assets');
 
   const mock = shouldUseMock();
+  const figmaVision = shouldUseFigmaVision() || Boolean(args.figmaImage);
   console.log(`🔍 AI UI 审计启动`);
   console.log(`   扫描目录: ${path.relative(process.cwd(), rootDir) || '.'}`);
   console.log(`   分析模式: ${mock ? 'mock（规则推断）' : 'AI 视觉'}`);
+  console.log(
+    `   Figma: ${figmaVision ? '双图视觉对比（慢，AI_AUDIT_FIGMA_VISION=1）' : '文本规范 + 单图（默认）'}`,
+  );
   if (!mock) {
     const visionConfig = resolveVisionConfig();
     if (visionConfig) {
@@ -181,6 +185,7 @@ async function main(): Promise<void> {
         stepName: cand.stepName,
         stepNumber: cand.stepNumber,
         figmaUrl: figma?.url,
+        figmaNote: figma?.note,
         expect: auditRule?.expect,
         helios: helios.enabled
           ? {
@@ -190,7 +195,7 @@ async function main(): Promise<void> {
             }
           : undefined,
       },
-      { figmaImagePath: figma?.imagePath },
+      { figmaImagePath: figmaVision ? figma?.imagePath : undefined },
     );
     const result = applyAuditRules(rawResult, auditRule);
 
@@ -204,7 +209,7 @@ async function main(): Promise<void> {
     }
 
     let figmaRel: string | undefined;
-    if (figma?.imagePath) {
+    if (figmaVision && figma?.imagePath) {
       const figmaName = `${String(index + 1).padStart(2, '0')}-figma${path.extname(figma.imagePath) || '.png'}`;
       const figmaPath = path.join(assetDir, figmaName);
       try {
@@ -242,15 +247,29 @@ async function main(): Promise<void> {
       result.verdict === 'skipped'
         ? '未审计（缺少判定依据）'
         : `分 ${result.score}，问题 ${result.issues.length}`;
-    console.log(`  ${icon} ${cand.scriptKey} / ${cand.stepName} — ${detail}${figmaRel ? ' · Figma' : ''}`);
+    const figmaTag =
+      result.baseline === 'figma'
+        ? ' · Figma 双图'
+        : result.baseline === 'figma-spec'
+          ? ' · Figma 规范'
+          : '';
+    console.log(`  ${icon} ${cand.scriptKey} / ${cand.stepName} — ${detail}${figmaTag}`);
   }
 
-  const figmaCount = steps.filter((s) => s.figmaRel).length;
+  const figmaVisionCount = steps.filter((s) => s.result.baseline === 'figma').length;
+  const figmaSpecCount = steps.filter((s) => s.result.baseline === 'figma-spec').length;
   const heliosCount = steps.filter((s) =>
     resolveHeliosAuditContext(s.scriptKey, s.stepName, s.stepNumber).enabled,
   ).length;
+  const figmaModeLabel = [
+    figmaVisionCount ? `Figma 双图 ${figmaVisionCount}` : '',
+    figmaSpecCount ? `Figma 规范 ${figmaSpecCount}` : '',
+    heliosCount ? `Helios ${heliosCount}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
   const html = renderAuditReportHtml(steps, {
-    mode: `${mock ? 'mock 规则分析' : 'AI 视觉分析'}${figmaCount ? ` · Figma 基准 ${figmaCount}` : ''}${heliosCount ? ` · Helios 规范 ${heliosCount}` : ''}`,
+    mode: `${mock ? 'mock 规则分析' : 'AI 视觉分析'}${figmaModeLabel ? ` · ${figmaModeLabel}` : ''}`,
   });
   const htmlPath = path.join(outDir, 'index.html');
   fs.writeFileSync(htmlPath, html, 'utf-8');
@@ -263,7 +282,9 @@ async function main(): Promise<void> {
     review: steps.filter((s) => s.result.verdict === 'review').length,
     fail: steps.filter((s) => s.result.verdict === 'fail').length,
     skipped: steps.filter((s) => s.result.verdict === 'skipped').length,
-    figma: figmaCount,
+    figma: figmaVisionCount + figmaSpecCount,
+    figmaVision: figmaVisionCount,
+    figmaSpec: figmaSpecCount,
     helios: heliosCount,
     steps: steps.map((s) => ({
       scriptKey: s.scriptKey,

@@ -9,11 +9,11 @@
 | `compare-screenshots`（pixelmatch） | 无基线 → 无法判断；像素没变但 UI 已坏 → 漏检 |
 | `ui-issue-ai-review`（Claude Vision） | 只复审 pixelmatch **已标记**的 issue，需要基线 + diff 图 |
 
-这一层解决的是「**UI 有没有发生有意义的衰退**」：默认对**单张截图**做结构化审计；若提供 Figma 设计稿，则以设计稿为基准做双图对比。
+这一层解决的是「**UI 有没有发生有意义的衰退**」：默认对**单张截图**做结构化审计；有 Figma/Helios 映射时以**文本规范**对照（更快）；需像素级设计稿对比时可开 `AI_AUDIT_FIGMA_VISION=1` 走双图。
 
 两层关系：
 
-- **Layer 1（本模块）**：AI 审计 —— 无截图基线也能发现溢出、遮挡、截断、错位、元素缺失；有 Figma 稿时再对照设计稿
+- **Layer 1（本模块）**：AI 审计 —— 无截图基线也能发现溢出、遮挡、截断、错位、元素缺失；有 Figma/Helios 映射时用文本规范对照；可选双图视觉对比
 - **Layer 2（既有）**：pixelmatch 精确变更检测 —— 回答「哪里变了」，作为辅助输入而非最终裁判
 
 ## 数据来源：复用既有 sidecar
@@ -105,7 +105,8 @@ npm run ui-audit -- --gate
 | `AI_BASE_URL` | → `AI_TEST_OPENAI_BASE_URL` → `OPENAI_API_BASE` → `OPENAI_BASE_URL` | 接口根地址，默认 `https://api.openai.com` |
 | `AI_VISION_MODEL` | → `AI_MODEL` → `AI_TEST_MODEL` → `OPENAI_MODEL` | 视觉模型，默认 `gpt-4o-mini` |
 | `AI_AUDIT_MOCK` | — | `1` 强制 mock；`0` 强制真跑 |
-| `FIGMA_ACCESS_TOKEN` | → `FIGMA_TOKEN` → `FIGMA_API_TOKEN` | 拉取 Figma 节点导出图；未配置则忽略 `--figma` / 映射，仍走单图审计 |
+| `FIGMA_ACCESS_TOKEN` | → `FIGMA_TOKEN` → `FIGMA_API_TOKEN` | 仅 `figma:sync-baselines` 拉 PNG；日常审计用文本规范，不依赖 Token |
+| `AI_AUDIT_FIGMA_VISION` | — | `1` 启用双图视觉对比；默认 `0`（文本规范 + 单图） |
 
 **回退链的用意**：项目 `.env` 里若已配了 `AI_TEST_OPENAI_*`（供 `src/ai/llm-client.ts` 用），
 审计模块直接复用，不必再配一份。只想给审计单独指定模型/网关时，才设 `AI_*` 覆盖。
@@ -232,16 +233,19 @@ results/ui-audit/
 | 有基线，想知道「哪里变了」 | `npm run compare-screenshots` |
 | 有基线 + diff，想复审「变化是否真缺陷」 | `ui-issue-ai-review`（既有） |
 | **无截图基线**，想知道「这一屏 UI 是否已坏」 | **`npm run ui-audit`（本模块）** |
-| **有 Figma 设计稿**，想知道「实现是否偏离设计」 | **`npm run ui-audit -- --figma=...`（本模块）** |
+| **有 Figma/Helios 映射**，想知道「实现是否偏离设计模版」 | **`npm run ui-audit`（默认文本规范 + 单图）** |
+| 需要与设计稿 PNG 逐屏视觉对比 | 设 `AI_AUDIT_FIGMA_VISION=1` 并 `npm run figma:sync-baselines` |
 
 ## Figma 设计稿基准
 
-默认行为不变：不传设计稿时仍是单图审计。
+**默认（推荐）**：命中 `figma-baselines.json` 或 Helios binding 时，把 `note`、布局约束、Token 写进 prompt，**只传实际截图**（单图，快）。
+
+**可选双图**：`AI_AUDIT_FIGMA_VISION=1`（或 `--figma-image`）且本地有 PNG 缓存时，才传 Figma 设计稿 + 截图两张图（慢，易超时）。
 
 提供设计稿的三种方式（优先级从高到低）：
 
-1. `--figma-image=<png>`：本地导出图，不调 Figma API
-2. `--figma=<url>` / Studio 输入框：本轮所有步骤共用同一节点
+1. `--figma-image=<png>`：本地导出图，强制双图对比，不调 Figma API
+2. `--figma=<url>` / Studio 输入框：本轮所有步骤共用同一节点（默认仍走文本规范）
 3. `config/figma-baselines.json`：按 `script` 子串匹配，可再按 `step` 收窄
 
 `figma-baselines.json` 可由 `npm run figma:export-helios` 从 `config/helios-audit-bindings.json` 自动合并生成。
@@ -256,7 +260,7 @@ results/ui-audit/
 | `config/helios-design-catalog.json` | 全量 81 页索引 |
 | `config/helios-component-catalog.json` | **桌面端**可 sync 目录（A+C+基础，排除 B 移动端） |
 | `config/helios-audit-bindings.json` | script/step → Figma 节点 + 布局约束 |
-| `config/figma-baselines.json` | 审计时自动拉取设计稿 PNG |
+| `config/figma-baselines.json` | script/step → Figma URL + note（审计默认读文本；双图需 sync PNG） |
 
 ### 同步设计规范
 
@@ -275,7 +279,7 @@ npm run figma:sync-baselines -- --catalog --all-desktop   # sync 全部桌面目
 npm run ui-audit -- --script=flows/request-flow --limit=8
 ```
 
-设计稿 PNG 缓存在 `screenshots-baseline/figma/images/`，清单在 `manifest.json`。**审计不会访问 Figma API**；缓存缺失时跳过双图对比并提示运行 `figma:sync-baselines`。
+设计稿 PNG 缓存在 `screenshots-baseline/figma/images/`，清单在 `manifest.json`。**审计不会访问 Figma API**；默认无 PNG 仍可用 mapping `note` + Helios 做文本规范审计；双图模式需 sync 后设 `AI_AUDIT_FIGMA_VISION=1`。
 
 审计 prompt 会多出 **【Helios 设计规范】** 段落；`summary.json` 含 `helios` 字段统计已注入规范的步骤数。
 
@@ -295,7 +299,7 @@ npm run ui-audit -- --script=flows/request-flow --limit=8
 - URL 必须带 `node-id`（指向具体 Frame/节点，不能只给文件链接）
 - **拉取设计稿 PNG** 需 `FIGMA_ACCESS_TOKEN`，通过 `npm run figma:sync-baselines` 一次性写入本地；**日常审计不访问 Figma API**
 - 本地缓存路径：`screenshots-baseline/figma/`（`images/*.png` + `manifest.json`）
-- 缓存缺失 → 打警告并回退单图审计，不中断
+- 缓存缺失 → 仍走 Figma/Helios 文本规范 + 单图；仅双图模式需要 PNG
 - mock 模式看不了图：即使给了 Figma，无规则信号时仍是 ⚪ skipped，不会假绿
 - 对比只报结构/层级/关键区块的有意义偏差，不把动态数据与设计稿占位差异当缺陷
 

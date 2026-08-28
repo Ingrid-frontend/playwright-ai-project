@@ -16,8 +16,9 @@ export interface FigmaMapping {
 }
 
 export interface FigmaBaselineHit {
-  imagePath: string;
+  imagePath?: string;
   url: string;
+  note?: string;
   source: 'cli-url' | 'cli-image' | 'config' | 'store';
 }
 
@@ -237,6 +238,7 @@ export async function resolveFigmaBaseline(opts: {
   }
 
   let url = opts.cliFigmaUrl?.trim() || '';
+  let note: string | undefined;
   let source: FigmaBaselineHit['source'] = 'cli-url';
   if (!url) {
     const hit = matchFigmaMapping(
@@ -247,6 +249,7 @@ export async function resolveFigmaBaseline(opts: {
     );
     if (!hit) return null;
     url = hit.figmaUrl;
+    note = hit.note;
     source = 'config';
   }
 
@@ -258,14 +261,15 @@ export async function resolveFigmaBaseline(opts: {
 
   const storePath = readStoreImage(ref);
   if (storePath) {
-    return { imagePath: storePath, url, source: 'store' };
+    return { imagePath: storePath, url, note, source: 'store' };
   }
 
   if (!missingCacheWarned) {
     console.log(
-      '⚠️  本地无 Figma 设计稿缓存，跳过双图对比。请运行: npm run figma:sync-baselines',
+      'ℹ️  本地无 Figma PNG 缓存，将使用 Helios/Figma 文本规范做单图审计（更快）。' +
+        ' 需双图对比时设 AI_AUDIT_FIGMA_VISION=1 并运行 npm run figma:sync-baselines',
     );
     missingCacheWarned = true;
   }
-  return null;
+  return { url, note, source };
 }

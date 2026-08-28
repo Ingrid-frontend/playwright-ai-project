@@ -92,6 +92,12 @@ export function shouldUseMock(): boolean {
   return !canRunAiAudit();
 }
 
+/** AI_AUDIT_FIGMA_VISION=1 启用双图对比；默认 0=Helios/Figma 文本规范 + 单图（更快） */
+export function shouldUseFigmaVision(): boolean {
+  const flag = process.env.AI_AUDIT_FIGMA_VISION?.trim();
+  return flag === '1' || flag?.toLowerCase() === 'true';
+}
+
 /**
  * Mock 分析：不调模型，用 StepMeta 里的确定性信号推断问题。
  * 用于无 key 环境下验证全链路，也可作为 AI 不可用时的兜底。
@@ -262,6 +268,13 @@ async function callVision(
   images: { label?: string; image: ImagePart }[],
   config: VisionConfig,
 ): Promise<string> {
+  const envTimeout = Number(process.env.AI_VISION_TIMEOUT_MS);
+  const timeout =
+    Number.isFinite(envTimeout) && envTimeout > 0
+      ? envTimeout
+      : images.length > 1
+        ? 180_000
+        : 120_000;
   const res = await fetchWithRetry(config.url, {
     method: 'POST',
     headers: {
@@ -283,8 +296,8 @@ async function callVision(
         },
       ],
     }),
-    timeout: 90_000,
-    retries: 1,
+    timeout,
+    retries: 2,
   });
 
   if (!res.ok) {
@@ -319,7 +332,7 @@ function withInfo(result: AuditResult, description: string): AuditResult {
 /**
  * 审计单张截图。mock 模式或无 key 时走规则推断；
  * AI 调用失败时降级为 mock 结果并附带一条 info 说明，不中断整体流程。
- * 传入 figmaImagePath 时走双图对比（Figma 为基准）。
+ * 默认 Figma 走文本规范 + 单图；AI_AUDIT_FIGMA_VISION=1 且传入 figmaImagePath 时走双图对比。
  */
 export async function auditStep(
   screenshotPath: string,
@@ -328,19 +341,30 @@ export async function auditStep(
   opts?: { figmaImagePath?: string },
 ): Promise<AuditResult> {
   const figmaPath = opts?.figmaImagePath;
+  const useFigmaVision = shouldUseFigmaVision() && Boolean(figmaPath);
+  const hasFigmaSpec = Boolean(ctx.figmaNote || ctx.figmaUrl) && !useFigmaVision;
+
   if (shouldUseMock()) {
     const fallback = mockAnalyze(meta);
-    return figmaPath
-      ? withInfo(fallback, '已提供 Figma 基准但 mock 无法对比，请启用 AI 视觉')
-      : fallback;
+    if (useFigmaVision) {
+      return withInfo(fallback, '已提供 Figma 基准图但 mock 无法对比，请启用 AI 视觉');
+    }
+    if (hasFigmaSpec) {
+      return withInfo(fallback, '已加载 Figma 文本规范但 mock 无法对照，请启用 AI 视觉');
+    }
+    return fallback;
   }
 
   const config = resolveVisionConfig();
   if (!config) {
     const fallback = mockAnalyze(meta);
-    return figmaPath
-      ? withInfo(fallback, '已提供 Figma 基准但当前无视觉模型，已降级为规则分析')
-      : fallback;
+    if (useFigmaVision) {
+      return withInfo(fallback, '已提供 Figma 基准图但当前无视觉模型，已降级为规则分析');
+    }
+    if (hasFigmaSpec) {
+      return withInfo(fallback, '已加载 Figma 文本规范但当前无视觉模型，已降级为规则分析');
+    }
+    return fallback;
   }
 
   const image = readImageAsBase64(screenshotPath);
@@ -348,28 +372,39 @@ export async function auditStep(
     return withInfo(mockAnalyze(meta), '截图不可读或超出大小限制，已降级为规则分析');
   }
 
-  const figmaImage = figmaPath ? readImageAsBase64(figmaPath) : null;
-  const hasFigma = Boolean(figmaImage);
-  const visionImages = hasFigma && figmaImage
+  const figmaImage = useFigmaVision && figmaPath ? readImageAsBase64(figmaPath) : null;
+  const hasFigmaVision = Boolean(figmaImage);
+  const visionImages = hasFigmaVision && figmaImage
     ? [
         { label: '【图1 · Figma 设计稿】', image: figmaImage },
         { label: '【图2 · 实际页面截图】', image },
       ]
     : [{ image }];
 
+  const baseline: AuditResult['baseline'] = hasFigmaVision
+    ? 'figma'
+    : hasFigmaSpec
+      ? 'figma-spec'
+      : 'none';
+
   try {
     const text = await callVision(
       buildAuditSystemPrompt({
-        hasFigma,
+        hasFigmaVision,
+        hasFigmaSpec: hasFigmaSpec || hasFigmaVision,
         hasHelios: Boolean(ctx.helios?.tokensSummary || ctx.helios?.layoutRules?.length),
       }),
-      buildAuditUserPrompt(meta, ctx),
+      buildAuditUserPrompt(meta, ctx, { figmaVision: hasFigmaVision }),
       visionImages,
       config,
     );
-    return { ...normalizeAuditResult(parseAuditJson(text), 'ai'), baseline: hasFigma ? 'figma' : 'none' };
+    return { ...normalizeAuditResult(parseAuditJson(text), 'ai'), baseline };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const raw = err instanceof Error ? err.message : String(err);
+    const modeLabel = hasFigmaVision ? '双图 Figma 对比' : hasFigmaSpec ? 'Figma 规范单图' : '单图';
+    const msg = /aborted|AbortError/i.test(raw)
+      ? `视觉接口请求超时（${modeLabel}，可设 AI_VISION_TIMEOUT_MS 加大）`
+      : raw;
     console.log(`⚠️  AI 审计失败 (${ctx.stepName}): ${msg.slice(0, 140)}`);
     return withInfo(mockAnalyze(meta), `AI 审计失败，已降级为规则分析: ${msg.slice(0, 80)}`);
   }
