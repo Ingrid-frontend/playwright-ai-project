@@ -89,6 +89,7 @@ export function writeFlowReplay(opts: {
 
   const videoRel = videoAbs ? toRepoRel(videoAbs) : undefined;
   const videoSrc = videoAbs ? (path.dirname(videoAbs) === outputDir ? './flow.webm' : toStudioPublicPath(videoAbs)) : '';
+  const videoOnly = Boolean(videoSrc);
   const frameTags = frames
     .map((f, i) => {
       const src = toStudioPublicPath(f.abs);
@@ -109,7 +110,7 @@ export function writeFlowReplay(opts: {
   header { padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,.08); }
   h1 { margin: 0; font-size: 15px; font-weight: 650; }
   .hint { color: #8899b2; margin-top: 4px; }
-  video { display: block; width: 100%; max-height: 70vh; background: #000; }
+  video { display: block; width: 100%; max-height: ${videoOnly ? '85vh' : '70vh'}; background: #000; }
   .slides { position: relative; min-height: 240px; }
   figure { display: none; margin: 0; }
   figure.on { display: block; }
@@ -125,7 +126,7 @@ export function writeFlowReplay(opts: {
   <div class="hint">${videoSrc ? '全程录像' : frames.length ? '按步骤截图回放' : '本次没有可回放内容'}</div>
 </header>
 ${videoSrc ? `<video src="${escHtml(videoSrc)}" controls autoplay></video>` : ''}
-${frameTags ? `<div class="slides" id="slides">${frameTags}</div>
+${!videoSrc && frameTags ? `<div class="slides" id="slides">${frameTags}</div>
 <div class="nav">
   <button type="button" id="prev">上一张</button>
   <button type="button" id="play">自动播放</button>

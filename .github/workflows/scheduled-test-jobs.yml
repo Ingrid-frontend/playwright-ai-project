@@ -1,9 +1,6 @@
 name: Scheduled Test Jobs
 
 on:
-  schedule:
-    # UTC 18:00 ≈ 北京时间次日 02:00，与 config/test-jobs.json nightly-regression 对齐
-    - cron: '0 18 * * *'
   workflow_dispatch:
     inputs:
       job_id:

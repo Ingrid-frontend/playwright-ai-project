@@ -24,8 +24,8 @@
     {
       "id": "nightly-regression",
       "enabled": true,
-      "description": "全量回归（定时默认 stage；多账号按 meta 分组 login 后执行）",
-      "schedule": "0 2 * * *",
+      "description": "全量回归（仅手动；stage 多账号按 meta 分组 login 后执行）",
+      "schedule": null,
       "timezone": "Asia/Shanghai",
       "playwrightEnv": "stage",
       "specs": "all",
@@ -59,8 +59,8 @@
     {
       "id": "approval-flow-write",
       "enabled": false,
-      "description": "审批写操作（stage，APPROVAL_ENABLE_WRITE=1）；定时由 .github/workflows/approval-flow-write.yml 执行，本地可 npm run approval:test:write",
-      "schedule": "0 3 * * 1",
+      "description": "审批写操作（stage，APPROVAL_ENABLE_WRITE=1）；仅手动或 workflow_dispatch，本地可 npm run approval:test:write",
+      "schedule": null,
       "timezone": "Asia/Shanghai",
       "playwrightEnv": "stage",
       "specs": "all",

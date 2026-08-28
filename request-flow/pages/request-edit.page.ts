@@ -688,53 +688,108 @@ export class RequestEditPage {
   }
 
   private async ensureDestinationFilled(root: Locator) {
-    const err = root.getByText(/请选择目的地|请选择城市|请选择出发/).filter({ visible: true }).first();
-    if (!(await err.isVisible({ timeout: 800 }).catch(() => false))) return;
+    try {
+      await expect(async () => {
+        const err = root.getByText(/请选择目的地|请选择城市|请选择出发/).filter({ visible: true }).first();
+        if (!(await err.isVisible({ timeout: 500 }).catch(() => false))) return;
 
-    const blocks = root.locator('.ant-form-item, [class*="form-item"]').filter({ hasText: /目的地|到达城市|出发地|出发城市/ });
-    const n = await blocks.count();
-    for (let i = 0; i < n; i++) {
-      const block = blocks.nth(i);
-      if (!(await block.isVisible({ timeout: 300 }).catch(() => false))) continue;
-      await block.scrollIntoViewIfNeeded().catch(() => undefined);
-      const label = ((await block.innerText().catch(() => '')) || '').trim();
-      const city = /目的地|到达/.test(label) ? '上海' : '北京';
-      if (await this.pickCityInBlock(block, city)) continue;
-      await this.pickCityInBlock(block, /北京|上海|广州/);
-    }
+        const blocks = root
+          .locator('.ant-form-item, [class*="form-item"]')
+          .filter({ hasText: /目的地|到达城市|出发地|出发城市/ });
+        const n = await blocks.count();
+        for (let i = 0; i < n; i++) {
+          const block = blocks.nth(i);
+          if (!(await block.isVisible({ timeout: 300 }).catch(() => false))) continue;
+          if (await this.cityBlockFilled(block)) continue;
+          await block.scrollIntoViewIfNeeded().catch(() => undefined);
+          const label = ((await block.innerText().catch(() => '')) || '').trim();
+          const city = /目的地|到达/.test(label) ? '上海' : '北京';
+          if (await this.pickCityInBlock(block, city)) continue;
+          await this.pickCityInBlock(block, /北京|上海|广州/);
+        }
 
-    if (await err.isVisible({ timeout: 500 }).catch(() => false)) {
+        await this.ensureItineraryRow(root);
+
+        const stillErr = root.getByText(/请选择目的地|请选择城市|请选择出发/).filter({ visible: true }).first();
+        expect(await stillErr.isVisible({ timeout: 500 }).catch(() => false)).toBeFalsy();
+      }).toPass({ timeout: 30_000 });
+    } catch {
       throw new Error('差旅表单未选目的地（请检查城市选择器）');
     }
   }
 
+  private async cityBlockFilled(block: Locator): Promise<boolean> {
+    const err = block.getByText(/请选择/).filter({ visible: true }).first();
+    const val = block.getByText(/北京|上海|广州|深圳|杭州|成都|武汉|南京/).filter({ visible: true }).first();
+    return (await val.isVisible({ timeout: 300 }).catch(() => false)) && !(await err.isVisible({ timeout: 200 }).catch(() => false));
+  }
+
+  private cityPanel(): Locator {
+    return this.scope()
+      .locator(
+        '.ant-select-dropdown:visible, .ant-modal:visible, [class*="city-panel"]:visible, .ant-cascader-menus:visible, [class*="city-select"]:visible',
+      )
+      .last();
+  }
+
   private async pickCityInBlock(block: Locator, city: string | RegExp): Promise<boolean> {
+    if (await this.cityBlockFilled(block)) return true;
+
     const control = block.locator('.ant-form-item-control, [class*="control"], [class*="content"]').first();
     const area = (await control.isVisible({ timeout: 300 }).catch(() => false)) ? control : block;
     const trigger = area
       .getByRole('combobox')
       .or(area.locator('.ant-select, [class*="city"]'))
+      .or(area.locator('.ant-select-selection, .ant-select-selector').filter({ visible: true }))
       .or(area.getByText(/^请选择$|^出发地$|^目的地$|请选择目的地|请选择城市/).filter({ visible: true }))
-      .or(area.locator('input').filter({ visible: true }))
       .first();
     if (!(await trigger.isVisible({ timeout: 2_000 }).catch(() => false))) return false;
     await trigger.scrollIntoViewIfNeeded().catch(() => undefined);
     await trigger.click();
-    const panel = this.scope()
-      .locator(
-        '.ant-select-dropdown:visible, .ant-modal:visible, [class*="city-panel"]:visible, .ant-cascader-menus:visible',
-      )
-      .last();
+    const panel = this.cityPanel();
     await panel.waitFor({ state: 'visible', timeout: 5_000 }).catch(() => undefined);
-    const opt = panel
-      .locator('.ant-select-item-option, .ant-select-dropdown-menu-item, .ant-cascader-menu-item')
+
+    if (typeof city === 'string') {
+      const search = panel.locator('input:not([type="hidden"])').filter({ visible: true }).first();
+      if (await search.isVisible({ timeout: 1_500 }).catch(() => false)) {
+        await search.fill('');
+        await search.pressSequentially(city, { delay: 30 });
+        await this.page.waitForTimeout(400);
+      }
+    }
+
+    let opt = panel
+      .locator('.ant-select-item-option, .ant-select-dropdown-menu-item, .ant-cascader-menu-item, [class*="city-item"]')
       .filter({ hasText: city })
       .filter({ visible: true })
       .first()
       .or(panel.getByText(city, { exact: typeof city === 'string' }).filter({ visible: true }).first());
-    if (!(await opt.isVisible({ timeout: 5_000 }).catch(() => false))) return false;
+
+    if (!(await opt.isVisible({ timeout: 3_000 }).catch(() => false)) && typeof city === 'string') {
+      const menus = panel.locator('.ant-cascader-menu');
+      const menuCount = await menus.count();
+      for (let m = 0; m < menuCount; m++) {
+        const hit = menus.nth(m).locator('.ant-cascader-menu-item').filter({ hasText: city }).first();
+        if (await hit.isVisible({ timeout: 800 }).catch(() => false)) {
+          opt = hit;
+          break;
+        }
+        const first = menus.nth(m).locator('.ant-cascader-menu-item').filter({ visible: true }).first();
+        if (await first.isVisible({ timeout: 500 }).catch(() => false)) {
+          await first.click();
+          await this.page.waitForTimeout(300);
+        }
+      }
+    }
+
+    if (!(await opt.isVisible({ timeout: 3_000 }).catch(() => false))) {
+      await this.page.keyboard.press('Escape').catch(() => undefined);
+      return false;
+    }
     await opt.click();
-    return true;
+    await this.page.keyboard.press('Escape').catch(() => undefined);
+    await this.page.waitForTimeout(300);
+    return this.cityBlockFilled(block);
   }
 
   private async fillTripCityByLabel(root: Locator, label: RegExp, city: string) {
@@ -746,12 +801,7 @@ export class RequestEditPage {
       .filter({ visible: true })
       .first();
     if (!(await block.isVisible({ timeout: 500 }).catch(() => false))) return;
-
-    const err = block.getByText(/请选择/).filter({ visible: true }).first();
-    const val = block.getByText(/北京|上海|广州|深圳|杭州|成都|武汉|南京/).filter({ visible: true }).first();
-    if (await val.isVisible({ timeout: 300 }).catch(() => false) && !(await err.isVisible({ timeout: 200 }).catch(() => false))) {
-      return;
-    }
+    if (await this.cityBlockFilled(block)) return;
     await this.pickCityInBlock(block, city);
   }
 
@@ -777,8 +827,7 @@ export class RequestEditPage {
         const icon = root.locator('.anticon, i, [class*="add"]').filter({ visible: true }).last();
         if (await icon.isVisible({ timeout: 1_000 }).catch(() => false)) {
           await icon.click();
-          const city = this.scope()
-            .locator('.ant-select-dropdown:visible, .ant-modal:visible, [class*="city-panel"]:visible')
+          const city = this.cityPanel()
             .getByText(/^北京$|^上海$|^广州$/)
             .filter({ visible: true })
             .first();
@@ -1120,38 +1169,78 @@ export class RequestEditPage {
   }
 
   private async pickExpenseType(dialog: Locator): Promise<string> {
-    const pool = ['办公', '其它杂项', '招待', '通讯', '餐补', '话费'];
-    const selectedHint = dialog.getByText(/已选\s*[1-9]/).filter({ visible: true }).first();
+    const pool = ['办公', '其它杂项', '招待', '通讯', '餐补', '话费', '交通', '住宿', '差旅', '会议'];
+    const okBtn = dialog.getByRole('button', { name: /^确\s*定$/ }).filter({ visible: true }).first();
+    await dialog
+      .locator('.ant-spin, [class*="loading"]')
+      .filter({ visible: true })
+      .first()
+      .waitFor({ state: 'hidden', timeout: 15_000 })
+      .catch(() => undefined);
+
+    const isSelected = async () => {
+      const hint = dialog.getByText(/已选\s*[1-9]/).filter({ visible: true }).first();
+      if (await hint.isVisible({ timeout: 800 }).catch(() => false)) return true;
+      if (await okBtn.isEnabled({ timeout: 500 }).catch(() => false)) return true;
+      const active = dialog.locator('[class*="selected"], [class*="active"], [class*="checked"]').filter({ visible: true }).first();
+      return active.isVisible({ timeout: 500 }).catch(() => false);
+    };
 
     const tryPick = async (name: string) => {
       const label = dialog.getByText(name, { exact: true }).filter({ visible: true }).first();
       if (!(await label.isVisible({ timeout: 1_000 }).catch(() => false))) return false;
-      // 卡片是「icon + 文案」外层；点 label 后校验「已选 N」，失败则点父节点
-      await label.click();
-      if (await selectedHint.isVisible({ timeout: 1_500 }).catch(() => false)) return true;
+      const card = label
+        .locator('xpath=ancestor::*[contains(@class,"item") or contains(@class,"card") or contains(@class,"type")][1]')
+        .first();
+      for (const target of [card, label]) {
+        if (!(await target.count())) continue;
+        await target.click({ force: true }).catch(() => undefined);
+        if (await isSelected()) return true;
+      }
       await label.evaluate((el) => {
-        const parent = el.parentElement;
-        if (parent) (parent as HTMLElement).click();
+        let node: HTMLElement | null = el as HTMLElement;
+        for (let i = 0; i < 5 && node; i++) {
+          node = node.parentElement;
+          if (!node) break;
+          if (/item|card|type|select/i.test(node.className)) {
+            node.click();
+            return;
+          }
+        }
+        el.parentElement?.click();
       });
-      return selectedHint.isVisible({ timeout: 2_000 }).catch(() => false);
+      return isSelected();
     };
 
-    for (const name of pool) {
-      if (await tryPick(name)) return name;
-    }
-
-    const otherTab = dialog
-      .locator('.ant-menu-item, [class*="category"], [class*="group"]')
-      .filter({ hasText: /^其它$/ })
-      .filter({ visible: true })
-      .first()
-      .or(dialog.getByText('其它', { exact: true }).filter({ visible: true }).first());
-    if (await otherTab.isVisible({ timeout: 2_000 }).catch(() => false)) {
-      await otherTab.click();
-      await this.page.waitForTimeout(400);
+    const pickFromPool = async () => {
       for (const name of pool) {
         if (await tryPick(name)) return name;
       }
+      return '';
+    };
+
+    let picked = await pickFromPool();
+    if (picked) return picked;
+
+    const tabs = dialog.locator('.ant-menu-item, [class*="category"], [class*="group"], .ant-tabs-tab').filter({ visible: true });
+    const tabCount = Math.min(await tabs.count(), 12);
+    for (let t = 0; t < tabCount; t++) {
+      await tabs.nth(t).click().catch(() => undefined);
+      await this.page.waitForTimeout(400);
+      picked = await pickFromPool();
+      if (picked) return picked;
+    }
+
+    const cards = dialog
+      .locator('[class*="expense"], [class*="type-item"], [class*="type-card"], .ant-card, [class*="item"]')
+      .filter({ visible: true });
+    const cardCount = Math.min(await cards.count(), 24);
+    for (let c = 0; c < cardCount; c++) {
+      const card = cards.nth(c);
+      const text = ((await card.innerText().catch(() => '')) || '').trim().split('\n')[0]?.trim() || '';
+      if (!text || text.length > 10 || /已选|取消|确定|添加|费用类型/.test(text)) continue;
+      await card.click({ force: true }).catch(() => undefined);
+      if (await isSelected()) return text;
     }
 
     throw new Error('费用类型列表为空或点击未选中（已选仍为 0）');

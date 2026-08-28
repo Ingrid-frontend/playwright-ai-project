@@ -1,9 +1,6 @@
 name: Approval Flow (Write)
 
 on:
-  schedule:
-    # UTC 19:00 Mon ≈ 北京时间周二 03:00
-    - cron: '0 19 * * 1'
   workflow_dispatch:
 
 permissions:

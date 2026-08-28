@@ -94,7 +94,7 @@ function main() {
   const { replayRel, videoRel } = writeFlowReplay({
     outputDir: outDir,
     title,
-    frames,
+    frames: hasVideo ? [] : frames,
     videoAbs: hasVideo ? videoAbs : undefined,
   });
   if (videoRel) console.log(`已关联录像: ${videoRel}`);
