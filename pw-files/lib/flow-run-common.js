@@ -200,6 +200,8 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     failed: payload.failed,
     total: payload.total,
     durationSec: payload.duration ? Number(payload.duration) : undefined,
+    scriptKey: flowScriptKey(flowId, payload.env, payload.spec, payload.roleSlug),
+    roleSlug: payload.roleSlug || undefined,
     screenshotDir: `screenshots/flows/${flowId}`,
     compareReportRel: compareReportRel || undefined,
     customerReportRel: customerReportRel || undefined,

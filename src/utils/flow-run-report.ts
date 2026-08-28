@@ -20,6 +20,9 @@ export type FlowRunManifest = {
   failed?: number;
   total?: number;
   durationSec?: number;
+  /** 与 screenshots 下 scriptKey 对齐，供客户报告关联运行耗时 */
+  scriptKey?: string;
+  roleSlug?: string;
   screenshotDir?: string;
   compareReportRel?: string;
   customerReportRel?: string;

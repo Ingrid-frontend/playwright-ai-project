@@ -7,6 +7,7 @@ import {
 import { isActionableNature, natureLabel, type ChangeNature } from './change-nature.js';
 import { buildPlainDescription } from './customer-report-plain.js';
 import { friendlyScriptLabel, friendlyStepLabel } from './customer-report-naming.js';
+import type { ScriptRunMeta } from './customer-report-run-meta.js';
 
 export type CustomerStatus = CoverageStatus;
 
@@ -90,6 +91,8 @@ export type CustomerIssueGroup = {
 
 export type CustomerReportModel = {
   generatedAt: string;
+  /** 各业务流程脚本最近一次运行耗时 */
+  scriptRuns: Map<string, ScriptRunMeta>;
   coverage: CoverageStats;
   pages: CustomerPageCard[];
   regressions: CustomerPageCard[];
@@ -232,7 +235,11 @@ function groupIssues(pages: CustomerPageCard[], anchorPrefix: string): CustomerI
   return groups;
 }
 
-export function buildCustomerReportModel(coverage: CoverageStats, generatedAt?: string): CustomerReportModel {
+export function buildCustomerReportModel(
+  coverage: CoverageStats,
+  generatedAt?: string,
+  scriptRuns: Map<string, ScriptRunMeta> = new Map(),
+): CustomerReportModel {
   const groups = new Map<string, CoverageSlot[]>();
   for (const slot of coverage.slots) {
     const pageKey = `${slot.scriptKey}::${slot.stepNumber}::${slot.stepName}`;
@@ -275,6 +282,7 @@ export function buildCustomerReportModel(coverage: CoverageStats, generatedAt?: 
   const uncovered = pages.filter((p) => p.worstStatus === 'uncovered');
   return {
     generatedAt: generatedAt ?? new Date().toLocaleString('zh-CN', { hour12: false }),
+    scriptRuns,
     coverage,
     pages,
     regressions,

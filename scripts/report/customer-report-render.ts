@@ -6,6 +6,7 @@ import type {
 } from './customer-report-model.js';
 import { customerReportCss, customerReportClientJs } from './customer-report-assets.js';
 import { friendlyScriptLabel, friendlyStepLabel } from './customer-report-naming.js';
+import { formatDurationSec, summarizeScriptRuns } from './customer-report-run-meta.js';
 
 function esc(s: string): string {
   return String(s || '')
@@ -210,12 +211,14 @@ function renderScopeTable(model: CustomerReportModel): string {
               : '未检测（无验收基线）';
       const kind =
         s.compareKind === 'golden' ? '验收基线' : s.compareKind === 'last-green' ? '最近通过' : '—';
+      const runDur = formatDurationSec(model.scriptRuns.get(s.scriptKey)?.durationSec) || '—';
       return `<tr>
         <td>${esc(friendlyStepLabel(s.pageTitle))}</td>
         <td>${esc(friendlyScriptLabel(s.scriptKey))}</td>
         <td>${esc(friendlyStepLabel(s.stepName))}${s.processOnly ? '<span class="tag-process">过程</span>' : ''}</td>
         <td>${s.difference != null ? `${(s.difference * 100).toFixed(2)}%` : '—'}</td>
         <td>${esc(kind)}</td>
+        <td>${esc(runDur)}</td>
         <td class="st-${esc(s.status)}">${esc(status)}</td>
       </tr>`;
     })
@@ -229,10 +232,11 @@ function renderScopeTable(model: CustomerReportModel): string {
         <th>步骤</th>
         <th>差异</th>
         <th>基线来源</th>
+        <th>运行耗时</th>
         <th>状态</th>
       </tr>
     </thead>
-    <tbody>${rows || '<tr><td colspan="6">无检测项</td></tr>'}</tbody>
+    <tbody>${rows || '<tr><td colspan="7">无检测项</td></tr>'}</tbody>
   </table>`;
 }
 
@@ -322,6 +326,9 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
         ? `${c.minorSteps} 步存在位置偏移或字体渲染差异，已逐像素核对内容一致，建议人工确认是否接受`
         : `已对比 ${c.comparedSteps} 个步骤，与验收基线一致`;
 
+  const runSummary = summarizeScriptRuns([...model.scriptRuns.values()]);
+  const runMetaLine = runSummary ? ` · 脚本运行 ${esc(runSummary)}` : '';
+
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -333,7 +340,7 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
 <body>
   <div class="header">
     <h1>UI 衰退检测报告</h1>
-    <div class="sub">生成时间 ${esc(model.generatedAt)} · 与验收基线逐像素比对</div>
+    <div class="sub">生成时间 ${esc(model.generatedAt)}${runMetaLine} · 与验收基线逐像素比对</div>
   </div>
   <div class="wrap">
     <div class="verdict ${verdictClass}">

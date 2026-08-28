@@ -12,6 +12,7 @@ import { discoverScriptScanTargets } from './compare-screenshots-scan.js';
 import { buildCoverageStats } from './coverage-stats.js';
 import { buildCustomerReportModel } from './customer-report-model.js';
 import { renderCustomerReportHtml } from './customer-report-render.js';
+import { resolveScriptRunMeta } from './customer-report-run-meta.js';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
@@ -56,7 +57,9 @@ async function main() {
   }
 
   const coverage = buildCoverageStats(testDirComparisons);
-  const model = buildCustomerReportModel(coverage);
+  const scriptKeys = [...new Set(coverage.slots.map((s) => s.scriptKey))];
+  const scriptRuns = resolveScriptRunMeta(scriptKeys, scanTargets);
+  const model = buildCustomerReportModel(coverage, undefined, scriptRuns);
   const html = renderCustomerReportHtml(model);
 
   const outAbs = path.resolve(outputPath);
