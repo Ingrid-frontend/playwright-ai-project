@@ -212,7 +212,6 @@ function main(): void {
     runMode: "headless",
     playwrightReportDir: "request-flow/playwright-report",
     reportHint: "request-flow/playwright-report/index.html",
-    pipeline: "default",
     accountProfile: profileId,
     roleSlug,
     runUiAudit: process.env.FLOW_UI_AUDIT_GATE === '1',

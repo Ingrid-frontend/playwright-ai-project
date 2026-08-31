@@ -11,7 +11,13 @@ import {
 import { extractCalendarDayKey } from '../report/compare-screenshots-render-date.js';
 import { isNoiseLine } from '../optimize/optimize-raw-passes.js';
 import { buildJobFailReasons } from '../jobs/job-notify.js';
-import { discoverScriptScanTargets, getAllScreenshots } from '../report/compare-screenshots-scan.js';
+import {
+  discoverGoldenScriptScanTargets,
+  discoverScriptScanTargets,
+  getAllScreenshots,
+  isGoldenRegressionTarget,
+} from '../report/compare-screenshots-scan.js';
+import { pickLatestRunGroup } from '../report/ui-audit-history.js';
 import { classifyComparisonSeverity } from '../report/ui-issues-index.js';
 import { loadFlakeHistory } from '../report/flake-history.js';
 import { isDateCategoryDirSegment } from '../../src/utils/date-category.js';
@@ -124,6 +130,55 @@ assert.equal(targets.length, 1);
 assert.equal(targets[0]?.testDir, '260612/demo');
 fs.rmSync(tmp, { recursive: true, force: true });
 pass('discoverScriptScanTargets');
+
+const goldenTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pw-golden-'));
+fs.mkdirSync(path.join(goldenTmp, 'flows', 'dev', 'golden-regression', 'run-chromium-flow', 'r1'), {
+  recursive: true,
+});
+fs.mkdirSync(path.join(goldenTmp, 'flows', 'dev', 'full-flow', 'run-chromium-flow', 'r2'), {
+  recursive: true,
+});
+assert.equal(isGoldenRegressionTarget('flows/dev/golden-regression'), true);
+assert.equal(isGoldenRegressionTarget('flows/dev/full-flow'), false);
+const goldenTargets = discoverGoldenScriptScanTargets(goldenTmp);
+assert.equal(goldenTargets.length, 1);
+assert.ok(goldenTargets[0]?.testDir.includes('golden-regression'));
+fs.rmSync(goldenTmp, { recursive: true, force: true });
+pass('discoverGoldenScriptScanTargets');
+
+const runTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pw-audit-run-'));
+const runA = path.join(runTmp, 'flows', 'full-flow', 'run-chromium-flow', '2026-08-31-old');
+const runB = path.join(runTmp, 'flows', 'full-flow', 'run-chromium-flow', '2026-08-31-new');
+fs.mkdirSync(runA, { recursive: true });
+fs.mkdirSync(runB, { recursive: true });
+const oldPng = path.join(runA, 'step-1-home.png');
+const newPng = path.join(runB, 'step-1-home.png');
+fs.writeFileSync(oldPng, '');
+fs.writeFileSync(newPng, '');
+fs.utimesSync(oldPng, new Date('2026-08-30'), new Date('2026-08-30'));
+fs.utimesSync(newPng, new Date('2026-08-31'), new Date('2026-08-31'));
+const group = pickLatestRunGroup(
+  [
+    {
+      pngPath: oldPng,
+      metaPath: '',
+      scriptKey: 'flows/full-flow',
+      stepName: 'home',
+      stepNumber: 1,
+    },
+    {
+      pngPath: newPng,
+      metaPath: '',
+      scriptKey: 'flows/full-flow',
+      stepName: 'home',
+      stepNumber: 1,
+    },
+  ],
+  runTmp,
+);
+assert.equal(group?.runTs, '2026-08-31-new');
+fs.rmSync(runTmp, { recursive: true, force: true });
+pass('pickLatestRunGroup');
 
 const shotTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pw-shot-'));
 const runDir = path.join(shotTmp, 'run-chromium-optimized');

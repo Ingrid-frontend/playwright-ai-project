@@ -8,7 +8,10 @@ import {
   generateTestComparisons,
   type TestDirComparisons,
 } from './compare-screenshots-engine.js';
-import { discoverScriptScanTargets } from './compare-screenshots-scan.js';
+import {
+  discoverGoldenScriptScanTargets,
+  discoverScriptScanTargets,
+} from './compare-screenshots-scan.js';
 import { buildCoverageStats } from './coverage-stats.js';
 import { buildCustomerReportModel } from './customer-report-model.js';
 import { renderCustomerReportHtml } from './customer-report-render.js';
@@ -23,19 +26,29 @@ async function main() {
   const positional = args.filter((a) => !a.startsWith('--'));
   const outputPath = positional[0] || 'results/ui-regression-customer.html';
   const screenshotsDir = 'screenshots';
+  const allScripts = args.includes('--all-scripts');
 
   if (!fs.existsSync(screenshotsDir)) {
     console.error(`截图目录不存在: ${screenshotsDir}`);
     process.exit(1);
   }
 
-  const scanTargets = discoverScriptScanTargets(screenshotsDir);
+  const scanTargets = allScripts
+    ? discoverScriptScanTargets(screenshotsDir)
+    : discoverGoldenScriptScanTargets(screenshotsDir);
   if (scanTargets.length === 0) {
-    console.error('未发现任何脚本截图，无法生成客户报告');
+    if (allScripts) {
+      console.error('未发现任何脚本截图，无法生成客户报告');
+    } else {
+      console.error(
+        '未发现 Golden 回归脚本截图。请先跑 golden-regression，或使用 --all-scripts 纳入全部流程调试截图。',
+      );
+    }
     process.exit(1);
   }
 
   console.log('正在生成客户版 UI 衰退检测报告...');
+  console.log(`  范围: ${allScripts ? '全部脚本' : 'Golden 回归'}`);
   console.log(`  脚本数: ${scanTargets.length}`);
   console.log(`  输出: ${outputPath}`);
   console.log(`  并行: ${COMPARE_CONCURRENCY}，增量缓存: ${COMPARE_INCREMENTAL ? '开' : '关'}`);
@@ -75,6 +88,7 @@ async function main() {
   }
   const model = buildCustomerReportModel(coverage, undefined, scriptRuns, runHistory, {
     releaseTag: process.env.RELEASE_TAG || process.env.npm_package_version,
+    reportScope: allScripts ? 'all' : 'golden',
   });
   writeCustomerReportSummary(model);
   const html = renderCustomerReportHtml(model);

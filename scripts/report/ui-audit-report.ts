@@ -1,4 +1,5 @@
 import path from 'path';
+import type { AuditHistoryEntry } from './ui-audit-history.js';
 import type { UiIssueSeverity } from './ui-issues.js';
 import type { AuditIssue, AuditResult, AuditVerdict } from './ui-audit-schema.js';
 
@@ -174,26 +175,12 @@ function renderCard(step: AuditStepReport): string {
 export interface AuditReportMeta {
   generatedAt?: Date;
   mode?: string;
+  scriptKey?: string;
+  runId?: string;
+  runTs?: string;
 }
 
-export function renderAuditReportHtml(
-  steps: AuditStepReport[],
-  meta: AuditReportMeta = {},
-): string {
-  const counts: Record<AuditVerdict, number> = { pass: 0, review: 0, fail: 0, skipped: 0 };
-  let issueTotal = 0;
-  for (const s of steps) {
-    counts[s.result.verdict]++;
-    if (s.result.verdict !== 'skipped') issueTotal += s.result.issues.length;
-  }
-
-  const when = (meta.generatedAt ?? new Date()).toLocaleString('zh-CN');
-  const modeText = meta.mode ? ` · ${escapeHtml(meta.mode)}` : '';
-
-  return `<!doctype html><html lang="zh"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AI UI 审计报告</title>
-<style>
+const AUDIT_REPORT_STYLES = `
  body{font-family:system-ui,-apple-system,"PingFang SC",sans-serif;background:#f5f6f8;margin:0;padding:24px;color:#222}
  h1{font-size:20px;margin:0}
  .top{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px}
@@ -240,9 +227,41 @@ export function renderAuditReportHtml(
  .lightbox-close{position:fixed;top:16px;right:20px;width:36px;height:36px;border:none;border-radius:50%;background:rgba(255,255,255,.15);color:#fff;font-size:22px;line-height:1;cursor:pointer}
  .lightbox-close:hover{background:rgba(255,255,255,.28)}
  .lightbox-cap{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.75);font-size:13px;max-width:80vw;text-align:center;word-break:break-all}
-</style></head>
-<body>
- <div class="top"><h1>AI UI 审计报告</h1><div class="time">${escapeHtml(when)}${modeText}</div></div>
+ .tabs{display:flex;gap:8px;margin:0 0 16px;flex-wrap:wrap}
+ .tab{padding:8px 14px;border:1px solid #d8dde3;border-radius:8px;background:#fff;color:#444;font-size:13px;font-weight:600;cursor:pointer}
+ .tab.active{background:#0a66c2;border-color:#0a66c2;color:#fff}
+ .panel{display:none}.panel.active{display:block}
+ .hist{width:100%;border-collapse:collapse;background:#fff;border:1px solid #e3e6ea;border-radius:10px;overflow:hidden}
+ .hist th,.hist td{padding:10px 12px;border-bottom:1px solid #eef0f3;font-size:13px;text-align:left}
+ .hist th{background:#f7f8fa;color:#555;font-weight:600}
+ .hist tr:last-child td{border-bottom:none}
+ .hist a{color:#0a66c2;text-decoration:none}
+ .hist .v-pass{color:#18794e;font-weight:600}.hist .v-review{color:#b25e09;font-weight:600}.hist .v-fail{color:#e5484d;font-weight:600}
+`;
+
+function auditCounts(steps: AuditStepReport[]): {
+  counts: Record<AuditVerdict, number>;
+  issueTotal: number;
+} {
+  const counts: Record<AuditVerdict, number> = { pass: 0, review: 0, fail: 0, skipped: 0 };
+  let issueTotal = 0;
+  for (const s of steps) {
+    counts[s.result.verdict]++;
+    if (s.result.verdict !== 'skipped') issueTotal += s.result.issues.length;
+  }
+  return { counts, issueTotal };
+}
+
+function renderAuditReportBody(steps: AuditStepReport[], meta: AuditReportMeta = {}): string {
+  const { counts, issueTotal } = auditCounts(steps);
+  const when = (meta.generatedAt ?? new Date()).toLocaleString('zh-CN');
+  const modeText = meta.mode ? ` · ${escapeHtml(meta.mode)}` : '';
+  const runText =
+    meta.scriptKey && meta.runTs
+      ? `<div class="time">${escapeHtml(meta.scriptKey)} · run ${escapeHtml(meta.runTs)}</div>`
+      : '';
+  return `
+ <div class="top"><h1>AI UI 审计报告</h1><div><div class="time">${escapeHtml(when)}${modeText}</div>${runText}</div></div>
  <div class="stats">
    <div class="stat p">🟢 通过 ${counts.pass}</div>
    <div class="stat r">🟡 待确认 ${counts.review}</div>
@@ -254,7 +273,10 @@ export function renderAuditReportHtml(
    steps.length === 0
      ? '<div class="empty">没有找到可审计的截图（需要 .png 及同名 .meta.json）</div>'
      : `<div class="grid">${steps.map(renderCard).join('')}</div>`
- }
+ }`;
+}
+
+const LIGHTBOX_SCRIPT = `
  <div id="lightbox" class="lightbox" aria-hidden="true">
    <button type="button" class="lightbox-close" aria-label="关闭">×</button>
    <div class="lightbox-inner">
@@ -308,7 +330,106 @@ export function renderAuditReportHtml(
      if (e.key === 'Escape') close();
    });
  })();
+ </script>`;
+
+function renderHistoryTable(history: AuditHistoryEntry[], currentRunId?: string): string {
+  if (history.length === 0) {
+    return '<div class="empty">暂无历史记录，完成首次审计后将自动归档。</div>';
+  }
+  const rows = history
+    .map((h) => {
+      const cur = h.runId === currentRunId ? ' · 当前' : '';
+      const when = new Date(h.generatedAt).toLocaleString('zh-CN');
+      return `<tr>
+      <td>${escapeHtml(when)}${escapeHtml(cur)}</td>
+      <td>${escapeHtml(h.scriptKey)}</td>
+      <td>${escapeHtml(h.runTs || h.runId)}</td>
+      <td class="v-${h.verdict}">${escapeHtml(h.verdictLabel)}</td>
+      <td>${h.pass}/${h.review}/${h.fail}/${h.skipped}</td>
+      <td>${h.issueTotal}</td>
+      <td><a href="${escapeHtml(h.reportRel)}">查看</a></td>
+    </tr>`;
+    })
+    .join('');
+  return `<table class="hist">
+    <thead><tr><th>时间</th><th>脚本</th><th>Run</th><th>结论</th><th>通过/待确认/需修复/跳过</th><th>问题</th><th>明细</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+export function renderAuditDashboardHtml(
+  steps: AuditStepReport[],
+  meta: AuditReportMeta,
+  history: AuditHistoryEntry[],
+): string {
+  const body = renderAuditReportBody(steps, meta);
+  const { counts, issueTotal } = auditCounts(steps);
+  const histRows = history.filter((h) => h.runId !== meta.runId);
+  const verdict = counts.fail > 0 ? 'fail' : counts.review > 0 ? 'review' : 'pass';
+  const verdictLabel = counts.fail > 0 ? '需修复' : counts.review > 0 ? '待确认' : '通过';
+  const allHistory = meta.runId
+    ? [
+        {
+          runId: meta.runId,
+          runKey: '',
+          scriptKey: meta.scriptKey || steps[0]?.scriptKey || '',
+          generatedAt: (meta.generatedAt ?? new Date()).toISOString(),
+          mode: meta.mode || '',
+          total: steps.length,
+          pass: counts.pass,
+          review: counts.review,
+          fail: counts.fail,
+          skipped: counts.skipped,
+          issueTotal,
+          verdict,
+          verdictLabel,
+          reportRel: `runs/${meta.runId}/index.html`,
+          runTs: meta.runTs,
+        },
+        ...histRows,
+      ]
+    : history;
+
+  return `<!doctype html><html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI UI 审计报告</title>
+<style>${AUDIT_REPORT_STYLES}</style></head>
+<body>
+ <div class="tabs">
+   <button type="button" class="tab active" data-tab="current">本次审计</button>
+   <button type="button" class="tab" data-tab="history">运行历史 (${allHistory.length})</button>
+ </div>
+ <div id="panel-current" class="panel active">${body}</div>
+ <div id="panel-history" class="panel">${renderHistoryTable(allHistory, meta.runId)}</div>
+ ${LIGHTBOX_SCRIPT}
+ <script>
+ (function () {
+   var tabs = document.querySelectorAll('.tab');
+   tabs.forEach(function (tab) {
+     tab.addEventListener('click', function () {
+       var id = tab.getAttribute('data-tab');
+       tabs.forEach(function (t) { t.classList.toggle('active', t === tab); });
+       document.querySelectorAll('.panel').forEach(function (p) {
+         p.classList.toggle('active', p.id === 'panel-' + id);
+       });
+     });
+   });
+ })();
  </script>
+</body></html>`;
+}
+
+export function renderAuditReportHtml(
+  steps: AuditStepReport[],
+  meta: AuditReportMeta = {},
+): string {
+  return `<!doctype html><html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI UI 审计报告</title>
+<style>${AUDIT_REPORT_STYLES}</style></head>
+<body>
+${renderAuditReportBody(steps, meta)}
+${LIGHTBOX_SCRIPT}
 </body></html>`;
 }
 

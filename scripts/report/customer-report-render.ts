@@ -557,6 +557,7 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
       : `共 ${c.expectedSteps} 步/轮`;
   const showRunsTab = runTotal > 1;
   const runsTabLabel = showRunsTab ? `技术附录 (${runTotal})` : '';
+  const scopeLine = model.reportScope === 'all' ? '全部脚本截图' : 'Golden 回归';
   const ctxParts = [model.envLabel, model.releaseTag ? `v${model.releaseTag}` : ''].filter(Boolean);
   const ctxLine = ctxParts.length > 0 ? `${esc(ctxParts.join(' · '))} · ` : '';
 
@@ -571,7 +572,7 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
 <body>
   <div class="header">
     <h1>UI 验收检测报告</h1>
-    <div class="sub">${ctxLine}生成时间 ${esc(model.generatedAt)}${runCountLine}${runMetaLine} · 与验收基线逐像素比对</div>
+    <div class="sub">${ctxLine}生成时间 ${esc(model.generatedAt)}${runCountLine}${runMetaLine} · ${esc(scopeLine)} · 与验收基线逐像素比对</div>
   </div>
   <div class="wrap">
     <div class="verdict ${verdictClass}">

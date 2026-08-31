@@ -114,11 +114,14 @@ export type CustomerReportModel = {
   envLabel?: string;
   /** 发版版本号 */
   releaseTag?: string;
+  reportScope?: 'golden' | 'all';
 };
 
 export type CustomerReportMeta = {
   releaseTag?: string;
   envLabel?: string;
+  /** golden=仅 Golden 回归；all=含流程调试截图 */
+  reportScope?: 'golden' | 'all';
 };
 
 function browserLabel(browser: string): string {
@@ -318,6 +321,7 @@ export function buildCustomerReportModel(
     actionItems: [],
     envLabel: meta?.envLabel || extractEnvLabel(scriptKeys) || undefined,
     releaseTag: meta?.releaseTag || undefined,
+    reportScope: meta?.reportScope || 'golden',
   };
   const { advice, label } = deriveShipAdvice(coverage);
   model.shipAdvice = advice;

@@ -5,10 +5,20 @@ import { PNG } from 'pngjs';
 import type { StepMeta } from './structure-check.js';
 import { auditStep, shouldUseMock, shouldUseFigmaVision, resolveVisionConfig } from './ui-audit-analyzer.js';
 import {
+  renderAuditDashboardHtml,
   renderAuditReportHtml,
   relativeAssetPath,
   type AuditStepReport,
 } from './ui-audit-report.js';
+import {
+  archiveAuditRun,
+  deriveRunMeta,
+  pickLatestRunGroup,
+  readAuditHistory,
+  runsDir,
+  verdictFromCounts,
+  type AuditHistoryEntry,
+} from './ui-audit-history.js';
 import { resolveFigmaBaseline } from './figma-baseline.js';
 import { resolveHeliosAuditContext } from './helios-design-spec.js';
 import { applyAuditRules, resolveAuditRule } from './ui-audit-rules.js';
@@ -111,12 +121,6 @@ function collectCandidates(rootDir: string, script?: string): Candidate[] {
     const { stepName, stepNumber } = deriveStep(path.basename(pngPath));
     out.push({ pngPath, metaPath, scriptKey, stepName, stepNumber });
   }
-  // 新的优先，便于只审计最近一次结果
-  out.sort((a, b) => {
-    const ta = fs.statSync(a.pngPath).mtimeMs;
-    const tb = fs.statSync(b.pngPath).mtimeMs;
-    return tb - ta;
-  });
   return out;
 }
 
@@ -147,7 +151,12 @@ async function main(): Promise<void> {
   if (args.figma) console.log(`   Figma URL: ${args.figma}`);
   if (args.figmaImage) console.log(`   Figma 本地图: ${args.figmaImage}`);
 
-  const candidates = collectCandidates(rootDir, args.script).slice(0, args.limit);
+  const allCandidates = collectCandidates(rootDir, args.script);
+  const runGroup = pickLatestRunGroup(allCandidates, rootDir);
+  const candidates = (runGroup?.items || []).slice(0, args.limit);
+  if (runGroup) {
+    console.log(`   本次 run: ${runGroup.runTs}（${runGroup.scriptKey}，${runGroup.items.length} 步）`);
+  }
   if (candidates.length === 0) {
     console.log(`\n⚠️  未找到可审计的截图（需要 .png 与同名 .meta.json 配对）`);
   }
@@ -268,14 +277,67 @@ async function main(): Promise<void> {
   ]
     .filter(Boolean)
     .join(' · ');
-  const html = renderAuditReportHtml(steps, {
-    mode: `${mock ? 'mock 规则分析' : 'AI 视觉分析'}${figmaModeLabel ? ` · ${figmaModeLabel}` : ''}`,
-  });
+  const modeLabel = `${mock ? 'mock 规则分析' : 'AI 视觉分析'}${figmaModeLabel ? ` · ${figmaModeLabel}` : ''}`;
+  const generatedAt = new Date();
+  const firstCand = candidates[0];
+  const runMeta = firstCand ? deriveRunMeta(firstCand.pngPath, rootDir, firstCand.scriptKey) : null;
+  const scriptKey = runGroup?.scriptKey || firstCand?.scriptKey;
+  const runId = runMeta?.runId;
+  const runTs = runMeta?.runTs;
+
+  const reportMeta = {
+    generatedAt,
+    mode: modeLabel,
+    scriptKey,
+    runId,
+    runTs,
+  };
+
+  const history = readAuditHistory(outDir);
+  const dashboardHtml = renderAuditDashboardHtml(steps, reportMeta, history);
   const htmlPath = path.join(outDir, 'index.html');
-  fs.writeFileSync(htmlPath, html, 'utf-8');
+  fs.writeFileSync(htmlPath, dashboardHtml, 'utf-8');
+
+  if (runId && steps.length > 0) {
+    const runOut = path.join(runsDir(outDir), runId);
+    const runAssetDir = path.join(runOut, 'assets');
+    fs.mkdirSync(runAssetDir, { recursive: true });
+    const runSteps: AuditStepReport[] = steps.map((s) => {
+      const shotName = path.basename(s.screenshotRel);
+      const figmaName = s.figmaRel ? path.basename(s.figmaRel) : '';
+      const srcShot = path.join(outDir, s.screenshotRel);
+      const destShot = path.join(runAssetDir, shotName);
+      try {
+        fs.copyFileSync(srcShot, destShot);
+      } catch {
+        /* ignore */
+      }
+      let figmaRel: string | undefined;
+      if (s.figmaRel && figmaName) {
+        const srcFigma = path.join(outDir, s.figmaRel);
+        const destFigma = path.join(runAssetDir, figmaName);
+        try {
+          fs.copyFileSync(srcFigma, destFigma);
+          figmaRel = `assets/${figmaName}`;
+        } catch {
+          /* ignore */
+        }
+      }
+      return {
+        ...s,
+        screenshotRel: `assets/${shotName}`,
+        figmaRel,
+      };
+    });
+    const runHtml = renderAuditReportHtml(runSteps, reportMeta);
+    fs.writeFileSync(path.join(runOut, 'index.html'), runHtml, 'utf-8');
+  }
 
   const summary = {
-    generatedAt: new Date().toISOString(),
+    generatedAt: generatedAt.toISOString(),
+    runId,
+    runTs,
+    scriptKey,
     mode: mock ? 'mock' : 'ai',
     total: steps.length,
     pass: steps.filter((s) => s.result.verdict === 'pass').length,
@@ -297,6 +359,31 @@ async function main(): Promise<void> {
     })),
   };
   fs.writeFileSync(path.join(outDir, 'summary.json'), JSON.stringify(summary, null, 2), 'utf-8');
+
+  if (runId && scriptKey) {
+    const { verdict, verdictLabel } = verdictFromCounts({ fail: summary.fail, review: summary.review });
+    const entry: AuditHistoryEntry = {
+      runId,
+      runKey: runMeta?.runKey || `${scriptKey}::${runTs}`,
+      runTs,
+      scriptKey,
+      generatedAt: summary.generatedAt,
+      mode: modeLabel,
+      total: summary.total,
+      pass: summary.pass,
+      review: summary.review,
+      fail: summary.fail,
+      skipped: summary.skipped,
+      issueTotal: steps.reduce(
+        (n, s) => n + (s.result.verdict === 'skipped' ? 0 : s.result.issues.length),
+        0,
+      ),
+      verdict,
+      verdictLabel,
+      reportRel: `runs/${runId}/index.html`,
+    };
+    archiveAuditRun(outDir, entry);
+  }
 
   console.log(
     `\n📊 汇总: 🟢 ${summary.pass}  🟡 ${summary.review}  🔴 ${summary.fail}  ⚪ ${summary.skipped}`,

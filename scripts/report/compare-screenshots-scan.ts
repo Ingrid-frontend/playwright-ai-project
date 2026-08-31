@@ -77,6 +77,18 @@ export function discoverFlowScriptScanTargets(screenshotsDir: string): ScriptSca
   return targets.sort((a, b) => a.testDir.localeCompare(b.testDir, 'zh-CN'));
 }
 
+/** Golden 回归截图路径标记（客户验收报告默认只统计此类脚本） */
+const GOLDEN_PATH_MARKERS = ['golden-regression'];
+
+export function isGoldenRegressionTarget(testDir: string): boolean {
+  const norm = testDir.replace(/\\/g, '/').toLowerCase();
+  return GOLDEN_PATH_MARKERS.some((m) => norm.includes(m));
+}
+
+export function discoverGoldenScriptScanTargets(screenshotsDir: string): ScriptScanTarget[] {
+  return discoverScriptScanTargets(screenshotsDir).filter((t) => isGoldenRegressionTarget(t.testDir));
+}
+
 export function discoverScriptScanTargets(screenshotsDir: string): ScriptScanTarget[] {
   const skipTop = new Set(['results', 'diffs', 'pom']);
   const targets: ScriptScanTarget[] = [];
