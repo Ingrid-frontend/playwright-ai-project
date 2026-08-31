@@ -443,7 +443,9 @@ export class RequestListPage {
       const docNo = await edit.tryReadDocNo();
       if (!docNo) return edit;
       if (!(await edit.deleteDraftIfPresent())) {
-        throw new Error(`新建复用草稿单号 ${docNo}，且无法删除`);
+        await this.closeDetailIfOpen();
+        await this.page.waitForTimeout(800);
+        continue;
       }
       await this.goto();
       await this.expectLoaded();

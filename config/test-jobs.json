@@ -41,6 +41,27 @@
         "writeFeishuBitable": false
       },
       "notifyOn": ["failure", "success"]
+    },
+    {
+      "id": "request-flow-write",
+      "enabled": true,
+      "description": "申请单 Write 回归（dev，write 档案跑 travel-submit + full-flow）",
+      "runner": "request-flow-write",
+      "schedule": null,
+      "timezone": "Asia/Shanghai",
+      "playwrightEnv": "dev",
+      "accountProfile": "write",
+      "specs": ["request/travel-submit.spec.ts", "request/full-flow.spec.ts"],
+      "steps": {
+        "login": false,
+        "compare": false,
+        "compareGate": false,
+        "recordLastGreen": false,
+        "feishuNotify": false,
+        "createFeishuDoc": false,
+        "writeFeishuBitable": false
+      },
+      "notifyOn": ["failure", "success"]
     }
   ]
 }

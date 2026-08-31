@@ -10,6 +10,12 @@ import {
   writeStatus,
   writeSummary,
 } from "./job-lock.js";
+import {
+  FLOW_RUNNER_LABELS,
+  FLOW_RUNNER_SCRIPTS,
+  resolveFlowRunnerKey,
+  type FlowRunnerKey,
+} from "./flow-runner-registry.js";
 
 type FlowJobCtx = {
   runId?: string;
@@ -21,7 +27,24 @@ type FlowJobCtx = {
 };
 
 export function isFlowRunner(runner?: string | null, jobId?: string): boolean {
-  return runner === "request-flow-golden" || jobId === "request-flow-golden";
+  return resolveFlowRunnerKey(runner, jobId) != null;
+}
+
+function buildFlowScriptArgs(
+  runnerKey: FlowRunnerKey,
+  effectiveEnv: string,
+  profile: string,
+  job: ResolvedTestJob,
+): string[] {
+  const scriptPath = path.join(process.cwd(), "scripts/flow", FLOW_RUNNER_SCRIPTS[runnerKey]);
+  const args = [`tsx`, scriptPath, `--env=${effectiveEnv}`];
+  if (profile) args.push(`--profile=${profile}`);
+  if (runnerKey === "request-flow-write" && Array.isArray(job.specs)) {
+    for (const spec of job.specs) {
+      args.push(`--spec=${spec}`);
+    }
+  }
+  return args;
 }
 
 export async function runFlowJob(
@@ -36,6 +59,11 @@ export async function runFlowJob(
   feishuDocPassed: boolean;
   summary: JobSummaryFile;
 }> {
+  const runnerKey = resolveFlowRunnerKey(job.runner, job.id);
+  if (!runnerKey) {
+    throw new Error(`未知 flow runner: ${job.runner || job.id}`);
+  }
+
   const runId = ctxPartial.runId ?? formatRunId();
   const effectiveEnv = resolveJobRunEnv(job, ctxPartial.playwrightEnv);
   const profileRaw = ctxPartial.accountProfile && ctxPartial.accountProfile !== "all"
@@ -74,11 +102,9 @@ export async function runFlowJob(
 
   if (effectiveEnv) process.env.PLAYWRIGHT_ENV = effectiveEnv;
 
-  console.log(`\n🎬 开始执行任务「${job.id}」· 申请单 Golden (runId=${runId})\n`);
+  console.log(`\n🎬 开始执行任务「${job.id}」· ${FLOW_RUNNER_LABELS[runnerKey]} (runId=${runId})\n`);
 
-  const scriptPath = path.join(process.cwd(), "scripts/flow/run-request-flow-golden.ts");
-  const args = [`tsx`, scriptPath, `--env=${effectiveEnv}`];
-  if (profile) args.push(`--profile=${profile}`);
+  const args = buildFlowScriptArgs(runnerKey, effectiveEnv, profile, job);
 
   let exitCode = 1;
   try {
@@ -93,6 +119,11 @@ export async function runFlowJob(
   }
 
   const testPassed = exitCode === 0;
+  const specPaths =
+    runnerKey === "request-flow-write" && Array.isArray(job.specs)
+      ? job.specs.map((s) => `request-flow/tests/${s}`)
+      : ["request-flow/tests/request/golden-regression.spec.ts"];
+
   const summary: JobSummaryFile = {
     jobId: job.id,
     runId,
@@ -101,12 +132,12 @@ export async function runFlowJob(
     comparePassed: true,
     compareSkipped: true,
     aborted: false,
-    totalSpecs: 1,
+    totalSpecs: specPaths.length,
     executedCount: 1,
     successCount: testPassed ? 1 : 0,
     failCount: testPassed ? 0 : 1,
     projects: job.projects,
-    specPaths: ["request-flow/tests/request/golden-regression.spec.ts"],
+    specPaths,
     compareGate: false,
     failReasons: buildJobFailReasons({
       testPassed,

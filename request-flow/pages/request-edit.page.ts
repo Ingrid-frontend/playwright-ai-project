@@ -1550,13 +1550,24 @@ export class RequestEditPage {
   /** 编辑中草稿：点「删除单据」并确认 */
   async deleteDraftIfPresent(): Promise<boolean> {
     await this.ensureRoot();
-    const del = this.scope().getByRole('button', { name: /删除单据/ }).filter({ visible: true }).first();
-    if (!(await del.isVisible({ timeout: 2_000 }).catch(() => false))) return false;
-    await del.click();
-    const ok = this.scope()
-      .locator('.ant-modal, [role="dialog"]')
+    await this.dismissBlockers();
+    await this.dismissOverlapModalIfOpen();
+
+    const editBtn = this.scope().getByRole('button', { name: /^编\s*辑$/ }).filter({ visible: true }).first();
+    if (await editBtn.isVisible({ timeout: 1_500 }).catch(() => false)) {
+      await editBtn.click();
+      await this.page.waitForTimeout(600);
+    }
+
+    const del = this.scope()
+      .getByRole('button', { name: /删除单据|删\s*除单据/ })
       .filter({ visible: true })
-      .getByRole('button', { name: /确\s*定|确\s*认|删\s*除/ })
+      .first();
+    if (!(await del.isVisible({ timeout: 3_000 }).catch(() => false))) return false;
+    await del.click();
+    const modal = this.scope().locator('.ant-modal, [role="dialog"]').filter({ visible: true }).last();
+    const ok = modal
+      .getByRole('button', { name: /确\s*定|确\s*认|删\s*除|仍要删除/ })
       .filter({ visible: true })
       .last();
     await expect(ok).toBeVisible({ timeout: 8_000 });

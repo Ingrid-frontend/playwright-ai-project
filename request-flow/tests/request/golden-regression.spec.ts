@@ -80,7 +80,6 @@ test.describe('申请单 · Golden 回归', () => {
   });
 
   test('展开筛选并按固定关键字筛选', async ({ page, flowRunDir }) => {
-    test.skip(!env.requestFilterKeyword, '请设置 REQUEST_FILTER_KEYWORD 以固定 Golden 筛选项');
     bindFlowStepCapture({ page, runDir: flowRunDir });
     const list = new RequestListPage(page);
     await list.ensureOnList();

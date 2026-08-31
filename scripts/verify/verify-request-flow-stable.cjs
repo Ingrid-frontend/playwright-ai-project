@@ -49,11 +49,13 @@ for (const key of required) {
   else fail(`changeDetection.sections · ${key}`, '未配置');
 }
 
-// 3) submit 轻量路径关键字仍在 Page Object
-const editSrc = fs.readFileSync(
-  path.join(repoRoot, 'request-flow/pages/request-edit.page.ts'),
-  'utf8',
-);
+// 3) submit 轻量路径 + write job 配置
+const editSrc = fs.readFileSync(path.join(repoRoot, 'request-flow/pages/request-edit.page.ts'), 'utf8');
+const jobsCfg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'config/test-jobs.json'), 'utf8'));
+const writeJob = (jobsCfg.jobs || []).find((j) => j.id === 'request-flow-write');
+if (writeJob?.runner === 'request-flow-write') pass('test-jobs.json · request-flow-write');
+else fail('test-jobs.json · request-flow-write', '未配置');
+
 if (/ensureTravelReadyForSubmit/.test(editSrc) && /tripDatesReady\(root\)/.test(editSrc)) {
   pass('RequestEditPage.submit · save 后自动轻量 submit');
 } else {

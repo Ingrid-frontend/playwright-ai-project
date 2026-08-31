@@ -50,7 +50,13 @@ function createTestJobsActions(deps) {
   }
 
   function isFlowRunnerJob(merged) {
-    return merged.runner === 'request-flow-golden' || merged.id === 'request-flow-golden';
+    const key = merged.runner || merged.id;
+    return key === 'request-flow-golden' || key === 'request-flow-write';
+  }
+
+  function countRequestFlowWriteSpecs(merged) {
+    if (Array.isArray(merged.specs)) return merged.specs.length;
+    return 2;
   }
 
   function countRequestFlowGoldenProfiles(repoRoot, envId, profileFilter) {
@@ -91,6 +97,9 @@ function createTestJobsActions(deps) {
 
   function countSpecsForMergedJob(repoRoot, merged, accountProfileOverride) {
     if (isFlowRunnerJob(merged)) {
+      if (merged.runner === 'request-flow-write' || merged.id === 'request-flow-write') {
+        return countRequestFlowWriteSpecs(merged);
+      }
       const profileFilter = accountProfileOverride ?? merged.accountProfile ?? null;
       return countRequestFlowGoldenProfiles(repoRoot, merged.playwrightEnv, profileFilter);
     }
@@ -105,6 +114,9 @@ function createTestJobsActions(deps) {
 
   function formatJobSpecsDisplay(merged, specCount) {
     if (isFlowRunnerJob(merged)) {
+      if (merged.runner === 'request-flow-write' || merged.id === 'request-flow-write') {
+        return specCount ? `申请单 Write · ${specCount} 个 spec` : '请先为 write 档案登录';
+      }
       return specCount ? `申请单 Golden · ${specCount} 个角色` : '请先为 golden* 档案登录';
     }
     if (merged.specs === 'all') return `全部 · ${specCount} 个`;

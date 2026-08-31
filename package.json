@@ -36,6 +36,7 @@
     "report:flow-replay": "tsx scripts/report/flow-run-replay.ts",
     "flow:run": "tsx scripts/flow/run-flow-cli.ts",
     "request-flow:golden": "tsx scripts/flow/run-request-flow-golden.ts",
+    "request-flow:write": "tsx scripts/flow/run-request-flow-write.ts",
     "feishu:flow-weekly-doc": "tsx scripts/feishu/append-flow-weekly-doc.ts",
     "feishu:flow-notify": "tsx scripts/feishu/send-flow-feishu-result.ts",
     "report:bundle": "tsx scripts/report/bundle-public-reports.ts",

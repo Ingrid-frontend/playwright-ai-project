@@ -12,9 +12,10 @@ import {
 } from './job-lock.js';
 import { runJobById, stopJob } from './job-runner.js';
 import { buildJobFailReasons } from './job-notify.js';
-import { listJobs, loadTestJobsConfig, resolveJob, resolveJobRunEnv } from './test-jobs-config.js';
+import { listJobs, loadTestJobsConfig, resolveJob, resolveJobRunEnv, countJobSpecsForEnv } from './test-jobs-config.js';
 import { countResolvedSpecs, formatRunId } from './job-utils.js';
 import { countRequestFlowGoldenProfiles, formatFlowGoldenSpecsLabel } from './flow-golden-count.js';
+import { resolveFlowRunnerKey } from './flow-runner-registry.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const CLI_PATH = path.resolve(__filename);
@@ -258,12 +259,15 @@ function cmdList(): void {
     const running = isJobRunning(job.id) ? '🟢 运行中' : job.enabled ? '⚪ 空闲' : '⏸️  已禁用';
     const schedule = job.schedule ? `cron: ${job.schedule} (${job.timezone})` : '仅手动';
     const profileNote = job.accountProfile ? ` · profile=${JSON.stringify(job.accountProfile)}` : '';
+    const runnerKey = resolveFlowRunnerKey(job.runner, job.id);
     const specsLabel =
-      job.runner === 'request-flow-golden' || job.id === 'request-flow-golden'
+      runnerKey === 'request-flow-golden'
         ? formatFlowGoldenSpecsLabel(process.cwd(), job.playwrightEnv, job.accountProfile)
-        : job.specs === 'all'
-          ? `全部 (${job.playwrightEnv}, ${countResolvedSpecs(job.specs, job.optimizedDir, job.playwrightEnv, job.accountProfile)} 个)`
-          : `${JSON.stringify(job.specs)} (${countResolvedSpecs(job.specs, job.optimizedDir, job.playwrightEnv, job.accountProfile)} 个)`;
+        : runnerKey === 'request-flow-write'
+          ? `Write · ${countJobSpecsForEnv(job, job.playwrightEnv, job.accountProfile)} 个 spec`
+          : job.specs === 'all'
+            ? `全部 (${job.playwrightEnv}, ${countResolvedSpecs(job.specs, job.optimizedDir, job.playwrightEnv, job.accountProfile)} 个)`
+            : `${JSON.stringify(job.specs)} (${countResolvedSpecs(job.specs, job.optimizedDir, job.playwrightEnv, job.accountProfile)} 个)`;
     console.log(`  ${job.id}`);
     console.log(`    状态: ${running}`);
     console.log(`    说明: ${job.description || '—'}`);

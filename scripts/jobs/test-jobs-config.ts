@@ -3,6 +3,7 @@ import path from 'path';
 import { isKnownEnv } from '../../src/utils/test-env-path.js';
 import { countResolvedSpecs, type AccountProfileFilter } from './job-utils.js';
 import { countRequestFlowGoldenProfiles } from './flow-golden-count.js';
+import { countRequestFlowWriteSpecs, isRequestFlowRunner, resolveFlowRunnerKey } from './flow-runner-registry.js';
 
 export type { AccountProfileFilter };
 
@@ -191,7 +192,11 @@ export function countJobSpecsForEnv(
   playwrightEnv: string,
   accountProfile?: AccountProfileFilter,
 ): number {
-  if (job.runner === 'request-flow-golden' || job.id === 'request-flow-golden') {
+  const runnerKey = resolveFlowRunnerKey(job.runner, job.id);
+  if (runnerKey === 'request-flow-write') {
+    return countRequestFlowWriteSpecs(job);
+  }
+  if (runnerKey === 'request-flow-golden') {
     const filter = accountProfile ?? job.accountProfile;
     return countRequestFlowGoldenProfiles(process.cwd(), playwrightEnv, filter);
   }
@@ -200,7 +205,11 @@ export function countJobSpecsForEnv(
 }
 
 export function countJobSpecs(job: ResolvedTestJob, accountProfile?: AccountProfileFilter): number {
-  if (job.runner === 'request-flow-golden' || job.id === 'request-flow-golden') {
+  const runnerKey = resolveFlowRunnerKey(job.runner, job.id);
+  if (runnerKey === 'request-flow-write') {
+    return countRequestFlowWriteSpecs(job);
+  }
+  if (runnerKey === 'request-flow-golden') {
     const filter = accountProfile ?? job.accountProfile;
     return countRequestFlowGoldenProfiles(process.cwd(), job.playwrightEnv, filter);
   }

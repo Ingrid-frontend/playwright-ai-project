@@ -32,7 +32,7 @@ async function createAndSubmit(page: Page, apiGuard: ApiGuard): Promise<string> 
       const edit = await list.startNewRequest(env.requestFormName || undefined);
       await edit.fillReason(reason);
       await edit.save(env.requestApprover || undefined);
-      await edit.submit(env.requestApprover || undefined);
+      await edit.submit(env.requestApprover || undefined, { skipApprover: true });
 
       apiGuard.dismissMatching(AVAILABLE_RE);
 
