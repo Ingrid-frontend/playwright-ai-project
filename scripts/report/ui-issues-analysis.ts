@@ -114,6 +114,12 @@ function stepHint(
   if (reviewReason) return reviewReason;
 
   const kinds = new Set(compareKinds);
+  if (structureTypes.includes('selector-drift')) {
+    return '主选择器失效，已走兜底定位；请对照 step meta 的 selectors.resolvedBy 更新 Page Object 或 ui-regression.json';
+  }
+  if (structureTypes.includes('dom-drift')) {
+    return 'DOM 指纹与基线不一致（changeDetection / checkDomHash）';
+  }
   if (structureTypes.includes('missing-selector')) {
     return '疑似 UI 结构/布局问题：关键选择器缺失';
   }
@@ -157,11 +163,20 @@ function buildFlowSummary(steps: MergedStepIssue[]): string {
 function scriptSuggestions(
   script: ScriptAnalysisBlock,
   summary: UiIssuesReport['summary'],
+  scriptIssues: UiIssue[] = [],
 ): string[] {
   const tips: string[] = [];
   const kinds = new Set(script.mergedSteps.flatMap((s) => s.compareKinds));
   const top = script.mergedSteps.filter((s) => s.severity === 'blocker').slice(0, 2);
   const uiBugs = script.mergedSteps.filter((s) => s.verdict === 'ui_bug');
+
+  const selectorDrifts = scriptIssues.filter((i) => i.structureType === 'selector-drift');
+  if (selectorDrifts.length) {
+    const keys = [...new Set(selectorDrifts.map((i) => i.detail?.replace(/^.*: /, '') || i.stepName))].slice(0, 3);
+    tips.push(
+      `selector-drift ${selectorDrifts.length} 处（${keys.join('、')}）：对照 step *.meta.json 的 selectors.resolvedBy，更新 structureChecks 或 Page Object`,
+    );
+  }
 
   if (uiBugs.length) {
     tips.push(`优先处理「疑似 UI 问题」：${uiBugs.map((t) => `步骤 ${t.stepNumber}`).join('、')}`);
@@ -175,7 +190,16 @@ function scriptSuggestions(
   if ((summary.byCompareKind?.['cross-browser'] || 0) > 0) {
     tips.push('含跨浏览器差异：若仅关心 Chrome，可单独查看 chrome 行或关闭跨浏览器对比。');
   }
-  return tips.slice(0, 3);
+  if (
+    script.blockerCount === 0 &&
+    script.scriptKey.replace(/\\/g, '/').startsWith('flows/request-flow/') &&
+    kinds.has('golden')
+  ) {
+    tips.push(
+      `Golden 对比无 blocker：可 npm run promote-baseline -- --script=${script.scriptKey} --latest --browser=chrome  semi-auto 更新基线`,
+    );
+  }
+  return tips.slice(0, 4);
 }
 
 function mergeIssuesForScript(scriptKey: string, issues: UiIssue[]): MergedStepIssue[] {
@@ -371,7 +395,7 @@ export function buildPlainLanguageAnalysis(report: UiIssuesReport): PlainLanguag
       warningCount: mergedSteps.filter((s) => s.severity === 'warning').length,
       suggestions: [],
     };
-    block.suggestions = scriptSuggestions(block, report.summary);
+    block.suggestions = scriptSuggestions(block, report.summary, issues);
     scripts.push(block);
   }
 

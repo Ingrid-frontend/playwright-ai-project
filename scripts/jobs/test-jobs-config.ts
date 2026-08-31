@@ -22,6 +22,8 @@ export type JobSteps = {
   refreshLogin: boolean;
   /** write flow 跑前清理 screenshots/flows 与 flow-runs（不动 baseline） */
   resetFlowArtifacts: boolean;
+  /** golden compare gate 通过后自动 promote 最新 run 到 baseline */
+  promoteBaselineIfClean: boolean;
 };
 
 export type TestJobDefaults = {
@@ -87,6 +89,7 @@ const DEFAULT_STEPS: JobSteps = {
   writeFeishuBitable: false,
   refreshLogin: false,
   resetFlowArtifacts: false,
+  promoteBaselineIfClean: false,
 };
 
 const DEFAULT_CONFIG: TestJobsConfig = {

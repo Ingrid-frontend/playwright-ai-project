@@ -39,7 +39,8 @@
         "feishuNotify": true,
         "createFeishuDoc": false,
         "writeFeishuBitable": false,
-        "refreshLogin": false
+        "refreshLogin": false,
+        "promoteBaselineIfClean": false
       },
       "notifyOn": ["failure", "success"]
     },

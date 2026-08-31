@@ -22,7 +22,7 @@
     "bboxTolerancePx": 4,
     "failOnOverflow": true,
     "failOnPageError": false,
-    "checkDomHash": false,
+    "checkDomHash": true,
     "domHashRoot": "body",
     "items": [
       {

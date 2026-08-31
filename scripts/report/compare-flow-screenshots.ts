@@ -152,6 +152,15 @@ async function main() {
     console.error(`\n❌ --gate：流程 UI 存在 blocker 级问题，退出码 1`);
     process.exit(1);
   }
+
+  if (gateMode && !gateShouldFail(issuesReport) && testDirComparisons.length) {
+    const keys = [...new Set(testDirComparisons.map((t) => t.testDir.replace(/\\/g, '/')))].slice(0, 3);
+    console.log(`\n💡 compare gate 通过 · 可 promote 基线：`);
+    for (const key of keys) {
+      console.log(`   npm run promote-baseline -- --script=${key} --latest --browser=chrome`);
+    }
+    console.log(`   Job 自动：test-jobs.json steps.promoteBaselineIfClean=true`);
+  }
 }
 
 main().catch((err) => {

@@ -250,6 +250,18 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     const scriptKey = flowScriptKey(flowId, payload.env, payload.spec, payload.roleSlug);
     const promoted = tryPromoteFlowBaseline(repoRoot, scriptKey);
     baselinePromoted = promoted.seeded;
+    if (process.env.FLOW_PROMOTE_IF_CLEAN === '1') {
+      const auto = runNpmScript(repoRoot, 'promote-baseline', [
+        `--script=${scriptKey}`,
+        '--latest',
+        '--browser=chrome',
+        '--promoted-by=flow-golden-clean',
+      ]);
+      if (auto.ok && /已提升 Golden|promote/i.test(auto.out)) {
+        baselinePromoted = true;
+        console.log(`[flow] compare 通过 · 已 promote 基线: ${scriptKey}`);
+      }
+    }
     if (hasShots) {
       runNpmScript(repoRoot, 'prune-flow-golden-runs', [
         `--script=${scriptKey}`,

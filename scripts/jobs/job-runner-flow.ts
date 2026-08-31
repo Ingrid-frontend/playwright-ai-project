@@ -155,6 +155,12 @@ export async function runFlowJob(
 
   if (effectiveEnv) process.env.PLAYWRIGHT_ENV = effectiveEnv;
 
+  if (job.steps.promoteBaselineIfClean) {
+    process.env.FLOW_PROMOTE_IF_CLEAN = '1';
+  } else {
+    delete process.env.FLOW_PROMOTE_IF_CLEAN;
+  }
+
   const loginProfiles = listFlowLoginProfiles(repoRoot, runnerKey, effectiveEnv, profile, job);
   if (job.steps.login || job.steps.refreshLogin) {
     const loginResult = repoEnv.ensureFlowProfilesLogin(repoRoot, effectiveEnv, loginProfiles, {

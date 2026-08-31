@@ -79,6 +79,10 @@ else fail('test-jobs.json · request-flow-write resetFlowArtifacts', '未开启'
 if (goldenJob?.steps?.login === true) pass('test-jobs.json · request-flow-golden login');
 else fail('test-jobs.json · request-flow-golden login', '未开启');
 
+const checkDomHash = uiCfg.structureChecks?.checkDomHash === true;
+if (checkDomHash) pass('structureChecks.checkDomHash · 已开启');
+else fail('structureChecks.checkDomHash', '未开启');
+
 if (typeof repoEnv.isStorageStale === 'function' && typeof repoEnv.ensureFlowProfilesLogin === 'function') {
   pass('repo-env · 登录态治理 API');
 } else {
