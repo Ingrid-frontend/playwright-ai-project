@@ -2736,15 +2736,7 @@ function openRequestFlowUiAuditReport() {
 }
 
 function updateRequestFlowReportBtn(msg) {
-  const data = msg || lastRequestFlowRun;
-  setFlowReportButtons(REQUEST_FLOW_REPORT_BTNS, data);
-  const show = Boolean(msg && !msg.cancelled);
-  if (show && msg?.apiFailureCount > 0) {
-    log('warn', `[request-flow] 接口报错 ${msg.apiFailureCount} 条，见运行汇总`);
-  }
-  if (show && msg?.startedAt) {
-    log('info', `[request-flow] 运行 ${msg.startedAt} → ${msg.finishedAt || '?'}`);
-  }
+  setFlowReportButtons(REQUEST_FLOW_REPORT_BTNS, msg || lastRequestFlowRun);
 }
 
 let lastApprovalFlowRun = null;
@@ -2775,15 +2767,7 @@ function openApprovalFlowReplay() {
 }
 
 function updateApprovalFlowReportBtn(msg) {
-  const data = msg || lastApprovalFlowRun;
-  setFlowReportButtons(APPROVAL_FLOW_REPORT_BTNS, data);
-  const show = Boolean(msg && !msg.cancelled);
-  if (show && msg?.apiFailureCount > 0) {
-    log('warn', `[approval-flow] 接口报错 ${msg.apiFailureCount} 条，见运行汇总`);
-  }
-  if (show && msg?.startedAt) {
-    log('info', `[approval-flow] 运行 ${msg.startedAt} → ${msg.finishedAt || '?'}`);
-  }
+  setFlowReportButtons(APPROVAL_FLOW_REPORT_BTNS, msg || lastApprovalFlowRun);
 }
 
 function copyBatchFailureByIndex(i) {
@@ -6254,6 +6238,14 @@ function handleMessage(msg) {
       lastRequestFlowRun = msg;
       updateRequestFlowReportBtn(msg);
       handleRequestFlowFailureFromMsg(msg);
+      if (!msg.cancelled) {
+        if (msg.apiFailureCount > 0) {
+          log('warn', `[request-flow] 接口报错 ${msg.apiFailureCount} 条，见运行汇总`);
+        }
+        if (msg.startedAt) {
+          log('info', `[request-flow] 运行 ${msg.startedAt} → ${msg.finishedAt || '?'}`);
+        }
+      }
       if (msg.ok) {
         const extras = [];
         if (msg.pipeline === 'golden' && msg.baselinePromoted) extras.push('已 seed Golden 基线');
@@ -6322,6 +6314,14 @@ function handleMessage(msg) {
       lastApprovalFlowRun = msg;
       updateApprovalFlowReportBtn(msg);
       handleApprovalFlowFailureFromMsg(msg);
+      if (!msg.cancelled) {
+        if (msg.apiFailureCount > 0) {
+          log('warn', `[approval-flow] 接口报错 ${msg.apiFailureCount} 条，见运行汇总`);
+        }
+        if (msg.startedAt) {
+          log('info', `[approval-flow] 运行 ${msg.startedAt} → ${msg.finishedAt || '?'}`);
+        }
+      }
       if (msg.ok) {
         showToast('审批流程用例通过', 'ok');
         log('ok', `[approval-flow] 用例通过 · mode=${msg.mode || ''}`);
