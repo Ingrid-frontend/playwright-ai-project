@@ -333,6 +333,19 @@ async function runRequestFlowTests(ws, session, msg, deps) {
     send(ws, 'request-flow:run:done', { ok: false, mode });
     return;
   }
+  const storageRel = repoEnv.resolveStorageStateRelDirect(repoRoot, envId, profile) ||
+    repoEnv.resolveStorageStateRel(repoRoot, envId, profile);
+  const storageCheck = repoEnv.validateStorageForRun(repoRoot, storageRel);
+  if (!storageCheck.ok) {
+    send(ws, 'error', {
+      message: `${storageCheck.reason}，请重新登录 profile=${profile}`,
+    });
+    send(ws, 'request-flow:run:done', { ok: false, mode });
+    return;
+  }
+  if (storageCheck.account) {
+    logLine(ws, `[request-flow] 登录态: ${storageCheck.account} · ${storageRel}`, 'dim');
+  }
 
   const args = ['playwright', 'test', '--config', configRel, spec];
   if (grep) args.push('--grep', grep);
@@ -485,6 +498,15 @@ async function runRequestFlowTests(ws, session, msg, deps) {
   else {
     if (finalized.apiFailureCount > 0) {
       logLine(ws, `[request-flow] 用例失败 · 接口报错 ${finalized.apiFailureCount} 条`, 'err');
+    }
+    if (finalized.replayReportOpenPath) {
+      logLine(ws, `[request-flow] 步骤回放: ${finalized.replayReportOpenPath}`, 'warn');
+    }
+    if (finalized.manifest?.playwrightReportRel) {
+      logLine(ws, `[request-flow] Playwright 报告: ${finalized.manifest.playwrightReportRel}`, 'dim');
+    }
+    if (finalized.manifest?.scriptKey) {
+      logLine(ws, `[request-flow] 截图目录: screenshots/${finalized.manifest.scriptKey}`, 'dim');
     }
     send(ws, 'error', {
       message: finalized.apiFailureCount > 0

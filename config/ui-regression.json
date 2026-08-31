@@ -276,6 +276,31 @@
         "key": "golden-approve-table",
         "selector": ".ant-table, table",
         "watch": ["structure"]
+      },
+      {
+        "key": "request-list-root",
+        "selector": ".application-list",
+        "watch": ["structure", "text"]
+      },
+      {
+        "key": "request-list-table",
+        "selector": ".application-table-v2 .ant-table, .ant-table",
+        "watch": ["structure"]
+      },
+      {
+        "key": "request-search-table",
+        "selector": ".application-table-v2 .ant-table, .ant-table",
+        "watch": ["structure"]
+      },
+      {
+        "key": "request-filter-panel",
+        "selector": ".advanced-table-search-form, .advanced-search-filter-pop",
+        "watch": ["structure"]
+      },
+      {
+        "key": "request-detail-slide",
+        "selector": ".slide-frame.slide-frame-open, .full-width-slideframe, .one-screen-request, .request-edit",
+        "watch": ["structure", "text"]
       }
     ],
     "textNormalize": ["num", "id", "time", "money", "count"],

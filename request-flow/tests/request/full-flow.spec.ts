@@ -87,7 +87,7 @@ test.describe('申请单 · 全流程', () => {
       await list.expectLoaded();
       const edit = await list.startNewRequest(env.requestFormName || undefined);
       await edit.save(env.requestApprover || undefined, reason);
-      await edit.submit(env.requestApprover || undefined);
+      await edit.submit(env.requestApprover || undefined, { skipApprover: true });
     }, { snapshot: 'request-submit' });
   });
 });

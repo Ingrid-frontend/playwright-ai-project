@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 
 const { slugifyLoginAccount, isGoldenProfileId, isWriteProfileId } = require(path.join(__dirname, '../src/utils/account-slug.cjs'));
-const { extractLoginAccount, extractFromCode } = require(path.join(__dirname, '../src/utils/extract-login-account.cjs'));
+const { extractLoginAccount, extractFromCode, extractUserIdFromStorageData } = require(path.join(__dirname, '../src/utils/extract-login-account.cjs'));
 const {
   readLoginStateMeta,
   formatLoginAccountLabel,
@@ -130,6 +130,36 @@ function storageExists(repoRoot, storageRel) {
   } catch {
     return false;
   }
+}
+
+/** 开跑前校验 storage：文件存在且含 userId / 账号 / 有效 localStorage */
+function validateStorageForRun(repoRoot, storageRel) {
+  if (!storageRel) return { ok: false, reason: '未配置 storageState' };
+  if (!storageExists(repoRoot, storageRel)) {
+    return { ok: false, reason: `登录态文件不存在: ${storageRel}` };
+  }
+  const abs = path.resolve(repoRoot, storageRel);
+  let data;
+  try {
+    data = JSON.parse(fs.readFileSync(abs, 'utf8'));
+  } catch {
+    return { ok: false, reason: `登录态 JSON 无效: ${storageRel}` };
+  }
+  const meta = readLoginStateMeta(abs);
+  const account = formatLoginAccountLabel(meta);
+  const userId = extractUserIdFromStorageData(data) || meta?.userId || null;
+  if (account || userId) {
+    return { ok: true, account: account || String(userId) };
+  }
+  const nowSec = Date.now() / 1000;
+  const hasCookie = (data.cookies || []).some(
+    (c) => c && (!c.expires || c.expires <= 0 || c.expires > nowSec),
+  );
+  const hasStorage = (data.origins || []).some(
+    (o) => (o.localStorage || []).length > 0 || (o.sessionStorage || []).length > 0,
+  );
+  if (hasCookie || hasStorage) return { ok: true };
+  return { ok: false, reason: `登录态为空（无账号/userId/localStorage）: ${storageRel}` };
 }
 
 function listKnownProfileIds(repoRoot, envId) {
@@ -547,6 +577,7 @@ module.exports = {
   maskUsername,
   listAccountProfiles,
   storageExists,
+  validateStorageForRun,
   findAvailableProfileStorage,
   envHasAnyStorage,
   buildRecordingAccountHeader,

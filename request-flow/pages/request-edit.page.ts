@@ -600,22 +600,32 @@ export class RequestEditPage {
 
     const search = modal.getByPlaceholder(/工号|姓名|手机|邮箱|搜索|请输入/).or(modal.getByRole('textbox')).first();
     await expect(search, '选人弹窗无搜索框').toBeVisible({ timeout: 5_000 });
-    await search.fill('');
-    await search.fill(keyword);
     const searchBtn = modal.getByRole('button', { name: /搜\s*索/ }).filter({ visible: true }).first();
-    if (await searchBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
-      await searchBtn.click();
-    } else {
-      await search.press('Enter');
-    }
-    await this.page.waitForTimeout(1_000);
+    const kwRe = new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    const rowLoc = () =>
+      modal
+        .locator('.ant-table-tbody tr.ant-table-row, .ant-table-tbody tr, .ant-list-item')
+        .filter({ hasText: kwRe })
+        .filter({ visible: true })
+        .first();
 
-    const row = modal
-      .locator('.ant-table-tbody tr.ant-table-row, .ant-table-tbody tr, .ant-list-item')
-      .filter({ hasText: keyword })
-      .filter({ visible: true })
-      .first();
-    await expect(row, `选人弹窗表格未找到「${keyword}」`).toBeVisible({ timeout: 15_000 });
+    await expect(async () => {
+      await search.fill('');
+      await search.fill(keyword);
+      if (await searchBtn.isVisible({ timeout: 1_500 }).catch(() => false)) {
+        await searchBtn.click();
+      } else {
+        await search.press('Enter');
+      }
+      await modal.locator('.ant-spin-spinning').waitFor({ state: 'hidden', timeout: 20_000 }).catch(() => undefined);
+      await this.page.waitForTimeout(600);
+      const row = rowLoc();
+      if (!(await row.isVisible({ timeout: 2_000 }).catch(() => false))) {
+        throw new Error(`选人弹窗表格未找到「${keyword}」`);
+      }
+    }).toPass({ timeout: 45_000, intervals: [1_500] });
+
+    const row = rowLoc();
     await row.click();
     const ok = modal.getByRole('button', { name: /^确\s*定$/ }).first();
     if (await ok.isVisible({ timeout: 2_000 }).catch(() => false)) {
@@ -1494,7 +1504,11 @@ export class RequestEditPage {
     await this.exitDocInfoEditIfOpen();
     const travel = await this.isTravelForm();
     if (travel) {
-      if (opts?.skipTravelFill) await this.ensureTravelReadyForSubmit();
+      const root = this.editRoot();
+      const lightSubmit =
+        opts?.skipTravelFill === true ||
+        (opts?.skipTravelFill !== false && (await this.tripDatesReady(root)));
+      if (lightSubmit) await this.ensureTravelReadyForSubmit();
       else await this.ensureTravelItinerary();
     } else await this.ensureLineItem();
     const keys = await this.approverKeywords(approverKeyword);
