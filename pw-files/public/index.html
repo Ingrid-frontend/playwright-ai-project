@@ -1028,6 +1028,17 @@
                     <ul class="compare-checklist" id="compareChecklistNew"></ul>
                     <button type="button" class="btn btn-full" id="btnRepoCompare" onclick="openScreenshotCompareHub()" style="border-color:rgba(77,159,255,.35);color:var(--blue)">截图对比报告</button>
                     <button type="button" class="btn btn-full" id="btnRepoCompareCancel" style="font-size:var(--fs-sm);padding:6px 10px;margin-top:6px" disabled onclick="send('cancel:repo-compare')">取消对比报告生成</button>
+                    <hr style="border:none;border-top:1px solid var(--border,#2a3142);margin:14px 0 10px" />
+                    <p class="sidebar-hint" style="margin:0 0 8px">对比通过后，将本次 run 设为 Golden 预期画面。</p>
+                    <div class="field" style="margin:0 0 8px">
+                      <label class="field-label" for="promoteScriptKey">脚本键</label>
+                      <input class="control-input" id="promoteScriptKey" placeholder="执行后自动填入" />
+                    </div>
+                    <div class="field" style="margin:0 0 8px">
+                      <label class="field-label" for="promoteRunTs">run 时间戳（可选）</label>
+                      <input class="control-input" id="promoteRunTs" placeholder="留空则用最近一次 run" />
+                    </div>
+                    <button type="button" class="btn btn-full" onclick="promoteGoldenBaseline()" style="border-color:rgba(52,211,153,.45);color:var(--green,#34d399)">将本次 run 设为 Golden</button>
                   </div>
           
           
@@ -1094,6 +1105,17 @@
                     <button type="button" class="btn btn-full" id="btnRunRerunKeepReport" onclick="event.stopPropagation(); handleRepoRerunKeepClick()" data-default-label="追加 run（保留截图）" style="border-color:rgba(82,196,26,.35);color:#52c41a;margin-bottom:6px">追加 run（保留截图）</button>
                     <button type="button" class="btn btn-full" id="btnRunCompare" onclick="openScreenshotCompareHub()" style="border-color:rgba(77,159,255,.35);color:var(--blue)">截图对比报告</button>
                     <button type="button" class="btn btn-full" id="btnRunCompareCancel" style="font-size:var(--fs-sm);padding:6px 10px;margin-top:6px" disabled onclick="send('cancel:repo-compare')">取消对比报告生成</button>
+                    <hr style="border:none;border-top:1px solid var(--border,#2a3142);margin:14px 0 10px" />
+                    <p class="sidebar-hint" style="margin:0 0 8px">对比通过后，将本次 run 设为 Golden 预期画面。</p>
+                    <div class="field" style="margin:0 0 8px">
+                      <label class="field-label" for="promoteScriptKeyRun">脚本键</label>
+                      <input class="control-input" id="promoteScriptKeyRun" placeholder="执行后自动填入" />
+                    </div>
+                    <div class="field" style="margin:0 0 8px">
+                      <label class="field-label" for="promoteRunTsRun">run 时间戳（可选）</label>
+                      <input class="control-input" id="promoteRunTsRun" placeholder="留空则用最近一次 run" />
+                    </div>
+                    <button type="button" class="btn btn-full" onclick="promoteGoldenBaseline()" style="border-color:rgba(52,211,153,.45);color:var(--green,#34d399)">将本次 run 设为 Golden</button>
                   </div>
                 </div>
         </div>
@@ -1789,7 +1811,7 @@
           </p>
           <div class="field" style="margin:0 0 8px">
             <label class="field-label" for="uiAuditLimit">审计张数上限</label>
-            <input class="control-input" id="uiAuditLimit" type="number" min="1" max="100" value="12" />
+            <input class="control-input" id="uiAuditLimit" type="number" min="1" max="100" value="6" />
           </div>
           <div class="field" style="margin:0 0 8px">
             <label class="field-label" for="uiAuditScript">脚本过滤（可选，模糊匹配 scriptKey）</label>
@@ -1811,12 +1833,6 @@
           <button type="button" class="btn btn-full" id="btnUiAuditOpen" onclick="openExistingUiAuditReport()" style="margin-top:8px">打开已有审计报告</button>
           <button type="button" class="btn btn-full" id="btnUiAuditCancel" style="font-size:var(--fs-sm);padding:6px 10px;margin-top:6px" disabled onclick="send('cancel:ui-audit')">取消审计</button>
           <div id="uiAuditStatus" class="sidebar-hint" style="margin-top:8px;display:none"></div>
-          <div class="field" style="margin-top:12px">
-            <label class="field-label" for="promoteScriptKey">Promote Golden</label>
-            <input class="control-input" id="promoteScriptKey" placeholder="脚本键 如 260612/我的审批_…" />
-            <input class="control-input" id="promoteRunTs" placeholder="run 时间戳目录名" style="margin-top:6px" />
-            <button type="button" class="btn btn-full" style="margin-top:8px" onclick="promoteGoldenBaseline()">将本次 run 设为 Golden</button>
-          </div>
           <div id="uiIssuesPanel" class="ui-issues-panel" style="margin-top:12px;max-height:240px;overflow:auto;font-size:12px"></div>
           <button type="button" class="btn btn-full" style="margin-top:8px;font-size:var(--fs-sm)" onclick="loadUiIssuesPanel()">刷新问题列表</button>
           </div>
@@ -2252,17 +2268,51 @@ function refreshCompareReportStatus() {
 
 let promoteGoldenPending = null;
 
+function scriptKeyFromOptimizedSpec(specRel) {
+  const norm = String(specRel || '').replace(/\\/g, '/').replace(/^\/+/, '');
+  const m = norm.match(/^tests\/optimized\/(.+)\.optimized\.spec\.ts$/i);
+  if (m) return m[1];
+  const m2 = norm.match(/^(.+)\.optimized\.spec\.ts$/i);
+  return m2 ? m2[1].replace(/^tests\/optimized\//, '') : '';
+}
+
+function resolvePromoteSpecRelative() {
+  if (workflowMode === 'run') {
+    if (runSubMode === 'batch') return '';
+    return document.getElementById('repoOptimizedPick')?.value?.trim() || '';
+  }
+  return getRepoExecutionSpec();
+}
+
+function syncPromoteGoldenFields() {
+  const scriptKey = scriptKeyFromOptimizedSpec(resolvePromoteSpecRelative());
+  if (!scriptKey) return;
+  ['promoteScriptKey', 'promoteScriptKeyRun'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.value = scriptKey;
+  });
+}
+
+function getPromoteGoldenInputs() {
+  const runMode = workflowMode === 'run';
+  return {
+    scriptKey: document.getElementById(runMode ? 'promoteScriptKeyRun' : 'promoteScriptKey')?.value?.trim() || '',
+    runTimestamp: document.getElementById(runMode ? 'promoteRunTsRun' : 'promoteRunTs')?.value?.trim() || '',
+  };
+}
+
 function promoteGoldenBaseline() {
-  const scriptKey = document.getElementById('promoteScriptKey')?.value?.trim();
-  const runTimestamp = document.getElementById('promoteRunTs')?.value?.trim();
-  if (!scriptKey || !runTimestamp) {
-    showToast('请填写脚本键与 run 时间戳', 'err');
+  let { scriptKey, runTimestamp } = getPromoteGoldenInputs();
+  if (!scriptKey) scriptKey = scriptKeyFromOptimizedSpec(resolvePromoteSpecRelative());
+  if (!scriptKey) {
+    showToast('请先选择或执行用例', 'err');
     return;
   }
-  promoteGoldenPending = { scriptKey, runTimestamp };
+  promoteGoldenPending = { scriptKey, runTimestamp, latest: !runTimestamp };
   const meta = document.getElementById('promoteGoldenModalMeta');
   if (meta) {
-    meta.innerHTML = `脚本：<strong>${escapeHtml(scriptKey)}</strong><br>run：<strong>${escapeHtml(runTimestamp)}</strong>`;
+    const runText = runTimestamp || '最近一次 run';
+    meta.innerHTML = `脚本：<strong>${escapeHtml(scriptKey)}</strong><br>run：<strong>${escapeHtml(runText)}</strong>`;
   }
   const modal = document.getElementById('promoteGoldenModal');
   if (modal) modal.hidden = false;
@@ -2276,9 +2326,9 @@ function closePromoteGoldenModal() {
 
 function confirmPromoteGoldenBaseline() {
   if (!promoteGoldenPending) return;
-  const { scriptKey, runTimestamp } = promoteGoldenPending;
+  const { scriptKey, runTimestamp, latest } = promoteGoldenPending;
   closePromoteGoldenModal();
-  send('repo:promote-baseline', { scriptKey, runTimestamp });
+  send('repo:promote-baseline', { scriptKey, runTimestamp: runTimestamp || undefined, latest: latest || !runTimestamp });
   showToast('正在更新 Golden 基线…', 'ok');
 }
 
@@ -5484,6 +5534,7 @@ function handleMessage(msg) {
         if (msg.repoTest && msg.screenshotHint) {
           log('dim', `[repo] 截图目录: ${msg.screenshotHint}`);
         }
+        if (msg.repoTest) syncPromoteGoldenFields();
         if (msg.repoTest) handleRunFailureFromMsg(msg);
         maybeAutoOpenCompareHub(msg);
       }
@@ -7330,7 +7381,7 @@ function renderUiAuditStatus(msg) {
 
 function startUiAudit() {
   openReportHub('compare');
-  const limit = Math.max(1, Math.min(100, Number(document.getElementById('uiAuditLimit')?.value) || 12));
+  const limit = Math.max(1, Math.min(100, Number(document.getElementById('uiAuditLimit')?.value) || 6));
   const script = document.getElementById('uiAuditScript')?.value?.trim() || '';
   const figma = document.getElementById('uiAuditFigma')?.value?.trim() || '';
   const gate = Boolean(document.getElementById('uiAuditGate')?.checked);
@@ -8010,7 +8061,7 @@ function runRequestFlowProbeChain() {
 
 function runRequestFlowProbeUiAudit() {
   openReportHub('compare');
-  const limit = Math.max(1, Math.min(100, Number(document.getElementById('uiAuditLimit')?.value) || 24));
+  const limit = Math.max(1, Math.min(100, Number(document.getElementById('uiAuditLimit')?.value) || 6));
   setUiAuditBusy(true);
   if (!send('ui-audit:run', { limit, script: 'request-flow', dir: 'screenshots/flows' })) {
     setUiAuditBusy(false);
@@ -9796,6 +9847,7 @@ document.getElementById('repoBatchSpecSearch')?.addEventListener('input', () => 
 document.getElementById('repoOptimizedPick')?.addEventListener('change', () => {
   syncWorkflowUi();
   syncRunStep1Summary();
+  syncPromoteGoldenFields();
 });
 document.addEventListener('keydown', (e) => {
   if (!(e.metaKey || e.ctrlKey) || e.key !== 'Enter') return;

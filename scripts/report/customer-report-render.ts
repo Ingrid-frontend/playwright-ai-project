@@ -8,6 +8,7 @@ import { customerReportCss, customerReportClientJs } from './customer-report-ass
 import { friendlyScriptLabel, friendlyStepLabel, regionZoneLabel } from './customer-report-naming.js';
 import { formatDurationSec, formatScriptStartedAt, summarizeScriptRuns } from './customer-report-run-meta.js';
 import { totalRunCount } from './customer-report-run-history.js';
+import type { ScriptRunHistoryEntry } from './customer-report-run-meta.js';
 
 function esc(s: string): string {
   return String(s || '')
@@ -24,7 +25,7 @@ function badgeClass(v: CustomerBrowserCard['verdict']): string {
   return 'badge-uncovered';
 }
 
-function renderSlider(card: CustomerBrowserCard): string {
+function renderSlider(card: CustomerBrowserCard, opts?: { stepLabel?: string }): string {
   if (!card.currentPath && !card.baselinePath) {
     return `<div class="empty" style="padding:16px;font-size:13px">缺少基线或当前截图，无法对比</div>`;
   }
@@ -48,11 +49,15 @@ function renderSlider(card: CustomerBrowserCard): string {
   }
   return `
     <div class="view-btns">
-      <button type="button" class="view-btn active" data-view="marked">标注变化</button>
+      <button type="button" class="view-btn active" data-view="side">并排对比</button>
+      <button type="button" class="view-btn" data-view="marked">标注变化</button>
       <button type="button" class="view-btn" data-view="slider">拖动对比</button>
       <button type="button" class="view-btn" data-view="overlay">像素差异</button>
     </div>
-    <div class="diff-view-panel active" data-view="marked">
+    <div class="diff-view-panel active" data-view="side">
+      ${renderSideBySideView(card, opts?.stepLabel)}
+    </div>
+    <div class="diff-view-panel" data-view="marked">
       ${renderMarkedView(card)}
     </div>
     <div class="diff-view-panel" data-view="slider">
@@ -70,27 +75,62 @@ function renderSlider(card: CustomerBrowserCard): string {
   `;
 }
 
-/** 在当前截图上叠加差异区定位框：客户不必逐像素找红点 */
-function renderMarkedView(card: CustomerBrowserCard): string {
+function renderRegionBoxes(card: CustomerBrowserCard, suppressReal: boolean): string {
   const w = card.imageWidth || 0;
   const h = card.imageHeight || 0;
+  if (w <= 0 || h <= 0) return '';
+  return card.regions
+    .map((r, i) => {
+      const style = [
+        `left:${((r.x / w) * 100).toFixed(3)}%`,
+        `top:${((r.y / h) * 100).toFixed(3)}%`,
+        `width:${((r.w / w) * 100).toFixed(3)}%`,
+        `height:${((r.h / h) * 100).toFixed(3)}%`,
+      ].join(';');
+      const kind = r.actionable && !suppressReal ? 'mark-real' : 'mark-benign';
+      return `<div class="mark-box ${kind}" style="${style}" title="${esc(r.natureLabel)} ${esc(r.label)}"><span class="mark-tag">${i + 1}</span></div>`;
+    })
+    .join('');
+}
+
+/** 基线与当前并排展示，右侧叠加差异标注 */
+function renderSideBySideView(card: CustomerBrowserCard, stepLabel?: string): string {
+  const suppressReal = card.verdict !== 'regress';
+  const boxes = renderRegionBoxes(card, suppressReal);
+  const empty = boxes ? '' : `<div class="mark-empty">未定位到成块变化区</div>`;
+  const snap = stepLabel ? esc(stepLabel) : '';
+  const snapHint = snap ? `<span class="side-snap">${snap}</span>` : '';
+  const natures = card.regions.map((r) => r.nature).filter(Boolean);
+  const dataDrift =
+    natures.includes('appeared') && natures.includes('vanished')
+      ? `<div class="pair-warn">同一快照对比：基线与当前页面状态不一致（如有/无列表数据），多为基线晋升时无数据或测试数据变更，请核对 golden-seeds / 单号配置后重新跑 Golden 并晋升基线。</div>`
+      : '';
+  return `
+    ${dataDrift}
+    <div class="side-grid">
+      <div class="side-col">
+        <div class="side-label">验收基线 ${snapHint}</div>
+        <div class="side-img-wrap">
+          <img src="${esc(card.baselinePath!)}" alt="验收基线" loading="lazy">
+        </div>
+      </div>
+      <div class="side-col">
+        <div class="side-label">本次结果 ${snapHint}</div>
+        <div class="side-img-wrap mark-wrap">
+          <img class="mark-img" src="${esc(card.currentPath!)}" alt="本次结果" loading="lazy">
+          ${boxes}
+          ${empty}
+        </div>
+      </div>
+    </div>
+    <div class="view-hint">左右为同一快照并排对照；右侧红实线框为实质变化，灰虚线框为位移/渲染差异</div>`;
+}
+
+/** 在当前截图上叠加差异区定位框：客户不必逐像素找红点 */
+function renderMarkedView(card: CustomerBrowserCard): string {
   // 「轻微变化」按分级口径就是无需处理，卡内不允许出现红框，否则与结论自相矛盾。
   const suppressReal = card.verdict !== 'regress';
-  const boxes =
-    w > 0 && h > 0
-      ? card.regions
-          .map((r, i) => {
-            const style = [
-              `left:${((r.x / w) * 100).toFixed(3)}%`,
-              `top:${((r.y / h) * 100).toFixed(3)}%`,
-              `width:${((r.w / w) * 100).toFixed(3)}%`,
-              `height:${((r.h / h) * 100).toFixed(3)}%`,
-            ].join(';');
-            const kind = r.actionable && !suppressReal ? 'mark-real' : 'mark-benign';
-            return `<div class="mark-box ${kind}" style="${style}" title="${esc(r.natureLabel)} ${esc(r.label)}"><span class="mark-tag">${i + 1}</span></div>`;
-          })
-          .join('')
-      : '';
+  const boxes = renderRegionBoxes(card, suppressReal);
   const empty = boxes ? '' : `<div class="mark-empty">未定位到成块变化区</div>`;
   const realCount = suppressReal ? 0 : card.actionableRegions;
   const benignCount = card.regions.length - realCount;
@@ -120,14 +160,14 @@ function renderOverlayView(card: CustomerBrowserCard): string {
     <div class="view-hint">红色为逐像素差异点</div>`;
 }
 
-function renderBrowserCard(card: CustomerBrowserCard): string {
+function renderBrowserCard(card: CustomerBrowserCard, opts?: { stepLabel?: string }): string {
   return `
   <div class="browser-card ${esc(card.verdict)}">
     <div class="bc-head">
       <strong>${esc(card.browserLabel)}</strong>
       <span class="badge ${badgeClass(card.verdict)}">${esc(card.verdictLabel)} · ${esc(card.differenceLabel)}</span>
     </div>
-    ${renderSlider(card)}
+    ${renderSlider(card, opts)}
     <div class="plain">${esc(card.plainText)}</div>
   </div>`;
 }
@@ -138,11 +178,11 @@ function renderPageCard(page: CustomerPageCard, opts?: { compact?: boolean }): s
     <div class="page-head">
       <div>
         <div class="page-title">${esc(page.pageTitle)}${page.processOnly ? '<span class="tag-process">过程截图</span>' : ''}</div>
-        <div class="page-sub">${esc(page.scriptLabel)} · 第 ${page.stepNumber} 步</div>
+        <div class="page-sub">${esc(page.scriptLabel)} · ${esc(page.stepLabel)}</div>
       </div>
     </div>
     <div class="browser-grid">
-      ${page.browsers.map(renderBrowserCard).join('')}
+      ${page.browsers.map((b) => renderBrowserCard(b, { stepLabel: page.stepLabel })).join('')}
     </div>
   </section>`;
 }
@@ -396,50 +436,98 @@ function runHistoryStatusClass(verdict: string): string {
   if (verdict === 'regress') return 'st-regress';
   if (verdict === 'minor') return 'st-minor';
   if (verdict === 'pass') return 'st-pass';
+  if (verdict === 'empty' || verdict === 'uncovered') return 'st-empty';
   return 'st-uncovered';
 }
 
-function renderRunHistoryPanel(model: CustomerReportModel): string {
-  const entries = [...model.runHistory.entries()];
-  if (!entries.length) {
-    return `<div class="empty">尚无 run 截图目录，请先执行 Golden 回归。</div>`;
-  }
+function renderRunHistoryRow(r: ScriptRunHistoryEntry, opts?: { showShots?: boolean }): string {
+  const start = formatScriptStartedAt(r.startedAt) || '—';
+  const dur = formatDurationSec(r.durationSec) || '—';
+  const diff =
+    r.comparedSteps > 0 && r.maxDifference > 0
+      ? `${(r.maxDifference * 100).toFixed(2)}%`
+      : r.comparedSteps > 0
+        ? '0.00%'
+        : '—';
+  const exec =
+    r.screenshotCount === 0 && r.comparedSteps === 0
+      ? '—'
+      : r.ok === false
+        ? '失败'
+        : r.ok === true
+          ? '通过'
+          : '—';
+  const latest = r.isLatest ? '<span class="tag-latest">最新</span>' : '';
+  const marker = r.runMarker
+    ? `<code class="run-marker" title="删除: npm run flow:delete-runs -- --marker=${esc(r.runMarker)} --delete">${esc(r.runMarker)}</code>`
+    : '—';
+  const row = `<tr>
+    <td>第 ${r.runIndex} 次${latest}</td>
+    <td>${marker}</td>
+    <td>${esc(start)}</td>
+    <td>${esc(dur)}</td>
+    <td>${r.screenshotCount}</td>
+    <td>${r.comparedSteps}</td>
+    <td>${diff}</td>
+    <td>${esc(exec)}</td>
+    <td class="${runHistoryStatusClass(r.verdict)}">${esc(r.verdictLabel)}</td>
+  </tr>`;
+  if (!opts?.showShots) return row;
+  const shots = renderRunHistoryShotRow(r);
+  return shots ? `${row}${shots}` : row;
+}
 
-  const blocks = entries.map(([scriptKey, rows]) => {
-    const label = friendlyScriptLabel(scriptKey);
-    const body = [...rows]
-      .sort((a, b) => b.runIndex - a.runIndex)
-      .map((r) => {
-        const start = formatScriptStartedAt(r.startedAt) || '—';
-        const dur = formatDurationSec(r.durationSec) || '—';
-        const diff =
-          r.comparedSteps > 0 && r.maxDifference > 0
-            ? `${(r.maxDifference * 100).toFixed(2)}%`
-            : r.comparedSteps > 0
-              ? '0.00%'
-              : '—';
-        const exec = r.ok === false ? '失败' : r.ok === true ? '通过' : '—';
-        const latest = r.isLatest ? '<span class="tag-latest">最新</span>' : '';
-        return `<tr>
-          <td>第 ${r.runIndex} 次${latest}</td>
-          <td>${esc(start)}</td>
-          <td>${esc(dur)}</td>
-          <td>${r.screenshotCount}</td>
-          <td>${r.comparedSteps}</td>
-          <td>${diff}</td>
-          <td>${esc(exec)}</td>
-          <td class="${runHistoryStatusClass(r.verdict)}">${esc(r.verdictLabel)}</td>
-        </tr>`;
+function runHistoryShotStatusClass(status?: string): string {
+  if (status === 'regress') return 'shot-regress';
+  if (status === 'minor') return 'shot-minor';
+  if (status === 'pass') return 'shot-pass';
+  return 'shot-uncovered';
+}
+
+function renderRunHistoryShotRow(r: ScriptRunHistoryEntry): string {
+  if (r.previews?.length) {
+    const items = r.previews
+      .map((p) => {
+        const src = p.currentPath || p.baselinePath;
+        if (!src) return '';
+        return `
+        <figure class="run-history-shot ${runHistoryShotStatusClass(p.status)}">
+          <div class="run-history-shot-img">
+            <img src="${esc(src)}" alt="" loading="lazy">
+          </div>
+          <figcaption>${esc(p.stepLabel)}</figcaption>
+        </figure>`;
       })
+      .filter(Boolean)
       .join('');
-    return `
-    <section class="run-history-block">
-      <h3 class="run-history-title">${esc(label)}</h3>
-      <p class="run-history-meta">共 ${rows.length} 次 run · 与验收基线逐步对比；「最新」一轮用于上方结论与检测覆盖</p>
+    if (!items) return '';
+    return `<tr class="run-history-shots-row"><td colspan="9"><div class="run-history-shot-grid">${items}</div></td></tr>`;
+  }
+  if (r.screenshotCount > 0) {
+    return `<tr class="run-history-shots-row"><td colspan="9"><div class="run-history-shot-empty">第 ${r.runIndex} 次截图目录已清理或无法加载</div></td></tr>`;
+  }
+  return '';
+}
+
+function countMinorRuns(model: CustomerReportModel): number {
+  let n = 0;
+  for (const rows of model.runHistory.values()) {
+    n += rows.filter((r) => r.verdict === 'minor').length;
+  }
+  return n;
+}
+
+function renderRunHistoryTable(rows: ScriptRunHistoryEntry[], opts?: { showShots?: boolean }): string {
+  const body = [...rows]
+    .sort((a, b) => b.runIndex - a.runIndex)
+    .map((r) => renderRunHistoryRow(r, opts))
+    .join('');
+  return `
       <table class="scope-table run-history-table">
         <thead>
           <tr>
             <th>次序</th>
+            <th>标记</th>
             <th>开始时间</th>
             <th>耗时</th>
             <th>截图</th>
@@ -450,11 +538,66 @@ function renderRunHistoryPanel(model: CustomerReportModel): string {
           </tr>
         </thead>
         <tbody>${body}</tbody>
-      </table>
+      </table>`;
+}
+
+function renderRunHistoryPanel(model: CustomerReportModel): string {
+  const entries = [...model.runHistory.entries()];
+  if (!entries.length) {
+    return `<div class="empty">尚无 run 截图目录，请先执行 Golden 回归。</div>`;
+  }
+
+  const blocks = entries.map(([scriptKey, rows]) => {
+    const label = friendlyScriptLabel(scriptKey);
+    return `
+    <section class="run-history-block">
+      <h3 class="run-history-title">${esc(label)}</h3>
+      <p class="run-history-meta">共 ${rows.length} 次 run · 与验收基线逐步对比；「最新」一轮用于上方结论与检测覆盖</p>
+      ${renderRunHistoryTable(rows, { showShots: true })}
     </section>`;
   });
 
   return blocks.join('');
+}
+
+function renderMinorRunHistoryPanel(model: CustomerReportModel): string {
+  const blocks = [...model.runHistory.entries()]
+    .map(([scriptKey, rows]) => {
+      const minor = rows.filter((r) => r.verdict === 'minor');
+      if (!minor.length) return '';
+      const label = friendlyScriptLabel(scriptKey);
+      return `
+    <section class="run-history-block">
+      <h3 class="run-history-title">${esc(label)}</h3>
+      <p class="run-history-meta">共 ${minor.length} 次 run 判定为轻微变化 · 内容与基线一致，多为位置偏移或字体渲染差异</p>
+      ${renderRunHistoryTable(minor, { showShots: true })}
+    </section>`;
+    })
+    .filter(Boolean);
+  return blocks.length ? blocks.join('') : '';
+}
+
+function renderMinorTabBody(
+  model: CustomerReportModel,
+  minorGroupsHtml: string,
+  minorRunCount: number,
+): string {
+  const runLog = renderMinorRunHistoryPanel(model);
+  const latestCount = model.minorGroups.length;
+  const latest =
+    minorGroupsHtml ||
+    `<div class="empty ok">最新一轮未发现轻微变化</div>`;
+  const history =
+    runLog ||
+    `<div class="empty">历次 Golden 回归中暂无轻微变化记录</div>`;
+  const historyTitle =
+    minorRunCount > 0 ? `历次 Golden run · ${minorRunCount} 次` : '历次 Golden run';
+  return `
+    <p class="sec-lead">Tab 数字表示<strong>最新一轮可查看对比图</strong>的项目数。下方「历次记录」在表格中列出各 run 截图缩略图；若目录已清理则仅保留判定汇总。</p>
+    <h3 class="sec-title sec-minor">最新一轮 · ${latestCount} 项对比图</h3>
+    ${latest}
+    <h3 class="sec-title sec-minor" style="margin-top:24px">${historyTitle}</h3>
+    ${history}`;
 }
 
 function renderUncoveredSummary(model: CustomerReportModel): string {
@@ -502,6 +645,7 @@ function renderConclusionBody(model: CustomerReportModel): string {
            <summary>
              <span class="badge badge-minor">无需处理</span>
              ${model.minorGroups.length} 项轻微变化（共 ${model.minors.length} 个步骤）· 内容与基线一致，仅位置偏移或字体渲染差异
+             <button type="button" class="link-btn" onclick="event.preventDefault();switchCustomerTab('minor')">查看留档</button>
            </summary>
            <ol class="brief-list">${model.minorGroups.map((g, i) => renderIssueBrief(g, i)).join('')}</ol>
          </details>`
@@ -526,8 +670,7 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
       : `<div class="empty">本次未发现需要修复的问题</div>`;
   const minorList =
     model.minorGroups.length > 0
-      ? `<h3 class="sec-title sec-minor">无需处理 · ${model.minorGroups.length} 项轻微变化</h3>
-         <p class="sec-lead">以下差异范围很小，多为位置偏移或字体渲染不同，不影响功能，可不处理。</p>
+      ? `<p class="sec-lead">以下差异范围很小，多为位置偏移或字体渲染不同，不影响功能，可不处理。</p>
          ${model.minorGroups.map((g, i) => renderIssueGroup(g, i)).join('')}`
       : '';
   const verdictClass =
@@ -557,6 +700,14 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
       : `共 ${c.expectedSteps} 步/轮`;
   const showRunsTab = runTotal > 1;
   const runsTabLabel = showRunsTab ? `技术附录 (${runTotal})` : '';
+  const minorRunCount = countMinorRuns(model);
+  const minorEvidenceCount = model.minorGroups.length;
+  const showMinorTab = minorRunCount > 0 || minorEvidenceCount > 0;
+  const minorTabLabel = showMinorTab
+    ? minorEvidenceCount > 0
+      ? `轻微变化 (${minorEvidenceCount})`
+      : `轻微变化 (历次 ${minorRunCount})`
+    : '';
   const scopeLine = model.reportScope === 'all' ? '全部脚本截图' : 'Golden 回归';
   const ctxParts = [model.envLabel, model.releaseTag ? `v${model.releaseTag}` : ''].filter(Boolean);
   const ctxLine = ctxParts.length > 0 ? `${esc(ctxParts.join(' · '))} · ` : '';
@@ -592,6 +743,7 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
     <div class="tabs">
       <button class="tab active" data-tab="conclusion" onclick="switchCustomerTab('conclusion')">验收结论</button>
       <button class="tab" data-tab="regress" onclick="switchCustomerTab('regress')">问题证据${model.regressionGroups.length > 0 ? ` (${model.regressionGroups.length})` : ''}</button>
+      ${showMinorTab ? `<button class="tab" data-tab="minor" onclick="switchCustomerTab('minor')">${minorTabLabel}</button>` : ''}
       <button class="tab" data-tab="scope" onclick="switchCustomerTab('scope')">检测覆盖</button>
       ${showRunsTab ? `<button class="tab" data-tab="runs" onclick="switchCustomerTab('runs')">${runsTabLabel}</button>` : ''}
     </div>
@@ -601,14 +753,16 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
     </div>
     <div id="panel-regress" class="panel">
       ${regressList}
-      ${minorList}
     </div>
+    ${showMinorTab ? `<div id="panel-minor" class="panel">
+      ${renderMinorTabBody(model, minorList, minorRunCount)}
+    </div>` : ''}
     <div id="panel-scope" class="panel">
-      <p class="sec-lead">下表为<strong>最新一轮</strong> run 的全部检测项。「待建基线」表示该步骤有截图但尚无可配对的验收基线；标记「过程」的是操作中间态截图，不作为验收结论。${showRunsTab ? '历次 run 见「技术附录」。' : ''}</p>
+      <p class="sec-lead">下表为<strong>最新一轮</strong> run 的全部检测项。「待建基线」表示该步骤有截图但尚无可配对的验收基线；标记「过程」的是操作中间态截图，不作为验收结论。${showRunsTab ? '历次 run 见「技术附录」。' : ''}${showMinorTab ? '轻微变化见「轻微变化」页。' : ''}</p>
       ${renderScopeTable(model)}
     </div>
     ${showRunsTab ? `<div id="panel-runs" class="panel">
-      <p class="sec-lead">每次 Golden 回归对应一行：列出截图数量、与验收基线的逐步对比结果。标「最新」的一轮与上方结论、检测覆盖一致。</p>
+      <p class="sec-lead">每次 Golden 回归对应一行：列出截图数量、与验收基线的逐步对比结果。标「最新」的一轮与上方结论、检测覆盖一致。「标记」列可用于搜索并删除历史数据：<code>npm run flow:delete-runs -- --search=标记 --delete</code></p>
       ${renderRunHistoryPanel(model)}
     </div>` : ''}
   </div>

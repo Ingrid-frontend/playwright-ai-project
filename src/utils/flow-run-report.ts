@@ -1,6 +1,12 @@
 import fs from 'fs';
 import path from 'path';
+import { createRequire } from 'module';
 import { flowRolePathSegment } from './account-slug.js';
+
+const require = createRequire(import.meta.url);
+const { writeRunMarkerFile } = require('../../pw-files/lib/flow-run-marker.js') as {
+  writeRunMarkerFile: (runDir: string, marker: string, extra?: Record<string, unknown>) => void;
+};
 
 export type FlowId = 'request-flow' | 'approval-flow';
 
@@ -37,6 +43,8 @@ export type FlowRunManifest = {
   skips?: Array<{ title?: string; reason?: string }>;
   /** 通过数≠总数时丢弃本次截图，仅保留回放 */
   screenshotsDiscarded?: boolean;
+  /** 可搜索的运行标记，用于按标记清理历史数据 */
+  runMarker?: string;
 };
 
 export type ApiFailureLogEntry = {
@@ -126,6 +134,14 @@ export function initWorkerRun(opts: {
 
   if (flowScreenshotEnabled()) {
     fs.mkdirSync(runDir, { recursive: true });
+    const marker = process.env.FLOW_RUN_MARKER?.trim();
+    if (marker) {
+      writeRunMarkerFile(runDir, marker, {
+        runId,
+        flowId: opts.flowId,
+        startedAt,
+      });
+    }
   }
 
   process.env.FLOW_RUN_ID = runId;

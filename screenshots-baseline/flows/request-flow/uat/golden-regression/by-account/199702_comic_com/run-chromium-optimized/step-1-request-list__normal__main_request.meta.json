@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-08-28T09:23:25.863Z",
+  "capturedAt": "2026-08-31T12:09:50.521Z",
   "viewport": {
     "name": "desktop",
     "width": 1280,
@@ -13,20 +13,20 @@
     "scrollWidth": 1280,
     "innerWidth": 1280
   },
-  "domHash": "SEC|7f266a77a10afa27",
+  "domHash": "SEC|ba5672f98dea4810",
   "sections": [
     {
       "key": "request-list-root",
-      "structureHash": "7f266a77a10afa27",
-      "textHash": "adfdcd528fb6f3ea",
-      "nodeCount": 103,
+      "structureHash": "ba5672f98dea4810",
+      "textHash": "3759a3f49144de01",
+      "nodeCount": 105,
       "childTags": "DIV"
     },
     {
       "key": "request-list-table",
-      "structureHash": "6607968d9765fa3e",
-      "textHash": "99d21dc4fc37b743",
-      "nodeCount": 202,
+      "structureHash": "a0fe02a013574d9b",
+      "textHash": "756f60f443c85931",
+      "nodeCount": 233,
       "childTags": "DIV,DIV,DIV,DIV,DIV,DIV"
     }
   ],
@@ -39,14 +39,14 @@
         "width": 1420,
         "height": 800
       },
-      "domHash": "7f266a77a10afa27",
-      "structureHash": "7f266a77a10afa27",
-      "textHash": "adfdcd528fb6f3ea",
+      "domHash": "ba5672f98dea4810",
+      "structureHash": "ba5672f98dea4810",
+      "textHash": "3759a3f49144de01",
       "resolvedBy": "selector",
       "fingerprint": {
         "tag": "DIV",
         "stableAttributes": {},
-        "textHint": "创建日期\n: 2026-07-28 ~ 2026-08-28\n状态\n: 全部\n重",
+        "textHint": "重 置\n搜 索\n新建申请单\n代理申请单\n序号\n\t\n创建日期\n\t\n申请人\n\t\n单据",
         "xpath": "/html[1]/body[1]/div[1]/div[1]/div[1]/main[1]/span[1]/div[1]",
         "fallbackSelectors": [],
         "baselineRect": {
@@ -65,11 +65,11 @@
         "x": 200,
         "y": 204,
         "width": 1380,
-        "height": 377
+        "height": 83
       },
-      "domHash": "6607968d9765fa3e",
-      "structureHash": "6607968d9765fa3e",
-      "textHash": "99d21dc4fc37b743",
+      "domHash": "a0fe02a013574d9b",
+      "structureHash": "a0fe02a013574d9b",
+      "textHash": "756f60f443c85931",
       "resolvedBy": "selector",
       "fingerprint": {
         "tag": "DIV",
@@ -81,7 +81,7 @@
           "x": 200,
           "y": 204,
           "width": 1380,
-          "height": 377
+          "height": 83
         },
         "baselinePageWidth": 1600,
         "baselinePageHeight": 900

@@ -116,9 +116,9 @@ check('Tab 命名为验收结论 / 问题证据 / 检测覆盖', () => {
   assert.match(html, />问题证据/);
   assert.match(html, />检测覆盖</);
 });
-check('差异视图三个 Tab 齐全且顺序正确', () => {
+check('差异视图四个 Tab 齐全且顺序正确', () => {
   if (!html.includes('data-view="marked"')) return;
-  const order = ['标注变化', '拖动对比', '像素差异'];
+  const order = ['并排对比', '标注变化', '拖动对比', '像素差异'];
   const idx = order.map((t) => html.indexOf(t));
   for (let i = 0; i < order.length; i++) {
     assert.ok(idx[i] > -1, `缺少 Tab: ${order[i]}`);

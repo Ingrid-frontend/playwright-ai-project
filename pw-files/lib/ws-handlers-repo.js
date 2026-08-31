@@ -16,6 +16,7 @@ const {
   runRequestFlowTests,
   cancelRequestFlow,
 } = require('./request-flow-run');
+const { flowSearchRuns, flowDeleteRuns } = require('./flow-run-marker-actions');
 
 function createRepoHandlers(ctx) {
   const {
@@ -543,6 +544,14 @@ function createRepoHandlers(ctx) {
 
     'cancel:request-flow': async (_ws, session) => {
       cancelRequestFlow(session);
+    },
+
+    'flow:search-runs': async (ws, _session, _sessionId, msg) => {
+      await flowSearchRuns(ws, msg, resolveRepoRoot());
+    },
+
+    'flow:delete-runs': async (ws, _session, _sessionId, msg) => {
+      await flowDeleteRuns(ws, msg, resolveRepoRoot());
     },
 
     'cancel:intent-run': async (_ws, session) => {

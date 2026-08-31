@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { createRequire } from 'module';
 import {
   flowScreenshotScriptKey,
   flowRunsDir,
@@ -9,6 +10,11 @@ import {
 } from '../../src/utils/flow-run-report.js';
 import { RUN_SEGMENT_DIR } from './compare-screenshots-scan.js';
 
+const require = createRequire(import.meta.url);
+const { readRunMarkerFile } = require('../../pw-files/lib/flow-run-marker.js') as {
+  readRunMarkerFile: (runDir: string) => string;
+};
+
 export type ScriptRunMeta = {
   scriptKey: string;
   startedAt?: string;
@@ -16,10 +22,18 @@ export type ScriptRunMeta = {
   durationSec?: number;
 };
 
+export type ScriptRunHistoryPreview = {
+  stepLabel: string;
+  currentPath?: string;
+  baselinePath?: string;
+  status?: 'pass' | 'minor' | 'regress' | 'uncovered';
+};
+
 export type ScriptRunHistoryEntry = {
   /** 从 1 开始，按开始时间升序 */
   runIndex: number;
   runId: string;
+  runMarker?: string;
   startedAt?: string;
   finishedAt?: string;
   durationSec?: number;
@@ -33,6 +47,8 @@ export type ScriptRunHistoryEntry = {
   verdictLabel: string;
   isLatest: boolean;
   ok?: boolean;
+  /** 该 run 各步骤截图（相对报告路径），用于历次记录缩略图 */
+  previews?: ScriptRunHistoryPreview[];
 };
 
 const FLOW_IDS: FlowId[] = ['request-flow', 'approval-flow'];
@@ -201,9 +217,12 @@ export function resolveScriptRunHistory(
       const startedAt = manifest?.startedAt || parseRunDirStartedAt(runId);
       const finishedAt = manifest?.finishedAt;
       const durationSec = manifest?.durationSec;
+      const runDir = path.join(scriptPath, ...findRunRootSegments(scriptPath), runId);
+      const runMarker = manifest?.runMarker || readRunMarkerFile(runDir) || undefined;
       rows.push({
         runIndex: i + 1,
         runId,
+        runMarker,
         startedAt,
         finishedAt,
         durationSec,

@@ -87,7 +87,7 @@ async function runUiAudit(ws, session, msg = {}, deps) {
     return;
   }
 
-  const limit = Math.max(1, Math.min(100, Number(msg.limit) || 12));
+  const limit = Math.max(1, Math.min(100, Number(msg.limit) || 6));
   const scriptFilter = String(msg.script || '').trim();
   const gate = Boolean(msg.gate);
   const mockOnly = Boolean(msg.mock);

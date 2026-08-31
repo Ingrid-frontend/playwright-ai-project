@@ -200,7 +200,7 @@ function clusterKeyFor(slot: CoverageSlot): string {
   const bucket = Math.round((slot.difference ?? 0) * 2000); // 0.05% 一档
   const top = significantRegions(slot.regions, slot.regionsWidth, slot.regionsHeight)[0];
   const zone = top ? `${Math.round(top.x / 64)}-${Math.round(top.y / 64)}-${Math.round(top.w / 64)}x${Math.round(top.h / 64)}` : 'none';
-  return `${slot.scriptKey}::${bucket}::${zone}`;
+  return `${slot.scriptKey}::${slot.stepName}::${bucket}::${zone}`;
 }
 
 function groupIssues(pages: CustomerPageCard[], anchorPrefix: string): CustomerIssueGroup[] {

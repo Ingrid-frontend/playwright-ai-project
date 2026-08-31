@@ -47,7 +47,7 @@ function parseArgs(argv: string[]): Args {
 
   return {
     dir: get('dir') || 'screenshots',
-    limit: Math.max(1, Number(get('limit')) || 12),
+    limit: Math.max(1, Number(get('limit')) || 6),
     out: get('out') || path.join('results', 'ui-audit'),
     gate: argv.includes('--gate'),
     script: get('script'),

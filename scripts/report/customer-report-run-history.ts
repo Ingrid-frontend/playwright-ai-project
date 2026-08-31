@@ -1,7 +1,8 @@
 import type { ScreenshotInfo } from './compare-screenshots-utils.js';
 import { generateTestComparisons } from './compare-screenshots-engine.js';
 import { buildCoverageStats } from './coverage-stats.js';
-import type { ScriptRunHistoryEntry } from './customer-report-run-meta.js';
+import type { ScriptRunHistoryEntry, ScriptRunHistoryPreview } from './customer-report-run-meta.js';
+import { friendlyStepLabel } from './customer-report-naming.js';
 import { readGoldenMatchVerdictForScriptRun, type GoldenMatchVerdict } from './prune-flow-golden-runs.js';
 
 const DEFAULT_MAX_RUNS = 30;
@@ -43,10 +44,48 @@ function verdictFromCoverage(c: ReturnType<typeof buildCoverageStats>): {
   return { verdict: 'pass', verdictLabel: '完全一致', maxDifference: 0 };
 }
 
+function previewsFromCoverage(coverage: ReturnType<typeof buildCoverageStats>): ScriptRunHistoryPreview[] {
+  return coverage.slots
+    .filter((s) => s.currentPath && !s.processOnly)
+    .map((s) => ({
+      stepLabel: s.pageTitle,
+      currentPath: s.currentPath,
+      baselinePath: s.baselinePath,
+      status: s.status,
+    }));
+}
+
+function previewsFromScreenshots(filtered: Map<number, ScreenshotInfo[]>): ScriptRunHistoryPreview[] {
+  const out: ScriptRunHistoryPreview[] = [];
+  for (const list of filtered.values()) {
+    for (const shot of list) {
+      if (!shot.relativePath) continue;
+      out.push({
+        stepLabel: friendlyStepLabel(shot.stepName),
+        currentPath: shot.relativePath,
+        status: 'uncovered',
+      });
+    }
+  }
+  return out;
+}
+
 function rowFromGoldenVerdict(
   row: ScriptRunHistoryEntry,
   verdict: GoldenMatchVerdict,
 ): ScriptRunHistoryEntry {
+  if (!verdict.steps) {
+    return {
+      ...row,
+      comparedSteps: 0,
+      passSteps: 0,
+      minorSteps: 0,
+      regressSteps: 0,
+      maxDifference: 0,
+      verdict: 'empty',
+      verdictLabel: '未判定',
+    };
+  }
   if (verdict.match) {
     return {
       ...row,
@@ -100,6 +139,10 @@ export async function enrichRunHistoryComparisons(
     const comparisons = await generateTestComparisons(testDir, filtered, outputPath);
     const coverage = buildCoverageStats([{ testDir, comparisons }]);
     const v = verdictFromCoverage(coverage);
+    const previews =
+      coverage.comparedSteps > 0
+        ? previewsFromCoverage(coverage)
+        : previewsFromScreenshots(filtered);
     out.push({
       ...row,
       comparedSteps: coverage.comparedSteps,
@@ -109,6 +152,7 @@ export async function enrichRunHistoryComparisons(
       maxDifference: v.maxDifference,
       verdict: v.verdict,
       verdictLabel: v.verdictLabel,
+      previews: previews.length ? previews : undefined,
     });
   }
 

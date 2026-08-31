@@ -36,6 +36,7 @@
     "report:flow-replay": "tsx scripts/report/flow-run-replay.ts",
     "flow:run": "tsx scripts/flow/run-flow-cli.ts",
     "request-flow:golden": "tsx scripts/flow/run-request-flow-golden.ts",
+    "flow:delete-runs": "tsx scripts/flow/flow-run-delete.ts",
     "request-flow:write": "tsx scripts/flow/run-request-flow-write.ts",
     "approval-flow:write": "tsx scripts/flow/run-approval-flow-write.ts",
     "request-flow:stability-gate": "tsx scripts/flow/run-request-flow-stability-gate.ts",

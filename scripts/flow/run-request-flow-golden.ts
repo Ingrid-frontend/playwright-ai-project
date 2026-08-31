@@ -9,7 +9,8 @@ dotenv.config({ path: path.join(process.cwd(), ".env") });
 
 const require = createRequire(import.meta.url);
 const repoEnv = require("../../pw-files/repo-env.js");
-const { finalizeFlowRun } = require("../../pw-files/lib/flow-run-common.js");
+const { finalizeFlowRun, flowScriptKey } = require("../../pw-files/lib/flow-run-common.js");
+const { makeRunMarker, writeRunMarkerFile } = require("../../pw-files/lib/flow-run-marker.js");
 const { resolveGoldenSeed } = require("../../pw-files/lib/golden-seed.js");
 const {
   parsePlaywrightResultJson,
@@ -74,13 +75,20 @@ function runOne(
   const base = repoEnv.getBaseEnvConfig(repoRoot, envId);
   const creds = repoEnv.resolveAccountCredentials(repoRoot, envId, profileId);
   const profileDefaults = repoEnv.resolveProfileFlowDefaults(repoRoot, envId, profileId);
-  const goldenSeed = resolveGoldenSeed(repoRoot, envId, roleSlug);
   const roleSlug = repoEnv.resolveFlowRoleSlug(repoRoot, envId, profileId);
+  const goldenSeed = resolveGoldenSeed(repoRoot, envId, roleSlug);
   const entry = repoEnv.enrichProfileStorageEntry(repoRoot, envId, profileId);
 
   const startTime = Date.now();
   const startedAt = new Date(startTime).toISOString();
   const runId = startedAt.replace(/[:.]/g, "-");
+  const runMarker = makeRunMarker({
+    custom: process.env.FLOW_RUN_MARKER,
+    roleSlug,
+    env: envId,
+    spec: SPEC,
+    startedAt,
+  });
 
   const spawnEnv: NodeJS.ProcessEnv = { ...process.env };
   spawnEnv.PLAYWRIGHT_ENV = envId;
@@ -91,6 +99,13 @@ function runOne(
   spawnEnv.FLOW_RUN_MODE = "headless";
   spawnEnv.FLOW_RUN_ID = runId;
   spawnEnv.FLOW_RUN_STARTED_AT = startedAt;
+  spawnEnv.FLOW_RUN_MARKER = runMarker;
+  const scriptKey = flowScriptKey(FLOW_ID, envId, SPEC, roleSlug);
+  writeRunMarkerFile(
+    path.join(repoRoot, "screenshots", scriptKey, "run-chromium-flow", runId),
+    runMarker,
+    { runId, flowId: FLOW_ID, scriptKey, startedAt },
+  );
   spawnEnv.REQUEST_FILTER_KEYWORD = filterKeyword || profileDefaults.requestFilterKeyword || goldenSeed.requestFilterKeyword || "测试";
   const docNo = String(process.env.REQUEST_DOC_NO || profileDefaults.requestDocNo || goldenSeed.requestDocNo || "").trim();
   if (docNo) spawnEnv.REQUEST_DOC_NO = docNo;
@@ -104,7 +119,7 @@ function runOne(
   }
 
   console.log(
-    `[request-flow:golden] 角色 ${entry.roleLabel || profileId} (${profileId}) · env=${envId} · filter=${filterKeyword}`,
+    `[request-flow:golden] 角色 ${entry.roleLabel || profileId} (${profileId}) · env=${envId} · filter=${filterKeyword} · marker=${runMarker}`,
   );
 
   const npx = process.platform === "win32" ? "npx.cmd" : "npx";
@@ -197,6 +212,7 @@ function runOne(
     pipeline: "golden",
     accountProfile: profileId,
     roleSlug,
+    runMarker,
   });
 
   return { ok: Boolean(finalized.ok), profileId, exitCode: finalized.ok ? exitCode : exitCode || 1 };

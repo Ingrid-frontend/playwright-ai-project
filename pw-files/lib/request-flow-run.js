@@ -12,6 +12,7 @@ const {
   headedFailurePlaceholder,
 } = require('./failure-report');
 const { finalizeFlowRun, detectPipeline, flowScriptKey, readLastFlowRun } = require('./flow-run-common');
+const { makeRunMarker, writeRunMarkerFile } = require('./flow-run-marker.js');
 const { resolveGoldenSeed } = require('./golden-seed.js');
 const repoEnv = require('../repo-env');
 
@@ -367,10 +368,24 @@ async function runRequestFlowTests(ws, session, msg, deps) {
   const startTime = Date.now();
   const startedAt = new Date(startTime).toISOString();
   const runId = startedAt.replace(/[:.]/g, '-');
+  const runMarker = makeRunMarker({
+    custom: msg.runMarker,
+    roleSlug,
+    env: envId,
+    spec,
+    startedAt,
+  });
   spawnEnv.FLOW_RUN_ID = runId;
   spawnEnv.FLOW_RUN_STARTED_AT = startedAt;
+  spawnEnv.FLOW_RUN_MARKER = runMarker;
   spawnEnv.FLOW_SPEC = spec;
   spawnEnv.FLOW_RUN_MODE = mode;
+  const scriptKey = flowScriptKey('request-flow', envId, spec, roleSlug);
+  writeRunMarkerFile(
+    path.join(repoRoot, 'screenshots', scriptKey, 'run-chromium-flow', runId),
+    runMarker,
+    { runId, flowId: 'request-flow', scriptKey, startedAt },
+  );
 
   send(ws, 'request-flow:run:start', {
     env: envId,
@@ -512,6 +527,7 @@ async function runRequestFlowTests(ws, session, msg, deps) {
     pipeline: msg.pipeline || detectPipeline(spec, msg),
     accountProfile: profile,
     roleSlug,
+    runMarker,
     runUiAudit: Boolean(msg.runUiAudit),
     uiAuditLimit: Number(msg.uiAuditLimit) || 24,
   });

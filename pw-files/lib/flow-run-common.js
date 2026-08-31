@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { makeRunMarker, writeRunMarkerFile, readRunMarkerFile } = require('./flow-run-marker.js');
 
 const FLOW_COMPARE_REL = 'results/flow-screenshot-comparison.html';
 const FLOW_CUSTOMER_REL = 'results/flow-customer-report.html';
@@ -334,6 +335,11 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     flowLabel,
     startedAt,
     finishedAt,
+    runMarker:
+      payload.runMarker ||
+      process.env.FLOW_RUN_MARKER ||
+      readRunMarkerFile(flowScreenshotRunAbs(repoRoot, flowId, payload, runId)) ||
+      makeRunMarker({ roleSlug: payload.roleSlug, env: payload.env, spec: payload.spec, startedAt }),
     env: payload.env || 'dev',
     spec: payload.spec || '',
     grep: payload.grep || '',
@@ -368,6 +374,12 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
   };
 
   writeFlowManifest(repoRoot, manifest);
+  writeRunMarkerFile(flowScreenshotRunAbs(repoRoot, flowId, payload, runId), manifest.runMarker, {
+    runId,
+    flowId,
+    scriptKey: manifest.scriptKey,
+    startedAt,
+  });
 
   runNpmScript(repoRoot, 'report:flow-summary');
 

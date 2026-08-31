@@ -99,7 +99,7 @@ test.describe('申请单 · Golden 回归', () => {
       await list.expectLoaded();
       await list.recoverIfEmptyList();
       await trySeedGoldenContext(list);
-    }, { snapshot: 'request-list' });
+    }, { snapshot: 'request-list', step: 1 });
   });
 
   test('按单号搜索并校验列表', async ({ page, flowRunDir }) => {
@@ -113,7 +113,7 @@ test.describe('申请单 · Golden 回归', () => {
       await list.search(docNo, keepFilters);
       await list.expectRowContains(docNo);
       await list.restoreDefaultList();
-    }, { snapshot: 'request-search' });
+    }, { snapshot: 'request-search', step: 2 });
   });
 
   test('展开筛选并按固定关键字筛选', async ({ page, flowRunDir }) => {
@@ -126,7 +126,7 @@ test.describe('申请单 · Golden 回归', () => {
       await list.expectReasonFilterResult(keyword);
       await list.restoreDefaultList();
       await list.expectListReady();
-    }, { snapshot: 'request-filter' });
+    }, { snapshot: 'request-filter', step: 3 });
   });
 
   test('用现场单号搜索并打开详情', async ({ page, flowRunDir }) => {
@@ -139,6 +139,6 @@ test.describe('申请单 · Golden 回归', () => {
       await list.openByCode(docNo);
       const edit = new RequestEditPage(page);
       await edit.expectEditVisible();
-    }, { snapshot: 'request-detail' });
+    }, { snapshot: 'request-detail', step: 4 });
   });
 });
