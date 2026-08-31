@@ -32,13 +32,14 @@
       "accountProfile": null,
       "specs": "request/golden-regression.spec.ts",
       "steps": {
-        "login": false,
+        "login": true,
         "compare": true,
         "compareGate": true,
         "recordLastGreen": false,
         "feishuNotify": true,
         "createFeishuDoc": false,
-        "writeFeishuBitable": false
+        "writeFeishuBitable": false,
+        "refreshLogin": false
       },
       "notifyOn": ["failure", "success"]
     },
@@ -53,13 +54,15 @@
       "accountProfile": "write",
       "specs": ["request/travel-submit.spec.ts", "request/full-flow.spec.ts"],
       "steps": {
-        "login": false,
+        "login": true,
         "compare": false,
         "compareGate": false,
         "recordLastGreen": false,
         "feishuNotify": true,
         "createFeishuDoc": false,
-        "writeFeishuBitable": false
+        "writeFeishuBitable": false,
+        "refreshLogin": false,
+        "resetFlowArtifacts": true
       },
       "notifyOn": ["failure"]
     }

@@ -86,6 +86,7 @@
     "notify:resend": "tsx scripts/feishu/resend-delivery.ts",
     "run-optimized-tests": "tsx scripts/flow/run-optimized-tests.ts",
     "reset:regression-data": "tsx scripts/flow/reset-regression-data.ts",
+    "reset:flow-artifacts": "tsx scripts/flow/reset-flow-artifacts.ts",
     "rerun-regression-keep": "tsx scripts/flow/rerun-regression-keep-screenshots.ts",
     "test-job": "tsx scripts/jobs/test-job-cli.ts",
     "generate-raw-recording": "tsx scripts/recording/generate-raw-recording.ts",

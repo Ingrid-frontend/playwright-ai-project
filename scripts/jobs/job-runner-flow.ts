@@ -1,6 +1,7 @@
 import { execSync } from "child_process";
 import fs from "fs";
 import path from "path";
+import { createRequire } from "module";
 import type { JobSummaryFile } from "./job-lock.js";
 import {
   buildJobFailReasons,
@@ -22,6 +23,9 @@ import {
   resolveFlowRunnerKey,
   type FlowRunnerKey,
 } from "./flow-runner-registry.js";
+
+const require = createRequire(import.meta.url);
+const repoEnv = require("../../pw-files/repo-env.js");
 
 type FlowJobCtx = {
   runId?: string;
@@ -59,6 +63,23 @@ export function isFlowRunner(runner?: string | null, jobId?: string): boolean {
   return resolveFlowRunnerKey(runner, jobId) != null;
 }
 
+function listFlowLoginProfiles(
+  repoRoot: string,
+  runnerKey: FlowRunnerKey,
+  env: string,
+  profile: string,
+  job: ResolvedTestJob,
+): string[] {
+  if (runnerKey === "request-flow-write") {
+    if (profile) return [profile];
+    const raw = job.accountProfile;
+    if (Array.isArray(raw)) return raw.length ? [String(raw[0])] : ["write"];
+    return [String(raw || "write")];
+  }
+  if (profile) return [profile];
+  return repoEnv.listGoldenProfileIds(repoRoot, env);
+}
+
 function buildFlowScriptArgs(
   runnerKey: FlowRunnerKey,
   effectiveEnv: string,
@@ -73,6 +94,7 @@ function buildFlowScriptArgs(
       args.push(`--spec=${spec}`);
     }
     args.push("--clean-runs");
+    if (job.steps.resetFlowArtifacts) args.push("--reset-artifacts");
   }
   return args;
 }
@@ -132,6 +154,74 @@ export async function runFlowJob(
   }
 
   if (effectiveEnv) process.env.PLAYWRIGHT_ENV = effectiveEnv;
+
+  const loginProfiles = listFlowLoginProfiles(repoRoot, runnerKey, effectiveEnv, profile, job);
+  if (job.steps.login || job.steps.refreshLogin) {
+    const loginResult = repoEnv.ensureFlowProfilesLogin(repoRoot, effectiveEnv, loginProfiles, {
+      login: job.steps.login,
+      refresh: job.steps.refreshLogin,
+    });
+    if (!loginResult.ok) {
+      console.error(`\n❌ ${loginResult.reason || "登录态准备失败"}\n`);
+      const specPaths =
+        runnerKey === "request-flow-write" && Array.isArray(job.specs)
+          ? job.specs.map((s) => `request-flow/tests/${s}`)
+          : ["request-flow/tests/request/golden-regression.spec.ts"];
+      const summary: JobSummaryFile = {
+        jobId: job.id,
+        runId,
+        trigger: ctx.trigger,
+        testPassed: false,
+        comparePassed: true,
+        compareSkipped: true,
+        aborted: false,
+        totalSpecs: specPaths.length,
+        executedCount: 0,
+        successCount: 0,
+        failCount: 1,
+        projects: job.projects,
+        specPaths,
+        compareGate: job.steps.compareGate,
+        failReasons: [loginResult.reason || "登录态准备失败"],
+      };
+      if (persist && ctx.jobId) {
+        writeSummary(ctx.jobId, runId, summary);
+        writeStatus(ctx.jobId, runId, {
+          jobId: ctx.jobId,
+          runId,
+          status: "failed",
+          trigger: ctx.trigger,
+          startedAt: new Date().toISOString(),
+          finishedAt: new Date().toISOString(),
+          pid: process.pid,
+        });
+        clearLock(ctx.jobId);
+      }
+      if (job.steps.feishuNotify && shouldNotify(job.notifyOn, false)) {
+        await sendJobFeishuNotification(job.feishuMode, {
+          jobId: job.id,
+          jobDescription: job.description,
+          trigger: ctx.trigger,
+          testPassed: false,
+          comparePassed: true,
+          compareSkipped: true,
+          feishuDocAttempted: false,
+          feishuDocPassed: true,
+          aborted: false,
+          errorSummary: loginResult.reason,
+        });
+      }
+      return {
+        exitCode: 1,
+        testPassed: false,
+        comparePassed: true,
+        compareSkipped: true,
+        aborted: false,
+        feishuDocPassed: true,
+        summary,
+      };
+    }
+  }
 
   console.log(`\n🎬 开始执行任务「${job.id}」· ${FLOW_RUNNER_LABELS[runnerKey]} (runId=${runId})\n`);
 

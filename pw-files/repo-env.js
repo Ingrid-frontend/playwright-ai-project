@@ -133,6 +133,22 @@ function storageExists(repoRoot, storageRel) {
 }
 
 /** 开跑前校验 storage：文件存在且含 userId / 账号 / 有效 localStorage */
+function resolveStorageMaxAgeMs() {
+  const days = Number(process.env.PLAYWRIGHT_STORAGE_MAX_AGE_DAYS || '7');
+  if (!Number.isFinite(days) || days <= 0) return 0;
+  return days * 86400000;
+}
+
+function isStorageStale(absPath) {
+  const maxAge = resolveStorageMaxAgeMs();
+  if (!maxAge || !absPath) return false;
+  const meta = readLoginStateMeta(absPath);
+  if (!meta?.savedAt) return false;
+  const saved = Date.parse(meta.savedAt);
+  if (!Number.isFinite(saved)) return false;
+  return Date.now() - saved > maxAge;
+}
+
 function validateStorageForRun(repoRoot, storageRel) {
   if (!storageRel) return { ok: false, reason: '未配置 storageState' };
   if (!storageExists(repoRoot, storageRel)) {
@@ -148,6 +164,14 @@ function validateStorageForRun(repoRoot, storageRel) {
   const meta = readLoginStateMeta(abs);
   const account = formatLoginAccountLabel(meta);
   const userId = extractUserIdFromStorageData(data) || meta?.userId || null;
+  if (isStorageStale(abs)) {
+    return {
+      ok: false,
+      stale: true,
+      account: account || (userId ? String(userId) : undefined),
+      reason: `登录态已过期（savedAt=${meta?.savedAt || 'unknown'}）: ${storageRel}`,
+    };
+  }
   if (account || userId) {
     return { ok: true, account: account || String(userId) };
   }
@@ -160,6 +184,55 @@ function validateStorageForRun(repoRoot, storageRel) {
   );
   if (hasCookie || hasStorage) return { ok: true };
   return { ok: false, reason: `登录态为空（无账号/userId/localStorage）: ${storageRel}` };
+}
+
+function runProfileLogin(repoRoot, envId, profileId, refresh) {
+  const { execSync } = require('child_process');
+  const prof = resolveAccountProfile(repoRoot, envId, profileId);
+  const env = {
+    ...process.env,
+    PLAYWRIGHT_ENV: String(envId || '').trim(),
+    PLAYWRIGHT_ACCOUNT: prof,
+  };
+  if (refresh) env.PLAYWRIGHT_REFRESH_STORAGE = '1';
+  const cmd = refresh ? 'npm run login:force' : 'npm run login';
+  execSync(cmd, { cwd: repoRoot, stdio: 'inherit', env });
+}
+
+/**
+ * Flow Job / CLI 跑前：按 profile 列表确保登录态（缺失/过期/refreshLogin 时执行 login）
+ * @returns {{ ok: boolean, reason?: string }}
+ */
+function ensureFlowProfilesLogin(repoRoot, envId, profileIds, opts = {}) {
+  const refresh = Boolean(opts.refresh);
+  const login = opts.login !== false;
+  if (!login && !refresh) return { ok: true };
+
+  const ids = (Array.isArray(profileIds) ? profileIds : [profileIds])
+    .map((id) => String(id || '').trim())
+    .filter(Boolean);
+  if (!ids.length) return { ok: false, reason: '无 profile 可登录' };
+
+  for (const profileId of ids) {
+    const rel = resolveStorageStateRelDirect(repoRoot, envId, profileId);
+    const check = validateStorageForRun(repoRoot, rel);
+    const needLogin = refresh || !check.ok;
+    if (!needLogin) continue;
+    if (!login) {
+      return { ok: false, reason: check.reason || `登录态不可用: ${rel}` };
+    }
+    try {
+      console.log(`\n🔐 登录 ${envId}/${profileId}${refresh ? '（强制刷新）' : check.stale ? '（已过期）' : ''}\n`);
+      runProfileLogin(repoRoot, envId, profileId, refresh);
+    } catch (e) {
+      return { ok: false, reason: `登录失败 ${envId}/${profileId}: ${e.message || e}` };
+    }
+    const recheck = validateStorageForRun(repoRoot, rel);
+    if (!recheck.ok) {
+      return { ok: false, reason: recheck.reason || `登录后仍无效: ${rel}` };
+    }
+  }
+  return { ok: true };
 }
 
 function listKnownProfileIds(repoRoot, envId) {
@@ -578,6 +651,10 @@ module.exports = {
   listAccountProfiles,
   storageExists,
   validateStorageForRun,
+  resolveStorageMaxAgeMs,
+  isStorageStale,
+  runProfileLogin,
+  ensureFlowProfilesLogin,
   findAvailableProfileStorage,
   envHasAnyStorage,
   buildRecordingAccountHeader,

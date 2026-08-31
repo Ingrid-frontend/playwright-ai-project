@@ -73,6 +73,22 @@ else fail('test-jobs.json · request-flow-write', '未配置');
 if (writeJob?.steps?.feishuNotify === true) pass('test-jobs.json · request-flow-write feishuNotify');
 else fail('test-jobs.json · request-flow-write feishuNotify', '未开启');
 
+if (writeJob?.steps?.resetFlowArtifacts === true) pass('test-jobs.json · request-flow-write resetFlowArtifacts');
+else fail('test-jobs.json · request-flow-write resetFlowArtifacts', '未开启');
+
+if (goldenJob?.steps?.login === true) pass('test-jobs.json · request-flow-golden login');
+else fail('test-jobs.json · request-flow-golden login', '未开启');
+
+if (typeof repoEnv.isStorageStale === 'function' && typeof repoEnv.ensureFlowProfilesLogin === 'function') {
+  pass('repo-env · 登录态治理 API');
+} else {
+  fail('repo-env · 登录态治理 API', '缺少 isStorageStale / ensureFlowProfilesLogin');
+}
+
+const resetFlowScript = path.join(repoRoot, 'scripts/flow/reset-flow-artifacts.ts');
+if (fs.existsSync(resetFlowScript)) pass('reset-flow-artifacts.ts');
+else fail('reset-flow-artifacts.ts', '未找到');
+
 if (/ensureTravelReadyForSubmit/.test(editSrc) && /tripDatesReady\(root\)/.test(editSrc)) {
   pass('RequestEditPage.submit · save 后自动轻量 submit');
 } else {

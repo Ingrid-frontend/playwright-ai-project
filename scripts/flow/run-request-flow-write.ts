@@ -26,6 +26,7 @@ function parseArgs(argv: string[]) {
   let env = process.env.PLAYWRIGHT_ENV?.trim() || "dev";
   let profile = "";
   let cleanRuns = false;
+  let resetArtifacts = false;
   const specs: string[] = [];
 
   for (const arg of argv) {
@@ -33,9 +34,10 @@ function parseArgs(argv: string[]) {
     else if (arg.startsWith("--profile=")) profile = arg.slice(10).trim();
     else if (arg.startsWith("--spec=")) specs.push(arg.slice(7).trim());
     else if (arg === "--clean-runs") cleanRuns = true;
+    else if (arg === "--reset-artifacts") resetArtifacts = true;
   }
 
-  return { env, profile, specs: specs.length ? specs : DEFAULT_SPECS, cleanRuns };
+  return { env, profile, specs: specs.length ? specs : DEFAULT_SPECS, cleanRuns, resetArtifacts };
 }
 
 function resolveStorage(repoRoot: string, envId: string, profileId: string): string {
@@ -65,7 +67,7 @@ function main(): void {
     process.exit(1);
   }
 
-  const { env, profile, specs, cleanRuns } = parseArgs(process.argv.slice(2));
+  const { env, profile, specs, cleanRuns, resetArtifacts } = parseArgs(process.argv.slice(2));
   const profileId = pickWriteProfile(repoRoot, env, profile || undefined);
   if (!profileId) {
     console.error(`[request-flow:write] 无已登录 write 档案（env=${env}）`);
@@ -111,6 +113,15 @@ function main(): void {
   console.log(
     `[request-flow:write] 角色 ${entry.roleLabel || profileId} (${profileId}) · env=${env} · ${specs.length} 个 spec`,
   );
+
+  if (resetArtifacts) {
+    const npx = process.platform === "win32" ? "npx.cmd" : "npx";
+    spawnSync(npx, ["tsx", "scripts/flow/reset-flow-artifacts.ts", `--flow=${FLOW_ID}`], {
+      cwd: repoRoot,
+      stdio: "inherit",
+      env: process.env,
+    });
+  }
 
   if (cleanRuns) {
     for (const spec of specs) {

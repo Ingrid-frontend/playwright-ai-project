@@ -20,6 +20,8 @@ export type JobSteps = {
   createFeishuDoc: boolean;
   writeFeishuBitable: boolean;
   refreshLogin: boolean;
+  /** write flow 跑前清理 screenshots/flows 与 flow-runs（不动 baseline） */
+  resetFlowArtifacts: boolean;
 };
 
 export type TestJobDefaults = {
@@ -84,6 +86,7 @@ const DEFAULT_STEPS: JobSteps = {
   createFeishuDoc: false,
   writeFeishuBitable: false,
   refreshLogin: false,
+  resetFlowArtifacts: false,
 };
 
 const DEFAULT_CONFIG: TestJobsConfig = {
