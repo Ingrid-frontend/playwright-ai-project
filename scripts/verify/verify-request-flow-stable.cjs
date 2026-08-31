@@ -76,6 +76,9 @@ else fail('test-jobs.json · request-flow-write feishuNotify', '未开启');
 if (writeJob?.steps?.resetFlowArtifacts === true) pass('test-jobs.json · request-flow-write resetFlowArtifacts');
 else fail('test-jobs.json · request-flow-write resetFlowArtifacts', '未开启');
 
+if (writeJob?.steps?.uiAuditGate === true) pass('test-jobs.json · request-flow-write uiAuditGate');
+else fail('test-jobs.json · request-flow-write uiAuditGate', '未开启');
+
 if (goldenJob?.steps?.login === true) pass('test-jobs.json · request-flow-golden login');
 else fail('test-jobs.json · request-flow-golden login', '未开启');
 
@@ -112,6 +115,23 @@ if (/classifySubmitFail/.test(submitSrc) && /recoverSubmitRetry/.test(submitSrc)
 } else {
   fail('submit-then-approve · 分类重试', '未实现');
 }
+
+if (fs.existsSync(path.join(repoRoot, 'scripts/flow/run-request-flow-stability-gate.ts'))) {
+  pass('run-request-flow-stability-gate.ts');
+} else {
+  fail('run-request-flow-stability-gate.ts', '未找到');
+}
+
+const gitignore = fs.readFileSync(path.join(repoRoot, '.gitignore'), 'utf8');
+if (/storage\/loginState\//.test(gitignore)) pass('.gitignore · storage/loginState/');
+else fail('.gitignore · storage/loginState/', '未忽略子目录');
+
+const fullFlowSrc = fs.readFileSync(
+  path.join(repoRoot, 'request-flow/tests/request/full-flow.spec.ts'),
+  'utf8',
+);
+if (/test\.setTimeout\(300_000\)/.test(fullFlowSrc)) pass('full-flow · submit 超时 300s');
+else fail('full-flow · submit 超时', '未对齐 travel-submit');
 
 if (/ensureTravelReadyForSubmit/.test(editSrc) && /tripDatesReady\(root\)/.test(editSrc)) {
   pass('RequestEditPage.submit · save 后自动轻量 submit');

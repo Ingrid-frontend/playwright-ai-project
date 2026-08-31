@@ -122,6 +122,9 @@ async function main() {
       const driftReport = buildSelectorDriftSuggest(process.cwd(), issuesReport.issues);
       writeSelectorDriftSuggest(process.cwd(), driftReport, 'results/selector-drift-suggest.json');
       console.log(`   selector-drift 建议 ${driftReport.patches.length} 条 → results/selector-drift-suggest.json`);
+      if (driftReport.patches.length) {
+        console.log('   写回: npm run selector-drift:apply -- --dry-run  或  npm run selector-drift:apply');
+      }
     } catch (e) {
       console.log(`   ⚠️  selector-drift 建议生成跳过: ${e instanceof Error ? e.message : String(e)}`);
     }

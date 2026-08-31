@@ -3,6 +3,8 @@
  * 从 flow-ui-issues 中的 selector-drift 生成 structureChecks 补丁建议
  *
  * 用法: npm run selector-drift:suggest [-- --issues=results/flow-ui-issues.json]
+ *       npm run selector-drift:apply [-- --suggest=results/selector-drift-suggest.json]
+ *       npm run selector-drift:suggest -- --dry-run --apply
  */
 import fs from "fs";
 import path from "path";
@@ -57,6 +59,73 @@ function pngFromIssue(repoRoot: string, issue: UiIssue): string {
 function itemKeyFromIssue(issue: UiIssue): string {
   const m = String(issue.detail || "").match(/:\s*(\S+)\s*$/);
   return m?.[1] || "";
+}
+
+export type SelectorDriftApplyResult = {
+  key: string;
+  from: string;
+  to: string;
+  issueId: string;
+};
+
+export function pickAppliedSelector(patch: SelectorDriftPatch): string | null {
+  if (patch.resolvedBy === "selector") return null;
+  for (const s of patch.suggestSelectors) {
+    if (!s || s === patch.configSelector) continue;
+    if (/^\/\//.test(s) || /^\/html/.test(s)) continue;
+    return s.trim();
+  }
+  const xpath = patch.suggestSelectors.find((s) => /^\/\//.test(s));
+  return xpath?.trim() || null;
+}
+
+function mergeSelector(oldSel: string, newSel: string): string {
+  const parts = oldSel
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (parts.includes(newSel)) return oldSel;
+  return [newSel, ...parts].join(", ");
+}
+
+export function applySelectorDriftPatches(
+  repoRoot: string,
+  report: SelectorDriftSuggestReport,
+  opts: { configPath?: string; dryRun?: boolean } = {},
+): { applied: SelectorDriftApplyResult[]; skipped: Array<{ key: string; reason: string }> } {
+  const configPath = path.resolve(repoRoot, opts.configPath || "config/ui-regression.json");
+  const raw = JSON.parse(fs.readFileSync(configPath, "utf8")) as {
+    structureChecks?: { items?: Array<{ key: string; selector: string }> };
+  };
+  const items = raw.structureChecks?.items || [];
+  const applied: SelectorDriftApplyResult[] = [];
+  const skipped: Array<{ key: string; reason: string }> = [];
+
+  for (const patch of report.patches) {
+    const next = pickAppliedSelector(patch);
+    if (!next) {
+      skipped.push({ key: patch.key, reason: "主选择器仍生效或无可用建议" });
+      continue;
+    }
+    const item = items.find((i) => i.key === patch.key);
+    if (!item) {
+      skipped.push({ key: patch.key, reason: "ui-regression.json 无对应 key" });
+      continue;
+    }
+    const merged = mergeSelector(item.selector || "", next);
+    if (merged === item.selector) {
+      skipped.push({ key: patch.key, reason: "建议选择器已存在" });
+      continue;
+    }
+    applied.push({ key: patch.key, from: item.selector, to: merged, issueId: patch.issueId });
+    if (!opts.dryRun) item.selector = merged;
+  }
+
+  if (!opts.dryRun && applied.length) {
+    fs.writeFileSync(configPath, `${JSON.stringify(raw, null, 2)}\n`, "utf8");
+  }
+
+  return { applied, skipped };
 }
 
 export function buildSelectorDriftSuggest(
@@ -153,19 +222,52 @@ export function writeSelectorDriftSuggest(
 function main(): void {
   const repoRoot = process.cwd();
   let issuesPath = "results/flow-ui-issues.json";
+  let suggestPath = "";
+  let apply = false;
+  let dryRun = false;
+
   for (const arg of process.argv.slice(2)) {
     if (arg.startsWith("--issues=")) issuesPath = arg.slice(9).trim();
+    else if (arg.startsWith("--suggest=")) suggestPath = arg.slice(10).trim();
+    else if (arg === "--apply") apply = true;
+    else if (arg === "--dry-run") dryRun = true;
   }
-  const abs = path.resolve(repoRoot, issuesPath);
-  if (!fs.existsSync(abs)) {
-    console.error(`未找到 ${issuesPath}`);
-    process.exit(1);
+
+  let report: SelectorDriftSuggestReport;
+  if (suggestPath) {
+    const abs = path.resolve(repoRoot, suggestPath);
+    if (!fs.existsSync(abs)) {
+      console.error(`未找到 ${suggestPath}`);
+      process.exit(1);
+    }
+    report = JSON.parse(fs.readFileSync(abs, "utf8")) as SelectorDriftSuggestReport;
+  } else {
+    const abs = path.resolve(repoRoot, issuesPath);
+    if (!fs.existsSync(abs)) {
+      console.error(`未找到 ${issuesPath}`);
+      process.exit(1);
+    }
+    const raw = JSON.parse(fs.readFileSync(abs, "utf8")) as { issues?: UiIssue[] };
+    report = buildSelectorDriftSuggest(repoRoot, raw.issues || []);
+    writeSelectorDriftSuggest(repoRoot, report);
   }
-  const raw = JSON.parse(fs.readFileSync(abs, "utf8")) as { issues?: UiIssue[] };
-  const report = buildSelectorDriftSuggest(repoRoot, raw.issues || []);
-  writeSelectorDriftSuggest(repoRoot, report);
+
   console.log(`✅ selector-drift 建议: ${report.patches.length} 条 · ${report.skipped.length} 跳过`);
   console.log(`   results/selector-drift-suggest.json`);
+
+  if (!apply && !dryRun) return;
+
+  const result = applySelectorDriftPatches(repoRoot, report, { dryRun: dryRun || !apply });
+  for (const row of result.applied) {
+    const tag = dryRun || !apply ? "[dry-run]" : "[apply]";
+    console.log(`${tag} ${row.key}: \`${row.from}\` → \`${row.to}\``);
+  }
+  if (result.skipped.length) {
+    console.log(`ℹ️  ${result.skipped.length} 项未写回`);
+  }
+  if (apply && !dryRun) {
+    console.log(`✅ 已更新 config/ui-regression.json（${result.applied.length} 项）`);
+  }
 }
 
-main();
+if (process.argv[1]?.includes("selector-drift-suggest")) main();

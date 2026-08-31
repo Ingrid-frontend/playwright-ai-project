@@ -63,7 +63,8 @@
         "createFeishuDoc": false,
         "writeFeishuBitable": false,
         "refreshLogin": false,
-        "resetFlowArtifacts": true
+        "resetFlowArtifacts": true,
+        "uiAuditGate": true
       },
       "notifyOn": ["failure"]
     },

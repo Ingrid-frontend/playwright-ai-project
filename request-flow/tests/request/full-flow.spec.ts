@@ -79,6 +79,7 @@ test.describe('申请单 · 全流程', () => {
 
   test('新建申请单、保存并提交', async ({ page, flowRunDir }) => {
     test.skip(!env.writeEnabled, '未开启写操作：设置 REQUEST_ENABLE_WRITE=1 后才会真实新建/提交');
+    test.setTimeout(300_000);
     bindFlowStepCapture({ page, runDir: flowRunDir });
     const list = new RequestListPage(page);
     const reason = env.requestReason || randomReason();

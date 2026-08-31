@@ -39,7 +39,7 @@ datasource/ui-contract.json
 approval-flow/datasource/live-snapshot.json
 
 # Login state files (contains sensitive tokens)
-storage/loginState/*.json
+storage/loginState/
 !storage/loginState/.gitkeep
 
 # IDE
