@@ -10,9 +10,11 @@ dotenv.config({ path: path.join(process.cwd(), ".env") });
 const require = createRequire(import.meta.url);
 const repoEnv = require("../../pw-files/repo-env.js");
 const { finalizeFlowRun } = require("../../pw-files/lib/flow-run-common.js");
+const { resolveGoldenSeed } = require("../../pw-files/lib/golden-seed.js");
 const {
   parsePlaywrightResultJson,
   parsePlaywrightFailures,
+  parsePlaywrightSkips,
   logConcisePlaywrightFailures,
 } = require("../../pw-files/lib/failure-report.js");
 
@@ -71,6 +73,8 @@ function runOne(
 
   const base = repoEnv.getBaseEnvConfig(repoRoot, envId);
   const creds = repoEnv.resolveAccountCredentials(repoRoot, envId, profileId);
+  const profileDefaults = repoEnv.resolveProfileFlowDefaults(repoRoot, envId, profileId);
+  const goldenSeed = resolveGoldenSeed(repoRoot, envId, roleSlug);
   const roleSlug = repoEnv.resolveFlowRoleSlug(repoRoot, envId, profileId);
   const entry = repoEnv.enrichProfileStorageEntry(repoRoot, envId, profileId);
 
@@ -87,7 +91,10 @@ function runOne(
   spawnEnv.FLOW_RUN_MODE = "headless";
   spawnEnv.FLOW_RUN_ID = runId;
   spawnEnv.FLOW_RUN_STARTED_AT = startedAt;
-  spawnEnv.REQUEST_FILTER_KEYWORD = filterKeyword;
+  spawnEnv.REQUEST_FILTER_KEYWORD = filterKeyword || profileDefaults.requestFilterKeyword || goldenSeed.requestFilterKeyword || "测试";
+  const docNo = String(process.env.REQUEST_DOC_NO || profileDefaults.requestDocNo || goldenSeed.requestDocNo || "").trim();
+  if (docNo) spawnEnv.REQUEST_DOC_NO = docNo;
+  else delete spawnEnv.REQUEST_DOC_NO;
   if (roleSlug) spawnEnv.FLOW_ACCOUNT_SLUG = roleSlug;
   else delete spawnEnv.FLOW_ACCOUNT_SLUG;
   spawnEnv.PLAYWRIGHT_RETRIES = "0";
@@ -122,6 +129,8 @@ function runOne(
   let passed = 0;
   let failed = 0;
   let total = 0;
+  let skipped = 0;
+  let skips: Array<{ title?: string; reason?: string }> = [];
   let failures: Array<{ title?: string; message?: string }> = [];
 
   try {
@@ -129,11 +138,12 @@ function runOne(
     const s = result.stats || {};
     const expected = Number(s.expected) || 0;
     const unexpected = Number(s.unexpected) || 0;
-    const skipped = Number(s.skipped) || 0;
+    skipped = Number(s.skipped) || 0;
     const flaky = Number(s.flaky) || 0;
     passed = expected + flaky;
     failed = unexpected;
     total = expected + unexpected + skipped + flaky;
+    skips = parsePlaywrightSkips(result);
     failures = parsePlaywrightFailures(result, null, exitCode).map((item) => ({
       title: item.title,
       message: item.message,
@@ -144,9 +154,13 @@ function runOne(
     total = 1;
   }
 
-  const ok = exitCode === 0 && failed === 0;
+  const ok = exitCode === 0 && failed === 0 && (total <= 0 || passed === total);
   if (ok) {
-    console.log(`[request-flow:golden] 通过 ${passed}/${total} · ${duration}s`);
+    const skipHint = skipped > 0 ? `，跳过 ${skipped}` : "";
+    console.log(`[request-flow:golden] 通过 ${passed}/${total}${skipHint} · ${duration}s`);
+    for (const item of skips.slice(0, 5)) {
+      console.warn(`[request-flow:golden] 跳过 · ${item.title} — ${item.reason}`);
+    }
   } else {
     console.error(`[request-flow:golden] 失败 ${failed}/${total || 1} · ${duration}s`);
     logConcisePlaywrightFailures("[request-flow:golden] · ", failures, { limit: 3 });
@@ -169,6 +183,8 @@ function runOne(
     passed,
     failed,
     total,
+    skipped,
+    skips,
     duration,
     runId,
     startedAt,

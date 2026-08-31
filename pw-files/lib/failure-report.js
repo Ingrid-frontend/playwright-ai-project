@@ -131,6 +131,53 @@ function parsePlaywrightFailures(result, session, exitCode) {
   return failures;
 }
 
+function pickSkipReason(test, spec, results) {
+  const anns = [
+    ...(test?.annotations || []),
+    ...(spec?.annotations || []),
+    ...((results || []).flatMap((r) => r.annotations || [])),
+  ];
+  const skipAnn = anns.find((a) => a.type === 'skip' || a.type === 'fixme');
+  if (skipAnn?.description) return String(skipAnn.description).trim();
+  for (const r of results || []) {
+    const msg = errText(r.error);
+    if (msg) return msg.split('\n')[0].trim();
+  }
+  return '已跳过（未记录原因）';
+}
+
+/** 从 Playwright JSON 报告提取跳过用例及原因 */
+function parsePlaywrightSkips(result) {
+  const skips = [];
+
+  function walkSuites(suites, suitePath) {
+    for (const suite of suites || []) {
+      const pathLabel = suitePath
+        ? `${suitePath} › ${suite.title || suite.file || ''}`
+        : (suite.title || suite.file || '');
+      for (const spec of suite.specs || []) {
+        const specTitle = spec.title || '未命名用例';
+        for (const test of spec.tests || []) {
+          const results = test.results || [];
+          const isSkipped =
+            test.status === 'skipped' ||
+            results.some((r) => r.status === 'skipped');
+          if (!isSkipped) continue;
+          const title = pathLabel ? `${pathLabel} › ${specTitle}` : specTitle;
+          skips.push({
+            title,
+            reason: pickSkipReason(test, spec, results),
+          });
+        }
+      }
+      walkSuites(suite.suites, pathLabel);
+    }
+  }
+
+  walkSuites(result.suites, '');
+  return skips;
+}
+
 /** 从 Playwright JSON 报告提取失败信息并写入控制台日志 */
 function logPlaywrightFailureReport(ws, result, session, exitCode) {
   const failures = parsePlaywrightFailures(result, session, exitCode);
@@ -314,6 +361,7 @@ function headedFailurePlaceholder(specRel) {
 module.exports = {
   findLastFailedStep,
   parsePlaywrightFailures,
+  parsePlaywrightSkips,
   parsePlaywrightResultJson,
   logPlaywrightFailureReport,
   filterPlaywrightLogLine,

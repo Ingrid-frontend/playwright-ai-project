@@ -10,7 +10,9 @@
       "golden": {
         "label": "Golden 只读（截图基线）",
         "username": "your-golden-dev-username",
-        "password": "your-dev-password"
+        "password": "your-dev-password",
+        "requestDocNo": "",
+        "requestFilterKeyword": "测试"
       },
       "golden_2": {
         "label": "Golden 角色2",

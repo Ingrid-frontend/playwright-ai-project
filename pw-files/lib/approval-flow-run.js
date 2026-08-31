@@ -6,6 +6,7 @@ const { getEnvEntryResolved } = require('./repo-context');
 const {
   logPlaywrightFailureReport,
   parsePlaywrightFailures,
+  parsePlaywrightSkips,
   parsePlaywrightResultJson,
   createPlaywrightLogSink,
   headedFailurePlaceholder,
@@ -353,6 +354,8 @@ async function runApprovalFlowTests(ws, session, msg, deps) {
   let passed = 0;
   let failed = 0;
   let total = 0;
+  let skipped = 0;
+  let skips = [];
   let failures = [];
 
   if (headless) {
@@ -361,15 +364,25 @@ async function runApprovalFlowTests(ws, session, msg, deps) {
       const s = result.stats || {};
       const expected = Number(s.expected) || 0;
       const unexpected = Number(s.unexpected) || 0;
-      const skipped = Number(s.skipped) || 0;
+      skipped = Number(s.skipped) || 0;
       const flaky = Number(s.flaky) || 0;
       passed = expected + flaky;
       failed = unexpected;
       total = expected + unexpected + skipped + flaky;
+      skips = parsePlaywrightSkips(result);
       if (exitCode !== 0 || failed > 0) {
         failures = logPlaywrightFailureReport(ws, result, session, exitCode);
       } else {
         session.lastRunFailures = [];
+      }
+      if (skipped > 0) {
+        logLine(ws, `[approval-flow] ${skipped} 个用例已跳过`, 'warn');
+        for (const item of skips.slice(0, 5)) {
+          logLine(ws, `[approval-flow] 跳过 · ${item.title} — ${item.reason}`, 'warn');
+        }
+        if (skips.length > 5) {
+          logLine(ws, `[approval-flow] … 另有 ${skips.length - 5} 条跳过，见运行汇总`, 'warn');
+        }
       }
     } catch {
       passed = exitCode === 0 ? 1 : 0;
@@ -391,7 +404,7 @@ async function runApprovalFlowTests(ws, session, msg, deps) {
     }
   }
 
-  const ok = exitCode === 0 && failed === 0;
+  const ok = exitCode === 0 && failed === 0 && (total <= 0 || passed === total);
   const reportRel = approvalFlowReportOpenPath();
   const reportOpenPath = approvalFlowReportHref(repoRoot);
 
@@ -406,6 +419,8 @@ async function runApprovalFlowTests(ws, session, msg, deps) {
     passed,
     failed,
     total,
+    skipped,
+    skips,
     duration,
     runId,
     startedAt,

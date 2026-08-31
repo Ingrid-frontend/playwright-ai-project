@@ -6,11 +6,13 @@ const { getEnvEntryResolved } = require('./repo-context');
 const {
   logConcisePlaywrightFailures,
   parsePlaywrightFailures,
+  parsePlaywrightSkips,
   parsePlaywrightResultJson,
   createPlaywrightLogSink,
   headedFailurePlaceholder,
 } = require('./failure-report');
 const { finalizeFlowRun, detectPipeline, flowScriptKey, readLastFlowRun } = require('./flow-run-common');
+const { resolveGoldenSeed } = require('./golden-seed.js');
 const repoEnv = require('../repo-env');
 
 const catalogCheckMod = (() => {
@@ -237,13 +239,20 @@ function buildSpawnEnv(session, deps, msg = {}) {
   }
   if (msg.writeEnabled) spawnEnv.REQUEST_ENABLE_WRITE = '1';
   else delete spawnEnv.REQUEST_ENABLE_WRITE;
-  const docNo = String(msg.docNo || '').trim();
+  const profileDefaults = repoEnv.resolveProfileFlowDefaults(repoRoot, envId, profile);
+  const goldenSeed = resolveGoldenSeed(repoRoot, envId, roleSlug);
+  const snapshotDocNo = String(snapshotSummary(readSnapshot(repoRoot))?.sampleDocNo || '').trim();
+  const docNo = String(
+    msg.docNo || profileDefaults.requestDocNo || goldenSeed.requestDocNo || snapshotDocNo || '',
+  ).trim();
   if (docNo) spawnEnv.REQUEST_DOC_NO = docNo;
   else delete spawnEnv.REQUEST_DOC_NO;
   const formName = String(msg.formName || '').trim();
   if (formName) spawnEnv.REQUEST_FORM_NAME = formName;
   else delete spawnEnv.REQUEST_FORM_NAME;
-  const filterKeyword = String(msg.filterKeyword || '').trim();
+  const filterKeyword = String(
+    msg.filterKeyword || profileDefaults.requestFilterKeyword || goldenSeed.requestFilterKeyword || '',
+  ).trim();
   if (filterKeyword) spawnEnv.REQUEST_FILTER_KEYWORD = filterKeyword;
   else delete spawnEnv.REQUEST_FILTER_KEYWORD;
   return { repoRoot, envId, profile, roleSlug, spawnEnv, storage: storageAbs };
@@ -421,6 +430,8 @@ async function runRequestFlowTests(ws, session, msg, deps) {
   let passed = 0;
   let failed = 0;
   let total = 0;
+  let skipped = 0;
+  let skips = [];
   let failures = [];
 
   if (headless) {
@@ -429,17 +440,27 @@ async function runRequestFlowTests(ws, session, msg, deps) {
       const s = result.stats || {};
       const expected = Number(s.expected) || 0;
       const unexpected = Number(s.unexpected) || 0;
-      const skipped = Number(s.skipped) || 0;
+      skipped = Number(s.skipped) || 0;
       const flaky = Number(s.flaky) || 0;
       passed = expected + flaky;
       failed = unexpected;
       total = expected + unexpected + skipped + flaky;
+      skips = parsePlaywrightSkips(result);
       if (exitCode !== 0 || failed > 0) {
         failures = parsePlaywrightFailures(result, session, exitCode);
         session.lastRunFailures = failures;
         logConcisePlaywrightFailures('[request-flow] · ', failures, { limit: 3, ws });
       } else {
         session.lastRunFailures = [];
+      }
+      if (skipped > 0) {
+        logLine(ws, `[request-flow] ${skipped} 个用例已跳过`, 'warn');
+        for (const item of skips.slice(0, 5)) {
+          logLine(ws, `[request-flow] 跳过 · ${item.title} — ${item.reason}`, 'warn');
+        }
+        if (skips.length > 5) {
+          logLine(ws, `[request-flow] … 另有 ${skips.length - 5} 条跳过，见运行汇总`, 'warn');
+        }
       }
     } catch {
       passed = exitCode === 0 ? 1 : 0;
@@ -461,7 +482,7 @@ async function runRequestFlowTests(ws, session, msg, deps) {
     }
   }
 
-  const ok = exitCode === 0 && failed === 0;
+  const ok = exitCode === 0 && failed === 0 && (total <= 0 || passed === total);
   const reportRel = requestFlowReportOpenPath();
   const reportOpenPath = requestFlowReportHref(repoRoot);
 
@@ -476,6 +497,8 @@ async function runRequestFlowTests(ws, session, msg, deps) {
     passed,
     failed,
     total,
+    skipped,
+    skips,
     duration,
     runId,
     startedAt,
@@ -496,8 +519,11 @@ async function runRequestFlowTests(ws, session, msg, deps) {
   send(ws, 'request-flow:run:done', finalized);
   if (ok) logLine(ws, '[request-flow] 用例通过', 'ok');
   else {
+    const incomplete = exitCode === 0 && total > 0 && passed < total;
     if (finalized.apiFailureCount > 0) {
       logLine(ws, `[request-flow] 用例失败 · 接口报错 ${finalized.apiFailureCount} 条`, 'err');
+    } else if (incomplete) {
+      logLine(ws, `[request-flow] 用例未完成 · ${passed}/${total}${skipped > 0 ? `（${skipped} 跳过）` : ''}`, 'err');
     }
     if (finalized.replayReportOpenPath) {
       logLine(ws, `[request-flow] 步骤回放: ${finalized.replayReportOpenPath}`, 'warn');
@@ -508,11 +534,12 @@ async function runRequestFlowTests(ws, session, msg, deps) {
     if (finalized.manifest?.scriptKey) {
       logLine(ws, `[request-flow] 截图目录: screenshots/${finalized.manifest.scriptKey}`, 'dim');
     }
-    send(ws, 'error', {
-      message: finalized.apiFailureCount > 0
-        ? `用例失败（退出码 ${exitCode}，${finalized.apiFailureCount} 个接口报错）`
-        : `用例退出码 ${exitCode}`,
-    });
+    const errMsg = finalized.apiFailureCount > 0
+      ? `用例失败（退出码 ${exitCode}，${finalized.apiFailureCount} 个接口报错）`
+      : exitCode !== 0 || failed > 0
+        ? `用例退出码 ${exitCode}`
+        : '';
+    if (errMsg) send(ws, 'error', { message: errMsg });
   }
 }
 

@@ -181,6 +181,39 @@ function alignRunTimes(payload) {
   return { startedAt, finishedAt, runId: runIdFromStart };
 }
 
+/** 通过数与总数一致才保留截图（含部分 skip 的 1/4 等场景） */
+function isCompletePassRun(payload) {
+  const total = Number(payload.total) || 0;
+  if (total <= 0) return true;
+  return (Number(payload.passed) || 0) === total;
+}
+
+function flowScreenshotRunAbs(repoRoot, flowId, payload, runId) {
+  const scriptKey = flowScriptKey(flowId, payload.env, payload.spec, payload.roleSlug);
+  return path.join(repoRoot, 'screenshots', scriptKey, 'run-chromium-flow', runId);
+}
+
+function hasRunScreenshotPng(runDir) {
+  if (!runDir || !fs.existsSync(runDir)) return false;
+  return fs.readdirSync(runDir).some((name) => name.endsWith('.png'));
+}
+
+function discardFlowRunScreenshots(repoRoot, flowId, payload, runIds) {
+  let removed = 0;
+  const seen = new Set();
+  for (const id of runIds) {
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const runDir = flowScreenshotRunAbs(repoRoot, flowId, payload, id);
+    if (!fs.existsSync(runDir)) continue;
+    for (const name of fs.readdirSync(runDir)) {
+      if (name.endsWith('.png')) removed++;
+    }
+    fs.rmSync(runDir, { recursive: true, force: true });
+  }
+  return removed;
+}
+
 function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
   const { startedAt, finishedAt, runId } = alignRunTimes(payload);
   const pipeline = detectPipeline(payload.spec, payload);
@@ -198,27 +231,23 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
   let videoReportRel = '';
   let baselinePromoted = false;
   let hasShots = false;
+  let screenshotsDiscarded = false;
 
   videoReportRel = resolveFlowRunVideoRel(repoRoot, flowId, runId, payload.runId);
+  const fullPass = isCompletePassRun(payload);
 
   let compareGateFailed = false;
   let uiAuditGateFailed = false;
 
   if (!payload.cancelled) {
-    hasShots = hasFlowScreenshots(repoRoot);
-    if (hasShots && (pipeline === 'golden' || pipeline === 'default')) {
-      const cmpArgs = pipeline === 'golden' ? ['--gate'] : [];
-      const cmp = runNpmScript(repoRoot, 'compare-flow-screenshots', cmpArgs);
-      if (pipeline === 'golden' && hasShots && !cmp.ok) compareGateFailed = true;
-      if (cmp.ok && fs.existsSync(path.join(repoRoot, FLOW_COMPARE_REL))) {
-        compareReportRel = FLOW_COMPARE_REL;
-      }
-      const cust = runNpmScript(repoRoot, 'report:flow-customer');
-      if (cust.ok && fs.existsSync(path.join(repoRoot, FLOW_CUSTOMER_REL))) {
-        customerReportRel = FLOW_CUSTOMER_REL;
-      }
-    }
-    if (hasShots || videoReportRel) {
+    const runShotDir = flowScreenshotRunAbs(repoRoot, flowId, payload, runId);
+    const altRunShotDir =
+      payload.runId && payload.runId !== runId
+        ? flowScreenshotRunAbs(repoRoot, flowId, payload, payload.runId)
+        : '';
+    const hasRunShots = hasRunScreenshotPng(runShotDir) || hasRunScreenshotPng(altRunShotDir);
+
+    if (hasRunShots || videoReportRel) {
       const replayArgs = [
         `--flow=${flowId}`,
         `--run=${runId}`,
@@ -233,6 +262,30 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
         replayReportRel = path.relative(repoRoot, replayAbs).replace(/\\/g, '/');
       }
       videoReportRel = resolveFlowRunVideoRel(repoRoot, flowId, runId, payload.runId);
+    }
+
+    if (!fullPass) {
+      const removed = discardFlowRunScreenshots(repoRoot, flowId, payload, [runId, payload.runId]);
+      if (removed > 0) {
+        screenshotsDiscarded = true;
+        console.log(
+          `[flow] ${payload.passed}/${payload.total} 未全通过，已丢弃本次截图（保留回放）`,
+        );
+      }
+    }
+
+    hasShots = hasFlowScreenshots(repoRoot);
+    if (fullPass && hasShots && (pipeline === 'golden' || pipeline === 'default')) {
+      const cmpArgs = pipeline === 'golden' ? ['--gate'] : [];
+      const cmp = runNpmScript(repoRoot, 'compare-flow-screenshots', cmpArgs);
+      if (pipeline === 'golden' && hasShots && !cmp.ok) compareGateFailed = true;
+      if (cmp.ok && fs.existsSync(path.join(repoRoot, FLOW_COMPARE_REL))) {
+        compareReportRel = FLOW_COMPARE_REL;
+      }
+      const cust = runNpmScript(repoRoot, 'report:flow-customer');
+      if (cust.ok && fs.existsSync(path.join(repoRoot, FLOW_CUSTOMER_REL))) {
+        customerReportRel = FLOW_CUSTOMER_REL;
+      }
     }
   }
 
@@ -251,7 +304,7 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
 
   const runOk = Boolean(payload.ok) && !compareGateFailed && !uiAuditGateFailed;
 
-  if (pipeline === 'golden' && runOk && !payload.cancelled) {
+  if (pipeline === 'golden' && runOk && fullPass && !payload.cancelled) {
     const scriptKey = flowScriptKey(flowId, payload.env, payload.spec, payload.roleSlug);
     const promoted = tryPromoteFlowBaseline(repoRoot, scriptKey);
     baselinePromoted = promoted.seeded;
@@ -291,6 +344,8 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     passed: payload.passed,
     failed: payload.failed,
     total: payload.total,
+    skipped: payload.skipped,
+    skips: payload.skips || [],
     durationSec: payload.duration ? Number(payload.duration) : undefined,
     scriptKey: flowScriptKey(flowId, payload.env, payload.spec, payload.roleSlug),
     roleSlug: payload.roleSlug || undefined,
@@ -301,6 +356,7 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     replayReportRel: replayReportRel || undefined,
     videoReportRel: videoReportRel || undefined,
     baselinePromoted: baselinePromoted || undefined,
+    screenshotsDiscarded: screenshotsDiscarded || undefined,
     summaryReportRel: FLOW_SUMMARY_REL,
     apiFailureLogRel: apiFailures.length
       ? `results/flow-runs/${flowId}/${runId}/api-failures.json`
@@ -325,6 +381,7 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     startedAt,
     finishedAt,
     baselinePromoted,
+    screenshotsDiscarded,
     compareReportOpenPath: compareReportRel ? `/repo-report/${compareReportRel}` : '',
     customerReportOpenPath: customerReportRel ? `/repo-report/${customerReportRel}` : '',
     uiAuditReportOpenPath: uiAuditReportRel ? `/repo-report/${UI_AUDIT_REPORT_REL.split(path.sep).join('/')}` : '',

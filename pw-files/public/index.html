@@ -1466,7 +1466,7 @@
               </div>
               <div >
                 <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">指定单号（可选，覆盖 pickFirstDocNo）</label>
-                <input type="text" class="url-input" id="requestDocNo" spellcheck="false" placeholder="留空则用列表首行"
+                <input type="text" class="url-input" id="requestDocNo" spellcheck="false" placeholder="UAT 无列表数据时必填；或配 golden-seeds.json"
                   style="width:100%;color:var(--text)">
               </div>
               <div>
@@ -2343,32 +2343,34 @@ function formatFailureSummaryText(bundle) {
     bundle.kind === 'intent' || bundle.kind === 'nl-run'
       ? '【Intent 执行失败摘要】'
       : bundle.kind === 'request-flow'
-        ? '【申请单流程执行失败摘要】'
+        ? (bundle.summary.incomplete ? '【申请单流程未完成摘要】' : '【申请单流程执行失败摘要】')
       : bundle.kind === 'approval-flow'
-        ? '【审批流程执行失败摘要】'
+        ? (bundle.summary.incomplete ? '【审批流程未完成摘要】' : '【审批流程执行失败摘要】')
         : '【Playwright 执行失败摘要】';
+  const skipHint = s.skipped > 0 ? `, ${s.skipped} 跳过` : '';
   const lines = [
     head,
     `用例: ${bundle.specRelative || '（批量）'}`,
     `环境: ${bundle.playwrightEnv} | project: ${(bundle.projects || []).join(', ') || '—'}`,
-    `结果: ${s.passed}/${s.total} 通过, ${s.failed} 失败, 耗时 ${s.duration}s, exit ${s.exitCode}`,
+    `结果: ${s.passed}/${s.total} 通过${skipHint}, ${s.failed} 失败, 耗时 ${s.duration}s, exit ${s.exitCode}`,
   ];
   if (bundle.batchLabel) lines.push(`批次: ${bundle.batchLabel}`);
   const f0 = bundle.failures[0];
   if (f0) {
     lines.push(`---`);
-    lines.push(`失败: ${f0.title || '—'}`);
+    lines.push(`${f0.status === 'skipped' ? '跳过' : '失败'}: ${f0.title || '—'}`);
     if (f0.location) lines.push(`位置: ${f0.location}`);
     if (f0.lastStep) lines.push(`卡住步骤: ${f0.lastStep}`);
     if (f0.message) lines.push(trimMessage(f0.message, 6));
     if (f0.hint) lines.push(`提示: ${f0.hint}`);
   }
-  if (bundle.failures.length > 1) lines.push(`（另有 ${bundle.failures.length - 1} 条失败，请用「复制完整排查包」）`);
+  if (bundle.failures.length > 1) lines.push(`（另有 ${bundle.failures.length - 1} 条记录，请用「复制完整排查包」）`);
   return lines.join('\n');
 }
 
 function formatFailureItemMarkdown(item, index) {
-  const lines = [`### 失败 ${index + 1}: ${item.title || '—'}`];
+  const label = item.status === 'skipped' ? '跳过' : '失败';
+  const lines = [`### ${label} ${index + 1}: ${item.title || '—'}`];
   if (item.location) lines.push(`- 位置: \`${item.location}\``);
   if (item.status) lines.push(`- 状态: ${item.status}`);
   if (item.lastStep) lines.push(`- 卡住步骤: ${item.lastStep}`);
@@ -2382,15 +2384,16 @@ function formatFailureItemMarkdown(item, index) {
 function formatFailureFullMarkdown(bundle) {
   if (!bundle) return '';
   const s = bundle.summary;
+  const skipHint = s.skipped > 0 ? `, ${s.skipped} 跳过` : '';
   const lines = [
-    `## Playwright 执行失败排查包`,
+    bundle.summary.incomplete ? `## Playwright 执行未完成排查包` : `## Playwright 执行失败排查包`,
     ``,
     `- 时间: ${bundle.generatedAt}`,
     `- 用例: \`${bundle.specRelative || '（见下方分节）'}\``,
     `- 环境: ${bundle.playwrightEnv}`,
     `- Project: ${(bundle.projects || []).join(', ') || '—'}`,
     `- 模式: ${bundle.runMode || '—'}`,
-    `- 结果: ${s.passed}/${s.total} 通过, **${s.failed} 失败**, 耗时 ${s.duration}s, exit ${s.exitCode}`,
+    `- 结果: ${s.passed}/${s.total} 通过${skipHint}, **${s.failed} 失败**, 耗时 ${s.duration}s, exit ${s.exitCode}`,
   ];
   if (bundle.batchLabel) lines.push(`- 批次说明: ${bundle.batchLabel}`);
   lines.push(
@@ -2619,14 +2622,15 @@ function renderFailureDiagnosticsPanel(bundle) {
         : bundle.kind === 'intent' || bundle.kind === 'nl-run'
           ? 'Intent 执行失败'
           : bundle.kind === 'request-flow'
-            ? '申请单流程执行失败'
+            ? (s.incomplete ? '申请单流程未完成' : '申请单流程执行失败')
           : bundle.kind === 'approval-flow'
-            ? '审批流程执行失败'
+            ? (s.incomplete ? '审批流程未完成' : '审批流程执行失败')
             : '执行失败';
   }
+  const skipHint = s.skipped > 0 ? `，${s.skipped} 跳过` : '';
   summary.textContent = bundle.kind === 'batch'
     ? `共 ${failCount} 条失败明细；${s.failed} 个用例未通过。可点击下方按钮复制，或在批量表中逐条复制。`
-    : `${s.passed}/${s.total} 通过，${s.failed} 失败，耗时 ${s.duration}s。共 ${failCount} 条失败记录。`;
+    : `${s.passed}/${s.total} 通过${skipHint}，${s.failed} 失败，耗时 ${s.duration}s。共 ${failCount} 条记录，可复制排查包。`;
 
   const items = bundle.sections?.length
     ? bundle.sections.flatMap((sec) =>
@@ -2877,10 +2881,23 @@ function handleRunFailureFromMsg(msg) {
   renderFailureDiagnosticsPanel(bundle);
 }
 
+function flowSkipsToFailureItems(skips) {
+  return (skips || []).map((s) => ({
+    title: s.title || '已跳过',
+    message: s.reason || '已跳过（未记录原因）',
+    status: 'skipped',
+  }));
+}
+
 function buildRequestFlowFailureBundle(msg) {
   const specRel = msg.specRelative || (msg.spec ? `request-flow/tests/${msg.spec}` : '');
   const pwFailures = msg.failures || [];
   const apiFailures = flowApiFailuresToItems(msg.apiFailures);
+  const skipItems = flowSkipsToFailureItems(msg.skips);
+  let failures = pwFailures.length ? [...pwFailures] : [...apiFailures];
+  if (!failures.length) failures = skipItems;
+  else if (skipItems.length) failures = failures.concat(skipItems);
+  const skipped = Number(msg.skipped) || skipItems.length || 0;
   return buildFailureBundle({
     kind: 'request-flow',
     specRelative: specRel,
@@ -2889,12 +2906,15 @@ function buildRequestFlowFailureBundle(msg) {
     summary: {
       passed: msg.passed ?? (msg.ok ? 1 : 0),
       failed: msg.failed ?? (msg.ok ? 0 : 1),
+      skipped,
       total: msg.total ?? 1,
       duration: msg.duration ?? '',
       exitCode: msg.exitCode ?? (msg.ok ? 0 : 1),
+      incomplete: !msg.ok && Number(msg.exitCode) === 0 && skipped > 0 && !(msg.failed > 0),
     },
-    failures: pwFailures.length ? pwFailures : apiFailures,
+    failures,
     playwrightReportDir: msg.playwrightReportDir || 'request-flow/playwright-report',
+    replayRel: msg.replayReportOpenPath || msg.replayReportRel || '',
   });
 }
 
@@ -2927,12 +2947,17 @@ function handleRequestFlowFailureFromMsg(msg) {
   if (!bundle.failures?.length && apiN > 0) {
     bundle.failures = flowApiFailuresToItems(msg.apiFailures);
   }
-  if (!bundle.failures?.length && msg.exitCode == null && apiN === 0) return;
+  if (!bundle.failures?.length) return;
   renderFailureDiagnosticsPanel(bundle);
 }
 
 function buildApprovalFlowFailureBundle(msg) {
   const specRel = msg.specRelative || (msg.spec ? `approval-flow/tests/${msg.spec}` : '');
+  const pwFailures = msg.failures || [];
+  const skipItems = flowSkipsToFailureItems(msg.skips);
+  let failures = pwFailures.length ? [...pwFailures] : skipItems;
+  if (pwFailures.length && skipItems.length) failures = pwFailures.concat(skipItems);
+  const skipped = Number(msg.skipped) || skipItems.length || 0;
   return buildFailureBundle({
     kind: 'approval-flow',
     specRelative: specRel,
@@ -2941,12 +2966,15 @@ function buildApprovalFlowFailureBundle(msg) {
     summary: {
       passed: msg.passed ?? (msg.ok ? 1 : 0),
       failed: msg.failed ?? (msg.ok ? 0 : 1),
+      skipped,
       total: msg.total ?? 1,
       duration: msg.duration ?? '',
       exitCode: msg.exitCode ?? (msg.ok ? 0 : 1),
+      incomplete: !msg.ok && Number(msg.exitCode) === 0 && skipped > 0 && !(msg.failed > 0),
     },
-    failures: msg.failures || [],
+    failures,
     playwrightReportDir: msg.playwrightReportDir || 'approval-flow/playwright-report',
+    replayRel: msg.replayReportOpenPath || msg.replayReportRel || '',
   });
 }
 
@@ -3736,6 +3764,7 @@ function setPlaywrightEnv(envId, opts = {}) {
   }
   if (entry?.baseURL) applyEnvToTargetUrl(entry.baseURL, prev);
   renderEnvChips();
+  loadRequestDocNoFromStorage();
   if (opts.syncServer !== false && ws && ws.readyState === 1) {
     send('env:set', { env: envId });
   }
@@ -6347,9 +6376,13 @@ function handleMessage(msg) {
         if (msg.startedAt) {
           log('info', `[request-flow] 运行 ${msg.startedAt} → ${msg.finishedAt || '?'}`);
         }
+        if (msg.skipped > 0) {
+          log('warn', `[request-flow] ${msg.skipped} 个用例已跳过，见运行汇总`);
+        }
       }
       if (msg.ok) {
         const extras = [];
+        if (msg.skipped > 0) extras.push(`跳过 ${msg.skipped}`);
         if (msg.pipeline === 'golden' && msg.baselinePromoted) extras.push('已 seed Golden 基线');
         if (hasFlowReplayPath(msg)) extras.push('回放已生成');
         if (msg.pipeline === 'probe' && msg.uiAuditReportOpenPath) extras.push('UI 审计报告已生成');
@@ -6360,8 +6393,22 @@ function handleMessage(msg) {
         log('ok', `[request-flow] 用例通过 · mode=${msg.mode || ''}${msg.pipeline ? ` · pipeline=${msg.pipeline}` : ''}`);
       } else if (!msg.cancelled) {
         const apiHint = msg.apiFailureCount > 0 ? `，${msg.apiFailureCount} 个接口报错` : '';
-        showToast(`申请单流程用例失败（退出码 ${msg.exitCode ?? '?' }${apiHint}）`, 'err');
-        log('err', `[request-flow] 用例失败 · exit=${msg.exitCode ?? '?'}${apiHint}`);
+        const passN = Number(msg.passed) || 0;
+        const totalN = Number(msg.total) || 0;
+        const skipN = Number(msg.skipped) || 0;
+        const incomplete = msg.exitCode === 0 && skipN > 0 && passN < (totalN || passN + skipN + 1);
+        const failLabel = incomplete
+          ? `未完成 ${passN}/${totalN || passN + skipN}（${skipN} 跳过）`
+          : `失败（退出码 ${msg.exitCode ?? '?'}${apiHint}）`;
+        showToast(`申请单流程用例${failLabel}`, incomplete ? 'warn' : 'err');
+        if (incomplete) {
+          log('warn', `[request-flow] 用例未完成 · ${passN}/${totalN || passN + skipN}（${skipN} 跳过）`);
+          if (/无可用单号/.test((msg.skips || []).map((s) => s.reason).join(' '))) {
+            log('warn', '[request-flow] 提示：在「指定单号」填写 UAT 单号，或配置 request-flow/datasource/golden-seeds.json');
+          }
+        } else {
+          log('err', `[request-flow] 用例失败 · exit=${msg.exitCode ?? '?'}${apiHint}`);
+        }
         if (msg.apiFailures?.length) {
           for (const entry of msg.apiFailures) {
             for (const f of entry.failures || []) {
@@ -6423,9 +6470,16 @@ function handleMessage(msg) {
         if (msg.startedAt) {
           log('info', `[approval-flow] 运行 ${msg.startedAt} → ${msg.finishedAt || '?'}`);
         }
+        if (msg.skipped > 0) {
+          log('warn', `[approval-flow] ${msg.skipped} 个用例已跳过，见运行汇总`);
+          for (const s of msg.skips || []) {
+            log('warn', `[approval-flow] 跳过 · ${s.title} — ${s.reason}`);
+          }
+        }
       }
       if (msg.ok) {
-        showToast('审批流程用例通过', 'ok');
+        const skipNote = msg.skipped > 0 ? `（跳过 ${msg.skipped}）` : '';
+        showToast(`审批流程用例通过${skipNote}`, 'ok');
         log('ok', `[approval-flow] 用例通过 · mode=${msg.mode || ''}`);
       } else if (!msg.cancelled) {
         showToast(`审批流程用例失败（退出码 ${msg.exitCode ?? '?' }）`, 'err');
@@ -7395,6 +7449,8 @@ function renderRequestFlowProfileStorage(list) {
       const firstReady = goldenItems.find((p) => p.hasStorage);
       if (firstReady) roleSel.value = firstReady.id;
     }
+    roleSel.onchange = () => loadRequestDocNoFromStorage();
+    loadRequestDocNoFromStorage();
   }
   const writeSel = document.getElementById('requestWriteRoleSelect');
   if (writeSel) {
@@ -7726,6 +7782,38 @@ function switchToRequestFlowTab() {
 }
 
 const SS_REQUEST_FLOW_SUB_TAB = 'pw_studio_request_flow_sub_tab';
+const SS_REQUEST_DOC_NO = 'pw_studio_request_doc_no';
+
+function requestDocNoStorageKey() {
+  const env = envState.current || 'dev';
+  const p = getSelectedGoldenProfile();
+  const slug = p?.roleSlug || p?.id || '';
+  return `${SS_REQUEST_DOC_NO}:${env}:${slug}`;
+}
+
+function loadRequestDocNoFromStorage() {
+  const el = document.getElementById('requestDocNo');
+  if (!el) return;
+  try {
+    const saved = localStorage.getItem(requestDocNoStorageKey());
+    if (saved != null) el.value = saved;
+  } catch {
+    /* ignore */
+  }
+}
+
+function saveRequestDocNoToStorage() {
+  const el = document.getElementById('requestDocNo');
+  if (!el) return;
+  try {
+    const key = requestDocNoStorageKey();
+    const v = el.value.trim();
+    if (v) localStorage.setItem(key, v);
+    else localStorage.removeItem(key);
+  } catch {
+    /* ignore */
+  }
+}
 
 function setRequestFlowSubTab(mode, el) {
   const next = mode === 'probe' ? 'probe' : 'golden';
@@ -7801,6 +7889,7 @@ function runSelectedRequestFlow(mode, opts = {}) {
   const writeEnabled = opts.writeEnabled != null ? opts.writeEnabled : Boolean(document.getElementById('requestWriteEnabled')?.checked);
   switchToRequestFlowSubTab(writeEnabled ? 'probe' : 'golden');
   const docNo = opts.docNo != null ? opts.docNo : (document.getElementById('requestDocNo')?.value?.trim() || '');
+  saveRequestDocNoToStorage();
   const formName = opts.formName != null ? opts.formName : (document.getElementById('requestFormName')?.value?.trim() || '');
   const filterKeyword = opts.filterKeyword != null ? opts.filterKeyword : (document.getElementById('requestFilterKeyword')?.value?.trim() || '');
   const spec = document.getElementById('requestFlowSpec')?.value?.trim() || 'request/full-flow.spec.ts';
@@ -7873,9 +7962,11 @@ function runRequestFlowGoldenAll() {
   const filterEl = document.getElementById('requestFilterKeyword');
   if (filterEl && !filterEl.value.trim()) filterEl.value = '测试';
   setRequestFlowBusy(true);
+  const docNoEl = document.getElementById('requestDocNo');
   if (!send('request-flow:run', {
     goldenAll: true,
     env: envState.current,
+    docNo: docNoEl?.value?.trim() || '',
     filterKeyword: filterEl?.value?.trim() || '测试',
   })) {
     setRequestFlowBusy(false);

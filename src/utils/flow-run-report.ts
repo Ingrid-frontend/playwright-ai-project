@@ -33,6 +33,10 @@ export type FlowRunManifest = {
   videoReportRel?: string;
   traceMode?: string;
   failures?: Array<{ title?: string; message?: string }>;
+  skipped?: number;
+  skips?: Array<{ title?: string; reason?: string }>;
+  /** 通过数≠总数时丢弃本次截图，仅保留回放 */
+  screenshotsDiscarded?: boolean;
 };
 
 export type ApiFailureLogEntry = {

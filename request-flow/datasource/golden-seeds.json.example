@@ -1,0 +1,14 @@
+{
+  "uat": {
+    "199702_comic_com": {
+      "requestDocNo": "EAxxxxxxxxxxxxxxxx",
+      "requestFilterKeyword": "测试"
+    }
+  },
+  "dev": {
+    "menma_comic_com": {
+      "requestDocNo": "",
+      "requestFilterKeyword": "测试"
+    }
+  }
+}

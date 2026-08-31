@@ -2,8 +2,8 @@ import { test } from '../../fixtures';
 import { RequestListPage } from '../../pages/request-list.page';
 import { RequestEditPage } from '../../pages/request-edit.page';
 import { env } from '../../utils/env';
+import { resolveGoldenSeed } from '../../utils/golden-seed';
 import { bindFlowStepCapture, flowStep } from '../../../src/utils/flow-step';
-import { FILTER_LABELS } from '../../utils/request-catalog';
 
 /**
  * Golden 固定回归（只读 + 固定筛选项）：
@@ -13,41 +13,76 @@ import { FILTER_LABELS } from '../../utils/request-catalog';
  */
 test.describe.configure({ mode: 'serial' });
 
-async function resolveGoldenFilterKeyword(list: RequestListPage): Promise<string> {
-  await list.ensureOnList();
-  if (!(await list.recoverIfEmptyList())) {
-    test.skip(true, '列表无数据，跳过筛选 Golden');
+const goldenCtx = { docNo: '', keyword: '' };
+const keepFilters = { keepListFilters: true } as const;
+
+async function trySeedGoldenContext(list: RequestListPage) {
+  if (!goldenCtx.docNo) goldenCtx.docNo = env.requestDocNo.trim();
+  if (!goldenCtx.docNo) {
+    const seed = resolveGoldenSeed(
+      process.env.PLAYWRIGHT_ENV || 'dev',
+      process.env.FLOW_ACCOUNT_SLUG || '',
+    );
+    goldenCtx.docNo = seed.docNo;
+    if (!goldenCtx.keyword && seed.keyword) goldenCtx.keyword = seed.keyword;
   }
-  const configured = env.requestFilterKeyword.trim();
-  if (configured && (await list.reasonKeywordExists(configured))) {
-    return configured;
+  if (!goldenCtx.keyword) goldenCtx.keyword = env.requestFilterKeyword.trim();
+
+  if (!(await list.hasDataRows())) {
+    await list.recoverIfEmptyList();
   }
-  let reason = '';
-  try {
-    reason = await list.pickFirstRowCell(FILTER_LABELS.reason);
-  } catch {
-    test.skip(true, '列表首行事由为空，跳过筛选 Golden');
+  if (!(await list.hasDataRows())) {
+    if (!goldenCtx.docNo) {
+      goldenCtx.docNo = await list.readDocNoFromListApi({ refresh: true });
+    }
+    if (goldenCtx.docNo) {
+      if (!goldenCtx.keyword) {
+        goldenCtx.keyword = goldenCtx.docNo.slice(0, Math.min(8, goldenCtx.docNo.length));
+      }
+      return;
+    }
+    return;
   }
-  if (!reason || reason === '-') {
-    test.skip(true, '列表首行事由为空，跳过筛选 Golden');
+
+  if (!goldenCtx.docNo) {
+    try {
+      goldenCtx.docNo = await list.readFirstDocNo();
+    } catch {
+      return;
+    }
   }
-  const fallback = reason.slice(0, Math.min(8, reason.length));
-  if (configured && fallback !== configured) {
-    test.info().annotations.push({
-      type: 'golden-filter-fallback',
-      description: `REQUEST_FILTER_KEYWORD「${configured}」无匹配事由，改用首行「${fallback}」`,
-    });
+
+  if (!goldenCtx.keyword) {
+    try {
+      goldenCtx.keyword = await list.readFirstReasonKeyword();
+    } catch {
+      goldenCtx.keyword = goldenCtx.docNo.slice(0, Math.min(8, goldenCtx.docNo.length));
+    }
+  } else if (!(await list.reasonKeywordExists(goldenCtx.keyword))) {
+    try {
+      goldenCtx.keyword = await list.readFirstReasonKeyword();
+      test.info().annotations.push({
+        type: 'golden-filter-fallback',
+        description: `REQUEST_FILTER_KEYWORD「${env.requestFilterKeyword}」无匹配事由，改用首行「${goldenCtx.keyword}」`,
+      });
+    } catch {
+      goldenCtx.keyword = goldenCtx.docNo.slice(0, Math.min(8, goldenCtx.docNo.length));
+    }
   }
-  return fallback;
 }
 
-async function resolveGoldenDocNo(list: RequestListPage): Promise<string> {
-  if (env.requestDocNo) return env.requestDocNo;
+async function ensureGoldenList(list: RequestListPage) {
   await list.ensureOnList();
-  if (!(await list.recoverIfEmptyList())) {
-    test.skip(true, '列表无数据且未设置 REQUEST_DOC_NO，跳过搜索/详情 Golden 步骤');
+  if (!goldenCtx.docNo) {
+    await trySeedGoldenContext(list);
   }
-  return list.pickFirstDocNo();
+  if (!goldenCtx.docNo) {
+    test.skip(true, '列表无可用单号，跳过后续 Golden 步骤（Studio「指定单号」/ accounts.json requestDocNo / golden-seeds.json）');
+  }
+  if (await list.hasDataRows()) return;
+  if (!(await list.recoverIfEmptyList())) {
+    throw new Error('Golden 步骤前列表无数据');
+  }
 }
 
 test.describe('申请单 · Golden 回归', () => {
@@ -63,6 +98,7 @@ test.describe('申请单 · Golden 回归', () => {
       await list.goto();
       await list.expectLoaded();
       await list.recoverIfEmptyList();
+      await trySeedGoldenContext(list);
     }, { snapshot: 'request-list' });
   });
 
@@ -70,35 +106,36 @@ test.describe('申请单 · Golden 回归', () => {
     bindFlowStepCapture({ page, runDir: flowRunDir });
     const list = new RequestListPage(page);
     await flowStep('准备列表', async () => {
-      await list.ensureOnList();
+      await ensureGoldenList(list);
     }, { capture: false });
-    const docNo = await resolveGoldenDocNo(list);
+    const docNo = goldenCtx.docNo;
     await flowStep('按单号搜索', async () => {
-      await list.search(docNo);
+      await list.search(docNo, keepFilters);
       await list.expectRowContains(docNo);
+      await list.restoreDefaultList();
     }, { snapshot: 'request-search' });
   });
 
   test('展开筛选并按固定关键字筛选', async ({ page, flowRunDir }) => {
-    bindFlowStepCapture({ page, runDir: flowRunDir });
+    bindFlowStepCapture({ page, flowRunDir });
     const list = new RequestListPage(page);
-    await list.ensureOnList();
-    const keyword = await resolveGoldenFilterKeyword(list);
+    await ensureGoldenList(list);
+    const keyword = goldenCtx.keyword || goldenCtx.docNo.slice(0, 8);
     await flowStep('按事由筛选', async () => {
-      await list.filterByReason(keyword);
+      await list.filterByReason(keyword, keepFilters);
       await list.expectReasonFilterResult(keyword);
-      await list.resetFilters();
+      await list.restoreDefaultList();
       await list.expectListReady();
     }, { snapshot: 'request-filter' });
   });
 
   test('用现场单号搜索并打开详情', async ({ page, flowRunDir }) => {
-    bindFlowStepCapture({ page, runDir: flowRunDir });
+    bindFlowStepCapture({ page, flowRunDir });
     const list = new RequestListPage(page);
-    await list.ensureOnList();
-    const docNo = await resolveGoldenDocNo(list);
+    await ensureGoldenList(list);
+    const docNo = goldenCtx.docNo;
     await flowStep('搜索并打开详情', async () => {
-      await list.search(docNo);
+      await list.search(docNo, keepFilters);
       await list.openByCode(docNo);
       const edit = new RequestEditPage(page);
       await edit.expectEditVisible();

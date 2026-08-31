@@ -628,6 +628,20 @@ function resolveAccountCredentials(repoRoot, envId, profileId) {
   return null;
 }
 
+function resolveProfileFlowDefaults(repoRoot, envId, profileId) {
+  const cfg = getEnvAccountConfig(repoRoot, envId);
+  const literal = String(profileId || '').trim();
+  const prof = literal && cfg?.profiles?.[literal]
+    ? literal
+    : resolveAccountProfile(repoRoot, envId, profileId);
+  const acc = cfg?.profiles?.[prof];
+  if (!acc) return {};
+  return {
+    requestDocNo: String(acc.requestDocNo || acc.request_doc_no || '').trim(),
+    requestFilterKeyword: String(acc.requestFilterKeyword || acc.request_filter_keyword || '').trim(),
+  };
+}
+
 module.exports = {
   getEnvAccountConfig,
   getBaseEnvConfig,
@@ -635,6 +649,7 @@ module.exports = {
   resolveStorageStateRel,
   resolveStorageStateRelDirect,
   resolveAccountCredentials,
+  resolveProfileFlowDefaults,
   listProfilesStorageStatus,
   listGoldenProfileIds,
   resolveFlowRoleSlug,

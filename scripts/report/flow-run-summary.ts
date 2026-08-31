@@ -57,6 +57,32 @@ function reportHref(rel?: string): string {
   return `/repo-report/${rel.replace(/^\/+/, '')}`;
 }
 
+function fmtPassTotal(run: FlowRunManifest): string {
+  const passed = run.passed ?? 0;
+  const total = run.total ?? 0;
+  const skipped = run.skipped ?? 0;
+  if (!skipped) return `${passed}/${total}`;
+  return `${passed}/${total}（跳过 ${skipped}）`;
+}
+
+function buildSkipSections(runs: Array<{ id: FlowId; run: FlowRunManifest }>): string {
+  return runs
+    .map(({ id, run }) => {
+      const items = run.skips || [];
+      if (!items.length) return '';
+      const rows = items
+        .map(
+          (s) =>
+            `<tr><td>${esc(s.title || '未命名用例')}</td><td>${esc(s.reason || '已跳过（未记录原因）')}</td></tr>`,
+        )
+        .join('');
+      return `<h2>${esc(flowLabel(id))} · 跳过用例</h2>
+<table><thead><tr><th>用例</th><th>原因</th></tr></thead><tbody>${rows}</tbody></table>`;
+    })
+    .filter(Boolean)
+    .join('\n');
+}
+
 function buildHtml(generatedAt: string): string {
   const lastRuns = FLOW_IDS.map((id) => ({ id, run: readLastRun(id) }));
   const historyEntries = FLOW_IDS.flatMap((id) => loadHistory(id, 50).map((run) => ({ id, run })))
@@ -69,7 +95,21 @@ function buildHtml(generatedAt: string): string {
         return `<div class="card"><h3>${esc(flowLabel(id))}</h3><p class="muted">暂无运行记录</p></div>`;
       }
       const apiN = apiFailureCount(id, run.runId);
-      const status = run.ok === true ? 'ok' : run.ok === false ? 'fail' : 'unk';
+      const passN = Number(run.passed) || 0;
+      const totalN = Number(run.total) || 0;
+      const skipN = Number(run.skipped) || 0;
+      const status =
+        run.ok === false ? 'fail' : passN === totalN && totalN > 0 ? 'ok' : totalN > 0 ? 'fail' : 'unk';
+      const resultLabel =
+        run.ok === false
+          ? '失败'
+          : passN === totalN && totalN > 0
+            ? '通过'
+            : skipN === totalN && totalN > 0
+              ? '全部跳过'
+              : totalN > 0
+                ? '未完成'
+                : '未知';
       const links = [
         run.playwrightReportRel ? `<a href="${esc(reportHref(run.playwrightReportRel))}" target="_blank">Playwright 报告</a>` : '',
         run.replayReportRel ? `<a href="${esc(reportHref(run.replayReportRel))}" target="_blank">步骤回放</a>` : '',
@@ -84,7 +124,8 @@ function buildHtml(generatedAt: string): string {
 <li>开始：${esc(fmtTime(run.startedAt))}</li>
 <li>结束：${esc(fmtTime(run.finishedAt))}</li>
 <li>环境：${esc(run.env)} · ${esc(run.spec)}</li>
-<li>结果：${run.ok ? '通过' : run.ok === false ? '失败' : '未知'}（${run.passed ?? 0}/${run.total ?? 0}，${run.durationSec ?? '-'}s）</li>
+<li>结果：${esc(resultLabel)}（${esc(fmtPassTotal(run))}，${run.durationSec ?? '-'}s）</li>
+<li>跳过：${skipN} 条</li>
 <li>接口报错：${apiN} 条</li>
 <li>Trace：${esc(run.traceMode || 'on-first-retry')}</li>
 </ul>
@@ -103,7 +144,8 @@ ${links ? `<p class="links">${links}</p>` : ''}
 <td>${esc(fmtTime(r.finishedAt))}</td>
 <td>${esc(r.env)}</td>
 <td>${r.ok ? '通过' : r.ok === false ? '失败' : '-'}</td>
-<td>${r.passed ?? '-'}/${r.total ?? '-'}</td>
+<td>${esc(fmtPassTotal(r))}</td>
+<td>${(r.skipped ?? 0) || '-'}</td>
 <td>${apiN || '-'}</td>
 <td>${esc(r.spec)}</td>
 </tr>`;
@@ -128,6 +170,8 @@ ${links ? `<p class="links">${links}</p>` : ''}
     })
     .filter(Boolean)
     .join('\n');
+
+  const skipSections = buildSkipSections(lastRuns.filter((x) => x.run) as Array<{ id: FlowId; run: FlowRunManifest }>);
 
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -162,9 +206,10 @@ h2{font-size:16px;margin:24px 0 10px}
 <div class="cards">${cards}</div>
 <h2>运行历史</h2>
 <table>
-<thead><tr><th>流程</th><th>开始</th><th>结束</th><th>环境</th><th>结果</th><th>通过/总数</th><th>接口报错</th><th>用例</th></tr></thead>
-<tbody>${historyRows || '<tr><td colspan="8">暂无历史</td></tr>'}</tbody>
+<thead><tr><th>流程</th><th>开始</th><th>结束</th><th>环境</th><th>结果</th><th>通过/总数</th><th>跳过</th><th>接口报错</th><th>用例</th></tr></thead>
+<tbody>${historyRows || '<tr><td colspan="9">暂无历史</td></tr>'}</tbody>
 </table>
+${skipSections || ''}
 ${apiSections || '<p class="muted">最近一次运行无接口报错记录。</p>'}
 <p class="muted">回放/trace：默认 on-first-retry；设置 FLOW_TRACE=retain-on-failure 可保留失败 trace。</p>
 </body>
