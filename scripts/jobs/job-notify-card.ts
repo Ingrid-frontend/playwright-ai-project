@@ -60,8 +60,8 @@ export function buildResultMarkdown(summary: JobNotifySummary): string {
   }
 
   const customerSummary = readCustomerReportSummary();
-  if (customerSummary) {
-    lines.push('', '---', '**📋 客户版验收摘要**', formatCustomerSummaryMarkdown(customerSummary));
+  if (customerSummary && (customerSummary.regressSteps > 0 || customerSummary.minorSteps > 0)) {
+    lines.push('', '---', '**📋 客户版需关注**', formatCustomerSummaryMarkdown(customerSummary));
     const customerUrl = getCustomerReportUrl();
     if (customerUrl && !customerUrl.startsWith('file://')) {
       lines.push(`[打开客户版报告](${customerUrl})`);

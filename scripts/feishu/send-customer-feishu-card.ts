@@ -1,20 +1,29 @@
 #!/usr/bin/env tsx
 /**
- * 发送客户版 UI 验收摘要卡片（非工程师报告）。
- * 用法: npm run feishu:customer-card
- * 前置: npm run report:customer
+ * 客户版飞书通知（分场景）：
+ * - 周报：每周最多 1 次（--weekly 或 auto 在新周首次触发）
+ * - 提醒：出现需关注问题时推送（--alert 或 auto 检测到新问题）
+ * - 仅「检测覆盖不足」且无问题时：不推送
+ *
+ * 用法:
+ *   npm run feishu:customer-notify          # auto
+ *   npm run feishu:customer-weekly          # 强制周报（本周未发过才发）
+ *   npm run feishu:customer-alert           # 有问题才发提醒
+ *   npm run feishu:customer-card -- --force # 调试：跳过去重
  */
 import path from 'path';
 import dotenv from 'dotenv';
-import { canSendFeishuNotify, sendFeishuNotify } from './index.js';
-import {
-  customerCardHeader,
-  formatCustomerSummaryMarkdown,
-  getCustomerReportUrl,
-  readCustomerReportSummary,
-} from '../report/customer-report-summary.js';
+import { readCustomerReportSummary } from '../report/customer-report-summary.js';
+import { sendCustomerFeishuNotify } from '../report/customer-feishu-notify.js';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
+
+function parseMode(): 'auto' | 'weekly' | 'alert' {
+  const args = process.argv.slice(2);
+  if (args.includes('--weekly')) return 'weekly';
+  if (args.includes('--alert')) return 'alert';
+  return 'auto';
+}
 
 async function main(): Promise<void> {
   const summary = readCustomerReportSummary();
@@ -22,49 +31,20 @@ async function main(): Promise<void> {
     console.error('缺少 customer-report-summary.json，请先执行 npm run report:customer');
     process.exit(1);
   }
-  if (!canSendFeishuNotify()) {
-    console.error('未配置飞书通知：请设置 FEISHU_CHAT_ID + FEISHU_APP_ID/SECRET，或 FEISHU_WEBHOOK_URL');
+
+  const force = process.argv.includes('--force');
+  const mode = parseMode();
+  const result = await sendCustomerFeishuNotify(summary, { mode, force });
+
+  if (result.sent) {
+    console.log(`OK · ${result.kind}`);
+    return;
+  }
+
+  console.log(`跳过 · ${result.kind}${result.reason ? ` · ${result.reason}` : ''}`);
+  if (mode !== 'auto' && !force) {
     process.exit(1);
   }
-
-  const header = customerCardHeader(summary);
-  const elements: Array<Record<string, unknown>> = [
-    { tag: 'div', text: { tag: 'lark_md', content: formatCustomerSummaryMarkdown(summary) } },
-  ];
-
-  const reportUrl = getCustomerReportUrl();
-  if (reportUrl && !reportUrl.startsWith('file://')) {
-    elements.push({
-      tag: 'action',
-      actions: [
-        {
-          tag: 'button',
-          text: { tag: 'plain_text', content: '打开验收报告' },
-          type: 'primary',
-          url: reportUrl,
-        },
-      ],
-    });
-  }
-
-  elements.push({
-    tag: 'note',
-    elements: [{ tag: 'plain_text', content: '客户版 UI 验收摘要 · 与验收基线逐像素比对' }],
-  });
-
-  const ok = await sendFeishuNotify({
-    msg_type: 'interactive',
-    card: {
-      header: {
-        title: { tag: 'plain_text', content: header.title },
-        template: header.template,
-      },
-      elements,
-    },
-  });
-
-  if (!ok) process.exit(1);
-  console.log('OK');
 }
 
 main().catch((e) => {

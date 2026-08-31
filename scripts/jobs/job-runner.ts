@@ -297,6 +297,7 @@ export async function runDirect(opts: DirectRunOptions, ctx: JobRunContext): Pro
 
   if (opts.steps.compare && !skipCompare) {
     runCommandBool('npm run report:customer', '生成客户版验收报告');
+    runCommandBool('npm run feishu:customer-notify', '客户版飞书通知（周报/提醒）');
   }
 
   const createDoc = opts.alwaysCreateFeishuDoc || opts.steps.createFeishuDoc;
