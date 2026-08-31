@@ -49,12 +49,29 @@ for (const key of required) {
   else fail(`changeDetection.sections · ${key}`, '未配置');
 }
 
+const structPrefixes = uiCfg.gate?.structureScriptPrefixes;
+if (Array.isArray(structPrefixes) && structPrefixes.some((p) => String(p).includes('flows/request-flow/'))) {
+  pass('gate.structureScriptPrefixes · request-flow');
+} else {
+  fail('gate.structureScriptPrefixes', '未配置 request-flow 前缀');
+}
+
+const jobsCfg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'config/test-jobs.json'), 'utf8'));
+const goldenJob = (jobsCfg.jobs || []).find((j) => j.id === 'request-flow-golden');
+if (goldenJob?.steps?.compareGate === true && goldenJob?.steps?.compare === true) {
+  pass('test-jobs.json · request-flow-golden compareGate');
+} else {
+  fail('test-jobs.json · request-flow-golden compareGate', '未开启');
+}
+
 // 3) submit 轻量路径 + write job 配置
 const editSrc = fs.readFileSync(path.join(repoRoot, 'request-flow/pages/request-edit.page.ts'), 'utf8');
-const jobsCfg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'config/test-jobs.json'), 'utf8'));
 const writeJob = (jobsCfg.jobs || []).find((j) => j.id === 'request-flow-write');
 if (writeJob?.runner === 'request-flow-write') pass('test-jobs.json · request-flow-write');
 else fail('test-jobs.json · request-flow-write', '未配置');
+
+if (writeJob?.steps?.feishuNotify === true) pass('test-jobs.json · request-flow-write feishuNotify');
+else fail('test-jobs.json · request-flow-write feishuNotify', '未开启');
 
 if (/ensureTravelReadyForSubmit/.test(editSrc) && /tripDatesReady\(root\)/.test(editSrc)) {
   pass('RequestEditPage.submit · save 后自动轻量 submit');

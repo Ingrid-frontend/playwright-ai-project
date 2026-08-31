@@ -34,6 +34,7 @@ import {
   writeUiIssuesReport,
   attachIssueReviews,
 } from './ui-issues-index.js';
+import { gateShouldFail } from './ui-issues.js';
 import { applyTriageToReport } from './issue-triage.js';
 import { isCompareCrossBrowserEnabled } from './compare-screenshots-engine.js';
 
@@ -55,6 +56,7 @@ function filterFlowTargets(targets: ReturnType<typeof discoverFlowScriptScanTarg
 
 async function main() {
   const args = process.argv.slice(2);
+  const gateMode = args.includes('--gate');
   const positional = args.filter((a) => !a.startsWith('--'));
   const outputPath = positional[0] || DEFAULT_OUT;
   const issuesOut = process.env.FLOW_UI_ISSUES_OUT || DEFAULT_ISSUES;
@@ -96,6 +98,21 @@ async function main() {
   const issuesReport = buildUiIssuesReport(uiIssues);
   await attachIssueReviews(issuesReport);
   applyTriageToReport(issuesReport);
+
+  for (const tdc of testDirComparisons) {
+    const metaPath = path.join('screenshots-baseline', tdc.testDir, 'run-chromium-optimized', '.baseline-meta.json');
+    if (!fs.existsSync(metaPath)) continue;
+    try {
+      const bm = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as { revision?: number };
+      if (typeof bm.revision === 'number') {
+        issuesReport.baselineRevision = bm.revision;
+        break;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
   writeUiIssuesReport(issuesReport, issuesOut);
 
   const allComparisons = testDirComparisons.flatMap((t) => t.comparisons);
@@ -126,7 +143,15 @@ async function main() {
   const counts = countComparisonSeverities(testDirComparisons);
   console.log(`\n✅ 流程对比报告: ${outputPath}`);
   console.log(`   对比项 ${counts.total} · blocker ${counts.blocker} · warning ${counts.warning}`);
+  if (typeof issuesReport.baselineRevision === 'number') {
+    console.log(`   基线 revision: ${issuesReport.baselineRevision}`);
+  }
   console.log(`   并行 ${COMPARE_CONCURRENCY} · 增量 ${COMPARE_INCREMENTAL ? '开' : '关'}`);
+
+  if (gateMode && gateShouldFail(issuesReport)) {
+    console.error(`\n❌ --gate：流程 UI 存在 blocker 级问题，退出码 1`);
+    process.exit(1);
+  }
 }
 
 main().catch((err) => {

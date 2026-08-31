@@ -1,0 +1,95 @@
+{
+  "capturedAt": "2026-08-28T09:23:25.863Z",
+  "viewport": {
+    "name": "desktop",
+    "width": 1280,
+    "height": 720,
+    "deviceScaleFactor": 1
+  },
+  "imageWidth": 1280,
+  "imageHeight": 720,
+  "layout": {
+    "horizontalOverflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280
+  },
+  "domHash": "SEC|7f266a77a10afa27",
+  "sections": [
+    {
+      "key": "request-list-root",
+      "structureHash": "7f266a77a10afa27",
+      "textHash": "adfdcd528fb6f3ea",
+      "nodeCount": 103,
+      "childTags": "DIV"
+    },
+    {
+      "key": "request-list-table",
+      "structureHash": "6607968d9765fa3e",
+      "textHash": "99d21dc4fc37b743",
+      "nodeCount": 202,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV"
+    }
+  ],
+  "selectors": {
+    "request-list-root": {
+      "exists": true,
+      "bbox": {
+        "x": 180,
+        "y": 100,
+        "width": 1420,
+        "height": 800
+      },
+      "domHash": "7f266a77a10afa27",
+      "structureHash": "7f266a77a10afa27",
+      "textHash": "adfdcd528fb6f3ea",
+      "resolvedBy": "selector",
+      "fingerprint": {
+        "tag": "DIV",
+        "stableAttributes": {},
+        "textHint": "创建日期\n: 2026-07-28 ~ 2026-08-28\n状态\n: 全部\n重",
+        "xpath": "/html[1]/body[1]/div[1]/div[1]/div[1]/main[1]/span[1]/div[1]",
+        "fallbackSelectors": [],
+        "baselineRect": {
+          "x": 180,
+          "y": 100,
+          "width": 1420,
+          "height": 800
+        },
+        "baselinePageWidth": 1600,
+        "baselinePageHeight": 900
+      }
+    },
+    "request-list-table": {
+      "exists": true,
+      "bbox": {
+        "x": 200,
+        "y": 204,
+        "width": 1380,
+        "height": 377
+      },
+      "domHash": "6607968d9765fa3e",
+      "structureHash": "6607968d9765fa3e",
+      "textHash": "99d21dc4fc37b743",
+      "resolvedBy": "selector",
+      "fingerprint": {
+        "tag": "DIV",
+        "stableAttributes": {},
+        "textHint": "序号\n\t\n创建日期\n\t\n申请人\n\t\n单据名称\n\t\n事由\n\t\n单号\n\t\n币种\n\t\n",
+        "xpath": "/html[1]/body[1]/div[1]/div[1]/div[1]/main[1]/span[1]/div[1]/div[1]/div[1]/div[1]/div[2]/div[1]/div[1]/div[1]/div[1]/div[1]",
+        "fallbackSelectors": [],
+        "baselineRect": {
+          "x": 200,
+          "y": 204,
+          "width": 1380,
+          "height": 377
+        },
+        "baselinePageWidth": 1600,
+        "baselinePageHeight": 900
+      }
+    }
+  },
+  "consoleErrors": [],
+  "pageErrors": [],
+  "snapshotName": "request-list",
+  "state": "normal"
+}

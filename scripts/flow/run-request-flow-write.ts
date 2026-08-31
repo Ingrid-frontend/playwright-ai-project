@@ -15,6 +15,7 @@ const {
   parsePlaywrightFailures,
   logConcisePlaywrightFailures,
 } = require("../../pw-files/lib/failure-report.js");
+const { cleanSpecScreenshots } = require("../../src/utils/clean-spec-screenshots.cjs");
 
 const FLOW_ID = "request-flow";
 const FLOW_LABEL = "申请单流程";
@@ -24,15 +25,17 @@ const DEFAULT_SPECS = ["request/travel-submit.spec.ts", "request/full-flow.spec.
 function parseArgs(argv: string[]) {
   let env = process.env.PLAYWRIGHT_ENV?.trim() || "dev";
   let profile = "";
+  let cleanRuns = false;
   const specs: string[] = [];
 
   for (const arg of argv) {
     if (arg.startsWith("--env=")) env = arg.slice(6).trim();
     else if (arg.startsWith("--profile=")) profile = arg.slice(10).trim();
     else if (arg.startsWith("--spec=")) specs.push(arg.slice(7).trim());
+    else if (arg === "--clean-runs") cleanRuns = true;
   }
 
-  return { env, profile, specs: specs.length ? specs : DEFAULT_SPECS };
+  return { env, profile, specs: specs.length ? specs : DEFAULT_SPECS, cleanRuns };
 }
 
 function resolveStorage(repoRoot: string, envId: string, profileId: string): string {
@@ -62,7 +65,7 @@ function main(): void {
     process.exit(1);
   }
 
-  const { env, profile, specs } = parseArgs(process.argv.slice(2));
+  const { env, profile, specs, cleanRuns } = parseArgs(process.argv.slice(2));
   const profileId = pickWriteProfile(repoRoot, env, profile || undefined);
   if (!profileId) {
     console.error(`[request-flow:write] 无已登录 write 档案（env=${env}）`);
@@ -108,6 +111,16 @@ function main(): void {
   console.log(
     `[request-flow:write] 角色 ${entry.roleLabel || profileId} (${profileId}) · env=${env} · ${specs.length} 个 spec`,
   );
+
+  if (cleanRuns) {
+    for (const spec of specs) {
+      const specRel = path.join(FLOW_ID, "tests", spec).replace(/\\/g, "/");
+      const r = cleanSpecScreenshots(repoRoot, specRel, { mode: "latest", cleanDiffs: true });
+      if (r.removed?.length) {
+        console.log(`[request-flow:write] 清理 ${specRel} · ${r.removed.length} 项`);
+      }
+    }
+  }
 
   const npx = process.platform === "win32" ? "npx.cmd" : "npx";
   const proc = spawnSync(

@@ -158,7 +158,7 @@ function runOne(
       if (hint) console.error(`[request-flow:golden] · ${hint.slice(0, 160)}`);
     }
   }
-  finalizeFlowRun(repoRoot, FLOW_ID, FLOW_LABEL, {
+  const finalized = finalizeFlowRun(repoRoot, FLOW_ID, FLOW_LABEL, {
     ok,
     exitCode,
     cancelled: false,
@@ -183,7 +183,7 @@ function runOne(
     roleSlug,
   });
 
-  return { ok, profileId, exitCode };
+  return { ok: Boolean(finalized.ok), profileId, exitCode: finalized.ok ? exitCode : exitCode || 1 };
 }
 
 function runNpmScript(script: string, extraArgs: string[] = []): void {

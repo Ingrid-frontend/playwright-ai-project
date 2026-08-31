@@ -1,9 +1,15 @@
 import { execSync } from "child_process";
+import fs from "fs";
 import path from "path";
 import type { JobSummaryFile } from "./job-lock.js";
-import { buildJobFailReasons } from "./job-notify.js";
+import {
+  buildJobFailReasons,
+  readUiIssuesSummaryCounts,
+  readUiIssuesSummaryLine,
+  sendJobFeishuNotification,
+} from "./job-notify.js";
 import { formatRunId, type AccountProfileFilter } from "./job-utils.js";
-import { resolveJobRunEnv, type ResolvedTestJob } from "./test-jobs-config.js";
+import { resolveJobRunEnv, type NotifyOn, type ResolvedTestJob } from "./test-jobs-config.js";
 import {
   clearLock,
   writeLock,
@@ -26,6 +32,29 @@ type FlowJobCtx = {
   accountProfile?: AccountProfileFilter;
 };
 
+const FLOW_ID = "request-flow";
+
+function shouldNotify(notifyOn: NotifyOn[], success: boolean): boolean {
+  if (success && notifyOn.includes("success")) return true;
+  if (!success && notifyOn.includes("failure")) return true;
+  return false;
+}
+
+function readLastFlowManifest(repoRoot: string) {
+  const p = path.join(repoRoot, "results/flow-runs", FLOW_ID, "last-run.json");
+  if (!fs.existsSync(p)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(p, "utf8")) as {
+      ok?: boolean;
+      compareReportRel?: string;
+      failed?: number;
+      passed?: number;
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function isFlowRunner(runner?: string | null, jobId?: string): boolean {
   return resolveFlowRunnerKey(runner, jobId) != null;
 }
@@ -43,6 +72,7 @@ function buildFlowScriptArgs(
     for (const spec of job.specs) {
       args.push(`--spec=${spec}`);
     }
+    args.push("--clean-runs");
   }
   return args;
 }
@@ -64,6 +94,7 @@ export async function runFlowJob(
     throw new Error(`未知 flow runner: ${job.runner || job.id}`);
   }
 
+  const repoRoot = process.cwd();
   const runId = ctxPartial.runId ?? formatRunId();
   const effectiveEnv = resolveJobRunEnv(job, ctxPartial.playwrightEnv);
   const profileRaw = ctxPartial.accountProfile && ctxPartial.accountProfile !== "all"
@@ -124,35 +155,69 @@ export async function runFlowJob(
       ? job.specs.map((s) => `request-flow/tests/${s}`)
       : ["request-flow/tests/request/golden-regression.spec.ts"];
 
+  const compareSkipped = !job.steps.compare || runnerKey !== "request-flow-golden";
+  let comparePassed = true;
+  if (!compareSkipped) {
+    const manifest = readLastFlowManifest(repoRoot);
+    const hasCompare = Boolean(manifest?.compareReportRel);
+    if (hasCompare && job.steps.compareGate) {
+      const ui = readUiIssuesSummaryCounts();
+      comparePassed = (ui?.blocker ?? 0) === 0;
+    } else if (hasCompare) {
+      comparePassed = true;
+    }
+  }
+
+  const flowAllOk = testPassed && (compareSkipped || comparePassed);
+  const uiIssues = readUiIssuesSummaryCounts();
+  const failReasons = buildJobFailReasons({
+    testPassed,
+    comparePassed,
+    compareSkipped,
+    aborted: false,
+    failCount: testPassed ? 0 : 1,
+    executedCount: 1,
+    compareGate: job.steps.compareGate,
+    feishuDocPassed: true,
+    feishuDocAttempted: false,
+    uiIssuesBlocker: uiIssues?.blocker,
+  });
+
   const summary: JobSummaryFile = {
     jobId: job.id,
     runId,
     trigger: ctx.trigger,
     testPassed,
-    comparePassed: true,
-    compareSkipped: true,
+    comparePassed,
+    compareSkipped,
     aborted: false,
     totalSpecs: specPaths.length,
     executedCount: 1,
-    successCount: testPassed ? 1 : 0,
-    failCount: testPassed ? 0 : 1,
+    successCount: flowAllOk ? 1 : 0,
+    failCount: flowAllOk ? 0 : 1,
     projects: job.projects,
     specPaths,
-    compareGate: false,
-    failReasons: buildJobFailReasons({
-      testPassed,
-      comparePassed: true,
-      compareSkipped: true,
-      aborted: false,
-      failCount: testPassed ? 0 : 1,
-      executedCount: 1,
-      compareGate: false,
-      feishuDocPassed: true,
-      feishuDocAttempted: false,
-    }),
+    compareGate: job.steps.compareGate,
+    uiIssuesBlocker: uiIssues?.blocker,
+    uiIssuesWarning: uiIssues?.warning,
+    failReasons,
   };
 
-  const flowAllOk = testPassed;
+  if (job.steps.feishuNotify && shouldNotify(job.notifyOn, flowAllOk)) {
+    await sendJobFeishuNotification(job.feishuMode, {
+      jobId: job.id,
+      jobDescription: job.description,
+      trigger: ctx.trigger,
+      testPassed,
+      comparePassed,
+      compareSkipped,
+      feishuDocAttempted: false,
+      feishuDocPassed: true,
+      aborted: false,
+      uiIssuesSummary: readUiIssuesSummaryLine(),
+    });
+  }
+
   if (persist && ctx.jobId) {
     writeSummary(ctx.jobId, runId, summary);
     writeStatus(ctx.jobId, runId, {
@@ -167,11 +232,13 @@ export async function runFlowJob(
     clearLock(ctx.jobId);
   }
 
+  console.log(`\n📊 任务结束：${flowAllOk ? "success" : "failed"}`);
+
   return {
-    exitCode,
+    exitCode: flowAllOk ? 0 : 1,
     testPassed,
-    comparePassed: true,
-    compareSkipped: true,
+    comparePassed,
+    compareSkipped,
     aborted: false,
     feishuDocPassed: true,
     summary,

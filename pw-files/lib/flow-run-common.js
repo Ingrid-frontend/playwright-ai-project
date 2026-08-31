@@ -199,10 +199,14 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
 
   videoReportRel = resolveFlowRunVideoRel(repoRoot, flowId, runId, payload.runId);
 
+  let compareGateFailed = false;
+
   if (!payload.cancelled) {
     hasShots = hasFlowScreenshots(repoRoot);
     if (hasShots && (pipeline === 'golden' || pipeline === 'default')) {
-      const cmp = runNpmScript(repoRoot, 'compare-flow-screenshots');
+      const cmpArgs = pipeline === 'golden' ? ['--gate'] : [];
+      const cmp = runNpmScript(repoRoot, 'compare-flow-screenshots', cmpArgs);
+      if (pipeline === 'golden' && hasShots && !cmp.ok) compareGateFailed = true;
       if (cmp.ok && fs.existsSync(path.join(repoRoot, FLOW_COMPARE_REL))) {
         compareReportRel = FLOW_COMPARE_REL;
       }
@@ -229,18 +233,6 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     }
   }
 
-  if (pipeline === 'golden' && payload.ok && !payload.cancelled) {
-    const scriptKey = flowScriptKey(flowId, payload.env, payload.spec, payload.roleSlug);
-    const promoted = tryPromoteFlowBaseline(repoRoot, scriptKey);
-    baselinePromoted = promoted.seeded;
-    if (hasShots) {
-      runNpmScript(repoRoot, 'prune-flow-golden-runs', [
-        `--script=${scriptKey}`,
-        `--run=${runId}`,
-      ]);
-    }
-  }
-
   if (pipeline === 'probe' && payload.runUiAudit && payload.ok && !payload.cancelled) {
     const audit = runFlowUiAudit(repoRoot, flowId, payload.uiAuditLimit || 24);
     if (audit.ok && fs.existsSync(path.join(repoRoot, UI_AUDIT_REPORT_REL))) {
@@ -251,6 +243,20 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
   const playwrightReportRel = payload.playwrightReportDir
     ? `${payload.playwrightReportDir}/index.html`
     : `${flowId}/playwright-report/index.html`;
+
+  const runOk = Boolean(payload.ok) && !compareGateFailed;
+
+  if (pipeline === 'golden' && runOk && !payload.cancelled) {
+    const scriptKey = flowScriptKey(flowId, payload.env, payload.spec, payload.roleSlug);
+    const promoted = tryPromoteFlowBaseline(repoRoot, scriptKey);
+    baselinePromoted = promoted.seeded;
+    if (hasShots) {
+      runNpmScript(repoRoot, 'prune-flow-golden-runs', [
+        `--script=${scriptKey}`,
+        `--run=${runId}`,
+      ]);
+    }
+  }
 
   const manifest = {
     runId,
@@ -263,7 +269,7 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     grep: payload.grep || '',
     mode: payload.mode || 'headless',
     pipeline,
-    ok: Boolean(payload.ok),
+    ok: runOk,
     exitCode: payload.exitCode,
     passed: payload.passed,
     failed: payload.failed,
@@ -294,6 +300,8 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
 
   return {
     ...payload,
+    ok: runOk,
+    compareGateFailed,
     pipeline,
     runId,
     startedAt,

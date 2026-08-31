@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import type { DiffRegion, ImageComparison } from './image-diff.js';
-import { loadUiRegressionConfig, resolveAiReviewConfig, resolveGateMode, scriptKeyHitsPixelGate } from './ui-regression-config.js';
+import { loadUiRegressionConfig, resolveAiReviewConfig, resolveGateMode, scriptKeyHitsPixelGate, scriptKeyHitsStructureGate } from './ui-regression-config.js';
 import { parseRunMetaFromScreenshotPath, parseSnapshotIdentity } from './compare-screenshots-utils.js';
 import type { PlainLanguageAnalysis } from './ui-issues-analysis.js';
 import type { UiIssueReview, ReviewSummary } from './ui-issue-review.js';
@@ -297,11 +297,15 @@ export function gateShouldFail(report: UiIssuesReport): boolean {
   const active = report.issues.filter((i) => i.triageStatus !== 'ignored');
 
   if (gateMode === 'style-only') {
-    const styleBlockers = active.filter(
+    const structureGateBlockers = active.filter(
       (i) =>
         i.severity === 'blocker' &&
-        (i.compareKind === 'style-drift' ||
-          (i.compareKind === 'structure' && i.structureType === 'missing-selector')),
+        i.compareKind === 'structure' &&
+        (i.structureType === 'missing-selector' || scriptKeyHitsStructureGate(i.scriptKey)),
+    );
+    if (structureGateBlockers.length > 0) return true;
+    const styleBlockers = active.filter(
+      (i) => i.severity === 'blocker' && i.compareKind === 'style-drift',
     );
     if (styleBlockers.length > 0) return true;
     // 纯像素 golden/last-green；带 structureType 的是结构告警挂在基线上，不算像素门禁

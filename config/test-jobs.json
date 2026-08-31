@@ -33,10 +33,10 @@
       "specs": "request/golden-regression.spec.ts",
       "steps": {
         "login": false,
-        "compare": false,
-        "compareGate": false,
+        "compare": true,
+        "compareGate": true,
         "recordLastGreen": false,
-        "feishuNotify": false,
+        "feishuNotify": true,
         "createFeishuDoc": false,
         "writeFeishuBitable": false
       },
@@ -57,11 +57,11 @@
         "compare": false,
         "compareGate": false,
         "recordLastGreen": false,
-        "feishuNotify": false,
+        "feishuNotify": true,
         "createFeishuDoc": false,
         "writeFeishuBitable": false
       },
-      "notifyOn": ["failure", "success"]
+      "notifyOn": ["failure"]
     }
   ]
 }

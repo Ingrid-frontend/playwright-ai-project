@@ -72,6 +72,8 @@ export interface GateConfig {
   mode: 'style-only' | 'pixel' | 'hybrid';
   /** scriptKey 以此前缀开头时，style-only 下 golden/last-green blocker 仍会使 --gate 失败 */
   pixelScriptPrefixes?: string[];
+  /** style-only 下 structure blocker（含 dom-drift）对匹配 scriptKey 生效 */
+  structureScriptPrefixes?: string[];
 }
 
 export interface ChangeDetectionSection {
@@ -495,6 +497,17 @@ export function scriptKeyHitsPixelGate(scriptKey: string | undefined): boolean {
   const key = String(scriptKey || '').replace(/\\/g, '/');
   if (!key) return false;
   return resolvePixelScriptPrefixes().some((prefix) => key === prefix || key.startsWith(prefix));
+}
+
+export function resolveStructureScriptPrefixes(): string[] {
+  const prefixes = loadUiRegressionConfig().gate?.structureScriptPrefixes;
+  return Array.isArray(prefixes) ? prefixes.filter((p) => typeof p === 'string' && p.trim()) : [];
+}
+
+export function scriptKeyHitsStructureGate(scriptKey: string | undefined): boolean {
+  const key = String(scriptKey || '').replace(/\\/g, '/');
+  if (!key) return false;
+  return resolveStructureScriptPrefixes().some((prefix) => key === prefix || key.startsWith(prefix));
 }
 
 export function resolveScreenshotFullPage(): boolean {

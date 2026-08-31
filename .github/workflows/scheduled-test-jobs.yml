@@ -1,13 +1,18 @@
 name: Scheduled Test Jobs
 
 on:
+  schedule:
+    - cron: '0 2 * * 1-5'
   workflow_dispatch:
     inputs:
       job_id:
         description: test-jobs.json 中的 job id
         required: false
         default: request-flow-golden
-        type: string
+        type: choice
+        options:
+          - request-flow-golden
+          - request-flow-write
       playwright_env:
         description: 覆盖 Job 的 playwrightEnv（留空则用 Job 配置）
         required: false
@@ -22,7 +27,7 @@ permissions:
 
 jobs:
   test-job:
-    timeout-minutes: 90
+    timeout-minutes: 120
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -50,7 +55,8 @@ jobs:
 
       - name: Run test job
         run: |
-          ARGS="run --id=${{ inputs.job_id || 'request-flow-golden' }} --trigger=schedule"
+          JOB_ID="${{ inputs.job_id || 'request-flow-golden' }}"
+          ARGS="run --id=${JOB_ID} --trigger=schedule"
           if [ -n "${{ inputs.playwright_env }}" ]; then
             ARGS="$ARGS --env=${{ inputs.playwright_env }}"
           fi
@@ -59,7 +65,6 @@ jobs:
           fi
           npm run test-job -- $ARGS
         env:
-          # PLAYWRIGHT_ENV 由 job-runner 按 config/test-jobs.json 中 job.playwrightEnv 设置
           TEST_USERNAME: ${{ secrets.TEST_USERNAME }}
           TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}

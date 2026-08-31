@@ -8,7 +8,8 @@
   "baselineStrategy": "hybrid",
   "gate": {
     "mode": "style-only",
-    "pixelScriptPrefixes": ["intent/"]
+    "pixelScriptPrefixes": ["intent/"],
+    "structureScriptPrefixes": ["flows/request-flow/"]
   },
   "ignoreRegions": [],
   "maskSelectors": [],
