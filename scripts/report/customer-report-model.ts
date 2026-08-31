@@ -5,8 +5,8 @@ import {
   type CoverageStatus,
 } from './coverage-stats.js';
 import { isActionableNature, natureLabel, type ChangeNature } from './change-nature.js';
-import { buildPlainDescription } from './customer-report-plain.js';
-import { friendlyScriptLabel, friendlyStepLabel } from './customer-report-naming.js';
+import { buildActionItems, buildPlainDescription, deriveShipAdvice, type ShipAdvice } from './customer-report-plain.js';
+import { friendlyScriptLabel, friendlyStepLabel, extractEnvLabel } from './customer-report-naming.js';
 import type { ScriptRunMeta, ScriptRunHistoryEntry } from './customer-report-run-meta.js';
 
 export type CustomerStatus = CoverageStatus;
@@ -105,6 +105,20 @@ export type CustomerReportModel = {
   regressionGroups: CustomerIssueGroup[];
   /** 轻微变化分组，默认折叠 */
   minorGroups: CustomerIssueGroup[];
+  /** 发版建议：fix / confirm / ship / baseline */
+  shipAdvice: ShipAdvice;
+  shipAdviceLabel: string;
+  /** 首屏建议操作，3~5 条 */
+  actionItems: string[];
+  /** 报告头环境名 */
+  envLabel?: string;
+  /** 发版版本号 */
+  releaseTag?: string;
+};
+
+export type CustomerReportMeta = {
+  releaseTag?: string;
+  envLabel?: string;
 };
 
 function browserLabel(browser: string): string {
@@ -116,9 +130,9 @@ function browserLabel(browser: string): string {
 
 function verdictLabel(status: CustomerStatus): string {
   if (status === 'pass') return '通过';
-  if (status === 'minor') return '轻微变化';
-  if (status === 'regress') return '明显衰退';
-  return '未检测';
+  if (status === 'minor') return '无需处理';
+  if (status === 'regress') return '需要修复';
+  return '待建基线';
 }
 
 function worstStatus(statuses: CustomerStatus[]): CustomerStatus {
@@ -242,6 +256,7 @@ export function buildCustomerReportModel(
   generatedAt?: string,
   scriptRuns: Map<string, ScriptRunMeta> = new Map(),
   runHistory: Map<string, ScriptRunHistoryEntry[]> = new Map(),
+  meta?: CustomerReportMeta,
 ): CustomerReportModel {
   const groups = new Map<string, CoverageSlot[]>();
   for (const slot of coverage.slots) {
@@ -283,7 +298,10 @@ export function buildCustomerReportModel(
   const minors = pages.filter((p) => p.worstStatus === 'minor');
   const passes = pages.filter((p) => p.worstStatus === 'pass');
   const uncovered = pages.filter((p) => p.worstStatus === 'uncovered');
-  return {
+  const regressionGroups = groupIssues(regressions, 'issue');
+  const minorGroups = groupIssues(minors, 'minor');
+  const scriptKeys = [...new Set(coverage.slots.map((s) => s.scriptKey))];
+  const model: CustomerReportModel = {
     generatedAt: generatedAt ?? new Date().toLocaleString('zh-CN', { hour12: false }),
     scriptRuns,
     runHistory,
@@ -293,7 +311,17 @@ export function buildCustomerReportModel(
     minors,
     passes,
     uncovered,
-    regressionGroups: groupIssues(regressions, 'issue'),
-    minorGroups: groupIssues(minors, 'minor'),
+    regressionGroups,
+    minorGroups,
+    shipAdvice: 'ship',
+    shipAdviceLabel: '',
+    actionItems: [],
+    envLabel: meta?.envLabel || extractEnvLabel(scriptKeys) || undefined,
+    releaseTag: meta?.releaseTag || undefined,
   };
+  const { advice, label } = deriveShipAdvice(coverage);
+  model.shipAdvice = advice;
+  model.shipAdviceLabel = label;
+  model.actionItems = buildActionItems(model);
+  return model;
 }

@@ -295,6 +295,10 @@ export async function runDirect(opts: DirectRunOptions, ctx: JobRunContext): Pro
     console.log('\n⏭️  执行已中断且 runCompareAfterAbort=false，跳过截图对比');
   }
 
+  if (opts.steps.compare && !skipCompare) {
+    runCommandBool('npm run report:customer', '生成客户版验收报告');
+  }
+
   const createDoc = opts.alwaysCreateFeishuDoc || opts.steps.createFeishuDoc;
   if (createDoc && !skipCompare) {
     feishuDocAttempted = true;

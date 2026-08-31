@@ -52,6 +52,14 @@ const STEP_SLUG_LABELS: Record<string, string> = {
   'request-detail': '申请单详情',
   'request-submit': '申请单提交',
   'full-flow': '全流程',
+  'travel-submit': '差旅申请提交',
+  'travel-approve': '差旅审批通过',
+  'travel-reject': '差旅审批驳回',
+  'travel-submit-reject': '差旅申请驳回',
+  'golden-regression': 'Golden 回归',
+  'my-approval': '我的审批',
+  'approval-history': '审批历史',
+  'admin': '管理员页面',
 };
 
 /** 去掉尾部运行时间戳：`工作台_2026-08-20_19-29-59` -> `工作台` */
@@ -92,6 +100,17 @@ export function friendlyScriptLabel(scriptKey: string): string {
   const parts = [env, flowName, flow].filter(Boolean);
   if (parts.length) return parts.join(' · ');
   return scriptKey;
+}
+
+/** 从脚本路径提取环境名，用于报告头展示 */
+export function extractEnvLabel(scriptKeys: string[]): string {
+  for (const key of scriptKeys) {
+    for (const seg of key.split('/')) {
+      const hit = ENV_LABELS[seg.toLowerCase()];
+      if (hit) return hit;
+    }
+  }
+  return '';
 }
 
 /**

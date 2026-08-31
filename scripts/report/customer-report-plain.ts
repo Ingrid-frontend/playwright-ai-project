@@ -1,6 +1,44 @@
-import { significantRegions, type CoverageSlot } from './coverage-stats.js';
+import { significantRegions, type CoverageSlot, type CoverageStats } from './coverage-stats.js';
 import { isActionableNature, natureLabel } from './change-nature.js';
 import { regionZoneLabel } from './customer-report-naming.js';
+import type { CustomerReportModel } from './customer-report-model.js';
+
+export type ShipAdvice = 'fix' | 'confirm' | 'ship' | 'baseline';
+
+export function deriveShipAdvice(coverage: CoverageStats): { advice: ShipAdvice; label: string } {
+  if (coverage.comparedSteps === 0) {
+    return { advice: 'baseline', label: '尚无有效对比，需先建立验收基线' };
+  }
+  if (coverage.regressSteps > 0) {
+    return { advice: 'fix', label: '建议修复后再验收' };
+  }
+  const uncoveredRatio = coverage.uncoveredSteps / Math.max(1, coverage.expectedSteps);
+  if (uncoveredRatio > 0.5) {
+    return { advice: 'baseline', label: '检测覆盖不足，建议补充验收基线' };
+  }
+  if (coverage.minorSteps > 0) {
+    return { advice: 'confirm', label: '可发版，建议确认轻微变化' };
+  }
+  return { advice: 'ship', label: '可以发版' };
+}
+
+export function buildActionItems(model: CustomerReportModel): string[] {
+  const items: string[] = [];
+  for (const g of model.regressionGroups) {
+    items.push(`修复「${g.title}」：${g.reason || '检测到与验收基线不一致'}`);
+  }
+  const meaningfulUncovered = model.uncovered.filter((p) => !p.processOnly).length;
+  if (model.coverage.uncoveredSteps > model.coverage.comparedSteps * 0.3 && meaningfulUncovered > 0) {
+    items.push(`为 ${meaningfulUncovered} 个核心页面建立验收基线，提升检测覆盖率`);
+  }
+  if (model.minorGroups.length > 0 && model.regressionGroups.length === 0) {
+    items.push(`确认 ${model.minorGroups.length} 处轻微变化是否接受（多为位置偏移或字体渲染差异）`);
+  }
+  if (model.regressionGroups.length === 0 && model.minorGroups.length === 0 && model.coverage.comparedSteps > 0) {
+    items.push('本次未发现需要修复的问题，可按计划发版');
+  }
+  return items.slice(0, 5);
+}
 
 export function buildPlainDescription(slot: CoverageSlot, width?: number, height?: number): string {
   if (slot.status === 'uncovered') {
@@ -44,6 +82,6 @@ export function buildPlainDescription(slot: CoverageSlot, width?: number, height
     const what = r.nature ? natureLabel(r.nature) : '内容变化';
     return `${zone} ${r.w}x${r.h}（${what}）`;
   });
-  const lead = slot.status === 'regress' ? '需要处理' : '轻微变化';
+  const lead = slot.status === 'regress' ? '需要修复' : '无需处理';
   return `${lead}：${parts.join('、')}（整页差异 ${pct}%）`;
 }

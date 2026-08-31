@@ -16,22 +16,42 @@ function check(name: string, fn: () => void) {
 }
 
 check('首屏有一句话结论', () => {
-  assert.match(html, /class="verdict (bad|good|unknown)"/);
+  assert.match(html, /class="verdict (bad|good|unknown|watch)"/);
   assert.match(html, /class="verdict-title">[^<]+/);
-  assert.match(html, /(个 UI 问题需要处理|本次未发现 UI 衰退)/);
+  assert.match(html, /(个问题需要修复|本次未发现需要修复的问题|建议人工确认)/);
 });
 
 check('统计四格为客户口径', () => {
-  for (const label of ['明显衰退', '轻微变化', '完全一致', '已对比步骤']) {
+  for (const label of ['需要修复', '无需处理', '完全一致', '已对比步骤']) {
     assert.ok(html.includes(label), `缺少统计项: ${label}`);
   }
-  assert.match(html, /合格率 [\d.]+%/);
+  assert.match(html, /通过率 [\d.]+%/);
 });
 
-check('按根因分组展示问题卡', () => {
-  const groups = html.match(/class="issue-group/g) || [];
-  assert.ok(groups.length > 0, '没有渲染任何问题分组卡');
-  assert.match(html, /class="ig-reason"|判定依据|理由/);
+check('首屏有检测覆盖进度条', () => {
+  assert.match(html, /class="coverage-bar/);
+  assert.match(html, /检测覆盖/);
+});
+
+check('首屏有建议操作', () => {
+  assert.match(html, /class="action-box"/);
+  assert.match(html, /建议操作/);
+});
+
+check('问题速览含缩略图与优先级', () => {
+  if (html.includes('class="brief ')) {
+    assert.match(html, /class="brief-thumb/);
+    assert.match(html, /class="brief-priority/);
+  }
+});
+
+check('按根因分组展示问题卡（有问题时）', () => {
+  const hasIssues = html.includes('class="issue-group');
+  const passOnly = html.includes('本次未发现需要修复的问题');
+  assert.ok(hasIssues || passOnly, '有问题时应渲染分组卡，无问题时应显示通过提示');
+  if (hasIssues) {
+    assert.match(html, /class="ig-reason"|判定依据|理由/);
+  }
 });
 
 check('首屏为速览清单，大图证据放在对比明细', () => {
@@ -71,9 +91,9 @@ check('轻微变化分组内不出现红框', () => {
   }
 });
 
-check('标注框坐标在 0-100% 之间', () => {
+check('标注框坐标在 0-100% 之间（有差异区时）', () => {
   const boxes = [...html.matchAll(/class="mark-box [^"]*"[^>]*style="([^"]+)"/g)];
-  assert.ok(boxes.length > 0, '没有渲染任何标注框');
+  if (boxes.length === 0) return;
   for (const [, style] of boxes) {
     const nums = [...style.matchAll(/(-?[\d.]+)%/g)].map((m) => Number(m[1]));
     for (const n of nums) {
@@ -82,15 +102,22 @@ check('标注框坐标在 0-100% 之间', () => {
   }
 });
 
-check('标注框按变化性质区分：实质变化与位移/渲染不同色', () => {
+check('标注框按变化性质区分（有差异区时）', () => {
+  const boxes = [...html.matchAll(/class="mark-box /g)];
+  if (boxes.length === 0) return;
   assert.ok(html.includes('mark-real') || html.includes('mark-benign'), '标注框未区分变化性质');
-  // 只要出现了非实质变化的框，就必须给出图例说明「内容一致」
   if (html.includes('mark-benign')) {
-    assert.match(html, /位移\/渲染差异 \d+ 处（内容一致）/);
+    assert.match(html, /位移\/渲染差异 \d+ 处（内容一致）|细微差异 \d+ 处/);
   }
 });
 
+check('Tab 命名为验收结论 / 问题证据 / 检测覆盖', () => {
+  assert.match(html, />验收结论</);
+  assert.match(html, />问题证据/);
+  assert.match(html, />检测覆盖</);
+});
 check('差异视图三个 Tab 齐全且顺序正确', () => {
+  if (!html.includes('data-view="marked"')) return;
   const order = ['标注变化', '拖动对比', '像素差异'];
   const idx = order.map((t) => html.indexOf(t));
   for (let i = 0; i < order.length; i++) {

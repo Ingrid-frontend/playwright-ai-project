@@ -16,6 +16,7 @@ import { discoverFlowScriptScanTargets } from './compare-screenshots-scan.js';
 import { buildCoverageStats } from './coverage-stats.js';
 import { buildCustomerReportModel } from './customer-report-model.js';
 import { renderCustomerReportHtml } from './customer-report-render.js';
+import { writeCustomerReportSummary } from './customer-report-summary.js';
 import { resolveScriptRunMeta, resolveScriptRunHistory } from './customer-report-run-meta.js';
 import { enrichRunHistoryComparisons } from './customer-report-run-history.js';
 
@@ -88,7 +89,10 @@ async function main() {
     });
     runHistory.set(testDir, enriched);
   }
-  const model = buildCustomerReportModel(coverage, undefined, scriptRuns, runHistory);
+  const model = buildCustomerReportModel(coverage, undefined, scriptRuns, runHistory, {
+    releaseTag: process.env.RELEASE_TAG || process.env.npm_package_version,
+  });
+  writeCustomerReportSummary(model);
   const html = renderCustomerReportHtml(model);
 
   const outAbs = path.resolve(outputPath);

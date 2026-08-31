@@ -11,6 +11,7 @@ const root = process.cwd();
 const outDir = path.join(root, 'public-reports');
 const pwReport = path.join(root, 'playwright-report');
 const uiHtml = path.join(root, 'results', 'screenshot-comparison.html');
+const customerHtml = path.join(root, 'results', 'ui-regression-customer.html');
 const uiIssues = path.join(root, 'results', 'ui-issues.json');
 
 function copyDir(src: string, dest: string): void {
@@ -44,6 +45,7 @@ function main(): void {
 
   const hasPw = fs.existsSync(pwReport);
   const hasUi = fs.existsSync(uiHtml);
+  const hasCustomer = fs.existsSync(customerHtml);
 
   if (hasPw) copyDir(pwReport, path.join(outDir, 'playwright-report'));
   if (hasUi) {
@@ -53,6 +55,14 @@ function main(): void {
     if (fs.existsSync(uiIssues)) {
       fs.copyFileSync(uiIssues, path.join(outDir, 'ui-regression', 'ui-issues.json'));
     }
+  }
+  if (hasCustomer) {
+    fs.mkdirSync(path.join(outDir, 'customer-report'), { recursive: true });
+    const bundledCustomer = fs
+      .readFileSync(customerHtml, 'utf-8')
+      .replace(/src="\.\.\/screenshots\//g, 'src="../screenshots/')
+      .replace(/src="diffs\//g, 'src="../diffs/');
+    fs.writeFileSync(path.join(outDir, 'customer-report', 'index.html'), bundledCustomer, 'utf-8');
   }
 
   const hasScreenshots = fs.existsSync(path.join(root, 'screenshots'));
@@ -82,6 +92,11 @@ function main(): void {
       ? `${pagesBase}/ui-regression/index.html`
       : './ui-regression/index.html'
     : '';
+  const customerLink = hasCustomer
+    ? pagesBase
+      ? `${pagesBase}/customer-report/index.html`
+      : './customer-report/index.html'
+    : '';
   const dashboardLink = hasDashboard
     ? pagesBase
       ? `${pagesBase}/dashboard/index.html`
@@ -109,7 +124,8 @@ function main(): void {
   <p>Headless 执行产物，可在浏览器直接查看（无需安装 Playwright）。</p>
   ${hasDashboard ? `<a href="${dashboardLink}">UI 质量仪表盘（趋势 / 脚本排行 / 路由分布）</a>` : ''}
   ${hasPw ? `<a href="${pwLink}">Playwright HTML 报告（用例步骤 / 失败截图 / trace）</a>` : '<p>暂无 Playwright HTML 报告</p>'}
-  ${hasUi ? `<a href="${uiLink}">UI 截图对比报告</a>` : '<p>暂无 UI 回归报告（需先 compare-screenshots）</p>'}
+  ${hasUi ? `<a href="${uiLink}">UI 截图对比报告（工程版）</a>` : '<p>暂无 UI 回归报告（需先 compare-screenshots）</p>'}
+  ${hasCustomer ? `<a href="${customerLink}">UI 验收检测报告（客户版）</a>` : '<p>暂无客户版报告（需先 npm run report:customer）</p>'}
   ${hasUi && hasScreenshots ? '<p class="warn ok">已打包步骤截图与 diff 图，UI 对比报告可离线查看。</p>' : hasUi ? '<p class="warn">UI 对比报告中的截图路径依赖 CI Artifact「screenshots」，离线打开可能缺图；Playwright 报告自包含失败附件。</p>' : ''}
   <p class="meta">生成时间：${ts}${runId ? `<br/>GitHub Run：${repo}/actions/runs/${runId}` : ''}</p>
 </body>
@@ -120,6 +136,7 @@ function main(): void {
   console.log(`✅ 已打包: ${path.relative(root, outDir)}/`);
   if (hasPw) console.log('  - playwright-report/');
   if (hasUi) console.log('  - ui-regression/index.html');
+  if (hasCustomer) console.log('  - customer-report/index.html');
   if (hasScreenshots) console.log('  - screenshots/（UI 报告配图）');
   if (fs.existsSync(diffsDir)) console.log('  - diffs/（像素 diff 图）');
   if (hasDashboard) console.log('  - dashboard/index.html');

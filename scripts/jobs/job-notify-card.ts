@@ -6,6 +6,7 @@ import {
   buildChartCardElements,
   isChartCardEnabled,
 } from '../feishu/index.js';
+import { formatCustomerSummaryMarkdown, getCustomerReportUrl, readCustomerReportSummary } from '../report/customer-report-summary.js';
 
 type BitableRecordFile = {
   runRecordUrl?: string;
@@ -56,6 +57,15 @@ export function buildResultMarkdown(summary: JobNotifySummary): string {
       ? '📎 可通过下方「打开仪表盘」查看详情'
       : '📎 完整差异报告已生成，请联系测试团队获取详情';
     lines.push(reportHint);
+  }
+
+  const customerSummary = readCustomerReportSummary();
+  if (customerSummary) {
+    lines.push('', '---', '**📋 客户版验收摘要**', formatCustomerSummaryMarkdown(customerSummary));
+    const customerUrl = getCustomerReportUrl();
+    if (customerUrl && !customerUrl.startsWith('file://')) {
+      lines.push(`[打开客户版报告](${customerUrl})`);
+    }
   }
   if (summary.errorSummary) {
     lines.push(summary.errorSummary);
