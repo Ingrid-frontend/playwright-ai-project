@@ -3,6 +3,8 @@ name: Scheduled Test Jobs
 on:
   schedule:
     - cron: '0 2 * * 1-5'
+    - cron: '0 3 * * 2,4'
+    - cron: '0 4 * * 3'
   workflow_dispatch:
     inputs:
       job_id:
@@ -13,6 +15,7 @@ on:
         options:
           - request-flow-golden
           - request-flow-write
+          - approval-flow-write
       playwright_env:
         description: 覆盖 Job 的 playwrightEnv（留空则用 Job 配置）
         required: false
@@ -55,7 +58,15 @@ jobs:
 
       - name: Run test job
         run: |
-          JOB_ID="${{ inputs.job_id || 'request-flow-golden' }}"
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            case "${{ github.event.schedule }}" in
+              "0 3 * * 2,4") JOB_ID=request-flow-write ;;
+              "0 4 * * 3") JOB_ID=approval-flow-write ;;
+              *) JOB_ID=request-flow-golden ;;
+            esac
+          else
+            JOB_ID="${{ inputs.job_id || 'request-flow-golden' }}"
+          fi
           ARGS="run --id=${JOB_ID} --trigger=schedule"
           if [ -n "${{ inputs.playwright_env }}" ]; then
             ARGS="$ARGS --env=${{ inputs.playwright_env }}"
@@ -63,6 +74,7 @@ jobs:
           if [ -n "${{ inputs.account_profile }}" ]; then
             ARGS="$ARGS --profile=${{ inputs.account_profile }}"
           fi
+          echo "Running job: ${JOB_ID}"
           npm run test-job -- $ARGS
         env:
           TEST_USERNAME: ${{ secrets.TEST_USERNAME }}
@@ -83,7 +95,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-job-results-${{ inputs.job_id || 'request-flow-golden' }}
+          name: test-job-results-${{ github.event_name == 'schedule' && (github.event.schedule == '0 3 * * 2,4' && 'request-flow-write' || (github.event.schedule == '0 4 * * 3' && 'approval-flow-write' || 'request-flow-golden')) || (inputs.job_id || 'request-flow-golden') }}
           path: results/jobs/
           retention-days: 30
           if-no-files-found: ignore

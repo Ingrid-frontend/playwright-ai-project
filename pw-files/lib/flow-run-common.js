@@ -100,12 +100,14 @@ function tryPromoteFlowBaseline(repoRoot, scriptKey) {
   return { ...result, seeded };
 }
 
-function runFlowUiAudit(repoRoot, flowId, limit = 24) {
-  return runNpmScript(repoRoot, 'ui-audit', [
+function runFlowUiAudit(repoRoot, flowId, limit = 24, gate = false) {
+  const args = [
     '--dir=screenshots/flows',
     `--script=${flowId}`,
     `--limit=${limit}`,
-  ]);
+  ];
+  if (gate) args.push('--gate');
+  return runNpmScript(repoRoot, 'ui-audit', args);
 }
 
 function flowRunVideoAbs(repoRoot, flowId, runId) {
@@ -200,6 +202,7 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
   videoReportRel = resolveFlowRunVideoRel(repoRoot, flowId, runId, payload.runId);
 
   let compareGateFailed = false;
+  let uiAuditGateFailed = false;
 
   if (!payload.cancelled) {
     hasShots = hasFlowScreenshots(repoRoot);
@@ -234,7 +237,9 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
   }
 
   if (pipeline === 'probe' && payload.runUiAudit && payload.ok && !payload.cancelled) {
-    const audit = runFlowUiAudit(repoRoot, flowId, payload.uiAuditLimit || 24);
+    const auditGate = Boolean(payload.uiAuditGate || process.env.FLOW_UI_AUDIT_GATE === '1');
+    const audit = runFlowUiAudit(repoRoot, flowId, payload.uiAuditLimit || 24, auditGate);
+    if (auditGate && !audit.ok) uiAuditGateFailed = true;
     if (audit.ok && fs.existsSync(path.join(repoRoot, UI_AUDIT_REPORT_REL))) {
       uiAuditReportRel = UI_AUDIT_REPORT_REL;
     }
@@ -244,7 +249,7 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     ? `${payload.playwrightReportDir}/index.html`
     : `${flowId}/playwright-report/index.html`;
 
-  const runOk = Boolean(payload.ok) && !compareGateFailed;
+  const runOk = Boolean(payload.ok) && !compareGateFailed && !uiAuditGateFailed;
 
   if (pipeline === 'golden' && runOk && !payload.cancelled) {
     const scriptKey = flowScriptKey(flowId, payload.env, payload.spec, payload.roleSlug);
@@ -314,6 +319,7 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     ...payload,
     ok: runOk,
     compareGateFailed,
+    uiAuditGateFailed,
     pipeline,
     runId,
     startedAt,

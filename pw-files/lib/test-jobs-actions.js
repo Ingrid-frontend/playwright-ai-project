@@ -51,12 +51,17 @@ function createTestJobsActions(deps) {
 
   function isFlowRunnerJob(merged) {
     const key = merged.runner || merged.id;
-    return key === 'request-flow-golden' || key === 'request-flow-write';
+    return key === 'request-flow-golden' || key === 'request-flow-write' || key === 'approval-flow-write';
   }
 
   function countRequestFlowWriteSpecs(merged) {
     if (Array.isArray(merged.specs)) return merged.specs.length;
     return 2;
+  }
+
+  function countApprovalFlowWriteSpecs(merged) {
+    if (Array.isArray(merged.specs)) return merged.specs.length;
+    return 1;
   }
 
   function countRequestFlowGoldenProfiles(repoRoot, envId, profileFilter) {
@@ -97,6 +102,9 @@ function createTestJobsActions(deps) {
 
   function countSpecsForMergedJob(repoRoot, merged, accountProfileOverride) {
     if (isFlowRunnerJob(merged)) {
+      if (merged.runner === 'approval-flow-write' || merged.id === 'approval-flow-write') {
+        return countApprovalFlowWriteSpecs(merged);
+      }
       if (merged.runner === 'request-flow-write' || merged.id === 'request-flow-write') {
         return countRequestFlowWriteSpecs(merged);
       }
@@ -114,6 +122,9 @@ function createTestJobsActions(deps) {
 
   function formatJobSpecsDisplay(merged, specCount) {
     if (isFlowRunnerJob(merged)) {
+      if (merged.runner === 'approval-flow-write' || merged.id === 'approval-flow-write') {
+        return specCount ? `审批 Write · ${specCount} 个 spec` : '请先为 write 档案登录';
+      }
       if (merged.runner === 'request-flow-write' || merged.id === 'request-flow-write') {
         return specCount ? `申请单 Write · ${specCount} 个 spec` : '请先为 write 档案登录';
       }
@@ -180,7 +191,7 @@ function createTestJobsActions(deps) {
         : merged.accountProfile ?? null;
     const previewMerged = { ...merged, playwrightEnv: env, accountProfile: profileFilter };
     if (isFlowRunnerJob(previewMerged)) {
-      const specCount = countRequestFlowGoldenProfiles(repoRoot, env, profileFilter);
+      const specCount = countSpecsForMergedJob(repoRoot, previewMerged, profileFilter);
       return {
         jobId: merged.id,
         playwrightEnv: env,

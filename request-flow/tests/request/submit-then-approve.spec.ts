@@ -21,8 +21,29 @@ test.describe.configure({ mode: 'serial' });
 const shared = { approveDocNo: '', rejectDocNo: '' };
 const AVAILABLE_RE = /\/api\/custom\/forms\/my\/available/;
 
+type SubmitFailKind = 'draft' | 'overlap' | 'timeout' | 'other';
+
+function classifySubmitFail(err: unknown): SubmitFailKind {
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  if (/草稿|draft|复用/.test(msg)) return 'draft';
+  if (/重叠|overlap|日期/.test(msg)) return 'overlap';
+  if (/timeout|timed out|network|net::/.test(msg)) return 'timeout';
+  return 'other';
+}
+
+async function recoverSubmitRetry(page: Page, kind: SubmitFailKind): Promise<void> {
+  const list = new RequestListPage(page);
+  if (kind === 'draft') {
+    await list.goto().catch(() => undefined);
+    await list.closeDetailIfOpen().catch(() => undefined);
+  }
+  const waitMs = kind === 'timeout' ? 5_000 : 2_000;
+  await page.waitForTimeout(waitMs);
+}
+
 async function createAndSubmit(page: Page, apiGuard: ApiGuard): Promise<string> {
   let lastErr: unknown;
+  let lastKind: SubmitFailKind = 'other';
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const reason = randomReason();
     try {
@@ -46,12 +67,14 @@ async function createAndSubmit(page: Page, apiGuard: ApiGuard): Promise<string> 
       }
     } catch (err) {
       lastErr = err;
+      lastKind = classifySubmitFail(err);
       apiGuard.dismissMatching(AVAILABLE_RE);
       if (attempt === 2) break;
-      await page.waitForTimeout(2_000);
+      await recoverSubmitRetry(page, lastKind);
     }
   }
-  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+  const detail = lastErr instanceof Error ? lastErr.message : String(lastErr);
+  throw new Error(`[${lastKind}] ${detail}`);
 }
 
 test.describe('申请单提交 → 审批通过 / 驳回', () => {

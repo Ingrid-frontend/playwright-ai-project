@@ -3,7 +3,7 @@ import path from 'path';
 import { isKnownEnv } from '../../src/utils/test-env-path.js';
 import { countResolvedSpecs, type AccountProfileFilter } from './job-utils.js';
 import { countRequestFlowGoldenProfiles } from './flow-golden-count.js';
-import { countRequestFlowWriteSpecs, isRequestFlowRunner, resolveFlowRunnerKey } from './flow-runner-registry.js';
+import { countRequestFlowWriteSpecs, countApprovalFlowWriteSpecs, isRequestFlowRunner, resolveFlowRunnerKey } from './flow-runner-registry.js';
 
 export type { AccountProfileFilter };
 
@@ -24,6 +24,8 @@ export type JobSteps = {
   resetFlowArtifacts: boolean;
   /** golden compare gate 通过后自动 promote 最新 run 到 baseline */
   promoteBaselineIfClean: boolean;
+  /** full-flow probe 跑 ui-audit 且 --gate 失败时阻断 */
+  uiAuditGate: boolean;
 };
 
 export type TestJobDefaults = {
@@ -90,6 +92,7 @@ const DEFAULT_STEPS: JobSteps = {
   refreshLogin: false,
   resetFlowArtifacts: false,
   promoteBaselineIfClean: false,
+  uiAuditGate: false,
 };
 
 const DEFAULT_CONFIG: TestJobsConfig = {
@@ -202,6 +205,9 @@ export function countJobSpecsForEnv(
   if (runnerKey === 'request-flow-write') {
     return countRequestFlowWriteSpecs(job);
   }
+  if (runnerKey === 'approval-flow-write') {
+    return countApprovalFlowWriteSpecs(job);
+  }
   if (runnerKey === 'request-flow-golden') {
     const filter = accountProfile ?? job.accountProfile;
     return countRequestFlowGoldenProfiles(process.cwd(), playwrightEnv, filter);
@@ -214,6 +220,9 @@ export function countJobSpecs(job: ResolvedTestJob, accountProfile?: AccountProf
   const runnerKey = resolveFlowRunnerKey(job.runner, job.id);
   if (runnerKey === 'request-flow-write') {
     return countRequestFlowWriteSpecs(job);
+  }
+  if (runnerKey === 'approval-flow-write') {
+    return countApprovalFlowWriteSpecs(job);
   }
   if (runnerKey === 'request-flow-golden') {
     const filter = accountProfile ?? job.accountProfile;

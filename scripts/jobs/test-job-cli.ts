@@ -265,7 +265,9 @@ function cmdList(): void {
         ? formatFlowGoldenSpecsLabel(process.cwd(), job.playwrightEnv, job.accountProfile)
         : runnerKey === 'request-flow-write'
           ? `Write · ${countJobSpecsForEnv(job, job.playwrightEnv, job.accountProfile)} 个 spec`
-          : job.specs === 'all'
+          : runnerKey === 'approval-flow-write'
+            ? `审批 Write · ${countJobSpecsForEnv(job, job.playwrightEnv, job.accountProfile)} 个 spec`
+            : job.specs === 'all'
             ? `全部 (${job.playwrightEnv}, ${countResolvedSpecs(job.specs, job.optimizedDir, job.playwrightEnv, job.accountProfile)} 个)`
             : `${JSON.stringify(job.specs)} (${countResolvedSpecs(job.specs, job.optimizedDir, job.playwrightEnv, job.accountProfile)} 个)`;
     console.log(`  ${job.id}`);

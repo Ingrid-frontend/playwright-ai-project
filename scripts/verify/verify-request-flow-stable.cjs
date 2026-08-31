@@ -93,6 +93,26 @@ const resetFlowScript = path.join(repoRoot, 'scripts/flow/reset-flow-artifacts.t
 if (fs.existsSync(resetFlowScript)) pass('reset-flow-artifacts.ts');
 else fail('reset-flow-artifacts.ts', '未找到');
 
+if (fs.existsSync(path.join(repoRoot, 'scripts/report/selector-drift-suggest.ts'))) pass('selector-drift-suggest.ts');
+else fail('selector-drift-suggest.ts', '未找到');
+
+const approvalJob = (jobsCfg.jobs || []).find((j) => j.id === 'approval-flow-write');
+if (approvalJob?.runner === 'approval-flow-write') pass('test-jobs.json · approval-flow-write');
+else fail('test-jobs.json · approval-flow-write', '未配置');
+
+if (approvalJob?.steps?.resetFlowArtifacts === true) pass('test-jobs.json · approval-flow-write resetFlowArtifacts');
+else fail('test-jobs.json · approval-flow-write resetFlowArtifacts', '未开启');
+
+const submitSrc = fs.readFileSync(
+  path.join(repoRoot, 'request-flow/tests/request/submit-then-approve.spec.ts'),
+  'utf8',
+);
+if (/classifySubmitFail/.test(submitSrc) && /recoverSubmitRetry/.test(submitSrc)) {
+  pass('submit-then-approve · 分类重试');
+} else {
+  fail('submit-then-approve · 分类重试', '未实现');
+}
+
 if (/ensureTravelReadyForSubmit/.test(editSrc) && /tripDatesReady\(root\)/.test(editSrc)) {
   pass('RequestEditPage.submit · save 后自动轻量 submit');
 } else {

@@ -215,6 +215,8 @@ function main(): void {
     pipeline: "default",
     accountProfile: profileId,
     roleSlug,
+    runUiAudit: process.env.FLOW_UI_AUDIT_GATE === '1',
+    uiAuditGate: process.env.FLOW_UI_AUDIT_GATE === '1',
   });
 
   process.exit(ok ? 0 : 1);

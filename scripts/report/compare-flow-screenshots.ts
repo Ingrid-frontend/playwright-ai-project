@@ -115,6 +115,18 @@ async function main() {
 
   writeUiIssuesReport(issuesReport, issuesOut);
 
+  const driftCount = issuesReport.issues.filter((i) => i.structureType === 'selector-drift').length;
+  if (driftCount > 0) {
+    try {
+      const { buildSelectorDriftSuggest, writeSelectorDriftSuggest } = await import('./selector-drift-suggest.js');
+      const driftReport = buildSelectorDriftSuggest(process.cwd(), issuesReport.issues);
+      writeSelectorDriftSuggest(process.cwd(), driftReport, 'results/selector-drift-suggest.json');
+      console.log(`   selector-drift 建议 ${driftReport.patches.length} 条 → results/selector-drift-suggest.json`);
+    } catch (e) {
+      console.log(`   ⚠️  selector-drift 建议生成跳过: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
   const allComparisons = testDirComparisons.flatMap((t) => t.comparisons);
   const overviewData = buildOverviewData(testDirComparisons, {
     totalSteps: allComparisons.length,

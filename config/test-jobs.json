@@ -66,6 +66,30 @@
         "resetFlowArtifacts": true
       },
       "notifyOn": ["failure"]
+    },
+    {
+      "id": "approval-flow-write",
+      "enabled": true,
+      "description": "审批 Write 回归（dev，write 档案跑 approve-reject）",
+      "runner": "approval-flow-write",
+      "schedule": null,
+      "timezone": "Asia/Shanghai",
+      "playwrightEnv": "dev",
+      "accountProfile": "write",
+      "specs": ["approval/approve-reject.spec.ts"],
+      "steps": {
+        "login": true,
+        "compare": false,
+        "compareGate": false,
+        "recordLastGreen": false,
+        "feishuNotify": true,
+        "createFeishuDoc": false,
+        "writeFeishuBitable": false,
+        "refreshLogin": false,
+        "resetFlowArtifacts": true,
+        "uiAuditGate": false
+      },
+      "notifyOn": ["failure"]
     }
   ]
 }
