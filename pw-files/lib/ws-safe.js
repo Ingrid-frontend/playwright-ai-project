@@ -1,5 +1,7 @@
+const ANSI_RE = /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g;
+
 function stripAnsi(text) {
-  return String(text).replace(/\x1b\[[0-9;]*m/g, '');
+  return String(text).replace(ANSI_RE, '');
 }
 
 function errText(err) {

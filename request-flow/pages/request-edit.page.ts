@@ -784,6 +784,7 @@ export class RequestEditPage {
 
   private async ensureTravelItinerary() {
     const root = this.editRoot();
+    await this.dismissOverlapModalIfOpen();
     await this.fillTripIfNeeded();
     await this.assertTripDatesFilled(root);
     await this.pickTripCities(root);
@@ -791,6 +792,71 @@ export class RequestEditPage {
     await this.ensureDestinationFilled(root);
     await this.ensureItineraryRow(root);
     await this.assertTripDatesFilled(root);
+  }
+
+  /** save 后 submit：只校验行程已填，不重复点日期（避免重叠弹窗挡住） */
+  private async ensureTravelReadyForSubmit() {
+    const root = this.editRoot();
+    await this.dismissOverlapModalIfOpen();
+    await this.dismissBlockers();
+    if (!(await this.tripDatesReady(root))) {
+      await this.fillTripIfNeeded();
+    }
+    await this.assertTripDatesFilled(root);
+    const destErr = root.getByText(/请选择目的地|请选择城市|请选择出发/).filter({ visible: true }).first();
+    if (await destErr.isVisible({ timeout: 800 }).catch(() => false)) {
+      await this.pickTripCities(root);
+      await this.ensureDestinationFilled(root);
+    }
+    await this.ensureItineraryRow(root);
+  }
+
+  private async tripDatesReady(root: Locator): Promise<boolean> {
+    const start = root
+      .getByPlaceholder(/出发日期|开始日期|开始|出发/)
+      .or(root.getByRole('textbox', { name: /出发日期|开始日期|出发/ }))
+      .filter({ visible: true })
+      .first();
+    if (!(await start.isVisible({ timeout: 800 }).catch(() => false))) return false;
+    const end = root
+      .getByPlaceholder(/返回日期|结束日期|结束|返回/)
+      .or(root.getByRole('textbox', { name: /返回日期|结束日期|返回/ }))
+      .filter({ visible: true })
+      .first();
+    const s = ((await start.inputValue().catch(() => '')) || '').trim();
+    const e = (await end.isVisible().catch(() => false))
+      ? ((await end.inputValue().catch(() => '')) || '').trim()
+      : s;
+    return Boolean(s && e && /^\d{4}-\d{2}-\d{2}$/.test(s) && /^\d{4}-\d{2}-\d{2}$/.test(e) && s < e);
+  }
+
+  private async dismissOverlapModalIfOpen(): Promise<boolean> {
+    const processing = this.scope()
+      .locator('.ant-modal, [role="dialog"]')
+      .filter({ visible: true })
+      .filter({ hasText: /正在处理|过程中请勿离开/ })
+      .first();
+    await processing.waitFor({ state: 'hidden', timeout: 30_000 }).catch(() => undefined);
+
+    const modal = this.scope()
+      .locator('.ant-modal, [role="dialog"]')
+      .filter({ visible: true })
+      .filter({ hasText: /日期重叠|单据日期重叠/ })
+      .last();
+    if (!(await modal.isVisible({ timeout: 800 }).catch(() => false))) return false;
+
+    const cont = modal.getByRole('button', { name: /继续保存|仍要保存/ }).filter({ visible: true }).first();
+    if (await cont.isVisible({ timeout: 1_500 }).catch(() => false)) {
+      await cont.click();
+      await this.page.waitForTimeout(800);
+      return true;
+    }
+    const back = modal.getByRole('button', { name: /^返\s*回$/ }).filter({ visible: true }).first();
+    if (await back.isVisible({ timeout: 1_500 }).catch(() => false)) {
+      await back.click();
+      await this.page.waitForTimeout(600);
+    }
+    return true;
   }
 
   private async ensureDestinationFilled(root: Locator) {
@@ -994,6 +1060,9 @@ export class RequestEditPage {
   /** 差旅类表单：补出发/返回日期（避开与已有单据重叠；RangePicker 多为 readonly） */
   private async fillTripIfNeeded() {
     const root = this.editRoot();
+    await this.dismissOverlapModalIfOpen();
+    if (await this.tripDatesReady(root)) return;
+
     const start = root
       .getByPlaceholder(/出发日期|开始日期|开始|出发/)
       .or(root.getByRole('textbox', { name: /出发日期|开始日期|出发/ }))
@@ -1059,14 +1128,14 @@ export class RequestEditPage {
       .last();
     await expect(cal, '未打开行程日期日历').toBeVisible({ timeout: 8_000 });
 
-    const monthsAhead = 2 + (Date.now() % 3);
+    const monthOffset = 4 + (Date.now() % 7) + Math.floor(Math.random() * 4);
     const nextMonth = cal
       .locator(
         '.ant-calendar-next-month-btn, .ant-picker-header-next-btn, .ant-calendar-next-year-btn, button.ant-picker-header-super-next-btn',
       )
       .filter({ visible: true })
       .first();
-    for (let i = 0; i < monthsAhead; i += 1) {
+    for (let i = 0; i < monthOffset; i += 1) {
       if (await nextMonth.isVisible({ timeout: 800 }).catch(() => false)) {
         await nextMonth.click();
         await this.page.waitForTimeout(200);
@@ -1081,8 +1150,9 @@ export class RequestEditPage {
     await expect(dayCells.first(), '日历无可选日期').toBeVisible({ timeout: 5_000 });
 
     const n = await dayCells.count();
-    const i0 = Math.min(10, Math.max(0, n - 3));
-    const i1 = Math.min(i0 + 2, n - 1);
+    const span = Math.max(1, Math.min(3, Math.floor(Math.random() * 3) + 1));
+    const i0 = Math.min(5 + Math.floor(Math.random() * 12), Math.max(0, n - span - 2));
+    const i1 = Math.min(i0 + span, n - 1);
     await dayCells.nth(i0).click({ force: true });
     await dayCells.nth(i1).click({ force: true });
     await this.page.keyboard.press('Escape').catch(() => undefined);
@@ -1415,15 +1485,18 @@ export class RequestEditPage {
     ).toBeVisible({ timeout: 30_000 });
   }
 
-  async submit(approverKeyword?: string, opts?: { skipApprover?: boolean }) {
+  async submit(approverKeyword?: string, opts?: { skipApprover?: boolean; skipTravelFill?: boolean }) {
     await this.expectEditVisible();
     await this.dismissBlockers();
     await this.dismissExpenseTypeIfOpen();
+    await this.dismissOverlapModalIfOpen();
     await this.finishDetailSlideIfOpen();
     await this.exitDocInfoEditIfOpen();
     const travel = await this.isTravelForm();
-    if (travel) await this.ensureTravelItinerary();
-    else await this.ensureLineItem();
+    if (travel) {
+      if (opts?.skipTravelFill) await this.ensureTravelReadyForSubmit();
+      else await this.ensureTravelItinerary();
+    } else await this.ensureLineItem();
     const keys = await this.approverKeywords(approverKeyword);
     if (!opts?.skipApprover && !(await this.hasApproverReady(keys))) {
       await this.fillApproverIfNeeded(approverKeyword);
@@ -1649,6 +1722,7 @@ export class RequestEditPage {
   /** 关掉非提交流程的遮挡弹窗（如未处理完的费用类型弹窗） */
   private async dismissBlockers() {
     await this.dismissExpenseTypeIfOpen();
+    await this.dismissOverlapModalIfOpen();
   }
 
   private async confirmIfNeeded() {

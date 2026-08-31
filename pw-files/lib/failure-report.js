@@ -189,11 +189,14 @@ function isJsonReportStart(line) {
   );
 }
 
+const JSON_KEY_LINE =
+  /^"(config|suites|stats|errors|id|file|line|column|duration|expected|skipped|unexpected|flaky|startTime|title|status|results|specs|stdout|stderr|attachments|location|message|outcome|retry|workerIndex|parallelIndex|projectName|projects|metadata|version|rootDir|globalSetup|globalTeardown)"\s*:/;
+
 /** 过滤 Playwright 原始报错堆栈 / JSON 报告，避免 Job/Studio 日志刷屏 */
 function filterPlaywrightLogLine(line) {
   const t = String(line || '').trim();
   if (!t) return true;
-  if (/^\[\d+[AB]/.test(t)) return true;
+  if (/^\[\d+[ABK]$/.test(t)) return true;
   if (/^Retry #\d+/i.test(t)) return true;
   if (/^attachment #\d+/i.test(t)) return true;
   if (/^Error Context:/i.test(t)) return true;
@@ -204,16 +207,20 @@ function filterPlaywrightLogLine(line) {
   if (/^Expected:/i.test(t)) return true;
   if (/^Timeout:/i.test(t)) return true;
   if (/^Locator:/i.test(t)) return true;
-  if (/^Error: element\(s\) not found/i.test(t)) return true;
+  if (/^Error:/i.test(t)) return true;
   if (/^expect\(locator\)/i.test(t)) return true;
   if (/^\d+\)\s*\[/.test(t)) return true;
+  if (/^\[(chromium|firefox|webkit)\]/i.test(t)) return true;
+  if (/›/.test(t) && /\.spec\.(?:ts|js)/.test(t)) return true;
+  if (/^\d+\s*(passed|failed|skipped|flaky)\b/i.test(t)) return true;
+  if (/^\d+\s*\|/.test(t)) return true;
   if (/^at .+\(.+:\d+/.test(t)) return true;
+  if (/^at async /.test(t)) return true;
   if (/^>\s*\d+\s*\|/.test(t)) return true;
   if (/^\|\s*\^/.test(t)) return true;
-  if (/^"(config|suites|stats|errors|id|file|line|column|duration|expected|skipped|unexpected|flaky|startTime)"\s*:/.test(t)) {
-    return true;
-  }
-  if (/^[\]},\[]\s*$/.test(t)) return true;
+  if (JSON_KEY_LINE.test(t)) return true;
+  if (/^[\]},\[]+[,]?\s*$/.test(t)) return true;
+  if (/^(true|false|null|\d+(\.\d+)?),?\s*$/.test(t)) return true;
   if (t.startsWith('{') || t.startsWith('}') || t.startsWith('[')) return true;
   return false;
 }
@@ -246,40 +253,50 @@ function logConcisePlaywrightFailures(prefix, failures, opts = {}) {
   }
 }
 
-/** headless 时流式输出 line reporter，整段 JSON 报告写入 stdout 但不刷到控制台 */
-function createPlaywrightLogStreamer(ws, headless) {
-  let inJson = false;
-  let depth = 0;
+function feedPlaywrightLogLines(raw, state, emitLine) {
+  const t = stripAnsi(raw);
+  if (!t.trim()) return;
+  for (const line of t.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
 
-  return function streamPlaywrightProcLog(raw) {
-    const t = stripAnsi(raw);
-    if (!t.trim()) return;
-    for (const line of t.split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-
-      if (!headless) {
-        if (filterPlaywrightLogLine(line)) continue;
-        logLine(ws, line.trimEnd(), 'dim');
-        continue;
-      }
-
-      if (!inJson) {
-        if (isJsonReportStart(trimmed)) {
-          inJson = true;
-          depth = braceDelta(trimmed);
-          if (depth <= 0) inJson = false;
-          continue;
-        }
-        if (filterPlaywrightLogLine(line)) continue;
-        logLine(ws, line.trimEnd(), 'dim');
-        continue;
-      }
-
-      depth += braceDelta(trimmed);
-      if (depth <= 0) inJson = false;
+    if (!state.inJson && isJsonReportStart(trimmed)) {
+      state.inJson = true;
+      state.depth = braceDelta(trimmed);
+      if (state.depth <= 0) state.inJson = false;
+      continue;
     }
+    if (state.inJson) {
+      state.depth += braceDelta(trimmed);
+      if (state.depth <= 0) state.inJson = false;
+      continue;
+    }
+
+    if (filterPlaywrightLogLine(line)) continue;
+    emitLine(line.trimEnd());
+  }
+}
+
+/** stdout/stderr 共用：抑制 JSON 报告，过滤 Playwright 原始报错 */
+function createPlaywrightLogSink(opts = {}) {
+  const ws = opts.ws ?? null;
+  const level = opts.level ?? 'dim';
+  const onLine =
+    opts.onLine ??
+    ((line, lv) => {
+      logLine(ws, line, lv ?? level);
+    });
+  const state = { inJson: false, depth: 0 };
+
+  return {
+    feed(raw) {
+      feedPlaywrightLogLines(raw, state, (line) => onLine(line, level));
+    },
   };
+}
+
+function createPlaywrightLogStreamer(ws) {
+  return createPlaywrightLogSink({ ws }).feed;
 }
 
 function headedFailurePlaceholder(specRel) {
@@ -302,6 +319,7 @@ module.exports = {
   filterPlaywrightLogLine,
   filterPlaywrightLogText,
   logConcisePlaywrightFailures,
+  createPlaywrightLogSink,
   streamPlaywrightProcLog: createPlaywrightLogStreamer,
   createPlaywrightLogStreamer,
   headedFailurePlaceholder,

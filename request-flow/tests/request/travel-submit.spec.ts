@@ -39,7 +39,7 @@ async function createTravelAndSubmit(
       const edit = await list.startNewRequest(FORM);
       await edit.fillReason(reason);
       await edit.save(env.requestApprover || undefined);
-      await edit.submit(env.requestApprover || undefined, { skipApprover: true });
+      await edit.submit(env.requestApprover || undefined, { skipApprover: true, skipTravelFill: true });
 
       apiGuard.dismissMatching(AVAILABLE_RE);
 

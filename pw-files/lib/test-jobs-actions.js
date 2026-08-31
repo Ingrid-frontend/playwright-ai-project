@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const { send, logLine, stripAnsi, errText } = require('./ws-safe');
-const { filterPlaywrightLogLine } = require('./failure-report');
+const { createPlaywrightLogSink } = require('./failure-report');
 const repoEnv = require('../repo-env');
 
 function createTestJobsActions(deps) {
@@ -372,34 +372,31 @@ function createTestJobsActions(deps) {
 
     send(ws, 'jobs:run:start', { jobId, playwrightEnv: runEnv, accountProfile: runProfile });
     const logChunks = [];
-    const emitJobRunLog = (text, level = 'dim') => {
-      const lines = String(text || '')
-        .split('\n')
-        .map((line) => line.trimEnd())
-        .filter((line) => line.trim() && !filterPlaywrightLogLine(line));
-      for (const line of lines) {
+    const logSink = createPlaywrightLogSink({
+      onLine: (line, level = 'dim') => {
         logLine(ws, line, level);
         logChunks.push(line);
         send(ws, 'jobs:run:log', { jobId, text: line });
-      }
-    };
-    emitJobRunLog(
+      },
+    });
+    logLine(
+      ws,
       `[jobs] 开始执行 Job「${jobId}」(env=${runEnv}${runProfile ? `, profile=${runProfile}` : ''}${specRelatives.length ? `, ${specRelatives.length} 个选用例` : ''}${runEnv !== merged.playwrightEnv ? `, 覆盖默认 ${merged.playwrightEnv}` : ''})`,
       'info',
     );
+    logChunks.push(
+      `[jobs] 开始执行 Job「${jobId}」(env=${runEnv}${runProfile ? `, profile=${runProfile}` : ''}${specRelatives.length ? `, ${specRelatives.length} 个选用例` : ''}${runEnv !== merged.playwrightEnv ? `, 覆盖默认 ${merged.playwrightEnv}` : ''})`,
+    );
     const proc = spawn(npmCmd, args, { cwd: repoRoot, env: spawnEnv, shell: false });
-    proc.stdout.on('data', (d) => {
-      const t = stripAnsi(d.toString());
-      if (t.trim()) emitJobRunLog(t.trimEnd(), 'dim');
-    });
-    proc.stderr.on('data', (d) => {
-      const t = stripAnsi(d.toString());
-      if (t.trim()) emitJobRunLog(t.trimEnd(), 'warn');
-    });
+    proc.stdout.on('data', (d) => logSink.feed(d.toString()));
+    proc.stderr.on('data', (d) => logSink.feed(d.toString()));
     const exitCode = await new Promise((resolve) => {
       proc.on('close', resolve);
     });
-    emitJobRunLog(`[jobs] Job「${jobId}」结束，退出码 ${exitCode}`, exitCode === 0 ? 'ok' : 'warn');
+    const endMsg = `[jobs] Job「${jobId}」结束，退出码 ${exitCode}`;
+    logLine(ws, endMsg, exitCode === 0 ? 'ok' : 'warn');
+    logChunks.push(endMsg);
+    send(ws, 'jobs:run:log', { jobId, text: endMsg });
     const latestRun = readLatestJobRunFile(repoRoot, jobId);
     const logTail = logChunks.join('\n');
     if (latestRun?.logPath && logTail) {

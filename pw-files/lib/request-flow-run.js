@@ -7,9 +7,8 @@ const {
   logConcisePlaywrightFailures,
   parsePlaywrightFailures,
   parsePlaywrightResultJson,
-  createPlaywrightLogStreamer,
+  createPlaywrightLogSink,
   headedFailurePlaceholder,
-  filterPlaywrightLogLine,
 } = require('./failure-report');
 const { finalizeFlowRun, detectPipeline, flowScriptKey, readLastFlowRun } = require('./flow-run-common');
 const repoEnv = require('../repo-env');
@@ -264,17 +263,9 @@ async function streamProc(ws, session, procKey, cancelKey, label, cmd, args, opt
     return { ok: false, exitCode: -1 };
   }
   session[procKey] = proc;
-  proc.stdout.on('data', (d) => {
-    const t = stripAnsi(d.toString());
-    if (t.trim()) logLine(ws, t.trimEnd(), 'dim');
-  });
-  proc.stderr.on('data', (d) => {
-    for (const line of stripAnsi(d.toString()).split('\n')) {
-      const trimmed = line.trimEnd();
-      if (!trimmed.trim() || filterPlaywrightLogLine(trimmed)) continue;
-      logLine(ws, trimmed, 'warn');
-    }
-  });
+  const logSink = createPlaywrightLogSink({ ws });
+  proc.stdout.on('data', (d) => logSink.feed(d.toString()));
+  proc.stderr.on('data', (d) => logSink.feed(d.toString()));
   const exitCode = await new Promise((resolve) => proc.on('close', resolve));
   session[procKey] = null;
   if (session[cancelKey]) {
@@ -386,18 +377,14 @@ async function runRequestFlowTests(ws, session, msg, deps) {
   session.requestFlowProc = proc;
 
   let stdout = '';
-  const streamLog = createPlaywrightLogStreamer(ws, headless);
+  const logSink = createPlaywrightLogSink({ ws });
   proc.stdout.on('data', (d) => {
     const raw = d.toString();
     stdout += raw;
-    streamLog(raw);
+    logSink.feed(raw);
   });
   proc.stderr.on('data', (d) => {
-    for (const line of stripAnsi(d.toString()).split('\n')) {
-      const trimmed = line.trimEnd();
-      if (!trimmed.trim() || filterPlaywrightLogLine(trimmed)) continue;
-      logLine(ws, trimmed, 'warn');
-    }
+    logSink.feed(d.toString());
   });
 
   const exitCode = await new Promise((resolve) => proc.on('close', resolve));
