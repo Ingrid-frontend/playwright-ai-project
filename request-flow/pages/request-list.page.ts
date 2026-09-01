@@ -303,6 +303,17 @@ export class RequestListPage {
     await this.waitListSettled();
   }
 
+  async expectSearchEmpty(timeout = 5_000) {
+    const input = this.searchInput();
+    await expect(input).toBeVisible({ timeout });
+    await expect
+      .poll(async () => ((await input.inputValue().catch(() => '')) || '').trim(), {
+        timeout,
+        message: '单号搜索框未清空',
+      })
+      .toBe('');
+  }
+
   private async clearDocNoSearch() {
     const input = this.searchInput();
     if (!(await input.isVisible({ timeout: 2_000 }).catch(() => false))) return;
@@ -323,6 +334,7 @@ export class RequestListPage {
     }
     await respP;
     await this.waitListSettled();
+    await this.expectSearchEmpty();
   }
 
   private headerCells(): Locator {
@@ -427,6 +439,7 @@ export class RequestListPage {
     await this.resetFilters();
     await this.clickFilterSearch();
     await this.waitListSettled();
+    await this.expectSearchEmpty();
   }
 
   async search(keyword: string, opts: { keepListFilters?: boolean } = {}) {
