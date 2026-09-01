@@ -1,4 +1,5 @@
 import {
+  displayRegions,
   significantRegions,
   type CoverageSlot,
   type CoverageStats,
@@ -67,6 +68,11 @@ export type CustomerPageCard = {
   clusterKey: string;
   maxDifference: number;
 };
+
+/** 有像素差异、值得展示对比图的步骤（排除零差异 pass 与未建基线） */
+export function isDiffPage(page: CustomerPageCard): boolean {
+  return !page.processOnly && page.worstStatus !== 'uncovered' && page.maxDifference > 0;
+}
 
 /** 同一根因在多个步骤重复出现时聚成一组，首屏只显示代表页 */
 export type CustomerIssueGroup = {
@@ -147,7 +153,7 @@ function worstStatus(statuses: CustomerStatus[]): CustomerStatus {
 
 function toBrowserCard(slot: CoverageSlot): CustomerBrowserCard {
   const difference = slot.difference ?? 0;
-  const all = significantRegions(slot.regions, slot.regionsWidth, slot.regionsHeight);
+  const all = displayRegions(slot.regions, slot.regionsWidth, slot.regionsHeight, difference);
   // 需要处理的区域优先占用有限的标注位
   const significant = [...all]
     .sort((a, b) => {
@@ -254,13 +260,7 @@ function groupIssues(pages: CustomerPageCard[], anchorPrefix: string): CustomerI
   return groups;
 }
 
-export function buildCustomerReportModel(
-  coverage: CoverageStats,
-  generatedAt?: string,
-  scriptRuns: Map<string, ScriptRunMeta> = new Map(),
-  runHistory: Map<string, ScriptRunHistoryEntry[]> = new Map(),
-  meta?: CustomerReportMeta,
-): CustomerReportModel {
+export function buildPageCardsFromCoverage(coverage: CoverageStats): CustomerPageCard[] {
   const groups = new Map<string, CoverageSlot[]>();
   for (const slot of coverage.slots) {
     const pageKey = `${slot.scriptKey}::${slot.stepNumber}::${slot.stepName}`;
@@ -296,6 +296,17 @@ export function buildCustomerReportModel(
     if (a.scriptKey !== b.scriptKey) return a.scriptKey.localeCompare(b.scriptKey);
     return a.stepNumber - b.stepNumber;
   });
+  return pages;
+}
+
+export function buildCustomerReportModel(
+  coverage: CoverageStats,
+  generatedAt?: string,
+  scriptRuns: Map<string, ScriptRunMeta> = new Map(),
+  runHistory: Map<string, ScriptRunHistoryEntry[]> = new Map(),
+  meta?: CustomerReportMeta,
+): CustomerReportModel {
+  const pages = buildPageCardsFromCoverage(coverage);
 
   const regressions = pages.filter((p) => p.worstStatus === 'regress');
   const minors = pages.filter((p) => p.worstStatus === 'minor');

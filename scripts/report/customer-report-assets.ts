@@ -592,6 +592,15 @@ body {
   font-size: 12px;
   color: var(--muted);
 }
+.run-history-compare {
+  padding: 10px 12px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.run-history-compare .page-card {
+  margin: 0;
+}
 .tag-latest {
   display: inline-block;
   margin-left: 6px;

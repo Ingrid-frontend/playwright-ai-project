@@ -9,12 +9,23 @@
 /** 环境代号 -> 客户可读环境名 */
 const ENV_LABELS: Record<string, string> = {
   dev: '开发环境',
+  uat: 'UAT环境',
+  stage9084: 'Stage9084环境',
   stage: '预发布环境',
   staging: '预发布环境',
   test: '测试环境',
   prod: '生产环境',
   production: '生产环境',
 };
+
+function envLabelForSegment(seg: string): string | undefined {
+  const key = seg.toLowerCase();
+  const hit = ENV_LABELS[key];
+  if (hit) return hit;
+  const stageNum = /^stage(\d+)$/i.exec(key);
+  if (stageNum) return `Stage${stageNum[1]}环境`;
+  return undefined;
+}
 
 /** 纯日期目录段，如 260911 / 2026-09-11 */
 function isDateSegment(seg: string): boolean {
@@ -23,7 +34,13 @@ function isDateSegment(seg: string): boolean {
 
 /** 内部编排目录段，客户不需要看到 */
 function isInternalSegment(seg: string): boolean {
-  return /^(intent|run|optimized|screenshots|baseline)$/i.test(seg);
+  return /^(intent|run|optimized|screenshots|baseline|flows|golden-regression|by-account|golden-set)$/i.test(
+    seg,
+  );
+}
+
+function isEnvSegment(seg: string): boolean {
+  return Boolean(envLabelForSegment(seg));
 }
 
 /**
@@ -72,7 +89,7 @@ function stripRunTimestamp(seg: string): string {
 
 /**
  * 把脚本路径转成客户可读的业务流程名。
- * `screenshots/dev/260911/工作台_2026-08-20_19-29-59` -> `开发环境 · 工作台`
+ * `flows/request-flow/dev/golden-regression/by-account/menma_comic_com` -> `dev · 申请单流程 · menma_comic_com`
  */
 export function friendlyScriptLabel(scriptKey: string): string {
   const segs = String(scriptKey || '')
@@ -83,21 +100,20 @@ export function friendlyScriptLabel(scriptKey: string): string {
   const flowName =
     segs.includes('request-flow') ? '申请单流程' : segs.includes('approval-flow') ? '审批流程' : '';
 
-  let env = '';
+  let envId = '';
   const rest: string[] = [];
   for (const seg of segs) {
-    const envHit = ENV_LABELS[seg.toLowerCase()];
-    if (envHit) {
-      if (!env) env = envHit;
+    if (isEnvSegment(seg)) {
+      if (!envId) envId = seg.toLowerCase();
       continue;
     }
     if (isDateSegment(seg) || isInternalSegment(seg)) continue;
-    if (seg === 'flows' || seg === 'request-flow' || seg === 'approval-flow') continue;
+    if (seg === 'request-flow' || seg === 'approval-flow') continue;
     rest.push(stripRunTimestamp(seg));
   }
 
-  const flow = [...new Set(rest)].filter(Boolean).join(' / ');
-  const parts = [env, flowName, flow].filter(Boolean);
+  const identity = [...new Set(rest)].filter(Boolean).pop() || '';
+  const parts = [envId, flowName, identity].filter(Boolean);
   if (parts.length) return parts.join(' · ');
   return scriptKey;
 }
@@ -106,7 +122,7 @@ export function friendlyScriptLabel(scriptKey: string): string {
 export function extractEnvLabel(scriptKeys: string[]): string {
   for (const key of scriptKeys) {
     for (const seg of key.split('/')) {
-      const hit = ENV_LABELS[seg.toLowerCase()];
+      const hit = envLabelForSegment(seg);
       if (hit) return hit;
     }
   }

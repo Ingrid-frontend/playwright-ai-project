@@ -306,8 +306,20 @@ assert.equal(friendlyStepLabel('DEV管理员-after'), 'DEV管理员');
 assert.equal(friendlyStepLabel('返-回-after'), '返回');
 assert.equal(friendlyStepLabel('action-before'), '操作（操作前）');
 assert.equal(friendlyStepLabel('导航到页面'), '导航到页面');
-assert.equal(friendlyScriptLabel('dev/260911/工作台_2026-08-20_19-29-59'), '开发环境 · 工作台');
-assert.equal(friendlyScriptLabel('intent/dev/审批列表页可见'), '开发环境 · 审批列表页可见');
+assert.equal(friendlyScriptLabel('dev/260911/工作台_2026-08-20_19-29-59'), 'dev · 工作台');
+assert.equal(friendlyScriptLabel('intent/dev/审批列表页可见'), 'dev · 审批列表页可见');
+assert.equal(
+  friendlyScriptLabel('flows/request-flow/dev/golden-regression/by-account/menma_comic_com'),
+  'dev · 申请单流程 · menma_comic_com',
+);
+assert.equal(
+  friendlyScriptLabel('flows/request-flow/uat/golden-regression/by-account/199702_comic_com'),
+  'uat · 申请单流程 · 199702_comic_com',
+);
+assert.equal(
+  friendlyScriptLabel('flows/request-flow/stage9084/golden-regression/by-account/18600582279'),
+  'stage9084 · 申请单流程 · 18600582279',
+);
 assert.equal(regionZoneLabel({ x: 0, y: 0, w: 40, h: 20 }, 1280, 720), '页面上部左侧');
 pass('客户报告展示名清洗');
 

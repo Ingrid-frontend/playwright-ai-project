@@ -1,6 +1,8 @@
 import type { ScreenshotInfo } from './compare-screenshots-utils.js';
 import { generateTestComparisons } from './compare-screenshots-engine.js';
 import { buildCoverageStats } from './coverage-stats.js';
+import type { CustomerPageCard } from './customer-report-model.js';
+import { buildPageCardsFromCoverage, isDiffPage } from './customer-report-model.js';
 import type { ScriptRunHistoryEntry, ScriptRunHistoryPreview } from './customer-report-run-meta.js';
 import { friendlyStepLabel } from './customer-report-naming.js';
 import { readGoldenMatchVerdictForScriptRun, type GoldenMatchVerdict } from './prune-flow-golden-runs.js';
@@ -46,7 +48,7 @@ function verdictFromCoverage(c: ReturnType<typeof buildCoverageStats>): {
 
 function previewsFromCoverage(coverage: ReturnType<typeof buildCoverageStats>): ScriptRunHistoryPreview[] {
   return coverage.slots
-    .filter((s) => s.currentPath && !s.processOnly)
+    .filter((s) => s.currentPath && !s.processOnly && (s.difference ?? 0) > 0)
     .map((s) => ({
       stepLabel: s.pageTitle,
       currentPath: s.currentPath,
@@ -139,6 +141,8 @@ export async function enrichRunHistoryComparisons(
     const comparisons = await generateTestComparisons(testDir, filtered, outputPath);
     const coverage = buildCoverageStats([{ testDir, comparisons }]);
     const v = verdictFromCoverage(coverage);
+    const pages = buildPageCardsFromCoverage(coverage);
+    const comparePages = pages.filter(isDiffPage);
     const previews =
       coverage.comparedSteps > 0
         ? previewsFromCoverage(coverage)
@@ -153,6 +157,7 @@ export async function enrichRunHistoryComparisons(
       verdict: v.verdict,
       verdictLabel: v.verdictLabel,
       previews: previews.length ? previews : undefined,
+      comparePages: comparePages.length ? comparePages : undefined,
     });
   }
 

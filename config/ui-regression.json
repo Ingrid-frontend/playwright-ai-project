@@ -13,6 +13,10 @@
   },
   "ignoreRegions": [],
   "maskSelectors": [],
+  "watermarkSuppress": {
+    "enabled": true,
+    "maskAtCapture": true
+  },
   "viewports": [
     { "name": "desktop", "width": 1280, "height": 720, "default": true },
     { "name": "mobile", "width": 375, "height": 812, "enabled": false }

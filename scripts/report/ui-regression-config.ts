@@ -128,6 +128,7 @@ export interface UiRegressionConfig {
   diffRegions?: DiffRegionsConfig;
   changeDetection?: ChangeDetectionConfig;
   customerReport?: CustomerReportConfig;
+  watermarkSuppress?: WatermarkSuppressConfig;
 }
 
 /** 客户版报告的分级口径，与工程 gate 阈值解耦 */
@@ -185,6 +186,27 @@ export interface PixelmatchOptions {
   threshold: number;
   includeAA: boolean;
 }
+
+/** 比对前抑制浅色半透明水印（如汇联易用户名斜纹）的像素抖动 */
+export interface WatermarkSuppressConfig {
+  enabled: boolean;
+  /** 截图前用 maskSelectors 额外遮罩水印节点，默认 true */
+  maskAtCapture: boolean;
+  /** 两图像素亮度下限，低于该值不当作水印抖动（保护深色 UI） */
+  minLuminance: number;
+  maxChannelDelta: number;
+  maxLuminanceDelta: number;
+}
+
+export const DEFAULT_WATERMARK_MASK_SELECTORS = [
+  '[class*="watermark"]',
+  '[class*="Watermark"]',
+  '[id*="watermark"]',
+  '[id*="Watermark"]',
+  '.water-mark',
+  '.security-watermark',
+  '.wm-div',
+];
 
 const DEFAULT_CONFIG: UiRegressionConfig = {
   blockerRatio: 0.005,
@@ -266,6 +288,13 @@ const DEFAULT_CONFIG: UiRegressionConfig = {
       structureAndPixel: 'blocker',
     },
   },
+  watermarkSuppress: {
+    enabled: true,
+    maskAtCapture: true,
+    minLuminance: 185,
+    maxChannelDelta: 58,
+    maxLuminanceDelta: 48,
+  },
 };
 
 const CONFIG_PATH = path.join(process.cwd(), 'config/ui-regression.json');
@@ -315,6 +344,10 @@ export function loadUiRegressionConfig(): UiRegressionConfig {
         diffRegions: { ...DEFAULT_CONFIG.diffRegions, ...raw.diffRegions } as DiffRegionsConfig,
         customerReport: { ...DEFAULT_CONFIG.customerReport, ...raw.customerReport } as CustomerReportConfig,
         changeDetection: { ...DEFAULT_CONFIG.changeDetection, ...raw.changeDetection } as ChangeDetectionConfig,
+        watermarkSuppress: {
+          ...DEFAULT_CONFIG.watermarkSuppress!,
+          ...raw.watermarkSuppress,
+        } as WatermarkSuppressConfig,
         viewports: raw.viewports?.length ? raw.viewports : DEFAULT_CONFIG.viewports,
       };
     } catch (e) {
@@ -411,7 +444,17 @@ export function resolveMaskSelectors(scriptKey?: string): string[] {
       out.push(item.selector);
     }
   }
+  const ws = resolveWatermarkSuppress();
+  if (ws.maskAtCapture) {
+    for (const sel of DEFAULT_WATERMARK_MASK_SELECTORS) {
+      if (!out.includes(sel)) out.push(sel);
+    }
+  }
   return out;
+}
+
+export function resolveWatermarkSuppress(): WatermarkSuppressConfig {
+  return { ...DEFAULT_CONFIG.watermarkSuppress!, ...(loadUiRegressionConfig().watermarkSuppress ?? {}) };
 }
 
 function activeViewports(all: SnapshotViewport[]): SnapshotViewport[] {

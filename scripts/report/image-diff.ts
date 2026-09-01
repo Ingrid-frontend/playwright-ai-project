@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
-import { resolveIgnoreRegions, resolveDiffRegionsConfig } from './ui-regression-config.js';
+import { resolveIgnoreRegions, resolveDiffRegionsConfig, resolveWatermarkSuppress } from './ui-regression-config.js';
 import { classifyRegionNature, type ChangeNature } from './change-nature.js';
 
 export type DiffRegionSeverity = 'high' | 'medium' | 'low';
@@ -18,6 +18,9 @@ export const DIFF_REGIONS_VERSION = 2;
  * v3 起每个区域带 nature（位移/渲染/内容），缓存需重算。
  */
 export const DIFF_NATURE_VERSION = 7;
+
+/** 水印抑制算法版本；变更后 diff 缓存失效 */
+export const WATERMARK_SUPPRESS_VERSION = 1;
 
 export interface DiffRegion {
   x: number;
@@ -169,6 +172,48 @@ function applyIgnoreRegionsToPair(prepared: PreparedPair, scriptKey?: string): v
       zeroRow.copy(croppedImg2.data, rowOffset, 0, segmentBytes);
     }
   }
+}
+
+function pixelLuminance(r: number, g: number, b: number): number {
+  return 0.299 * r + 0.587 * g + 0.114 * b;
+}
+
+/**
+ * 汇联易等系统的用户名斜纹水印在两次截图间常有 1~2px 偏移或抗锯齿差异。
+ * 在 pixelmatch 前把这类浅色背景上的微小色差对齐，避免整页散点误报。
+ */
+function suppressWatermarkDrift(prepared: PreparedPair): void {
+  const cfg = resolveWatermarkSuppress();
+  if (!cfg.enabled) return;
+  const d1 = prepared.croppedImg1.data;
+  const d2 = prepared.croppedImg2.data;
+  for (let i = 0; i < d1.length; i += 4) {
+    const r1 = d1[i]!;
+    const g1 = d1[i + 1]!;
+    const b1 = d1[i + 2]!;
+    const r2 = d2[i]!;
+    const g2 = d2[i + 1]!;
+    const b2 = d2[i + 2]!;
+    const dr = Math.abs(r1 - r2);
+    const dg = Math.abs(g1 - g2);
+    const db = Math.abs(b1 - b2);
+    const maxD = Math.max(dr, dg, db);
+    if (maxD > cfg.maxChannelDelta) continue;
+    const l1 = pixelLuminance(r1, g1, b1);
+    const l2 = pixelLuminance(r2, g2, b2);
+    const minL = Math.min(l1, l2);
+    const maxL = Math.max(l1, l2);
+    if (minL < cfg.minLuminance) continue;
+    if (maxL - minL > cfg.maxLuminanceDelta) continue;
+    d2[i] = r1;
+    d2[i + 1] = g1;
+    d2[i + 2] = b1;
+  }
+}
+
+function prepareComparePair(prepared: PreparedPair, scriptKey?: string): void {
+  applyIgnoreRegionsToPair(prepared, scriptKey);
+  suppressWatermarkDrift(prepared);
 }
 
 function runPixelmatch(
@@ -385,6 +430,7 @@ export async function compareImages(
 
   try {
     const prepared = await prepareImagePair(img1Path, img2Path);
+    prepareComparePair(prepared, opts.scriptKey);
     const numDiffPixels = runPixelmatch(prepared, threshold, includeAA, { buildDisplay: false });
     const totalPixels = prepared.width * prepared.height;
     const difference = totalPixels > 0 ? numDiffPixels / totalPixels : 0;
@@ -413,7 +459,7 @@ export async function compareImagesWithDiff(
 
   try {
     const prepared = await prepareImagePair(img1Path, img2Path);
-    applyIgnoreRegionsToPair(prepared, opts.scriptKey);
+    prepareComparePair(prepared, opts.scriptKey);
     const numDiffPixels = runPixelmatch(prepared, threshold, includeAA);
     const totalPixels = prepared.width * prepared.height;
     const difference = totalPixels > 0 ? numDiffPixels / totalPixels : 0;
@@ -461,6 +507,7 @@ export async function compareImagesWithDiff(
       regions,
       regionsVersion: DIFF_REGIONS_VERSION,
       natureVersion: DIFF_NATURE_VERSION,
+      watermarkSuppressVersion: resolveWatermarkSuppress().enabled ? WATERMARK_SUPPRESS_VERSION : 0,
     });
 
     return {
@@ -492,6 +539,8 @@ export interface DiffMeta {
   regionsVersion?: number;
   /** 变化性质识别版本；与 DIFF_NATURE_VERSION 不符时缓存失效 */
   natureVersion?: number;
+  /** 水印抑制版本；与 WATERMARK_SUPPRESS_VERSION 不符时缓存失效 */
+  watermarkSuppressVersion?: number;
 }
 
 function diffMetaPath(diffOutputPath: string): string {
@@ -533,6 +582,9 @@ export function isDiffCacheValid(
         if (!meta.regions) return false;
         if ((meta.regionsVersion ?? 1) !== DIFF_REGIONS_VERSION) return false;
         if ((meta.natureVersion ?? 0) !== DIFF_NATURE_VERSION) return false;
+        const ws = resolveWatermarkSuppress();
+        const wantWs = ws.enabled ? WATERMARK_SUPPRESS_VERSION : 0;
+        if ((meta.watermarkSuppressVersion ?? 0) !== wantWs) return false;
       }
       return fs.existsSync(diffOutputPath);
     }

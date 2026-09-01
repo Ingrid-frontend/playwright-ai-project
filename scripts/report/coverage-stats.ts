@@ -97,6 +97,19 @@ function isScrollbarRegion(
   return (nearRight && isVerticalBar) || (nearBottom && isHorizontalBar);
 }
 
+function filterScrollbarRegions(
+  regions: DiffRegion[],
+  width: number | undefined,
+  height: number | undefined,
+  cfg: ReturnType<typeof resolveCustomerReportConfig>,
+): DiffRegion[] {
+  return regions.filter(
+    (r) =>
+      !cfg.ignoreScrollbarRegions ||
+      !isScrollbarRegion(r, width, height, cfg.scrollbarMaxThickness),
+  );
+}
+
 /** 过滤掉噪声区域，返回真正值得客户看的变化块 */
 export function significantRegions(
   regions: DiffRegion[] | undefined,
@@ -104,14 +117,29 @@ export function significantRegions(
   height?: number,
   cfg = resolveCustomerReportConfig(),
 ): DiffRegion[] {
-  return (regions || [])
+  return filterScrollbarRegions(regions || [], width, height, cfg)
     .filter((r) => r.severity !== 'low')
-    .filter(
-      (r) =>
-        !cfg.ignoreScrollbarRegions ||
-        !isScrollbarRegion(r, width, height, cfg.scrollbarMaxThickness),
-    )
     .sort((a, b) => b.pixels - a.pixels);
+}
+
+/**
+ * 报告标注用区域：判定仍走 significantRegions；
+ * 展示时若仅有 low 级差异也回退标出，避免「像素差异有亮点但标注变化空白」。
+ */
+export function displayRegions(
+  regions: DiffRegion[] | undefined,
+  width?: number,
+  height?: number,
+  difference = 0,
+  cfg = resolveCustomerReportConfig(),
+  limit = 6,
+): DiffRegion[] {
+  const significant = significantRegions(regions, width, height, cfg);
+  if (significant.length > 0) return significant.slice(0, limit);
+  if (difference <= 0) return [];
+  return filterScrollbarRegions(regions || [], width, height, cfg)
+    .sort((a, b) => b.pixels - a.pixels)
+    .slice(0, limit);
 }
 
 /** 变化性质未知时（旧缓存 / 未识别）保守当作实质变化，避免悄悄降级真实衰退 */

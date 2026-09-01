@@ -1,8 +1,9 @@
-import type {
-  CustomerBrowserCard,
-  CustomerIssueGroup,
-  CustomerPageCard,
-  CustomerReportModel,
+import {
+  isDiffPage,
+  type CustomerBrowserCard,
+  type CustomerIssueGroup,
+  type CustomerPageCard,
+  type CustomerReportModel,
 } from './customer-report-model.js';
 import { customerReportCss, customerReportClientJs } from './customer-report-assets.js';
 import { friendlyScriptLabel, friendlyStepLabel, regionZoneLabel } from './customer-report-naming.js';
@@ -75,6 +76,13 @@ function renderSlider(card: CustomerBrowserCard, opts?: { stepLabel?: string }):
   `;
 }
 
+function markEmptyHtml(card: CustomerBrowserCard): string {
+  if (card.difference > 0) {
+    return `<div class="mark-empty">差异过于分散，请切换「像素差异」查看</div>`;
+  }
+  return `<div class="mark-empty">未定位到成块变化区</div>`;
+}
+
 function renderRegionBoxes(card: CustomerBrowserCard, suppressReal: boolean): string {
   const w = card.imageWidth || 0;
   const h = card.imageHeight || 0;
@@ -97,7 +105,7 @@ function renderRegionBoxes(card: CustomerBrowserCard, suppressReal: boolean): st
 function renderSideBySideView(card: CustomerBrowserCard, stepLabel?: string): string {
   const suppressReal = card.verdict !== 'regress';
   const boxes = renderRegionBoxes(card, suppressReal);
-  const empty = boxes ? '' : `<div class="mark-empty">未定位到成块变化区</div>`;
+  const empty = boxes ? '' : markEmptyHtml(card);
   const snap = stepLabel ? esc(stepLabel) : '';
   const snapHint = snap ? `<span class="side-snap">${snap}</span>` : '';
   const natures = card.regions.map((r) => r.nature).filter(Boolean);
@@ -131,7 +139,7 @@ function renderMarkedView(card: CustomerBrowserCard): string {
   // 「轻微变化」按分级口径就是无需处理，卡内不允许出现红框，否则与结论自相矛盾。
   const suppressReal = card.verdict !== 'regress';
   const boxes = renderRegionBoxes(card, suppressReal);
-  const empty = boxes ? '' : `<div class="mark-empty">未定位到成块变化区</div>`;
+  const empty = boxes ? '' : markEmptyHtml(card);
   const realCount = suppressReal ? 0 : card.actionableRegions;
   const benignCount = card.regions.length - realCount;
   const legend =
@@ -484,7 +492,14 @@ function runHistoryShotStatusClass(status?: string): string {
   return 'shot-uncovered';
 }
 
+function renderRunHistoryCompareCards(pages: CustomerPageCard[]): string {
+  return pages.filter(isDiffPage).map((p) => renderPageCard(p)).join('');
+}
+
 function renderRunHistoryShotRow(r: ScriptRunHistoryEntry): string {
+  if (r.comparePages?.length) {
+    return `<tr class="run-history-shots-row"><td colspan="9"><div class="run-history-compare">${renderRunHistoryCompareCards(r.comparePages)}</div></td></tr>`;
+  }
   if (r.previews?.length) {
     const items = r.previews
       .map((p) => {
@@ -553,7 +568,7 @@ function renderRunHistoryPanel(model: CustomerReportModel): string {
     <section class="run-history-block">
       <h3 class="run-history-title">${esc(label)}</h3>
       <p class="run-history-meta">共 ${rows.length} 次 run · 与验收基线逐步对比；「最新」一轮用于上方结论与检测覆盖</p>
-      ${renderRunHistoryTable(rows, { showShots: true })}
+      ${renderRunHistoryTable(rows)}
     </section>`;
   });
 
@@ -593,7 +608,7 @@ function renderMinorTabBody(
   const historyTitle =
     minorRunCount > 0 ? `历次 Golden run · ${minorRunCount} 次` : '历次 Golden run';
   return `
-    <p class="sec-lead">Tab 数字表示<strong>最新一轮可查看对比图</strong>的项目数。下方「历次记录」在表格中列出各 run 截图缩略图；若目录已清理则仅保留判定汇总。</p>
+    <p class="sec-lead">Tab 数字 = 最新一轮对比图（${latestCount}）+ 历次 minor run（${minorRunCount}）。历次记录与上方相同，提供并排/标注/拖动/像素差异四种对比视图。</p>
     <h3 class="sec-title sec-minor">最新一轮 · ${latestCount} 项对比图</h3>
     ${latest}
     <h3 class="sec-title sec-minor" style="margin-top:24px">${historyTitle}</h3>
@@ -702,12 +717,9 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
   const runsTabLabel = showRunsTab ? `技术附录 (${runTotal})` : '';
   const minorRunCount = countMinorRuns(model);
   const minorEvidenceCount = model.minorGroups.length;
-  const showMinorTab = minorRunCount > 0 || minorEvidenceCount > 0;
-  const minorTabLabel = showMinorTab
-    ? minorEvidenceCount > 0
-      ? `轻微变化 (${minorEvidenceCount})`
-      : `轻微变化 (历次 ${minorRunCount})`
-    : '';
+  const minorTabCount = minorRunCount + minorEvidenceCount;
+  const showMinorTab = minorTabCount > 0;
+  const minorTabLabel = showMinorTab ? `轻微变化 (${minorTabCount})` : '';
   const scopeLine = model.reportScope === 'all' ? '全部脚本截图' : 'Golden 回归';
   const ctxParts = [model.envLabel, model.releaseTag ? `v${model.releaseTag}` : ''].filter(Boolean);
   const ctxLine = ctxParts.length > 0 ? `${esc(ctxParts.join(' · '))} · ` : '';

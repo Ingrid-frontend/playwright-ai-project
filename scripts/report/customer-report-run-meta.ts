@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { createRequire } from 'module';
+import type { CustomerPageCard } from './customer-report-model.js';
 import {
   flowScreenshotScriptKey,
   flowRunsDir,
@@ -47,8 +48,10 @@ export type ScriptRunHistoryEntry = {
   verdictLabel: string;
   isLatest: boolean;
   ok?: boolean;
-  /** 该 run 各步骤截图（相对报告路径），用于历次记录缩略图 */
+  /** 该 run 各步骤截图（相对报告路径），无完整对比时兜底 */
   previews?: ScriptRunHistoryPreview[];
+  /** 该 run 已对比步骤的完整证据卡（与最新一轮相同 UI） */
+  comparePages?: CustomerPageCard[];
 };
 
 const FLOW_IDS: FlowId[] = ['request-flow', 'approval-flow'];
