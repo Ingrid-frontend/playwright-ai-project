@@ -162,6 +162,15 @@ function validateStorageForRun(repoRoot, storageRel) {
     return { ok: false, reason: `登录态 JSON 无效: ${storageRel}` };
   }
   const meta = readLoginStateMeta(abs);
+  if (meta?.invalidatedAt) {
+    const account = formatLoginAccountLabel(meta);
+    return {
+      ok: false,
+      stale: true,
+      account: account || undefined,
+      reason: `登录态已失效（${meta.invalidatedReason || 'invalidated'}）: ${storageRel}`,
+    };
+  }
   const account = formatLoginAccountLabel(meta);
   const userId = extractUserIdFromStorageData(data) || meta?.userId || null;
   if (isStorageStale(abs)) {
@@ -552,7 +561,7 @@ function enrichProfileStorageEntry(repoRoot, envId, profileId) {
     roleLabel,
     loginAccount: loginAccount || null,
     storageState: rel,
-    hasStorage: storageExists(repoRoot, rel),
+    hasStorage: validateStorageForRun(repoRoot, rel).ok,
     maskedUsername: loginAccount ? maskUsername(loginAccount) : maskUsername(prof?.username || ''),
     isGolden: isGoldenProfileId(id),
     isWrite: isWriteProfileId(id),

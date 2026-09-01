@@ -67,6 +67,56 @@ function annotateStorageStateMeta(storagePath?: any, opts: any = {}) {
   return true;
 }
 
+type InvalidateStorageResult = {
+  ok: boolean;
+  loginAccount: string | null;
+};
+
+function invalidateStorageState(
+  storagePath?: string,
+  opts: { reason?: string } = {},
+): InvalidateStorageResult {
+  if (!storagePath || !fs.existsSync(storagePath)) {
+    return { ok: false, loginAccount: null };
+  }
+
+  let data: Record<string, unknown>;
+  try {
+    data = JSON.parse(fs.readFileSync(storagePath, "utf8"));
+  } catch {
+    return { ok: false, loginAccount: null };
+  }
+
+  const prev =
+    data[META_KEY] && typeof data[META_KEY] === "object"
+      ? (data[META_KEY] as Record<string, unknown>)
+      : {};
+  const loginAccount =
+    typeof prev.loginAccount === "string" && prev.loginAccount.trim()
+      ? prev.loginAccount.trim()
+      : null;
+
+  const next = {
+    ...prev,
+    loginAccount,
+    userId: prev.userId || null,
+    savedAt: typeof prev.savedAt === "string" ? prev.savedAt : new Date().toISOString(),
+    env: prev.env || process.env.PLAYWRIGHT_ENV || null,
+    invalidatedAt: new Date().toISOString(),
+    invalidatedReason: opts.reason || "401",
+  };
+
+  const stub = {
+    cookies: [] as unknown[],
+    origins: [] as unknown[],
+    [META_KEY]: next,
+  };
+
+  fs.writeFileSync(storagePath, `${JSON.stringify(stub, null, 2)}\n`, "utf8");
+  return { ok: true, loginAccount };
+}
+
 export {
   META_KEY, readLoginStateMeta, formatLoginAccountLabel, annotateStorageStateMeta,
+  invalidateStorageState,
 };
