@@ -1602,6 +1602,23 @@
               <p class="sidebar-hint" id="requestFlowHint" style="margin:8px 0 0;color:var(--text-tertiary)">
                 快捷选例会同步「用例文件 / 用例 / 执行模式」，不会自动跑；确认后点绿色「运行」。
               </p>
+              <div id="flowRunManagePanel" style="margin-top:12px;padding:10px 12px;border:1px solid rgba(248,113,113,.28);border-radius:8px;background:var(--bg2)">
+                <div style="font-weight:600;color:var(--text);margin-bottom:6px">历史 run 清理</div>
+                <p class="sidebar-hint" style="margin:0 0 8px;line-height:1.6;color:var(--text-secondary)">
+                  按标记、账号 slug 或 runId 搜索，删除对应截图、manifest、diffs（适用于 request-flow / approval-flow）。
+                </p>
+                <label style="display:block;margin-bottom:4px;color:var(--text-secondary);font-size:var(--fs-xs)">搜索</label>
+                <input type="text" class="url-input" id="flowRunSearchQuery" spellcheck="false" placeholder="标记 / 账号 / runId"
+                  style="width:100%;color:var(--text);margin-bottom:8px"
+                  onkeydown="if(event.key==='Enter'){event.preventDefault();searchFlowRuns();}">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+                  <button type="button" class="btn" id="btnFlowRunSearch" onclick="searchFlowRuns()">搜索</button>
+                  <button type="button" class="btn" onclick="searchFlowRunsForCurrentRole()" style="font-size:var(--fs-xs)">当前 Golden 角色</button>
+                  <button type="button" class="btn" id="btnFlowRunDeleteAll" style="border-color:rgba(248,113,113,.35);color:var(--red)" onclick="deleteMatchedFlowRuns()" disabled>删除全部匹配</button>
+                </div>
+                <div id="flowRunSearchStatus" class="sidebar-hint" style="margin:0 0 6px;color:var(--text-tertiary)"></div>
+                <div id="flowRunSearchList" style="max-height:220px;overflow:auto;font-size:12px"></div>
+              </div>
               <pre id="requestFlowSnapshot" class="url-input" readonly spellcheck="false"
                 style="display:none;width:100%;min-height:120px;resize:vertical;color:var(--text);line-height:1.5;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;margin:0"></pre>
             </div>
@@ -1678,6 +1695,7 @@
                 <button type="button" class="btn" id="btnApprovalOpenSummary" style="display:none" onclick="openApprovalFlowSummaryReport()">运行汇总</button>
                 <button type="button" class="btn" id="btnApprovalOpenReplay" style="display:none" onclick="openApprovalFlowReplay()">查看回放</button>
                 <button type="button" class="btn" id="btnApprovalFeishuWeeklyDoc" onclick="writeFlowFeishuWeeklyDoc('approval-flow')" title="将最近一次运行追加到当周飞书周报文档">飞书周报</button>
+                <button type="button" class="btn" onclick="openFlowRunManage()" style="border-color:rgba(248,113,113,.35);color:var(--red,#f87171)">按标记删 run</button>
               </div>
               <p class="sidebar-hint" id="approvalFlowHint" style="margin:8px 0 0;color:var(--text-tertiary)">
                 快捷选例会同步「用例文件 / 用例 / 执行模式」（按钮高亮 = 已套用），不会自动跑；确认后点绿色「运行」。
@@ -2268,6 +2286,10 @@ function refreshCompareReportStatus() {
 
 let promoteGoldenPending = null;
 
+let flowRunSearchHits = [];
+let flowRunSearchQuery = '';
+let flowRunManageBusy = false;
+
 function scriptKeyFromOptimizedSpec(specRel) {
   const norm = String(specRel || '').replace(/\\/g, '/').replace(/^\/+/, '');
   const m = norm.match(/^tests\/optimized\/(.+)\.optimized\.spec\.ts$/i);
@@ -2330,6 +2352,125 @@ function confirmPromoteGoldenBaseline() {
   closePromoteGoldenModal();
   send('repo:promote-baseline', { scriptKey, runTimestamp: runTimestamp || undefined, latest: latest || !runTimestamp });
   showToast('正在更新 Golden 基线…', 'ok');
+}
+
+function setFlowRunManageBusy(busy) {
+  flowRunManageBusy = busy;
+  const btnSearch = document.getElementById('btnFlowRunSearch');
+  const btnDel = document.getElementById('btnFlowRunDeleteAll');
+  if (btnSearch) btnSearch.disabled = busy;
+  if (btnDel) btnDel.disabled = busy || !flowRunSearchHits.length;
+}
+
+function fillFlowRunSearchQuery(q, autoSearch) {
+  const el = document.getElementById('flowRunSearchQuery');
+  if (!el || !q) return;
+  el.value = q;
+  if (autoSearch !== false) searchFlowRuns();
+}
+
+function openFlowRunManage() {
+  const tabEl = document.querySelector('.tab[onclick*="request-flow"]');
+  switchTab('request-flow', tabEl);
+  setTimeout(() => {
+    document.getElementById('flowRunManagePanel')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    document.getElementById('flowRunSearchQuery')?.focus();
+  }, 60);
+}
+
+function searchFlowRunsForCurrentRole() {
+  const p = getSelectedGoldenProfile();
+  const slug = p?.roleSlug || '';
+  if (!slug) {
+    showToast('请先选择 Golden 角色', 'err');
+    return;
+  }
+  fillFlowRunSearchQuery(slug, true);
+}
+
+function searchFlowRuns() {
+  const q = document.getElementById('flowRunSearchQuery')?.value?.trim();
+  if (!q) {
+    showToast('请输入标记、账号或 runId', 'err');
+    return;
+  }
+  flowRunSearchQuery = q;
+  setFlowRunManageBusy(true);
+  if (!send('flow:search-runs', { query: q })) setFlowRunManageBusy(false);
+}
+
+function renderFlowRunSearchList(msg) {
+  setFlowRunManageBusy(false);
+  flowRunSearchHits = Array.isArray(msg.hits) ? msg.hits : [];
+  const status = document.getElementById('flowRunSearchStatus');
+  const list = document.getElementById('flowRunSearchList');
+  const btnDel = document.getElementById('btnFlowRunDeleteAll');
+  if (status) {
+    status.textContent = flowRunSearchHits.length
+      ? `匹配 ${flowRunSearchHits.length} 条 · ${msg.query || flowRunSearchQuery}`
+      : `未找到匹配 · ${msg.query || flowRunSearchQuery}`;
+  }
+  if (btnDel) btnDel.disabled = !flowRunSearchHits.length || flowRunManageBusy;
+  if (!list) return;
+  if (!flowRunSearchHits.length) {
+    list.innerHTML = '<div class="sidebar-hint" style="padding:6px 0">无匹配 run</div>';
+    return;
+  }
+  list.innerHTML = flowRunSearchHits
+    .map((h, i) => {
+      const start = h.startedAt
+        ? new Date(h.startedAt).toLocaleString('zh-CN', { hour12: false })
+        : '—';
+      const mark = h.runMarker || '—';
+      const ok = h.ok === false ? '失败' : h.ok ? '通过' : '—';
+      const key = h.runMarker || h.runId || '';
+      return `<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+        <span style="flex:1;min-width:0">
+          <code style="color:var(--teal,#2dd4bf)">${escHtml(mark)}</code>
+          <span style="color:var(--text-secondary);font-size:var(--fs-xs);display:block">${escHtml(h.runId || '')} · ${escHtml(ok)} · ${escHtml(start)}</span>
+          <span style="color:var(--text-tertiary);font-size:var(--fs-xs);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(h.scriptKey || '')}">${escHtml(h.scriptKey || '')}</span>
+        </span>
+        <button type="button" class="btn" style="font-size:var(--fs-xs);padding:2px 8px;border-color:rgba(248,113,113,.35);color:var(--red)" data-flow-run-idx="${i}" onclick="deleteOneFlowRun(this.dataset.flowRunIdx)" ${key ? '' : 'disabled'}>删除</button>
+      </div>`;
+    })
+    .join('');
+}
+
+function deleteMatchedFlowRuns() {
+  const q = flowRunSearchQuery;
+  if (!q || !flowRunSearchHits.length) {
+    showToast('请先搜索并确认有匹配结果', 'err');
+    return;
+  }
+  if (
+    !confirm(
+      `删除全部 ${flowRunSearchHits.length} 条匹配的 run？\n\n关键词：${q}\n\n将删除截图、manifest、diffs 与 history，不可恢复。`,
+    )
+  ) {
+    return;
+  }
+  setFlowRunManageBusy(true);
+  if (!send('flow:delete-runs', { marker: q })) setFlowRunManageBusy(false);
+}
+
+function deleteOneFlowRun(idx) {
+  const hit = flowRunSearchHits[Number(idx)];
+  if (!hit) return;
+  const key = hit.runMarker || hit.runId;
+  if (!key) {
+    showToast('该 run 无标记，请用 runId 删除', 'err');
+    return;
+  }
+  const label = hit.runMarker || hit.runId;
+  if (
+    !confirm(
+      `删除这条 run？\n\n${label}\n${hit.scriptKey || ''}\n\n将删除截图、manifest、diffs，不可恢复。`,
+    )
+  ) {
+    return;
+  }
+  setFlowRunManageBusy(true);
+  if (!send('flow:delete-runs', { marker: key })) setFlowRunManageBusy(false);
 }
 
 function escapeHtml(s) {
@@ -3739,7 +3880,7 @@ function clearAccountStorage() {
   const rel = accountState.storageState || 'storage/loginState/…';
   if (
     !confirm(
-      '确定清除当前环境的登录态？\n\n清除后需重新登录，停止录制时会保存新登录态',
+      '确定清除当前环境的登录态？\n\n登录账号会保留，方便下次复制；清除后需重新登录。',
     )
   ) {
     return;
@@ -5652,9 +5793,27 @@ function handleMessage(msg) {
         storageState: msg.storageState,
         hasStorage: false,
       });
-      showToast(msg.removed ? '已清除登录态' : '登录态文件本不存在', msg.removed ? 'ok' : 'err');
-      log('info', `[account] ${msg.removed ? '已清除' : '无需清除'}: ${msg.storageState || ''}`);
+      showToast(
+        msg.removed
+          ? (msg.loginAccount ? `已清除登录态（保留账号 ${msg.loginAccount}）` : '已清除登录态')
+          : '登录态文件本不存在',
+        msg.removed ? 'ok' : 'err',
+      );
+      log(
+        'info',
+        `[account] ${msg.removed ? '已作废' : '无需清除'}: ${msg.storageState || ''}${msg.loginAccount ? ` · ${msg.loginAccount}` : ''}`,
+      );
       refreshRequestFlowStatus();
+      break;
+    case 'account:headed-debug:start':
+      showToast(
+        `有头调试 · ${msg.baseURL || ''}/ · ${msg.hasStorage ? '已加载登录态' : '无登录态'}`,
+        'ok',
+      );
+      log('info', `[account] 有头调试已打开 profile=${msg.profile || ''} · ${msg.baseURL || ''}/`);
+      break;
+    case 'account:headed-debug:done':
+      log('dim', `[account] 有头调试已关闭 profile=${msg.profile || ''}`);
       break;
     case 'repo:info': {
       repoState.repoRoot = msg.repoRoot || '';
@@ -6197,6 +6356,20 @@ function handleMessage(msg) {
         log('err', `[replay] ${msg.message || '删除失败'}`);
       }
       break;
+    case 'flow:runs:search:done':
+      renderFlowRunSearchList(msg);
+      log('info', `[flow] 搜索 run · ${msg.query || ''} · ${msg.total || 0} 条`);
+      break;
+    case 'flow:runs:delete:done':
+      setFlowRunManageBusy(false);
+      {
+        const n = msg.deleted?.length || 0;
+        const verb = msg.dryRun ? '将删除' : '已删除';
+        showToast(`${verb} ${n} 条 run`, n ? 'ok' : 'warn');
+        log(n ? 'ok' : 'dim', `[flow] ${verb} ${n} 条 · ${msg.query || ''}`);
+        if (flowRunSearchQuery) searchFlowRuns();
+      }
+      break;
     case 'replay:summary:start': {
       const hint = document.getElementById('replaySummaryHint');
       if (hint) hint.textContent = '正在生成…';
@@ -6480,6 +6653,7 @@ function handleMessage(msg) {
           log('info', `[request-flow] 回放 ${msg.replayReportOpenPath || msg.videoReportOpenPath}`);
         }
       }
+      if (msg.runMarker) fillFlowRunSearchQuery(msg.runMarker, false);
       break;
     case 'approval-flow:status':
       renderApprovalFlowStatus(msg);
@@ -6539,6 +6713,7 @@ function handleMessage(msg) {
           log('info', `[approval-flow] 报告 ${msg.reportOpenPath}`);
         }
       }
+      if (msg.runMarker) fillFlowRunSearchQuery(msg.runMarker, false);
       break;
     case 'ego:explore:start':
       if (msg.seq) exploreSeq = msg.seq;
@@ -6663,6 +6838,7 @@ function handleMessage(msg) {
         dateCategoryState.loading = false;
         renderDateCategoryList();
       }
+      if (flowRunManageBusy) setFlowRunManageBusy(false);
       log('err', msg.message);
       showToast(msg.message, 'err');
       finishBusyFromError();
@@ -7464,13 +7640,14 @@ function renderRequestFlowProfileStorage(list) {
     const loginBtn = ok
       ? '<button type="button" class="btn" disabled style="font-size:var(--fs-xs);padding:4px 8px;opacity:0.45;cursor:not-allowed">登录</button>'
       : `<button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="startFlowProfileLogin('${p.id}')">登录</button>`;
+    const debugBtn = `<button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="openFlowProfileHeadedDebug('${p.id}')" title="有头打开当前环境根路径 /">调试</button>`;
     const clearBtn = `<button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px" onclick="clearFlowProfileStorage('${p.id}')"${ok ? '' : ' disabled style="opacity:0.45;cursor:not-allowed"'}>清除</button>`;
     const deleteBtn = rowOpts.allowDelete
       ? `<button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 8px;color:var(--amber)" onclick="removeFlowProfileEntry('${p.id}')">删除</button>`
       : '';
     return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;padding:6px 0;border-bottom:1px solid var(--border)">
       <div style="flex:1;min-width:0;line-height:1.5;font-size:var(--fs-sm)">${lineParts.join(sep)}</div>
-      <div style="display:flex;gap:6px;flex-shrink:0">${loginBtn}${clearBtn}${deleteBtn}</div>
+      <div style="display:flex;gap:6px;flex-shrink:0">${loginBtn}${debugBtn}${clearBtn}${deleteBtn}</div>
     </div>`;
   };
   if (goldenEl) {
@@ -7626,6 +7803,24 @@ function clearFlowProfileStorage(profileId) {
   }
   if (!send('account:clear-storage', { profile: profileId })) {
     showToast('清除失败', 'err');
+  }
+}
+
+function openFlowProfileHeadedDebug(profileId) {
+  if (!ws || ws.readyState !== 1) {
+    showToast('未连接服务器', 'err');
+    return;
+  }
+  if (state.recording || loginOnlyRecording) {
+    showToast('正在录制中，请先停止', 'err');
+    return;
+  }
+  if (!envState.repoReady) {
+    showToast('仓库未就绪', 'err');
+    return;
+  }
+  if (!send('account:headed-debug', { profile: profileId, env: envState.current })) {
+    showToast('打开调试失败', 'err');
   }
 }
 
