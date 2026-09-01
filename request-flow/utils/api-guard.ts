@@ -1,6 +1,7 @@
 import type { Page, Request, Response } from '@playwright/test';
 import { sendApiFailuresToFeishu } from './feishu-api-failure';
 import { extractRequestFields, formatRequestFields } from './request-fields';
+import { clearExpiredStorageOn401 } from './clear-expired-storage';
 
 export type ApiFailureKind = 'http' | 'business' | 'requestfailed';
 
@@ -26,6 +27,8 @@ export type ApiGuardOptions = {
   checkBusinessBody?: boolean;
   /** body 摘要最大字符数 */
   bodySummaryMaxLen?: number;
+  /** 401 时立即关闭 page 终止用例；默认 true */
+  abortOn401?: boolean;
 };
 
 const DEFAULT_URL_INCLUDES: RegExp[] = [
@@ -123,7 +126,9 @@ export class ApiGuard {
   private readonly pending = new Set<Promise<void>>();
   private attached = false;
   private collecting = false;
-  private readonly options: Required<ApiGuardOptions>;
+  private authAborted = false;
+  private abortError: Error | null = null;
+  private readonly options: Required<ApiGuardOptions> & { abortOn401: boolean };
 
   private onResponse = (response: Response) => {
     if (!this.collecting) return;
@@ -159,6 +164,7 @@ export class ApiGuard {
       failStatusFrom: options.failStatusFrom ?? 400,
       checkBusinessBody: options.checkBusinessBody ?? true,
       bodySummaryMaxLen: options.bodySummaryMaxLen ?? 280,
+      abortOn401: options.abortOn401 ?? true,
     };
   }
 
@@ -180,6 +186,8 @@ export class ApiGuard {
   start(): void {
     this.attach();
     this.failures.length = 0;
+    this.authAborted = false;
+    this.abortError = null;
     this.collecting = true;
   }
 
@@ -190,6 +198,10 @@ export class ApiGuard {
 
   getFailures(): readonly ApiFailure[] {
     return this.failures;
+  }
+
+  getAbortError(): Error | null {
+    return this.abortError;
   }
 
   /** 丢弃 URL 匹配的失败（用于 available 等瞬时 500 重试成功后） */
@@ -211,6 +223,15 @@ export class ApiGuard {
   async assertNoFailures(label = 'API'): Promise<void> {
     this.stopCollecting();
     await this.flush();
+
+    const abortErr = this.abortError;
+    if (abortErr) {
+      if (this.failures.length) {
+        await sendApiFailuresToFeishu(this.failures, label);
+      }
+      throw abortErr;
+    }
+
     if (this.failures.length === 0) return;
 
     await sendApiFailuresToFeishu(this.failures, label);
@@ -286,6 +307,9 @@ export class ApiGuard {
         status,
         bodySummary: bodySummary || (businessMsg ?? undefined),
       }, response);
+      if (status === 401) {
+        this.abortUnauthorized(shortUrl, method, bodySummary);
+      }
       return;
     }
 
@@ -298,6 +322,23 @@ export class ApiGuard {
         bodySummary: bodySummary || businessMsg,
       }, response);
     }
+  }
+
+  private abortUnauthorized(shortUrl: string, method: string, bodySummary?: string): void {
+    if (this.authAborted || !this.options.abortOn401) return;
+    this.authAborted = true;
+    this.stopCollecting();
+    const cleared = clearExpiredStorageOn401();
+    const detail = bodySummary ? ` · ${bodySummary}` : '';
+    const clearedHint = cleared.removed
+      ? cleared.loginAccount
+        ? ` 已作废登录态（保留登录账号 ${cleared.loginAccount}）。`
+        : ' 已作废登录态。'
+      : '';
+    this.abortError = new Error(
+      `登录态失效，接口返回 401，已终止用例：${method} ${shortUrl}${detail}。${clearedHint}请重新登录后重试。`,
+    );
+    void this.page.close({ runBeforeUnload: false }).catch(() => undefined);
   }
 }
 

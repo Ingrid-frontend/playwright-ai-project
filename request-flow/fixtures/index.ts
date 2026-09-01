@@ -124,7 +124,12 @@ export const test = base.extend<AppFixtures, WorkerFixtures>({
       if (!skip) {
         apiGuard.start();
       }
-      await use();
+      let testErr: unknown;
+      try {
+        await use();
+      } catch (e) {
+        testErr = e;
+      }
       if (!skip) {
         const failures = apiGuard.getFailures();
         if (failures.length && workerRun) {
@@ -142,7 +147,15 @@ export const test = base.extend<AppFixtures, WorkerFixtures>({
             })),
           );
         }
-        await apiGuard.assertNoFailures(`[${testInfo.title}]`);
+        if (apiGuard.getAbortError()) {
+          await apiGuard.assertNoFailures(`[${testInfo.title}]`);
+        } else if (testErr) {
+          throw testErr;
+        } else {
+          await apiGuard.assertNoFailures(`[${testInfo.title}]`);
+        }
+      } else if (testErr) {
+        throw testErr;
       }
     },
     { auto: true },
