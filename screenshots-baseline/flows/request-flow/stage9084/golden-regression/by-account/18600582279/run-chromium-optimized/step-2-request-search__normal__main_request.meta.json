@@ -1,0 +1,60 @@
+{
+  "capturedAt": "2026-09-01T03:15:00.199Z",
+  "viewport": {
+    "name": "desktop",
+    "width": 1280,
+    "height": 720,
+    "deviceScaleFactor": 1
+  },
+  "imageWidth": 1280,
+  "imageHeight": 720,
+  "layout": {
+    "horizontalOverflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280
+  },
+  "domHash": "SEC|ab965835a133e591",
+  "sections": [
+    {
+      "key": "request-search-table",
+      "structureHash": "ab965835a133e591",
+      "textHash": "99d21dc4fc37b743",
+      "nodeCount": 202,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV"
+    }
+  ],
+  "selectors": {
+    "request-search-table": {
+      "exists": true,
+      "bbox": {
+        "x": 200,
+        "y": 204,
+        "width": 1380,
+        "height": 377
+      },
+      "domHash": "ab965835a133e591",
+      "structureHash": "ab965835a133e591",
+      "textHash": "99d21dc4fc37b743",
+      "resolvedBy": "selector",
+      "fingerprint": {
+        "tag": "DIV",
+        "stableAttributes": {},
+        "textHint": "序号\n\t\n创建日期\n\t\n申请人\n\t\n单据名称\n\t\n事由\n\t\n单号\n\t\n币种\n\t\n",
+        "xpath": "/html[1]/body[1]/div[1]/div[1]/div[1]/main[1]/span[1]/div[1]/div[1]/div[1]/div[1]/div[2]/div[1]/div[1]/div[1]/div[1]/div[1]",
+        "fallbackSelectors": [],
+        "baselineRect": {
+          "x": 200,
+          "y": 204,
+          "width": 1380,
+          "height": 377
+        },
+        "baselinePageWidth": 1600,
+        "baselinePageHeight": 900
+      }
+    }
+  },
+  "consoleErrors": [],
+  "pageErrors": [],
+  "snapshotName": "request-search",
+  "state": "normal"
+}
