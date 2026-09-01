@@ -13,6 +13,7 @@ function createStudioHandlers(ctx) {
     removeWriteProfileEntry,
     runAccountLogin,
     clearSessionStorage,
+    openHeadedProfileDebug,
     optimizeCode,
     getOptimizeApiKeys,
     resolveOptimizeProvider,
@@ -59,6 +60,10 @@ function createStudioHandlers(ctx) {
 
     'account:clear-storage': async (ws, session, _sessionId, msg) => {
       clearSessionStorage(ws, session, msg.profile);
+    },
+
+    'account:headed-debug': async (ws, session, _sessionId, msg) => {
+      openHeadedProfileDebug(ws, session, msg.profile);
     },
 
     'account:add-golden-profile': async (ws, session, _sessionId, msg) => {

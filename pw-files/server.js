@@ -198,6 +198,7 @@ const {
   removeGoldenProfileEntry,
   addWriteProfileEntry,
   removeWriteProfileEntry,
+  openHeadedProfileDebug,
 } = createAccountEnvActions({
   repoEnv,
   resolveRepoRoot,
@@ -335,6 +336,7 @@ const { sendHello, handleMessage } = createWsDispatcher({
     removeWriteProfileEntry,
     runAccountLogin,
     clearSessionStorage,
+    openHeadedProfileDebug,
     optimizeCode,
     getOptimizeApiKeys,
     resolveOptimizeProvider,

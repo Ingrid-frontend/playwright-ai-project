@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { send, logLine, errText } = require('./ws-safe');
+const { invalidateStorageState } = require(path.join(__dirname, '../../src/utils/storage-state-meta.cjs'));
 
 function createAccountEnvActions(deps) {
   const {
@@ -120,17 +121,20 @@ function createAccountEnvActions(deps) {
     }
     const storageAbs = path.resolve(repoRoot, storageRel);
     let removed = false;
+    let loginAccount = null;
     if (fs.existsSync(storageAbs)) {
       try {
-        fs.unlinkSync(storageAbs);
-        removed = true;
+        const result = invalidateStorageState(storageAbs, { reason: 'manual-clear' });
+        removed = result.ok;
+        loginAccount = result.loginAccount || null;
       } catch (e) {
         send(ws, 'error', { message: `清除失败: ${errText(e)}` });
         return;
       }
     }
     if (removed) {
-      logLine(ws, `[account] 已清除登录态: ${storageRel}`, 'ok');
+      const acctHint = loginAccount ? `（保留登录账号 ${loginAccount}）` : '';
+      logLine(ws, `[account] 已作废登录态${acctHint}: ${storageRel}`, 'ok');
     } else {
       logLine(ws, `[account] 登录态文件不存在: ${storageRel}`, 'dim');
     }
@@ -140,6 +144,7 @@ function createAccountEnvActions(deps) {
       storageState: storageRel,
       hasStorage: false,
       removed,
+      loginAccount,
     });
     const repoReady = true;
     sendEnvInfo(ws, session, repoRoot, repoReady);
@@ -396,6 +401,90 @@ function createAccountEnvActions(deps) {
     sendAccountInfo(ws, session, repoRoot, repoReady);
   }
 
+  function openHeadedProfileDebug(ws, session, profileOverride) {
+    const repoRoot = resolveRepoRoot();
+    if (!fs.existsSync(path.join(repoRoot, 'playwright.config.ts'))) {
+      send(ws, 'error', { message: '未找到项目根，无法打开有头调试' });
+      return;
+    }
+    if (session.recording) {
+      send(ws, 'error', { message: '正在录制中，请先停止录制' });
+      return;
+    }
+    const envId = getSessionPlaywrightEnv(session);
+    const profile = profileOverride
+      ? repoEnv.resolveAccountProfile(repoRoot, envId, profileOverride)
+      : getSessionAccountProfile(session, repoRoot);
+    const resolved = getEnvEntryResolved(repoRoot, envId, profile);
+    const baseURL = String(resolved?.baseURL || '').trim();
+    if (!baseURL) {
+      send(ws, 'error', { message: `环境 ${envId} 未配置 baseURL` });
+      return;
+    }
+    const storageRel = repoEnv.resolveStorageStateRelDirect(repoRoot, envId, profile);
+    const storageAbs =
+      storageRel && fs.existsSync(path.resolve(repoRoot, storageRel))
+        ? path.resolve(repoRoot, storageRel)
+        : '';
+
+    if (session.debugBrowserProc && session.debugBrowserProc.exitCode === null) {
+      try {
+        session.debugBrowserProc.kill('SIGTERM');
+      } catch {
+        /* ignore */
+      }
+      session.debugBrowserProc = null;
+    }
+
+    const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+    const args = [
+      'tsx',
+      'scripts/studio/open-headed-page.ts',
+      `--baseURL=${baseURL}`,
+      '--entry=/',
+    ];
+    if (storageAbs) args.push(`--storageState=${storageAbs}`);
+
+    let proc;
+    try {
+      proc = spawn(npx, args, {
+        cwd: repoRoot,
+        env: buildRepoSpawnEnv(session, profile, envId),
+        shell: false,
+      });
+    } catch (e) {
+      send(ws, 'error', { message: `有头调试启动失败: ${errText(e)}` });
+      return;
+    }
+
+    session.debugBrowserProc = proc;
+    send(ws, 'account:headed-debug:start', {
+      env: envId,
+      profile,
+      baseURL,
+      hasStorage: Boolean(storageAbs),
+    });
+    logLine(
+      ws,
+      `[account] 有头调试 ${baseURL}/ · profile=${profile}${storageAbs ? '（已加载登录态）' : '（无登录态）'}`,
+      'ok',
+    );
+
+    proc.stdout.on('data', (d) => {
+      const text = d.toString().trim();
+      if (text) logLine(ws, text, 'dim');
+    });
+    proc.stderr.on('data', (d) => {
+      const text = d.toString().trim();
+      if (text) logLine(ws, text, 'warn');
+    });
+    proc.on('close', (code) => {
+      if (session.debugBrowserProc === proc) session.debugBrowserProc = null;
+      send(ws, 'account:headed-debug:done', { env: envId, profile, exitCode: code });
+      logLine(ws, `[account] 有头调试已结束 · profile=${profile}`, 'dim');
+    });
+  }
+
   return {
     sendAccountInfo,
     sendEnvInfo,
@@ -407,6 +496,7 @@ function createAccountEnvActions(deps) {
     removeGoldenProfileEntry,
     addWriteProfileEntry,
     removeWriteProfileEntry,
+    openHeadedProfileDebug,
   };
 }
 
