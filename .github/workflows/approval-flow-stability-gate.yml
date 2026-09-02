@@ -1,0 +1,72 @@
+name: Approval Flow Stability Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: 连跑轮次
+        required: false
+        default: '5'
+        type: string
+      playwright_env:
+        description: 环境（默认 dev）
+        required: false
+        default: dev
+        type: string
+      account_profile:
+        description: 账号档案（默认 write）
+        required: false
+        default: write
+        type: string
+  schedule:
+    - cron: '0 5 * * 0'
+
+permissions:
+  contents: read
+
+jobs:
+  stability-gate:
+    timeout-minutes: 360
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Cache Playwright Browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps
+
+      - name: Run stability gate
+        run: |
+          RUNS="${{ inputs.runs || '5' }}"
+          ENV="${{ inputs.playwright_env || 'dev' }}"
+          PROFILE="${{ inputs.account_profile || 'write' }}"
+          npm run approval-flow:stability-gate -- --runs="${RUNS}" --env="${ENV}" --profile="${PROFILE}"
+        env:
+          TEST_USERNAME: ${{ secrets.TEST_USERNAME }}
+          TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+
+      - name: Upload stability gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: approval-stability-gate-${{ github.run_id }}
+          path: results/stability-gate/
+          retention-days: 30
+          if-no-files-found: ignore
