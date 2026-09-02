@@ -9,6 +9,7 @@ import {
   readUiIssuesSummaryLine,
   sendJobFeishuNotification,
 } from "./job-notify.js";
+import { writeBitableReport } from "../feishu/write-bitable-report.js";
 import { formatRunId, type AccountProfileFilter } from "./job-utils.js";
 import { listJobRunEnvs, resolveJobRunEnv, type NotifyOn, type ResolvedTestJob } from "./test-jobs-config.js";
 import {
@@ -349,6 +350,18 @@ export async function runFlowJob(
       aborted: false,
       uiIssuesSummary: readUiIssuesSummaryLine(),
     });
+  }
+
+  if (job.steps.writeFeishuBitable) {
+    try {
+      const finalStatus = flowAllOk ? "success" : "failed";
+      await writeBitableReport({ summary, env: effectiveEnv, status: finalStatus });
+    } catch (error) {
+      console.log(
+        "⚠️  飞书多维表写入失败（不影响任务流程）:",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
   }
 
   if (persist && ctx.jobId) {
