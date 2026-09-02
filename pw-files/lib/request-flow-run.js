@@ -13,6 +13,7 @@ const {
   headedFailurePlaceholder,
 } = require('./failure-report');
 const { finalizeFlowRun, detectPipeline, flowScriptKey, readLastFlowRun } = require('./flow-run-common');
+const { shouldUseGoldenCli, runStudioGoldenRun } = require('./flow-golden-cli');
 const { makeRunMarker, writeRunMarkerFile } = require('./flow-run-marker.js');
 const { resolveGoldenSeed } = require('./golden-seed.js');
 const repoEnv = require('../repo-env');
@@ -343,10 +344,13 @@ async function runRequestFlowTests(ws, session, msg, deps) {
   if (msg.goldenAll) {
     return runRequestFlowGoldenAll(ws, session, msg, deps);
   }
-  const { repoRoot, envId, profile, roleSlug, spawnEnv, storage } = buildSpawnEnv(session, deps, msg);
-  const configRel = CONFIG_REL;
   const mode = String(msg.mode || 'headless').trim();
   const spec = String(msg.spec || DEFAULT_SPEC).trim() || DEFAULT_SPEC;
+  if (shouldUseGoldenCli({ ...msg, spec, mode })) {
+    return runStudioGoldenRun(ws, session, 'request-flow', { ...msg, spec, mode }, deps, { send, logLine });
+  }
+  const { repoRoot, envId, profile, roleSlug, spawnEnv, storage } = buildSpawnEnv(session, deps, msg);
+  const configRel = CONFIG_REL;
   const grep = msg.grep === undefined || msg.grep === null ? '' : String(msg.grep);
 
   if (!fs.existsSync(path.join(repoRoot, configRel))) {
@@ -594,47 +598,41 @@ async function runRequestFlowGoldenAll(ws, session, msg, deps) {
     return;
   }
 
-  const filterKeyword =
-    msg.filterKeyword != null
-      ? String(msg.filterKeyword).trim()
-      : String(process.env.REQUEST_FILTER_KEYWORD || '').trim();
   const spec = String(msg.spec || 'request/golden-regression.spec.ts').trim();
-  const results = [];
-
   session.requestFlowGoldenAllRun = true;
   session.requestFlowCancelled = false;
-  send(ws, 'request-flow:golden-all:start', { env: envId, profiles: ready, total: ready.length });
-  logLine(ws, `[request-flow] Golden 全角色回归 · ${ready.length} 个角色`, 'info');
+  send(ws, 'request-flow:golden-all:start', { env: envId, profiles: ready, total: ready.length, viaCli: true });
+  logLine(ws, `[request-flow] Golden 全角色回归 · CLI · ${ready.length} 个角色`, 'info');
 
   try {
-  for (let i = 0; i < ready.length; i++) {
-    if (session.requestFlowCancelled) break;
-    const profileId = ready[i];
-    const entry = repoEnv.enrichProfileStorageEntry(repoRoot, envId, profileId);
-    logLine(ws, `[request-flow] Golden 角色 ${i + 1}/${ready.length}: ${entry.roleLabel} (${profileId})`, 'info');
-    await runRequestFlowTests(ws, session, {
-      ...msg,
-      goldenAll: false,
-      accountProfile: profileId,
-      spec,
-      pipeline: 'golden',
-      writeEnabled: false,
-      filterKeyword: filterKeyword || '测试',
-      mode: 'headless',
-    }, deps);
-    results.push({
-      profile: profileId,
-      roleSlug: entry.roleSlug,
-      roleLabel: entry.roleLabel,
+    const result = await runStudioGoldenRun(
+      ws,
+      session,
+      'request-flow',
+      {
+        ...msg,
+        spec,
+        pipeline: 'golden',
+        writeEnabled: false,
+        mode: 'headless',
+        filterKeyword:
+          msg.filterKeyword != null
+            ? String(msg.filterKeyword).trim()
+            : String(process.env.REQUEST_FILTER_KEYWORD || '测试').trim(),
+      },
+      deps,
+      { send, logLine },
+    );
+    send(ws, 'request-flow:golden-all:done', {
+      ok: Boolean(result.ok),
+      env: envId,
+      results: ready.map((profileId) => {
+        const entry = repoEnv.enrichProfileStorageEntry(repoRoot, envId, profileId);
+        return { profile: profileId, roleSlug: entry.roleSlug, roleLabel: entry.roleLabel };
+      }),
+      cancelled: Boolean(result.cancelled),
+      viaCli: true,
     });
-  }
-
-  send(ws, 'request-flow:golden-all:done', {
-    ok: results.length > 0 && !session.requestFlowCancelled,
-    env: envId,
-    results,
-    cancelled: Boolean(session.requestFlowCancelled),
-  });
   } finally {
     session.requestFlowGoldenAllRun = false;
   }

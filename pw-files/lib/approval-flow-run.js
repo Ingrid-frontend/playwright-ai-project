@@ -13,6 +13,7 @@ const {
   headedFailurePlaceholder,
 } = require('./failure-report');
 const { finalizeFlowRun, detectPipeline, flowScriptKey, readLastFlowRun } = require('./flow-run-common');
+const { shouldUseGoldenCli, runStudioGoldenRun } = require('./flow-golden-cli');
 const { makeRunMarker, writeRunMarkerFile } = require('./flow-run-marker.js');
 const { resolveApprovalGoldenSeed } = require('./approval-golden-seed.js');
 const repoEnv = require('../repo-env');
@@ -349,10 +350,13 @@ async function runApprovalFlowTests(ws, session, msg, deps) {
   if (msg.goldenAll) {
     return runApprovalFlowGoldenAll(ws, session, msg, deps);
   }
-  const { repoRoot, envId, profile, roleSlug, spawnEnv, storage } = buildSpawnEnv(session, deps, msg);
-  const configRel = CONFIG_REL;
   const mode = String(msg.mode || 'headless').trim();
   const spec = String(msg.spec || DEFAULT_SPEC).trim() || DEFAULT_SPEC;
+  if (shouldUseGoldenCli({ ...msg, spec, mode })) {
+    return runStudioGoldenRun(ws, session, 'approval-flow', { ...msg, spec, mode }, deps, { send, logLine });
+  }
+  const { repoRoot, envId, profile, roleSlug, spawnEnv, storage } = buildSpawnEnv(session, deps, msg);
+  const configRel = CONFIG_REL;
   const grep = msg.grep === undefined || msg.grep === null ? '' : String(msg.grep);
 
   if (!fs.existsSync(path.join(repoRoot, configRel))) {
@@ -573,41 +577,36 @@ async function runApprovalFlowGoldenAll(ws, session, msg, deps) {
   }
 
   const spec = String(msg.spec || GOLDEN_SPEC).trim();
-  const results = [];
-
   session.approvalFlowGoldenAllRun = true;
   session.approvalFlowCancelled = false;
-  send(ws, 'approval-flow:golden-all:start', { env: envId, profiles: ready, total: ready.length });
-  logLine(ws, `[approval-flow] Golden 全角色回归 · ${ready.length} 个角色`, 'info');
+  send(ws, 'approval-flow:golden-all:start', { env: envId, profiles: ready, total: ready.length, viaCli: true });
+  logLine(ws, `[approval-flow] Golden 全角色回归 · CLI · ${ready.length} 个角色`, 'info');
 
   try {
-  for (let i = 0; i < ready.length; i++) {
-    if (session.approvalFlowCancelled) break;
-    const profileId = ready[i];
-    const entry = repoEnv.enrichProfileStorageEntry(repoRoot, envId, profileId);
-    logLine(ws, `[approval-flow] Golden 角色 ${i + 1}/${ready.length}: ${entry.roleLabel} (${profileId})`, 'info');
-    await runApprovalFlowTests(ws, session, {
-      ...msg,
-      goldenAll: false,
-      accountProfile: profileId,
-      spec,
-      pipeline: 'golden',
-      writeEnabled: false,
-      mode: 'headless',
-    }, deps);
-    results.push({
-      profile: profileId,
-      roleSlug: entry.roleSlug,
-      roleLabel: entry.roleLabel,
+    const result = await runStudioGoldenRun(
+      ws,
+      session,
+      'approval-flow',
+      {
+        ...msg,
+        spec,
+        pipeline: 'golden',
+        writeEnabled: false,
+        mode: 'headless',
+      },
+      deps,
+      { send, logLine },
+    );
+    send(ws, 'approval-flow:golden-all:done', {
+      ok: Boolean(result.ok),
+      env: envId,
+      results: ready.map((profileId) => {
+        const entry = repoEnv.enrichProfileStorageEntry(repoRoot, envId, profileId);
+        return { profile: profileId, roleSlug: entry.roleSlug, roleLabel: entry.roleLabel };
+      }),
+      cancelled: Boolean(result.cancelled),
+      viaCli: true,
     });
-  }
-
-  send(ws, 'approval-flow:golden-all:done', {
-    ok: results.length > 0 && !session.approvalFlowCancelled,
-    env: envId,
-    results,
-    cancelled: Boolean(session.approvalFlowCancelled),
-  });
   } finally {
     session.approvalFlowGoldenAllRun = false;
   }
