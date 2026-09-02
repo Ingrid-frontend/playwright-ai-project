@@ -1,0 +1,95 @@
+{
+  "capturedAt": "2026-09-01T06:48:54.087Z",
+  "viewport": {
+    "name": "desktop",
+    "width": 1280,
+    "height": 720,
+    "deviceScaleFactor": 1
+  },
+  "imageWidth": 1280,
+  "imageHeight": 720,
+  "layout": {
+    "horizontalOverflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280
+  },
+  "domHash": "SEC|0adcfcd953940ddb",
+  "sections": [
+    {
+      "key": "request-list-root",
+      "structureHash": "0adcfcd953940ddb",
+      "textHash": "c90055ad5373f378",
+      "nodeCount": 109,
+      "childTags": "DIV"
+    },
+    {
+      "key": "request-list-table",
+      "structureHash": "b067035dab9ca22b",
+      "textHash": "2806632a279ce1ad",
+      "nodeCount": 1272,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV"
+    }
+  ],
+  "selectors": {
+    "request-list-root": {
+      "exists": true,
+      "bbox": {
+        "x": 180,
+        "y": 100,
+        "width": 1420,
+        "height": 800
+      },
+      "domHash": "0adcfcd953940ddb",
+      "structureHash": "0adcfcd953940ddb",
+      "textHash": "c90055ad5373f378",
+      "resolvedBy": "selector",
+      "fingerprint": {
+        "tag": "DIV",
+        "stableAttributes": {},
+        "textHint": "重 置\n搜 索\n新建申请单\n代理申请单\n+\t\n序号\n\t\n创建日期\n\t\n申请人\n\t",
+        "xpath": "/html[1]/body[1]/div[1]/div[1]/div[1]/main[1]/span[1]/div[1]",
+        "fallbackSelectors": [],
+        "baselineRect": {
+          "x": 180,
+          "y": 100,
+          "width": 1420,
+          "height": 800
+        },
+        "baselinePageWidth": 1600,
+        "baselinePageHeight": 900
+      }
+    },
+    "request-list-table": {
+      "exists": true,
+      "bbox": {
+        "x": 200,
+        "y": 204,
+        "width": 1380,
+        "height": 862
+      },
+      "domHash": "b067035dab9ca22b",
+      "structureHash": "b067035dab9ca22b",
+      "textHash": "2806632a279ce1ad",
+      "resolvedBy": "selector",
+      "fingerprint": {
+        "tag": "DIV",
+        "stableAttributes": {},
+        "textHint": "+\t\n序号\n\t\n创建日期\n\t\n申请人\n\t\n单据名称\n\t\n事由\n\t\n单号\n\t\n币种",
+        "xpath": "/html[1]/body[1]/div[1]/div[1]/div[1]/main[1]/span[1]/div[1]/div[1]/div[1]/div[1]/div[2]/div[1]/div[1]/div[1]/div[1]/div[1]",
+        "fallbackSelectors": [],
+        "baselineRect": {
+          "x": 200,
+          "y": 204,
+          "width": 1380,
+          "height": 862
+        },
+        "baselinePageWidth": 1600,
+        "baselinePageHeight": 900
+      }
+    }
+  },
+  "consoleErrors": [],
+  "pageErrors": [],
+  "snapshotName": "request-list",
+  "state": "normal"
+}

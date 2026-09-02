@@ -231,7 +231,8 @@ export function classifyDifference(
     evidence.reason = `${where}整块区域（${top.w}x${top.h}）${what}`;
     return { status: 'regress', evidence };
   }
-  if (difference >= cfg.majorRatio && actionable.length >= 3) {
+  const multiSpotMin = cfg.multiSpotRegressRatio ?? 0.01;
+  if (difference >= cfg.majorRatio && actionable.length >= 3 && difference >= multiSpotMin) {
     evidence.reason = `页面有 ${actionable.length} 处内容变化，最大一处在${where}（整页差异 ${(difference * 100).toFixed(2)}%）`;
     return { status: 'regress', evidence };
   }

@@ -10,6 +10,7 @@ import {
   type FlowRunManifest,
 } from '../../src/utils/flow-run-report.js';
 import { RUN_SEGMENT_DIR } from './compare-screenshots-scan.js';
+import { readGoldenMatchVerdictForScriptRun } from './prune-flow-golden-runs.js';
 
 const require = createRequire(import.meta.url);
 const { readRunMarkerFile } = require('../../pw-files/lib/flow-run-marker.js') as {
@@ -18,6 +19,7 @@ const { readRunMarkerFile } = require('../../pw-files/lib/flow-run-marker.js') a
 
 export type ScriptRunMeta = {
   scriptKey: string;
+  runId?: string;
   startedAt?: string;
   finishedAt?: string;
   durationSec?: number;
@@ -39,6 +41,8 @@ export type ScriptRunHistoryEntry = {
   finishedAt?: string;
   durationSec?: number;
   screenshotCount: number;
+  /** 截图已被 golden-prune 清理，screenshotCount 来自 .golden-match.json 归档 */
+  screenshotsPruned?: boolean;
   comparedSteps: number;
   passSteps: number;
   minorSteps: number;
@@ -48,6 +52,8 @@ export type ScriptRunHistoryEntry = {
   verdictLabel: string;
   isLatest: boolean;
   ok?: boolean;
+  /** 最新 run 截图步数少于历史完整轮次 */
+  incomplete?: boolean;
   /** 该 run 各步骤截图（相对报告路径），无完整对比时兜底 */
   previews?: ScriptRunHistoryPreview[];
   /** 该 run 已对比步骤的完整证据卡（与最新一轮相同 UI） */
@@ -177,6 +183,26 @@ function runTimestampSortKey(timestamp: string): number {
 }
 
 export function countRunScreenshots(scriptPath: string, runId: string): number {
+  return resolveRunScreenshotMeta(scriptPath, runId).count;
+}
+
+/** 磁盘 PNG 数；已清理时从 .golden-match.json 回填 prunedScreenshots / steps */
+export function resolveRunScreenshotMeta(
+  scriptPath: string,
+  runId: string,
+): { count: number; pruned: boolean } {
+  const live = countRunPngsOnDisk(scriptPath, runId);
+  if (live > 0) return { count: live, pruned: false };
+
+  const verdict = readGoldenMatchVerdictForScriptRun(scriptPath, runId);
+  if (!verdict) return { count: 0, pruned: false };
+
+  const pruned = (verdict.prunedScreenshots ?? 0) > 0;
+  const archived = pruned ? verdict.prunedScreenshots! : verdict.steps ?? 0;
+  return { count: archived, pruned };
+}
+
+function countRunPngsOnDisk(scriptPath: string, runId: string): number {
   if (!scriptPath || !runId) return 0;
   const segments = findRunRootSegments(scriptPath);
   const runDir = path.join(scriptPath, ...segments, runId);
@@ -222,6 +248,7 @@ export function resolveScriptRunHistory(
       const durationSec = manifest?.durationSec;
       const runDir = path.join(scriptPath, ...findRunRootSegments(scriptPath), runId);
       const runMarker = manifest?.runMarker || readRunMarkerFile(runDir) || undefined;
+      const shotMeta = resolveRunScreenshotMeta(scriptPath, runId);
       rows.push({
         runIndex: i + 1,
         runId,
@@ -229,7 +256,8 @@ export function resolveScriptRunHistory(
         startedAt,
         finishedAt,
         durationSec,
-        screenshotCount: countRunScreenshots(scriptPath, runId),
+        screenshotCount: shotMeta.count,
+        screenshotsPruned: shotMeta.pruned || undefined,
         comparedSteps: 0,
         passSteps: 0,
         minorSteps: 0,
@@ -274,7 +302,7 @@ function inferRunMetaFromScreenshots(scriptKey: string, scriptPath: string): Scr
   const startedAt = parseRunDirStartedAt(latestRun) || new Date(minMs).toISOString();
   const finishedAt = new Date(maxMs).toISOString();
   const durationSec = Math.max(0.1, (maxMs - minMs) / 1000);
-  return { scriptKey, startedAt, finishedAt, durationSec };
+  return { scriptKey, runId: latestRun, startedAt, finishedAt, durationSec };
 }
 
 function findRunRootSegments(scriptPath: string): string[] {
@@ -306,6 +334,7 @@ export function resolveScriptRunMeta(
     if (byRunId?.durationSec && byRunId.durationSec > 0) {
       out.set(scriptKey, {
         scriptKey,
+        runId: runId || byRunId.runId,
         startedAt: byRunId.startedAt,
         finishedAt: byRunId.finishedAt,
         durationSec: byRunId.durationSec,
@@ -317,6 +346,7 @@ export function resolveScriptRunMeta(
     if (hit?.durationSec && hit.durationSec > 0) {
       out.set(scriptKey, {
         scriptKey,
+        runId: runId || hit.runId,
         startedAt: hit.startedAt,
         finishedAt: hit.finishedAt,
         durationSec: hit.durationSec,
@@ -326,7 +356,17 @@ export function resolveScriptRunMeta(
 
     if (!scriptPath) continue;
     const inferred = inferRunMetaFromScreenshots(scriptKey, scriptPath);
-    if (inferred) out.set(scriptKey, inferred);
+    if (inferred) {
+      out.set(scriptKey, inferred);
+      continue;
+    }
+    if (runId) {
+      out.set(scriptKey, {
+        scriptKey,
+        runId,
+        startedAt: parseRunDirStartedAt(runId) || byRunId?.startedAt || hit?.startedAt,
+      });
+    }
   }
 
   return out;

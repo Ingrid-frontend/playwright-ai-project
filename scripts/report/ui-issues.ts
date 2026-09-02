@@ -48,6 +48,15 @@ export interface UiIssue {
   width?: number;
   height?: number;
   triageStatus?: 'confirmed' | 'pending' | 'ignored';
+  /** automated=自动回归；manual=中控/UI 采集反馈 */
+  source?: 'automated' | 'manual';
+  reporter?: string;
+  description?: string;
+  elementXpath?: string;
+  elementSelector?: string;
+  /** 相对仓库根路径，如 results/ui-feedback-docs/xxx.md */
+  aiDocPath?: string;
+  aiDocUrl?: string;
 }
 
 export interface UiIssuesReport {

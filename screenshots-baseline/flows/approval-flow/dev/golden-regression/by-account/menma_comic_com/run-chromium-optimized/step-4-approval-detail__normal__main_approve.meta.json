@@ -1,0 +1,64 @@
+{
+  "capturedAt": "2026-09-02T08:15:32.497Z",
+  "viewport": {
+    "name": "desktop",
+    "width": 1280,
+    "height": 720,
+    "deviceScaleFactor": 1
+  },
+  "imageWidth": 1280,
+  "imageHeight": 720,
+  "layout": {
+    "horizontalOverflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280
+  },
+  "domHash": "SEC|649ce87fa525e0b4",
+  "sections": [
+    {
+      "key": "approval-detail-entrance",
+      "structureHash": "649ce87fa525e0b4",
+      "textHash": "debb73e1b759230e",
+      "nodeCount": 97,
+      "childTags": "DIV"
+    }
+  ],
+  "selectors": {
+    "approval-detail-entrance": {
+      "exists": true,
+      "bbox": {
+        "x": 0,
+        "y": 0,
+        "width": 1600,
+        "height": 900
+      },
+      "domHash": "649ce87fa525e0b4",
+      "structureHash": "649ce87fa525e0b4",
+      "textHash": "debb73e1b759230e",
+      "resolvedBy": "selector",
+      "fingerprint": {
+        "tag": "DIV",
+        "stableAttributes": {
+          "id": "full-screen-id"
+        },
+        "textHint": "返回\n多个单据时，键盘↑↓键可以切换单据\n一壶酒\n外部员工申请单\n事由：-\n提交",
+        "xpath": "/html[1]/body[1]/div[12]/div[1]",
+        "fallbackSelectors": [
+          "#full-screen-id"
+        ],
+        "baselineRect": {
+          "x": 0,
+          "y": 0,
+          "width": 1600,
+          "height": 900
+        },
+        "baselinePageWidth": 1600,
+        "baselinePageHeight": 900
+      }
+    }
+  },
+  "consoleErrors": [],
+  "pageErrors": [],
+  "snapshotName": "approval-detail",
+  "state": "normal"
+}

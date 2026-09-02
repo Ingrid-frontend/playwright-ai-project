@@ -34,6 +34,8 @@ function createStudioHandlers(ctx) {
     cancelRun,
     generateReport,
     buildHtmlReport,
+    restartStudio,
+    countBusyStudioSessions,
   } = ctx;
 
   return {
@@ -142,6 +144,22 @@ function createStudioHandlers(ctx) {
 
     'export:html': async (ws, _session, sessionId) => {
       send(ws, 'run:log', { text: `下载链接: /download/report?sid=${sessionId}`, level: 'info' });
+    },
+
+    'studio:restart': async (ws, _session, _sessionId, msg) => {
+      if (!restartStudio) {
+        send(ws, 'error', { message: '重启不可用' });
+        return;
+      }
+      const busy = countBusyStudioSessions?.() || 0;
+      if (busy && !msg.force) {
+        send(ws, 'studio:restart:blocked', { busy });
+        return;
+      }
+      const result = restartStudio(ws);
+      if (!result.ok) {
+        send(ws, 'error', { message: result.error === 'restarting' ? '服务正在重启' : '重启失败' });
+      }
     },
   };
 }

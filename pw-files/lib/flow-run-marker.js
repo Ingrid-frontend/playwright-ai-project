@@ -167,10 +167,8 @@ function loadManifestHits(repoRoot) {
   return [...hits.values()].sort((a, b) => String(b.startedAt || '').localeCompare(String(a.startedAt || '')));
 }
 
-function matchQuery(hit, query) {
-  const q = String(query || '').trim().toLowerCase();
-  if (!q) return true;
-  const parts = [
+function hitSearchText(hit) {
+  return [
     hit.runMarker,
     hit.runId,
     hit.scriptKey,
@@ -181,7 +179,20 @@ function matchQuery(hit, query) {
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
-  return parts.includes(q);
+}
+
+function splitSearchQuery(query) {
+  return String(query || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function matchQuery(hit, query) {
+  const tokens = splitSearchQuery(query);
+  if (!tokens.length) return true;
+  const hay = hitSearchText(hit);
+  return tokens.some((token) => hay.includes(String(token).toLowerCase()));
 }
 
 function searchFlowRuns(repoRoot, query) {

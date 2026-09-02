@@ -9,7 +9,7 @@ import { readGoldenMatchVerdictForScriptRun, type GoldenMatchVerdict } from './p
 
 const DEFAULT_MAX_RUNS = 30;
 
-function filterScreenshotsByRun(
+export function filterScreenshotsByRun(
   screenshots: Map<number, ScreenshotInfo[]>,
   runId: string,
 ): Map<number, ScreenshotInfo[]> {
@@ -76,9 +76,13 @@ function rowFromGoldenVerdict(
   row: ScriptRunHistoryEntry,
   verdict: GoldenMatchVerdict,
 ): ScriptRunHistoryEntry {
+  const pruned = (verdict.prunedScreenshots ?? 0) > 0;
+  const shotCount = pruned ? verdict.prunedScreenshots! : row.screenshotCount || verdict.steps;
   if (!verdict.steps) {
     return {
       ...row,
+      screenshotCount: shotCount,
+      screenshotsPruned: pruned || undefined,
       comparedSteps: 0,
       passSteps: 0,
       minorSteps: 0,
@@ -91,6 +95,8 @@ function rowFromGoldenVerdict(
   if (verdict.match) {
     return {
       ...row,
+      screenshotCount: shotCount,
+      screenshotsPruned: pruned || undefined,
       comparedSteps: verdict.steps,
       passSteps: verdict.steps,
       minorSteps: 0,
@@ -103,6 +109,8 @@ function rowFromGoldenVerdict(
   const regress = verdict.maxDifference > 0;
   return {
     ...row,
+    screenshotCount: shotCount,
+    screenshotsPruned: pruned || undefined,
     comparedSteps: verdict.steps,
     passSteps: 0,
     minorSteps: regress ? 0 : verdict.steps,
@@ -110,6 +118,56 @@ function rowFromGoldenVerdict(
     maxDifference: verdict.maxDifference,
     verdict: regress ? 'regress' : 'minor',
     verdictLabel: regress ? '明显衰退' : '轻微变化',
+  };
+}
+
+function expectedStepCount(rows: ScriptRunHistoryEntry[]): number {
+  return Math.max(0, ...rows.filter((r) => r.screenshotCount > 0).map((r) => r.screenshotCount));
+}
+
+/** 主报告用哪次 run：最新完整轮；最新不完整则回退到上一次完整轮 */
+export function pickRunIdForMainReport(rows: ScriptRunHistoryEntry[]): {
+  runId: string;
+  latestIncomplete: boolean;
+} {
+  if (!rows.length) return { runId: '', latestIncomplete: false };
+  const expected = expectedStepCount(rows);
+  const latest = rows.find((r) => r.isLatest) || rows[rows.length - 1]!;
+  if (expected <= 0) return { runId: latest.runId, latestIncomplete: false };
+  if (latest.screenshotCount >= expected) return { runId: latest.runId, latestIncomplete: false };
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const row = rows[i]!;
+    if (row.screenshotCount >= expected) {
+      return { runId: row.runId, latestIncomplete: row.runId !== latest.runId };
+    }
+  }
+  return { runId: latest.runId, latestIncomplete: latest.screenshotCount < expected };
+}
+
+function markIncompleteRuns(rows: ScriptRunHistoryEntry[]): ScriptRunHistoryEntry[] {
+  const expected = expectedStepCount(rows);
+  if (expected <= 0) return rows;
+  return rows.map((r) => {
+    if (!r.isLatest || r.screenshotCount === 0 || r.screenshotCount >= expected) return r;
+    const partial = `${r.screenshotCount}/${expected}步`;
+    return {
+      ...r,
+      incomplete: true,
+      verdictLabel: `未完成(${partial})`,
+    };
+  });
+}
+
+export function screenshotsForMainReport(
+  screenshots: Map<number, ScreenshotInfo[]>,
+  rows: ScriptRunHistoryEntry[],
+): { filtered: Map<number, ScreenshotInfo[]>; runId: string; latestIncomplete: boolean } {
+  const { runId, latestIncomplete } = pickRunIdForMainReport(rows);
+  if (!runId) return { filtered: screenshots, runId: '', latestIncomplete: false };
+  return {
+    filtered: filterScreenshotsByRun(screenshots, runId),
+    runId,
+    latestIncomplete,
   };
 }
 
@@ -161,7 +219,7 @@ export async function enrichRunHistoryComparisons(
     });
   }
 
-  return out;
+  return markIncompleteRuns(out);
 }
 
 export function totalRunCount(runHistory: Map<string, ScriptRunHistoryEntry[]>): number {

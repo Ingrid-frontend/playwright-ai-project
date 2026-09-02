@@ -1,10 +1,10 @@
 {
-  "env": "stage9084",
+  "env": "dev",
   "entry": "/main/request",
   "storageState": null,
   "loginRedirect": false,
   "list": {
-    "url": "https://stage9084.huilianyi.com/main/request",
+    "url": "https://dev.huilianyi.com/main/request",
     "title": "",
     "iframeCount": 1,
     "tabs": [],
@@ -23,16 +23,16 @@
     "hasApproveList": false,
     "hasCardList": false,
     "bodyChildCount": 1,
-    "htmlLength": 129,
+    "htmlLength": 123,
     "iframeSrcs": [
-      "https://stage9084.huilianyi.com/main/request?openBySelf=zoom"
+      "https://dev.huilianyi.com/main/request?openBySelf=zoom"
     ],
     "tableClasses": [],
     "bodySnippet": "",
     "childFrames": [
       {
-        "url": "https://stage9084.huilianyi.com/",
-        "title": "汇联易stage | 一站式商旅及费用报销SaaS解决方案",
+        "url": "https://dev.huilianyi.com/",
+        "title": "标签",
         "iframeCount": 0,
         "tabs": [
           "二维码登录",
@@ -53,28 +53,19 @@
         "hasApproveList": false,
         "hasCardList": false,
         "bodyChildCount": 40,
-        "htmlLength": 23026,
+        "htmlLength": 23203,
         "iframeSrcs": [],
         "tableClasses": [],
-        "bodySnippet": "简体中文\n引领差旅报销云时代，实现自动化管理\n汇联易客服 400-829-7878  甄选商旅客服 400-629-7878\n汇联易管理系统\n二维码登录账号登录\n请使用汇联易APP扫码登录\n其他登录方式\n免费体验\n企业登录\n访问官网\n预约演示\n沪ICP备16047366号  沪公网安备 31010702003225号  CopyRight © 2026 上海甄汇信息科技有限公司"
+        "bodySnippet": "简体中文\n引领差旅报销云时代，实现自动化管理\n汇联易dev客服 400-829-7878  甄选商旅客服 400-629-7878\n汇联易管理系统dev\n二维码登录账号登录\n请使用汇联易devAPP扫码登录\n其他登录方式\n免费体验\n企业登录\n企业微信\n访问官网\n预约演示\n沪ICP备16047366号  沪公网安备 31010702003225号  CopyRight © 2026 上海甄汇信息科技有限公司"
       }
     ]
   },
   "detail": null,
   "listApis": [],
   "apiCalls": [
-    "GET 200 /api/tenant/protocol/heliosTenant?hlyRequestID=rwebrtUzlc-5HMZwm1788232637",
-    "GET 200 /proxy/api/qr/authorization?hlyRequestID=rwebrtUzlc-Q2sk631788232637&time=1788232637572",
-    "GET 200 /proxy/api/qr/authorization?hlyRequestID=rwebrtUzlc-6Y5a5M1788232637&time=1788232637575",
-    "GET 200 /proxy/api/qr/authorization/840eeac2-7b30-4767-b72d-71b9a802f8f4/v2?hlyRequestID=rwebrtUzlc-paTYVr1788232637",
-    "GET 200 /proxy/api/qr/authorization/840eeac2-7b30-4767-b72d-71b9a802f8f4/v2?hlyRequestID=rwebrtUzlc-MwrMMs1788232645",
-    "GET 200 /proxy/api/qr/authorization/840eeac2-7b30-4767-b72d-71b9a802f8f4/v2?hlyRequestID=rwebrtUzlc-nMpxx71788232653",
-    "GET 200 /proxy/api/qr/authorization/840eeac2-7b30-4767-b72d-71b9a802f8f4/v2?hlyRequestID=rwebrtUzlc-SCK4j61788232662",
-    "GET 200 /proxy/api/qr/authorization/840eeac2-7b30-4767-b72d-71b9a802f8f4/v2?hlyRequestID=rwebrtUzlc-YvtMiA1788232670",
-    "GET 200 /proxy/api/qr/authorization/840eeac2-7b30-4767-b72d-71b9a802f8f4/v2?hlyRequestID=rwebrtUzlc-LrdONp1788232678",
-    "GET 200 /proxy/api/qr/authorization/840eeac2-7b30-4767-b72d-71b9a802f8f4/v2?hlyRequestID=rwebrtUzlc-LKJQYa1788232686",
-    "GET 200 /proxy/api/qr/authorization/840eeac2-7b30-4767-b72d-71b9a802f8f4/v2?hlyRequestID=rwebrtUzlc-NPLXoL1788232694",
-    "GET 200 /proxy/api/qr/authorization/840eeac2-7b30-4767-b72d-71b9a802f8f4/v2?hlyRequestID=rwebrtUzlc-YSlKNE1788232702"
+    "GET 200 /api/tenant/protocol/heliosTenant?hlyRequestID=rwebiA7bGL-VuM1Pe1788264436",
+    "GET 200 /proxy/api/qr/authorization?hlyRequestID=rwebiA7bGL-PEFhdz1788264436&time=1788264436697",
+    "GET 200 /proxy/api/qr/authorization/646c998b-0d14-4eb9-93c2-57e60abb90ea/v2?hlyRequestID=rwebiA7bGL-8tiVei1788264436"
   ],
-  "capturedAt": "2026-09-01T03:18:36.765Z"
+  "capturedAt": "2026-09-01T12:07:28.488Z"
 }

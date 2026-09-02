@@ -30,6 +30,7 @@ export type CustomerReportSummary = {
 };
 
 export const CUSTOMER_SUMMARY_FILE = 'results/customer-report-summary.json';
+export const FLOW_CUSTOMER_SUMMARY_FILE = 'results/flow-customer-report-summary.json';
 
 export function buildCustomerReportSummary(model: CustomerReportModel): CustomerReportSummary {
   const c = model.coverage;

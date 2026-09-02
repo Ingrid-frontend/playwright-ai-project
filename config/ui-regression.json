@@ -2,14 +2,21 @@
   "blockerRatio": 0.01,
   "warningRatio": 0.001,
   "diffOnlyTabMinRatio": 0.003,
-  "defaultBrowsers": ["chrome"],
+  "defaultBrowsers": [
+    "chrome"
+  ],
   "compareCrossBrowser": false,
   "compareRunDrift": false,
   "baselineStrategy": "hybrid",
   "gate": {
     "mode": "style-only",
-    "pixelScriptPrefixes": ["intent/"],
-    "structureScriptPrefixes": ["flows/request-flow/"]
+    "pixelScriptPrefixes": [
+      "intent/"
+    ],
+    "structureScriptPrefixes": [
+      "flows/request-flow/",
+      "flows/approval-flow/"
+    ]
   },
   "ignoreRegions": [],
   "maskSelectors": [],
@@ -18,8 +25,18 @@
     "maskAtCapture": true
   },
   "viewports": [
-    { "name": "desktop", "width": 1280, "height": 720, "default": true },
-    { "name": "mobile", "width": 375, "height": 812, "enabled": false }
+    {
+      "name": "desktop",
+      "width": 1280,
+      "height": 720,
+      "default": true
+    },
+    {
+      "name": "mobile",
+      "width": 375,
+      "height": 812,
+      "enabled": false
+    }
   ],
   "structureChecks": {
     "enabled": true,
@@ -137,6 +154,46 @@
         "frame": "first",
         "required": true,
         "snapshotName": "request-detail"
+      },
+      {
+        "key": "approval-list-root",
+        "selector": ".approve-list",
+        "script": "flows/approval-flow",
+        "frame": "first",
+        "required": true,
+        "snapshotName": "approval-list"
+      },
+      {
+        "key": "approval-list-table",
+        "selector": ".ant-table",
+        "script": "flows/approval-flow",
+        "frame": "first",
+        "required": true,
+        "snapshotName": "approval-list"
+      },
+      {
+        "key": "approval-tabs-bar",
+        "selector": ".approve-list .ant-tabs-nav, .approve-list [role='tablist']",
+        "script": "flows/approval-flow",
+        "frame": "first",
+        "required": true,
+        "snapshotName": "approval-tabs"
+      },
+      {
+        "key": "approval-filter-bar",
+        "selector": ".approve-list .approve-business-filter, .approve-list .approve-business-filter-type-select, .approve-list .advanced-search-filter-trigger",
+        "script": "flows/approval-flow",
+        "frame": "first",
+        "required": false,
+        "snapshotName": "approval-filter"
+      },
+      {
+        "key": "approval-detail-entrance",
+        "selector": ".approve-entrance, .full-screen",
+        "script": "flows/approval-flow",
+        "frame": "first",
+        "required": true,
+        "snapshotName": "approval-detail"
       }
     ]
   },
@@ -151,7 +208,12 @@
         "key": "intent-approve-primary-btn",
         "selector": ".ant-btn-primary, .ant-input-search-button",
         "label": "主按钮",
-        "props": ["backgroundColor", "color", "fontSize", "borderRadius"],
+        "props": [
+          "backgroundColor",
+          "color",
+          "fontSize",
+          "borderRadius"
+        ],
         "required": true,
         "script": "intent/dev/审批列表页可见",
         "frame": "first"
@@ -160,7 +222,12 @@
         "key": "intent-approve-table-head",
         "selector": ".ant-table-thead th",
         "label": "表格表头",
-        "props": ["backgroundColor", "color", "fontSize", "fontWeight"],
+        "props": [
+          "backgroundColor",
+          "color",
+          "fontSize",
+          "fontWeight"
+        ],
         "required": true,
         "script": "intent/dev/审批列表页可见",
         "frame": "first"
@@ -169,7 +236,11 @@
         "key": "intent-approve-tab-active",
         "selector": ".ant-tabs-tab-active",
         "label": "页签选中态",
-        "props": ["color", "fontSize", "fontWeight"],
+        "props": [
+          "color",
+          "fontSize",
+          "fontWeight"
+        ],
         "required": true,
         "script": "intent/dev/审批列表页可见",
         "frame": "first"
@@ -178,7 +249,11 @@
         "key": "intent-approve-input",
         "selector": ".ant-input-affix-wrapper, .ant-input",
         "label": "输入框",
-        "props": ["borderColor", "fontSize", "color"],
+        "props": [
+          "borderColor",
+          "fontSize",
+          "color"
+        ],
         "required": true,
         "script": "intent/dev/审批列表页可见",
         "frame": "first"
@@ -187,7 +262,11 @@
         "key": "golden-login-workbench-tab",
         "selector": "[role='tab']",
         "label": "工作台 Tab",
-        "props": ["color", "fontSize", "fontWeight"],
+        "props": [
+          "color",
+          "fontSize",
+          "fontWeight"
+        ],
         "required": false,
         "script": "stage/golden-set/01-login",
         "frame": "first",
@@ -197,7 +276,11 @@
         "key": "golden-dashboard-workbench-tab",
         "selector": "[role='tab']",
         "label": "工作台 Tab",
-        "props": ["color", "fontSize", "fontWeight"],
+        "props": [
+          "color",
+          "fontSize",
+          "fontWeight"
+        ],
         "required": false,
         "script": "stage/golden-set/02-dashboard",
         "frame": "first",
@@ -207,7 +290,12 @@
         "key": "golden-approve-primary-btn",
         "selector": ".ant-btn-primary, .ant-input-search-button",
         "label": "主按钮",
-        "props": ["backgroundColor", "color", "fontSize", "borderRadius"],
+        "props": [
+          "backgroundColor",
+          "color",
+          "fontSize",
+          "borderRadius"
+        ],
         "required": false,
         "script": "stage/golden-set/03-approval-list",
         "frame": "first",
@@ -217,7 +305,12 @@
         "key": "golden-approve-table-head",
         "selector": ".ant-table-thead th",
         "label": "表格表头",
-        "props": ["backgroundColor", "color", "fontSize", "fontWeight"],
+        "props": [
+          "backgroundColor",
+          "color",
+          "fontSize",
+          "fontWeight"
+        ],
         "required": false,
         "script": "stage/golden-set/03-approval-list",
         "frame": "first",
@@ -260,55 +353,85 @@
       {
         "key": "intent-approve-tabs",
         "selector": ".ant-tabs, [role='tablist']",
-        "watch": ["structure", "text"]
+        "watch": [
+          "structure",
+          "text"
+        ]
       },
       {
         "key": "intent-approve-toolbar",
         "selector": ".ant-input-affix-wrapper, .ant-input-search, .ant-input",
-        "watch": ["structure"]
+        "watch": [
+          "structure"
+        ]
       },
       {
         "key": "intent-approve-table",
         "selector": ".ant-table, table",
-        "watch": ["structure"]
+        "watch": [
+          "structure"
+        ]
       },
       {
         "key": "golden-approve-tabs",
         "selector": ".ant-tabs, [role='tablist']",
-        "watch": ["structure", "text"]
+        "watch": [
+          "structure",
+          "text"
+        ]
       },
       {
         "key": "golden-approve-table",
         "selector": ".ant-table, table",
-        "watch": ["structure"]
+        "watch": [
+          "structure"
+        ]
       },
       {
         "key": "request-list-root",
         "selector": ".application-list",
-        "watch": ["structure", "text"]
+        "watch": [
+          "structure",
+          "text"
+        ]
       },
       {
         "key": "request-list-table",
         "selector": ".application-table-v2 .ant-table, .ant-table",
-        "watch": ["structure"]
+        "watch": [
+          "structure"
+        ]
       },
       {
         "key": "request-search-table",
         "selector": ".application-table-v2 .ant-table, .ant-table",
-        "watch": ["structure"]
+        "watch": [
+          "structure"
+        ]
       },
       {
         "key": "request-filter-panel",
         "selector": ".advanced-table-search-form, .advanced-search-filter-pop",
-        "watch": ["structure"]
+        "watch": [
+          "structure"
+        ]
       },
       {
         "key": "request-detail-slide",
         "selector": ".slide-frame.slide-frame-open, .full-width-slideframe, .one-screen-request, .request-edit",
-        "watch": ["structure", "text"]
+        "watch": [
+          "structure",
+          "text"
+        ]
       }
     ],
-    "textNormalize": ["num", "id", "time", "money", "count"],
+    "textNormalize": [
+      "num",
+      "id",
+      "time",
+      "money",
+      "count"
+    ],
     "severity": {
       "contentOnly": "info",
       "structureOnly": "warning",

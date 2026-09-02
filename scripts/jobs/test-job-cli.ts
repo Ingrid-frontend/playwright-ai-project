@@ -14,7 +14,7 @@ import { runJobById, stopJob } from './job-runner.js';
 import { buildJobFailReasons } from './job-notify.js';
 import { listJobs, loadTestJobsConfig, resolveJob, resolveJobRunEnv, countJobSpecsForEnv } from './test-jobs-config.js';
 import { countResolvedSpecs, formatRunId } from './job-utils.js';
-import { countRequestFlowGoldenProfiles, formatFlowGoldenSpecsLabel } from './flow-golden-count.js';
+import { countRequestFlowGoldenProfiles, formatFlowGoldenSpecsLabel, formatApprovalFlowGoldenSpecsLabel } from './flow-golden-count.js';
 import { resolveFlowRunnerKey } from './flow-runner-registry.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -263,7 +263,9 @@ function cmdList(): void {
     const specsLabel =
       runnerKey === 'request-flow-golden'
         ? formatFlowGoldenSpecsLabel(process.cwd(), job.playwrightEnv, job.accountProfile)
-        : runnerKey === 'request-flow-write'
+        : runnerKey === 'approval-flow-golden'
+          ? formatApprovalFlowGoldenSpecsLabel(process.cwd(), job.playwrightEnv, job.accountProfile)
+          : runnerKey === 'request-flow-write'
           ? `Write · ${countJobSpecsForEnv(job, job.playwrightEnv, job.accountProfile)} 个 spec`
           : runnerKey === 'approval-flow-write'
             ? `审批 Write · ${countJobSpecsForEnv(job, job.playwrightEnv, job.accountProfile)} 个 spec`

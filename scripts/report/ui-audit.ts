@@ -22,6 +22,7 @@ import {
 import { resolveFigmaBaseline } from './figma-baseline.js';
 import { resolveHeliosAuditContext } from './helios-design-spec.js';
 import { applyAuditRules, resolveAuditRule } from './ui-audit-rules.js';
+import { writeFeedbackDocsFromAuditIssues } from './ui-feedback-doc.js';
 
 // 必须在读取任何 AI_* 环境变量前加载，否则 .env 里配好的 Key 会被漏掉、永远降级 mock
 dotenv.config({ path: path.join(process.cwd(), '.env') });
@@ -359,6 +360,24 @@ async function main(): Promise<void> {
     })),
   };
   fs.writeFileSync(path.join(outDir, 'summary.json'), JSON.stringify(summary, null, 2), 'utf-8');
+
+  const flat = steps
+    .filter((s) => s.result.issues.length > 0 && s.result.verdict !== 'skipped')
+    .map((s) => ({
+      scriptKey: s.scriptKey,
+      stepName: s.stepName,
+      stepNumber: s.stepNumber,
+      url: s.url,
+      screenshotRel: s.screenshotRel,
+      issues: s.result.issues.filter((i) => i.severity === 'blocker' || i.severity === 'warning'),
+    }))
+    .filter((s) => s.issues.length > 0);
+  if (flat.length) {
+    const docIndex = writeFeedbackDocsFromAuditIssues(flat, { env: process.env.PLAYWRIGHT_ENV });
+    if (docIndex.docs.length) {
+    console.log(`📝 AI 分析文档: ${docIndex.docs.length} 条 → results/ui-feedback-docs/latest.md`);
+    }
+  }
 
   if (runId && scriptKey) {
     const { verdict, verdictLabel } = verdictFromCounts({ fail: summary.fail, review: summary.review });

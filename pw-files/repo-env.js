@@ -648,6 +648,7 @@ function resolveProfileFlowDefaults(repoRoot, envId, profileId) {
   return {
     requestDocNo: String(acc.requestDocNo || acc.request_doc_no || '').trim(),
     requestFilterKeyword: String(acc.requestFilterKeyword || acc.request_filter_keyword || '').trim(),
+    approvalDocNo: String(acc.approvalDocNo || acc.approval_doc_no || '').trim(),
   };
 }
 

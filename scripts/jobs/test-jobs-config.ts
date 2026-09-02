@@ -1,8 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-import { isKnownEnv } from '../../src/utils/test-env-path.js';
+import { isKnownEnv, listKnownEnvs } from '../../src/utils/test-env-path.js';
 import { countResolvedSpecs, type AccountProfileFilter } from './job-utils.js';
-import { countRequestFlowGoldenProfiles } from './flow-golden-count.js';
+import { countRequestFlowGoldenProfiles, countApprovalFlowGoldenProfiles } from './flow-golden-count.js';
 import { countRequestFlowWriteSpecs, countApprovalFlowWriteSpecs, isRequestFlowRunner, resolveFlowRunnerKey } from './flow-runner-registry.js';
 
 export type { AccountProfileFilter };
@@ -190,10 +190,16 @@ export function listJobs(): ResolvedTestJob[] {
 
 export function resolveJobRunEnv(job: ResolvedTestJob, override?: string): string {
   const env = String(override ?? job.playwrightEnv ?? 'stage').trim();
+  if (env === 'all') return env;
   if (!isKnownEnv(env)) {
     throw new Error(`未知环境: ${env}（请在 datasource/base-config.json 中配置）`);
   }
   return env;
+}
+
+export function listJobRunEnvs(job: ResolvedTestJob, override?: string): string[] {
+  const env = resolveJobRunEnv(job, override);
+  return env === 'all' ? listKnownEnvs() : [env];
 }
 
 export function countJobSpecsForEnv(
@@ -210,7 +216,17 @@ export function countJobSpecsForEnv(
   }
   if (runnerKey === 'request-flow-golden') {
     const filter = accountProfile ?? job.accountProfile;
+    if (playwrightEnv === 'all') {
+      return listKnownEnvs().reduce(
+        (sum, envId) => sum + countRequestFlowGoldenProfiles(process.cwd(), envId, filter),
+        0,
+      );
+    }
     return countRequestFlowGoldenProfiles(process.cwd(), playwrightEnv, filter);
+  }
+  if (runnerKey === 'approval-flow-golden') {
+    const filter = accountProfile ?? job.accountProfile;
+    return countApprovalFlowGoldenProfiles(process.cwd(), playwrightEnv, filter);
   }
   const filter = accountProfile ?? job.accountProfile;
   return countResolvedSpecs(job.specs, job.optimizedDir, playwrightEnv, filter);
@@ -226,7 +242,17 @@ export function countJobSpecs(job: ResolvedTestJob, accountProfile?: AccountProf
   }
   if (runnerKey === 'request-flow-golden') {
     const filter = accountProfile ?? job.accountProfile;
+    if (job.playwrightEnv === 'all') {
+      return listKnownEnvs().reduce(
+        (sum, envId) => sum + countRequestFlowGoldenProfiles(process.cwd(), envId, filter),
+        0,
+      );
+    }
     return countRequestFlowGoldenProfiles(process.cwd(), job.playwrightEnv, filter);
+  }
+  if (runnerKey === 'approval-flow-golden') {
+    const filter = accountProfile ?? job.accountProfile;
+    return countApprovalFlowGoldenProfiles(process.cwd(), job.playwrightEnv, filter);
   }
   const filter = accountProfile ?? job.accountProfile;
   return countResolvedSpecs(job.specs, job.optimizedDir, job.playwrightEnv, filter);

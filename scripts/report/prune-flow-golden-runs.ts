@@ -1,6 +1,8 @@
 #!/usr/bin/env tsx
 /**
- * Golden 回归：连续两次与基线判定完全一致时，清理上一次 run 的截图，仅保留 .golden-match.json 判定结果。
+ * Golden 回归：与基线完全一致时，只保留「最新一次」run 的截图；
+ * 更早的完全一致 run 清理截图，仅保留 .golden-match.json 判定结果。
+ * 验收基线本身在 screenshots-baseline/，不在此清理。
  */
 import fs from 'fs';
 import path from 'path';
@@ -12,7 +14,7 @@ import {
   resolveSourceRunDir,
 } from './baseline-manager.js';
 import { compareImagesWithDiff } from './image-diff.js';
-import { resolveSameBrowserPixelmatch } from './ui-regression-config.js';
+import { resolveCustomerReportConfig, resolveSameBrowserPixelmatch } from './ui-regression-config.js';
 
 export const GOLDEN_MATCH_VERDICT = '.golden-match.json';
 
@@ -31,6 +33,7 @@ export type PruneFlowGoldenResult = {
   currentMatch: boolean;
   prunedRunId?: string;
   prunedScreenshots?: number;
+  prunedRuns?: Array<{ runId: string; prunedScreenshots: number }>;
   skipped?: string;
 };
 
@@ -93,6 +96,7 @@ async function isRunGoldenPerfect(
   if (!pngs.length) return { match: false, steps: 0, maxDifference: 1 };
 
   const { threshold, includeAA } = resolveSameBrowserPixelmatch();
+  const identicalRatio = resolveCustomerReportConfig().identicalRatio;
   let maxDifference = 0;
 
   for (const file of pngs) {
@@ -106,12 +110,25 @@ async function isRunGoldenPerfect(
       scriptKey,
     });
     maxDifference = Math.max(maxDifference, result.difference);
-    if (result.sizeMismatch || result.difference > 0) {
+    if (result.sizeMismatch || result.difference > identicalRatio) {
       return { match: false, steps: pngs.length, maxDifference };
     }
   }
 
-  return { match: true, steps: pngs.length, maxDifference: 0 };
+  return { match: true, steps: pngs.length, maxDifference };
+}
+
+function shouldPruneStaleGoldenRun(
+  verdict: GoldenMatchVerdict | null,
+  opts?: { aggressive?: boolean },
+): boolean {
+  if (!verdict) return true;
+  if (verdict.match) return true;
+  const cfg = resolveCustomerReportConfig();
+  if (opts?.aggressive) {
+    return verdict.maxDifference < cfg.multiSpotRegressRatio;
+  }
+  return verdict.maxDifference <= cfg.identicalRatio;
 }
 
 function pruneRunScreenshots(runDir: string): number {
@@ -124,6 +141,101 @@ function pruneRunScreenshots(runDir: string): number {
     if (name.endsWith('.png')) removed++;
   }
   return removed;
+}
+
+function resolveRunDir(
+  scriptKey: string,
+  runId: string,
+  browser: string,
+  screenshotsRoot: string,
+): string | null {
+  try {
+    return resolveSourceRunDir({
+      scriptKey,
+      sourceRunTimestamp: runId,
+      browser,
+      screenshotsRoot,
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** 保留 keepRunId，清理更早且可视为冗余的一致 run 截图 */
+export function pruneOlderMatchingGoldenRuns(opts: {
+  repoRoot?: string;
+  scriptKey: string;
+  keepRunId: string;
+  browser?: string;
+  aggressive?: boolean;
+}): Array<{ runId: string; prunedScreenshots: number }> {
+  const repoRoot = opts.repoRoot || process.cwd();
+  const browser = opts.browser || 'chrome';
+  const scriptKey = opts.scriptKey.replace(/\\/g, '/').replace(/^\/+/, '');
+  const screenshotsRoot = path.join(repoRoot, 'screenshots');
+  const runIds = listRunIds(scriptKey, browser, screenshotsRoot);
+  const keepIdx = runIds.indexOf(opts.keepRunId);
+  if (keepIdx <= 0) return [];
+
+  const pruned: Array<{ runId: string; prunedScreenshots: number }> = [];
+  for (let i = 0; i < keepIdx; i++) {
+    const oldRunId = runIds[i]!;
+    const oldDir = resolveRunDir(scriptKey, oldRunId, browser, screenshotsRoot);
+    if (!oldDir) continue;
+    const oldVerdict = readVerdict(oldDir);
+    if (!shouldPruneStaleGoldenRun(oldVerdict, { aggressive: opts.aggressive })) continue;
+    if (!listStepPngs(oldDir).length) continue;
+    const count = pruneRunScreenshots(oldDir);
+    if (count > 0) {
+      writeVerdict(oldDir, { ...oldVerdict, prunedScreenshots: count });
+      pruned.push({ runId: oldRunId, prunedScreenshots: count });
+      console.log(
+        `[golden-prune] ${scriptKey} · 已清理 ${oldRunId} 的 ${count} 张截图（保留最新一致 run ${opts.keepRunId}）`,
+      );
+    }
+  }
+  return pruned;
+}
+
+/** 对已有 run 回填：找到最后一次完全一致的 run，清理更早的一致 run */
+export function backfillPruneFlowGoldenRuns(opts: {
+  repoRoot?: string;
+  scriptKey: string;
+  browser?: string;
+}): PruneFlowGoldenResult {
+  const repoRoot = opts.repoRoot || process.cwd();
+  const browser = opts.browser || 'chrome';
+  const scriptKey = opts.scriptKey.replace(/\\/g, '/').replace(/^\/+/, '');
+  const screenshotsRoot = path.join(repoRoot, 'screenshots');
+
+  if (process.env.FLOW_GOLDEN_PRUNE === '0') {
+    return { currentMatch: false, skipped: 'FLOW_GOLDEN_PRUNE=0' };
+  }
+  if (!hasGoldenBaseline(scriptKey, browser)) {
+    return { currentMatch: false, skipped: 'no-golden-baseline' };
+  }
+
+  const runIds = listRunIds(scriptKey, browser, screenshotsRoot);
+  let keepRunId = '';
+  for (let i = runIds.length - 1; i >= 0; i--) {
+    const runId = runIds[i]!;
+    const dir = resolveRunDir(scriptKey, runId, browser, screenshotsRoot);
+    if (!dir) continue;
+    const verdict = readVerdict(dir);
+    if (verdict?.match) {
+      keepRunId = runId;
+      break;
+    }
+  }
+  if (!keepRunId) return { currentMatch: false, skipped: 'no-match-run' };
+
+  const prunedRuns = pruneOlderMatchingGoldenRuns({ repoRoot, scriptKey, keepRunId, browser, aggressive: true });
+  return {
+    currentMatch: true,
+    prunedRunId: prunedRuns[prunedRuns.length - 1]?.runId,
+    prunedScreenshots: prunedRuns.reduce((n, r) => n + r.prunedScreenshots, 0),
+    prunedRuns,
+  };
 }
 
 export async function pruneFlowGoldenRunScreenshots(opts: {
@@ -173,55 +285,57 @@ export async function pruneFlowGoldenRunScreenshots(opts: {
 
   if (!match) return { currentMatch: false };
 
-  const runIds = listRunIds(scriptKey, browser, screenshotsRoot);
-  const idx = runIds.indexOf(runId);
-  if (idx <= 0) return { currentMatch: true };
+  const prunedRuns = pruneOlderMatchingGoldenRuns({
+    repoRoot,
+    scriptKey,
+    keepRunId: runId,
+    browser,
+  });
+  if (!prunedRuns.length) return { currentMatch: true };
 
-  const prevRunId = runIds[idx - 1]!;
-  let prevDir: string;
-  try {
-    prevDir = resolveSourceRunDir({
-      scriptKey,
-      sourceRunTimestamp: prevRunId,
-      browser,
-      screenshotsRoot,
-    });
-  } catch {
-    return { currentMatch: true };
-  }
-
-  const prevVerdict = readVerdict(prevDir);
-  if (!prevVerdict?.match) return { currentMatch: true };
-
-  const prunedScreenshots = pruneRunScreenshots(prevDir);
-  if (prunedScreenshots > 0) {
-    writeVerdict(prevDir, { ...prevVerdict, prunedScreenshots });
-    console.log(
-      `[golden-prune] ${scriptKey} · 已清理 ${prevRunId} 的 ${prunedScreenshots} 张截图（与基线连续一致，仅保留判定结果）`,
-    );
-    return { currentMatch: true, prunedRunId: prevRunId, prunedScreenshots };
-  }
-
-  return { currentMatch: true };
+  const total = prunedRuns.reduce((n, r) => n + r.prunedScreenshots, 0);
+  return {
+    currentMatch: true,
+    prunedRunId: prunedRuns[prunedRuns.length - 1]?.runId,
+    prunedScreenshots: total,
+    prunedRuns,
+  };
 }
 
 function parseArgs(argv: string[]) {
   let scriptKey = '';
   let runId = '';
   let browser = 'chrome';
+  let backfill = false;
   for (const arg of argv) {
     if (arg.startsWith('--script=')) scriptKey = arg.slice(9).trim();
     else if (arg.startsWith('--run=')) runId = arg.slice(6).trim();
     else if (arg.startsWith('--browser=')) browser = arg.slice(10).trim() || 'chrome';
+    else if (arg === '--backfill') backfill = true;
   }
-  return { scriptKey, runId, browser };
+  return { scriptKey, runId, browser, backfill };
 }
 
 async function main() {
-  const { scriptKey, runId, browser } = parseArgs(process.argv.slice(2));
-  if (!scriptKey || !runId) {
-    console.error('用法: prune-flow-golden-runs --script=<flows/...> --run=<runId> [--browser=chrome]');
+  const { scriptKey, runId, browser, backfill } = parseArgs(process.argv.slice(2));
+  if (!scriptKey) {
+    console.error('用法: prune-flow-golden-runs --script=<flows/...> [--run=<runId> | --backfill] [--browser=chrome]');
     process.exit(1);
+  }
+  if (backfill || !runId) {
+    if (!backfill && !runId) {
+      console.error('需要 --run=<runId> 或 --backfill');
+      process.exit(1);
+    }
+    const result = backfillPruneFlowGoldenRuns({ scriptKey, browser });
+    if (result.skipped && process.env.FLOW_GOLDEN_PRUNE_VERBOSE === '1') {
+      console.log(`[golden-prune] 跳过: ${result.skipped}`);
+    } else if (result.prunedScreenshots) {
+      console.log(`[golden-prune] 回填完成 · 清理 ${result.prunedRuns?.length || 0} 次 run · ${result.prunedScreenshots} 张截图`);
+    } else {
+      console.log('[golden-prune] 回填完成 · 无需清理');
+    }
+    return;
   }
   const result = await pruneFlowGoldenRunScreenshots({ scriptKey, runId, browser });
   if (result.skipped && process.env.FLOW_GOLDEN_PRUNE_VERBOSE === '1') {

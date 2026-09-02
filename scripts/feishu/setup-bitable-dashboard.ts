@@ -10,6 +10,7 @@ import dotenv from 'dotenv';
 import {
   BitableClient,
   DAILY_FIELDS,
+  FEEDBACK_FIELDS,
   ISSUE_FIELDS,
   RUN_FIELDS,
   explainMissingBitableConfig,
@@ -81,6 +82,30 @@ const ISSUE_SPECS: FieldSpec[] = [
   { name: ISSUE_FIELDS.baselinePath, type: FIELD_TYPE.text },
   { name: ISSUE_FIELDS.currentPath, type: FIELD_TYPE.text },
   { name: ISSUE_FIELDS.diffImagePath, type: FIELD_TYPE.text },
+  { name: ISSUE_FIELDS.source, type: FIELD_TYPE.singleSelect, property: { options: [{ name: 'automated' }, { name: 'manual' }] } },
+  { name: ISSUE_FIELDS.reporter, type: FIELD_TYPE.text },
+  { name: ISSUE_FIELDS.description, type: FIELD_TYPE.text },
+  { name: ISSUE_FIELDS.elementXpath, type: FIELD_TYPE.text },
+  { name: ISSUE_FIELDS.elementSelector, type: FIELD_TYPE.text },
+  { name: ISSUE_FIELDS.aiDocPath, type: FIELD_TYPE.text },
+  { name: ISSUE_FIELDS.aiDocUrl, type: FIELD_TYPE.url },
+];
+
+const FEEDBACK_SPECS: FieldSpec[] = [
+  { name: FEEDBACK_FIELDS.feedbackId, type: FIELD_TYPE.text },
+  { name: FEEDBACK_FIELDS.reporter, type: FIELD_TYPE.text },
+  { name: FEEDBACK_FIELDS.description, type: FIELD_TYPE.text },
+  { name: FEEDBACK_FIELDS.env, type: FIELD_TYPE.singleSelect, property: { options: [{ name: 'dev' }, { name: 'uat' }, { name: 'stage9084' }, { name: 'stage' }] } },
+  { name: FEEDBACK_FIELDS.pageUrl, type: FIELD_TYPE.url },
+  { name: FEEDBACK_FIELDS.route, type: FIELD_TYPE.text },
+  { name: FEEDBACK_FIELDS.selector, type: FIELD_TYPE.text },
+  { name: FEEDBACK_FIELDS.xpath, type: FIELD_TYPE.text },
+  { name: FEEDBACK_FIELDS.bbox, type: FIELD_TYPE.text },
+  { name: FEEDBACK_FIELDS.screenshotUrl, type: FIELD_TYPE.url },
+  { name: FEEDBACK_FIELDS.aiDocUrl, type: FIELD_TYPE.url },
+  { name: FEEDBACK_FIELDS.assignees, type: FIELD_TYPE.text },
+  { name: FEEDBACK_FIELDS.status, type: FIELD_TYPE.singleSelect, property: { options: [{ name: '待处理' }, { name: '处理中' }, { name: '已修复' }, { name: '忽略' }] } },
+  { name: FEEDBACK_FIELDS.createdAt, type: FIELD_TYPE.dateTime, property: { date_formatter: 'yyyy/MM/dd HH:mm', auto_fill: false } },
 ];
 
 const DAILY_SPECS: FieldSpec[] = [
@@ -182,6 +207,7 @@ async function main(): Promise<void> {
     { label: '执行记录', id: config.runTableId, specs: RUN_SPECS },
     { label: '问题明细', id: config.issueTableId, specs: ISSUE_SPECS },
     { label: '日汇总', id: config.dailySummaryTableId, specs: DAILY_SPECS },
+    { label: 'UI采集反馈', id: config.feedbackTableId, specs: FEEDBACK_SPECS },
   ];
 
   for (const table of tables) {

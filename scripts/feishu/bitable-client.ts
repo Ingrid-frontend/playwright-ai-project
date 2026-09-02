@@ -111,6 +111,33 @@ export class BitableClient {
     });
   }
 
+  async listTables(): Promise<Array<{ table_id: string; name: string }>> {
+    const data = await this.request<{ items?: Array<{ table_id: string; name: string }> }>(
+      this.appUrl('/tables?page_size=100'),
+    );
+    return data.items ?? [];
+  }
+
+  async createTable(
+    name: string,
+    opts?: { defaultViewName?: string; initialFields?: Array<{ field_name: string; type: number }> },
+  ): Promise<{ table_id: string; default_view_id?: string }> {
+    const table: Record<string, unknown> = { name };
+    if (opts?.defaultViewName && opts?.initialFields?.length) {
+      table.default_view_name = opts.defaultViewName;
+      table.fields = opts.initialFields;
+    }
+    const data = await this.request<{ table_id?: string; default_view_id?: string }>(
+      this.appUrl('/tables'),
+      {
+        method: 'POST',
+        body: JSON.stringify({ table }),
+      },
+    );
+    if (!data.table_id) throw new Error('创建数据表成功但未返回 table_id');
+    return { table_id: data.table_id, default_view_id: data.default_view_id };
+  }
+
   async listDashboards(): Promise<Array<{ block_id: string; name: string }>> {
     const data = await this.request<{ dashboards?: Array<{ block_id: string; name: string }> }>(
       this.appUrl('/dashboards?page_size=50'),
@@ -147,6 +174,22 @@ export class BitableClient {
       deleted += batch.length;
     }
     return deleted;
+  }
+
+  async listRecords(tableId: string, pageSize = 500): Promise<SearchRecordItem[]> {
+    const items: SearchRecordItem[] = [];
+    let pageToken = '';
+    for (;;) {
+      const query = new URLSearchParams({ page_size: String(pageSize) });
+      if (pageToken) query.set('page_token', pageToken);
+      const data = await this.request<SearchRecordsData & { has_more?: boolean; page_token?: string }>(
+        `${this.tableUrl(tableId, '/records')}?${query.toString()}`,
+      );
+      for (const item of data.items ?? []) items.push(item);
+      if (!data.has_more || !data.page_token) break;
+      pageToken = data.page_token;
+    }
+    return items;
   }
 
   async clearTable(tableId: string): Promise<number> {

@@ -7,7 +7,7 @@ import {
 } from './coverage-stats.js';
 import { isActionableNature, natureLabel, type ChangeNature } from './change-nature.js';
 import { buildActionItems, buildPlainDescription, deriveShipAdvice, type ShipAdvice } from './customer-report-plain.js';
-import { friendlyScriptLabel, friendlyStepLabel, extractEnvLabel } from './customer-report-naming.js';
+import { friendlyScriptLabel, friendlyStepLabel, extractEnvLabel, extractEnvId, envLabelFromId, envIdSortKey } from './customer-report-naming.js';
 import type { ScriptRunMeta, ScriptRunHistoryEntry } from './customer-report-run-meta.js';
 
 export type CustomerStatus = CoverageStatus;
@@ -75,6 +75,24 @@ export function isDiffPage(page: CustomerPageCard): boolean {
 }
 
 /** 同一根因在多个步骤重复出现时聚成一组，首屏只显示代表页 */
+export type EnvCoverageSummary = {
+  envId: string;
+  envLabel: string;
+  regressSteps: number;
+  minorSteps: number;
+  passSteps: number;
+  comparedSteps: number;
+  expectedSteps: number;
+  uncoveredSteps: number;
+};
+
+export type IncompleteScriptNote = {
+  scriptKey: string;
+  scriptLabel: string;
+  detail: string;
+};
+
+/** 同一根因在多个步骤重复出现时聚成一组，首屏只显示代表页 */
 export type CustomerIssueGroup = {
   groupKey: string;
   /** 页内锚点 id，供首屏速览清单跳转到证据卡 */
@@ -118,6 +136,10 @@ export type CustomerReportModel = {
   actionItems: string[];
   /** 报告头环境名 */
   envLabel?: string;
+  /** 多环境时分环境统计 */
+  envSummaries?: EnvCoverageSummary[];
+  /** 最新 run 未完成、主结论已回退到上一轮完整 run */
+  incompleteScripts?: IncompleteScriptNote[];
   /** 发版版本号 */
   releaseTag?: string;
   reportScope?: 'golden' | 'all';
@@ -299,12 +321,49 @@ export function buildPageCardsFromCoverage(coverage: CoverageStats): CustomerPag
   return pages;
 }
 
+function buildEnvSummaries(slots: CoverageSlot[]): EnvCoverageSummary[] {
+  const groups = new Map<string, CoverageSlot[]>();
+  for (const slot of slots) {
+    const envId = extractEnvId(slot.scriptKey) || '_';
+    if (!groups.has(envId)) groups.set(envId, []);
+    groups.get(envId)!.push(slot);
+  }
+  return [...groups.entries()]
+    .sort((a, b) => envIdSortKey(a[0]) - envIdSortKey(b[0]))
+    .map(([envId, list]) => ({
+      envId,
+      envLabel: envId === '_' ? '未标环境' : envLabelFromId(envId),
+      regressSteps: list.filter((s) => s.status === 'regress').length,
+      minorSteps: list.filter((s) => s.status === 'minor').length,
+      passSteps: list.filter((s) => s.status === 'pass').length,
+      comparedSteps: list.filter((s) => s.status !== 'uncovered').length,
+      expectedSteps: list.length,
+      uncoveredSteps: list.filter((s) => s.status === 'uncovered').length,
+    }));
+}
+
+function buildIncompleteScripts(
+  runHistory: Map<string, ScriptRunHistoryEntry[]>,
+  usedRunIds: Map<string, string>,
+): IncompleteScriptNote[] {
+  const out: IncompleteScriptNote[] = [];
+  for (const [scriptKey, rows] of runHistory) {
+    const latest = rows.find((r) => r.isLatest);
+    if (!latest?.incomplete) continue;
+    const used = usedRunIds.get(scriptKey);
+    const detail = used && used !== latest.runId ? `最新 run 未完成，结论基于上一轮完整 run` : '最新 run 未完成';
+    out.push({ scriptKey, scriptLabel: friendlyScriptLabel(scriptKey), detail });
+  }
+  return out;
+}
+
 export function buildCustomerReportModel(
   coverage: CoverageStats,
   generatedAt?: string,
   scriptRuns: Map<string, ScriptRunMeta> = new Map(),
   runHistory: Map<string, ScriptRunHistoryEntry[]> = new Map(),
   meta?: CustomerReportMeta,
+  usedRunIds: Map<string, string> = new Map(),
 ): CustomerReportModel {
   const pages = buildPageCardsFromCoverage(coverage);
 
@@ -315,6 +374,8 @@ export function buildCustomerReportModel(
   const regressionGroups = groupIssues(regressions, 'issue');
   const minorGroups = groupIssues(minors, 'minor');
   const scriptKeys = [...new Set(coverage.slots.map((s) => s.scriptKey))];
+  const envSummaries = buildEnvSummaries(coverage.slots);
+  const incompleteScripts = buildIncompleteScripts(runHistory, usedRunIds);
   const model: CustomerReportModel = {
     generatedAt: generatedAt ?? new Date().toLocaleString('zh-CN', { hour12: false }),
     scriptRuns,
@@ -331,6 +392,8 @@ export function buildCustomerReportModel(
     shipAdviceLabel: '',
     actionItems: [],
     envLabel: meta?.envLabel || extractEnvLabel(scriptKeys) || undefined,
+    envSummaries: envSummaries.length > 1 ? envSummaries : undefined,
+    incompleteScripts: incompleteScripts.length ? incompleteScripts : undefined,
     releaseTag: meta?.releaseTag || undefined,
     reportScope: meta?.reportScope || 'golden',
   };

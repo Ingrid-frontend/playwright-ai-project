@@ -500,8 +500,9 @@ function createRepoHandlers(ctx) {
       });
     },
 
-    'cancel:approval-flow': async (_ws, session) => {
-      cancelApprovalFlow(session);
+    'cancel:approval-flow': async (ws, session) => {
+      cancelApprovalFlow(session, ws);
+      send(ws, 'approval-flow:cancel:ack', {});
     },
 
     'request-flow:status': async (ws, session, _sessionId, msg) => {
@@ -542,8 +543,9 @@ function createRepoHandlers(ctx) {
       });
     },
 
-    'cancel:request-flow': async (_ws, session) => {
-      cancelRequestFlow(session);
+    'cancel:request-flow': async (ws, session) => {
+      cancelRequestFlow(session, ws);
+      send(ws, 'request-flow:cancel:ack', {});
     },
 
     'flow:search-runs': async (ws, _session, _sessionId, msg) => {

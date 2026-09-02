@@ -9,7 +9,7 @@ const repoRoot = process.cwd();
 
 function usage() {
   console.log(`用法:
-  npm run flow:delete-runs -- --search=<关键词>          # 列出匹配的 run
+  npm run flow:delete-runs -- --search=<关键词>          # 列出匹配的 run（多个 runId 用空格隔开）
   npm run flow:delete-runs -- --marker=<标记> --delete   # 按标记删除（支持模糊匹配）
   npm run flow:delete-runs -- --marker=<标记> --delete --dry-run
 

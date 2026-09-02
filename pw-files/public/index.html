@@ -121,6 +121,12 @@
   .sidebar-hint code { color: var(--text-secondary); }
   .studio-hidden { display: none !important; }
   .studio-compact:not(.studio-compact-off) .tab-bar .tab.studio-compact-hide { display: none !important; }
+  .studio-compact:not(.studio-compact-off) .studio-compact-hide { display: none !important; }
+  .studio-toc-only { display: none !important; }
+  .studio-compact:not(.studio-compact-off) .studio-toc-only { display: block !important; }
+  .studio-compact:not(.studio-compact-off) .studio-toc-only.flow-toc-actions { display: flex !important; }
+  .studio-compact-off .studio-toc-only { display: none !important; }
+  .flow-toc-actions { align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
   .studio-compact-hide-toggle {
     border-style: dashed; color: var(--text-tertiary); background: transparent;
   }
@@ -780,13 +786,14 @@
     </div>
     <div class="header-right">
       <div class="header-meta">
-        <button type="button" class="btn" id="btnSendFeishu" style="font-size:var(--fs-xs);padding:4px 10px" onclick="sendFeishuMessage()" title="通过 Webhook 发送飞书测试消息">发送飞书</button>
+        <button type="button" class="btn studio-compact-hide" id="btnSendFeishu" style="font-size:var(--fs-xs);padding:4px 10px" onclick="sendFeishuMessage()" title="通过 Webhook 发送飞书测试消息">发送飞书</button>
+        <button type="button" class="btn studio-compact-hide" id="btnStudioRestart" style="font-size:var(--fs-xs);padding:4px 10px" onclick="restartStudioServer()" title="重新加载服务端代码（等同终端里重新执行 npm run studio）">重启服务</button>
         <span><span class="ws-dot" id="wsDot"></span> <span id="wsStatus">未连接</span></span>
         <span id="headerEnv" style="padding:2px 8px;border-radius:6px;background:var(--bg3);color:var(--teal);font-size:var(--fs-xs)" title="当前环境">env: —</span>
         <span class="global-task-bar" id="globalTaskBar"></span>
         <span id="headerTime">--</span>
       </div>
-      <div class="studio-status-bar" id="studioStatusBar">
+      <div class="studio-status-bar studio-compact-hide" id="studioStatusBar">
         <span class="status-pill" id="statusRepo" title="">仓库 —</span>
         <span class="status-pill" id="statusDraft">草稿 —</span>
         <span class="status-pill" id="statusStorage">登录态 —</span>
@@ -808,7 +815,7 @@
         </div>
       </div>
 
-      <div class="sidebar-section" id="sidebarAccountLoginBlock">
+      <div class="sidebar-section studio-compact-hide" id="sidebarAccountLoginBlock">
         <p class="sidebar-hint" style="margin:0 0 6px;color:var(--text-secondary)">登录态</p>
         <p class="sidebar-hint" style="margin-bottom:8px">供录制 / YAML 用例使用（default 档案）。<strong>申请单 Golden</strong> 请在 Tab 内「Golden 登录态」管理。</p>
         <select class="url-input studio-hidden" id="accountProfileSelect" style="width:100%;margin-bottom:8px" disabled hidden aria-hidden="true">
@@ -820,7 +827,7 @@
         </div>
       </div>
 
-      <div class="sidebar-accordion sidebar-accordion-compact" id="accordionDateCategories">
+      <div class="sidebar-accordion sidebar-accordion-compact studio-compact-hide" id="accordionDateCategories">
         <button type="button" class="accordion-trigger" aria-expanded="false">
           迭代 <span class="acc-chevron">›</span>
         </button>
@@ -841,7 +848,7 @@
         </div>
       </div>
 
-      <div class="sidebar-accordion" id="accordionWorkflowNew">
+      <div class="sidebar-accordion studio-compact-hide" id="accordionWorkflowNew">
         <button type="button" class="accordion-trigger" aria-expanded="false">
           录制用例 <span class="acc-chevron">›</span>
         </button>
@@ -1149,7 +1156,7 @@
         <div class="tab" onclick="switchTab('approval-flow',this)">
           审批流程
         </div>
-        <div class="tab" onclick="switchTab('jobs',this)">
+        <div class="tab studio-compact-hide" onclick="switchTab('jobs',this)">
           定时任务
         </div>
         <div class="tab studio-compact-hide" onclick="switchTab('intent-run',this)">
@@ -1458,8 +1465,11 @@
           <div class="editor-pane-body">
             <div style="display:flex;flex-direction:column;gap:12px;max-width:820px">
               <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg2)">
-                <div style="font-weight:600;color:var(--text);margin-bottom:6px">申请单 · 调试工作台</div>
-                <p class="sidebar-hint" style="margin:0;line-height:1.7;color:var(--text-secondary)">
+                <div style="font-weight:600;color:var(--text);margin-bottom:6px">申请单 · UI 检测</div>
+                <p class="sidebar-hint studio-toc-only" style="margin:0;line-height:1.7;color:var(--text-secondary)">
+                  选择环境并登录后，一键检测申请单页面是否正常显示。
+                </p>
+                <p class="sidebar-hint studio-compact-hide" style="margin:0;line-height:1.7;color:var(--text-secondary)">
                   针对 <code>request-flow/</code> 模块：入口 <code>/main/request</code>，覆盖列表查询、筛选、新建、保存、提交；
                   快捷「提交后审批」会造 2 张单并串联 <code>/main/approve</code> 通过/驳回。
                   单号不写死，运行时从详情或列表取。
@@ -1470,6 +1480,7 @@
                 连接后自动加载状态…
               </div>
 
+              <div class="studio-compact-hide">
               <div>
                 <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">用例文件</label>
                 <select class="url-input" id="requestFlowSpec" style="width:100%;color:var(--text);margin-bottom:8px"
@@ -1481,9 +1492,9 @@
               </div>
 
               <div >
-                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">前端仓库（探活索引用）</label>
+                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">前端仓库（SSH 地址或本地路径）</label>
                 <input type="text" class="url-input" id="requestFrontendRepo" spellcheck="false"
-                  value="/Users/hly/project/huilianyi-refactoring"
+                  placeholder="gogsio@code.huilianyi.com:huilianyi/huilianyi-refactoring.git"
                   style="width:100%;color:var(--text)">
               </div>
               <div >
@@ -1500,36 +1511,37 @@
                   <option value="ui">UI 模式（Playwright UI）</option>
                 </select>
               </div>
+              </div>
 
-              <div class="request-flow-sub-tabs" role="tablist" aria-label="申请单流程子模式">
+              <div class="request-flow-sub-tabs studio-compact-hide" role="tablist" aria-label="申请单流程子模式">
                 <button type="button" class="request-flow-sub-tab active" data-sub="golden" id="requestFlowSubGolden" onclick="setRequestFlowSubTab('golden', this)">Golden 回归</button>
                 <button type="button" class="request-flow-sub-tab" data-sub="probe" id="requestFlowSubProbe" onclick="setRequestFlowSubTab('probe', this)">流程调试</button>
               </div>
 
               <div class="request-flow-pane active" id="requestFlowPaneGolden" data-sub="golden">
                 <div style="padding:10px 12px;border:1px solid rgba(52,211,153,.35);border-radius:8px;background:var(--bg2);margin-bottom:8px">
-                  <p class="sidebar-hint" style="margin:0 0 8px;line-height:1.6;color:var(--text-secondary)">
+                  <p class="sidebar-hint studio-compact-hide" style="margin:0 0 8px;line-height:1.6;color:var(--text-secondary)">
                     同一页面可按不同登录账号维护多套 Golden 基线（<code>by-account/&lt;slug&gt;</code>）。
                     点「新增 Golden 登录态」添加角色并登录；角色名取自登录账号。
                     数据须稳定，<strong>禁止造单</strong>。
                   </p>
-                  <div>
+                  <div class="studio-compact-hide">
                     <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">Golden 筛选关键字（REQUEST_FILTER_KEYWORD）</label>
                     <input type="text" class="url-input" id="requestFilterKeyword" spellcheck="false" placeholder="留空默认「测试」；填环境中稳定存在的事由关键字"
                       style="width:100%;color:var(--text);margin-bottom:8px">
                   </div>
                   <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;flex-wrap:wrap">
-                    <span class="sidebar-hint" style="margin:0;color:var(--text-secondary)">Golden 登录态</span>
-                    <button type="button" class="btn" id="btnAddGoldenProfile" style="font-size:var(--fs-xs);padding:4px 10px;border-color:rgba(52,211,153,.45);color:var(--green)" onclick="addGoldenProfileEntry()">新增 Golden 登录态</button>
+                    <span class="sidebar-hint" style="margin:0;color:var(--text-secondary)">检测账号</span>
+                    <button type="button" class="btn" id="btnAddGoldenProfile" style="font-size:var(--fs-xs);padding:4px 10px;border-color:rgba(52,211,153,.45);color:var(--green)" onclick="addGoldenProfileEntry()">新增账号</button>
                   </div>
                   <div id="requestFlowGoldenProfileStorage" class="sidebar-hint" style="padding:10px 12px;border:1px dashed var(--border);border-radius:8px;line-height:1.7;color:var(--text-secondary);margin-bottom:8px">
                     加载中…
                   </div>
-                  <label style="display:block;margin-bottom:4px;color:var(--text-secondary);font-size:var(--fs-xs)">Golden 角色</label>
+                  <label style="display:block;margin-bottom:4px;color:var(--text-secondary);font-size:var(--fs-xs)">当前账号</label>
                   <select class="url-input" id="requestGoldenRoleSelect" style="width:100%;margin-bottom:8px;color:var(--text)">
                     <option value="">加载中…</option>
                   </select>
-                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                  <div class="studio-compact-hide" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                     <button type="button" class="btn" id="btnRequestGoldenRun" onclick="runRequestFlowGolden()" style="border-color:rgba(52,211,153,.45);color:var(--green)">Golden 回归</button>
                     <button type="button" class="btn" id="btnRequestGoldenRunAll" onclick="runRequestFlowGoldenAll()" style="border-color:rgba(52,211,153,.35);color:var(--green)">全部 Golden 角色</button>
                     <button type="button" class="btn" id="btnRequestPromoteBaseline" onclick="promoteRequestFlowBaseline()">晋升 Golden 基线</button>
@@ -1539,7 +1551,7 @@
                 </div>
               </div>
 
-              <div class="request-flow-pane" id="requestFlowPaneProbe" data-sub="probe">
+              <div class="request-flow-pane studio-compact-hide" id="requestFlowPaneProbe" data-sub="probe">
                 <div style="padding:10px 12px;border:1px solid rgba(167,139,250,.35);border-radius:8px;background:var(--bg2);margin-bottom:8px">
                   <p class="sidebar-hint" style="margin:0 0 8px;line-height:1.6;color:var(--text-secondary)">
                     造单/审批可改数据；截图后走 <strong>AI UI 审计</strong>，不做 Golden 像素对比。
@@ -1575,6 +1587,7 @@
                   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                     <button type="button" class="btn" id="btnRequestTravelProbe" onclick="runRequestFlowTravelProbe()" style="border-color:rgba(167,139,250,.45);color:var(--purple,#a78bfa)">差旅全流程</button>
                     <button type="button" class="btn" id="btnRequestProbeFlow" onclick="runRequestFlowProbeFlow()" style="border-color:rgba(167,139,250,.45);color:var(--purple,#a78bfa)">申请单全流程</button>
+                    <button type="button" class="btn" id="btnRequestProbeOpenReport" onclick="openRequestFlowProbeReport()" style="font-size:var(--fs-sm)">打开调试报告</button>
                     <button type="button" class="btn" id="btnRequestProbeRunUiAudit" onclick="runRequestFlowProbeUiAudit()" style="font-size:var(--fs-sm)">AI 审计</button>
                     <button type="button" class="btn" id="btnRequestProbeOpenUiAudit" onclick="openExistingUiAuditReport()" style="font-size:var(--fs-sm)">打开已有审计报告</button>
                   </div>
@@ -1586,7 +1599,18 @@
                 </div>
               </div>
 
-              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <div class="flow-toc-actions studio-toc-only" id="requestFlowTocActions">
+                <button type="button" class="btn btn-run" id="btnRequestTocRun" onclick="runRequestFlowGolden()">
+                  <span class="btn-label" id="btnRequestTocRunLabel">开始检测</span>
+                </button>
+                <button type="button" class="btn" id="btnRequestTocRunAll" onclick="runRequestFlowGoldenAll()" style="border-color:rgba(52,211,153,.35);color:var(--green)">
+                  <span class="btn-label" id="btnRequestTocRunAllLabel">检测全部</span>
+                </button>
+                <button type="button" class="btn" id="btnRequestTocReport" onclick="openRequestFlowTocReport()" style="border-color:rgba(52,211,153,.4);color:var(--green,#34d399)">查看报告</button>
+                <button type="button" class="btn" id="btnRequestTocCancel" style="display:none" onclick="cancelRequestFlowRun()">取消</button>
+              </div>
+
+              <div class="studio-compact-hide" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
                 <button type="button" class="btn" id="btnRequestProbe" onclick="startRequestFlowProbe()">实机探活</button>
                 <button type="button" class="btn btn-run" id="btnRequestRunSelected" onclick="runSelectedRequestFlow()">
                   <span class="btn-label">运行</span>
@@ -1596,24 +1620,26 @@
                 <button type="button" class="btn" id="btnRequestOpenCustomer" style="display:none" onclick="openRequestFlowCustomerReport()">客户报告</button>
                 <button type="button" class="btn" id="btnRequestOpenSummary" style="display:none" onclick="openRequestFlowSummaryReport()">运行汇总</button>
                 <button type="button" class="btn" id="btnRequestOpenReplayRun" style="display:none" onclick="openRequestFlowReplay()">查看回放</button>
+                <button type="button" class="btn" id="btnRequestOpenProbeReport" style="display:none" onclick="openRequestFlowProbeReport()">调试报告</button>
                 <button type="button" class="btn" id="btnRequestOpenUiAudit" style="display:none" onclick="openRequestFlowUiAuditReport()">UI 审计报告</button>
                 <button type="button" class="btn" id="btnRequestFeishuWeeklyDoc" onclick="writeFlowFeishuWeeklyDoc('request-flow')" title="将最近一次运行追加到当周飞书周报文档">飞书周报</button>
               </div>
-              <p class="sidebar-hint" id="requestFlowHint" style="margin:8px 0 0;color:var(--text-tertiary)">
+              <p class="sidebar-hint studio-compact-hide" id="requestFlowHint" style="margin:8px 0 0;color:var(--text-tertiary)">
                 快捷选例会同步「用例文件 / 用例 / 执行模式」，不会自动跑；确认后点绿色「运行」。
               </p>
-              <div id="flowRunManagePanel" style="margin-top:12px;padding:10px 12px;border:1px solid rgba(248,113,113,.28);border-radius:8px;background:var(--bg2)">
+              <div id="flowRunManagePanel" class="studio-compact-hide" style="margin-top:12px;padding:10px 12px;border:1px solid rgba(248,113,113,.28);border-radius:8px;background:var(--bg2)">
                 <div style="font-weight:600;color:var(--text);margin-bottom:6px">历史 run 清理</div>
                 <p class="sidebar-hint" style="margin:0 0 8px;line-height:1.6;color:var(--text-secondary)">
-                  按标记、账号 slug 或 runId 搜索，删除对应截图、manifest、diffs（适用于 request-flow / approval-flow）。
+                  按标记、账号 slug 或 runId 搜索，多个 runId 可用空格隔开；删除对应截图、manifest、diffs（适用于 request-flow / approval-flow）。
                 </p>
                 <label style="display:block;margin-bottom:4px;color:var(--text-secondary);font-size:var(--fs-xs)">搜索</label>
-                <input type="text" class="url-input" id="flowRunSearchQuery" spellcheck="false" placeholder="标记 / 账号 / runId"
+                <input type="text" class="url-input" id="flowRunSearchQuery" spellcheck="false" placeholder="标记 / 账号 / runId（空格分隔多个）"
                   style="width:100%;color:var(--text);margin-bottom:8px"
                   onkeydown="if(event.key==='Enter'){event.preventDefault();searchFlowRuns();}">
                 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
                   <button type="button" class="btn" id="btnFlowRunSearch" onclick="searchFlowRuns()">搜索</button>
                   <button type="button" class="btn" onclick="searchFlowRunsForCurrentRole()" style="font-size:var(--fs-xs)">当前 Golden 角色</button>
+                  <button type="button" class="btn" id="btnFlowRunReset" onclick="resetFlowRunSearch()" style="font-size:var(--fs-xs)">重置</button>
                   <button type="button" class="btn" id="btnFlowRunDeleteAll" style="border-color:rgba(248,113,113,.35);color:var(--red)" onclick="deleteMatchedFlowRuns()" disabled>删除全部匹配</button>
                 </div>
                 <div id="flowRunSearchStatus" class="sidebar-hint" style="margin:0 0 6px;color:var(--text-tertiary)"></div>
@@ -1629,10 +1655,9 @@
           <div class="editor-pane-body">
             <div style="display:flex;flex-direction:column;gap:12px;max-width:820px">
               <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg2)">
-                <div style="font-weight:600;color:var(--text);margin-bottom:6px">审批列表 · 调试工作台</div>
-                <p class="sidebar-hint" style="margin:0;line-height:1.7;color:var(--text-secondary)">
-                  针对 <code>approval-flow/</code> 模块：先探活拿真实 DOM / 接口，再跑 serial 全流程（dev 默认）。
-                  单号不写死，运行时从列表 <code>pickFirstDocNo()</code> 取。
+                <div style="font-weight:600;color:var(--text);margin-bottom:6px">审批 · UI 检测</div>
+                <p class="sidebar-hint studio-toc-only" style="margin:0;line-height:1.7;color:var(--text-secondary)">
+                  选择环境并登录后，一键检测审批页面是否正常显示。
                 </p>
               </div>
 
@@ -1640,25 +1665,11 @@
                 连接后自动加载状态…
               </div>
 
+              <div class="studio-compact-hide">
               <div>
-                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">用例文件</label>
-                <select class="url-input" id="approvalFlowSpec" style="width:100%;color:var(--text);margin-bottom:8px"
-                  onchange="onApprovalFlowSpecChange()"></select>
-              </div>
-              <div>
-                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">用例（单条 / 组合 grep）</label>
-                <select class="url-input" id="approvalFlowTest" style="width:100%;color:var(--text);margin-bottom:8px"></select>
-              </div>
-
-              <div>
-                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">前端仓库（探活索引用）</label>
+                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">前端仓库（SSH 地址或本地路径）</label>
                 <input type="text" class="url-input" id="approvalFrontendRepo" spellcheck="false"
-                  value="/Users/hly/project/huilianyi-refactoring"
-                  style="width:100%;color:var(--text)">
-              </div>
-              <div>
-                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">指定单号（可选，覆盖 pickFirstDocNo）</label>
-                <input type="text" class="url-input" id="approvalDocNo" spellcheck="false" placeholder="留空则用列表首行"
+                  placeholder="gogsio@code.huilianyi.com:huilianyi/huilianyi-refactoring.git"
                   style="width:100%;color:var(--text)">
               </div>
 
@@ -1671,20 +1682,89 @@
                   <option value="ui">UI 模式（Playwright UI）</option>
                 </select>
               </div>
-
-              <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer;margin-bottom:8px">
-                <input type="checkbox" id="approvalWriteEnabled">
-                <span>开启写操作（通过 / 驳回，设置 APPROVAL_ENABLE_WRITE=1）</span>
-              </label>
-
-              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-                <span style="color:var(--text-secondary);font-size:var(--fs-xs)">快捷选例：</span>
-                <button type="button" class="btn" id="btnApprovalPresetPreview" onclick="applyApprovalFlowPreset('preview')">快速预览</button>
-                <button type="button" class="btn" id="btnApprovalPresetReadOnly" onclick="applyApprovalFlowPreset('readOnly')">完整只读</button>
-                <button type="button" class="btn" id="btnApprovalPresetFilter" onclick="applyApprovalFlowPreset('filterAll')">筛选用例</button>
               </div>
 
-              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <div class="request-flow-sub-tabs studio-compact-hide" role="tablist" aria-label="审批流程子模式">
+                <button type="button" class="request-flow-sub-tab active" data-sub="golden" id="approvalFlowSubGolden" onclick="setApprovalFlowSubTab('golden', this)">Golden 回归</button>
+                <button type="button" class="request-flow-sub-tab" data-sub="probe" id="approvalFlowSubProbe" onclick="setApprovalFlowSubTab('probe', this)">流程调试</button>
+              </div>
+
+              <div class="request-flow-pane active" id="approvalFlowPaneGolden" data-sub="golden">
+                <div style="padding:10px 12px;border:1px solid rgba(52,211,153,.35);border-radius:8px;background:var(--bg2);margin-bottom:8px">
+                  <p class="sidebar-hint studio-compact-hide" style="margin:0 0 8px;line-height:1.6;color:var(--text-secondary)">
+                    入口 <code>/main/approve</code>：列表 → 页签 → 筛选 → 搜索打开详情。
+                    Golden 登录态与申请单流程共用（<code>by-account/&lt;slug&gt;</code>），数据须稳定，<strong>禁止审批写操作</strong>。
+                  </p>
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+                    <span class="sidebar-hint" style="margin:0;color:var(--text-secondary)">检测账号（与申请单共用）</span>
+                    <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 10px;border-color:rgba(52,211,153,.45);color:var(--green)" onclick="addGoldenProfileEntry()">新增账号</button>
+                  </div>
+                  <div id="approvalFlowGoldenProfileStorage" class="sidebar-hint" style="padding:10px 12px;border:1px dashed var(--border);border-radius:8px;line-height:1.7;color:var(--text-secondary);margin-bottom:8px">
+                    加载中…
+                  </div>
+                  <label style="display:block;margin-bottom:4px;color:var(--text-secondary);font-size:var(--fs-xs)">当前账号</label>
+                  <select class="url-input" id="approvalGoldenRoleSelect" style="width:100%;margin-bottom:8px;color:var(--text)">
+                    <option value="">加载中…</option>
+                  </select>
+                  <div class="studio-compact-hide">
+                    <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">指定待审批单号（可选）</label>
+                    <input type="text" class="url-input" id="approvalGoldenDocNo" spellcheck="false" placeholder="留空则用列表首行 / golden-seeds"
+                      style="width:100%;color:var(--text);margin-bottom:8px">
+                  </div>
+                  <div class="studio-compact-hide" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <button type="button" class="btn" id="btnApprovalGoldenRun" onclick="runApprovalFlowGolden()" style="border-color:rgba(52,211,153,.45);color:var(--green)">Golden 回归</button>
+                    <button type="button" class="btn" id="btnApprovalGoldenRunAll" onclick="runApprovalFlowGoldenAll()" style="border-color:rgba(52,211,153,.35);color:var(--green)">全部 Golden 角色</button>
+                    <button type="button" class="btn" id="btnApprovalPromoteBaseline" onclick="promoteApprovalFlowBaseline()">晋升 Golden 基线</button>
+                    <button type="button" class="btn" id="btnApprovalClearBaseline" onclick="clearApprovalFlowBaseline()" style="border-color:rgba(229,72,77,.35);color:var(--red,#e5484d)">清空基线</button>
+                    <button type="button" class="btn" id="btnApprovalGoldenOpenCustomer" onclick="openApprovalFlowCustomerReport()" style="border-color:rgba(52,211,153,.4);color:var(--green,#34d399)">打开客户报告</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="request-flow-pane studio-compact-hide" id="approvalFlowPaneProbe" data-sub="probe">
+                <div style="padding:10px 12px;border:1px solid rgba(167,139,250,.35);border-radius:8px;background:var(--bg2);margin-bottom:8px">
+                  <p class="sidebar-hint" style="margin:0 0 8px;line-height:1.6;color:var(--text-secondary)">
+                    调试全流程 / 筛选 / 通过驳回；单号不写死，运行时从列表 <code>pickFirstDocNo()</code> 取。
+                  </p>
+                  <div>
+                    <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">用例文件</label>
+                    <select class="url-input" id="approvalFlowSpec" style="width:100%;color:var(--text);margin-bottom:8px"
+                      onchange="onApprovalFlowSpecChange()"></select>
+                  </div>
+                  <div>
+                    <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">用例（单条 / 组合 grep）</label>
+                    <select class="url-input" id="approvalFlowTest" style="width:100%;color:var(--text);margin-bottom:8px"></select>
+                  </div>
+                  <div>
+                    <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">指定单号（可选）</label>
+                    <input type="text" class="url-input" id="approvalDocNo" spellcheck="false" placeholder="留空则用列表首行"
+                      style="width:100%;color:var(--text);margin-bottom:8px">
+                  </div>
+                  <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer;margin-bottom:8px">
+                    <input type="checkbox" id="approvalWriteEnabled">
+                    <span>开启写操作（通过 / 驳回，设置 APPROVAL_ENABLE_WRITE=1）</span>
+                  </label>
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+                    <span style="color:var(--text-secondary);font-size:var(--fs-xs)">快捷选例：</span>
+                    <button type="button" class="btn" id="btnApprovalPresetPreview" onclick="applyApprovalFlowPreset('preview')">快速预览</button>
+                    <button type="button" class="btn" id="btnApprovalPresetReadOnly" onclick="applyApprovalFlowPreset('readOnly')">完整只读</button>
+                    <button type="button" class="btn" id="btnApprovalPresetFilter" onclick="applyApprovalFlowPreset('filterAll')">筛选用例</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="flow-toc-actions studio-toc-only" id="approvalFlowTocActions">
+                <button type="button" class="btn btn-run" id="btnApprovalTocRun" onclick="runApprovalFlowGolden()">
+                  <span class="btn-label" id="btnApprovalTocRunLabel">开始检测</span>
+                </button>
+                <button type="button" class="btn" id="btnApprovalTocRunAll" onclick="runApprovalFlowGoldenAll()" style="border-color:rgba(52,211,153,.35);color:var(--green)">
+                  <span class="btn-label" id="btnApprovalTocRunAllLabel">检测全部</span>
+                </button>
+                <button type="button" class="btn" id="btnApprovalTocReport" onclick="openApprovalFlowCustomerReport()" style="border-color:rgba(52,211,153,.4);color:var(--green,#34d399)">查看报告</button>
+                <button type="button" class="btn" id="btnApprovalTocCancel" style="display:none" onclick="cancelApprovalFlowRun()">取消</button>
+              </div>
+
+              <div class="studio-compact-hide" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
                 <button type="button" class="btn" id="btnApprovalProbe" onclick="startApprovalFlowProbe()">实机探活</button>
                 <button type="button" class="btn btn-run" id="btnApprovalRunSelected" onclick="runSelectedApprovalFlow()">
                   <span class="btn-label">运行</span>
@@ -1692,13 +1772,14 @@
                 <button type="button" class="btn" id="btnApprovalCancel" style="display:none" onclick="cancelApprovalFlowRun()">取消</button>
                 <button type="button" class="btn" id="btnApprovalOpenCompare" style="display:none" onclick="openApprovalFlowCompareReport()">截图对比</button>
                 <button type="button" class="btn" id="btnApprovalOpenCustomer" style="display:none" onclick="openApprovalFlowCustomerReport()">客户报告</button>
+                <button type="button" class="btn" id="btnApprovalOpenProbeReport" style="display:none" onclick="openApprovalFlowProbeReport()">调试报告</button>
                 <button type="button" class="btn" id="btnApprovalOpenSummary" style="display:none" onclick="openApprovalFlowSummaryReport()">运行汇总</button>
                 <button type="button" class="btn" id="btnApprovalOpenReplay" style="display:none" onclick="openApprovalFlowReplay()">查看回放</button>
                 <button type="button" class="btn" id="btnApprovalFeishuWeeklyDoc" onclick="writeFlowFeishuWeeklyDoc('approval-flow')" title="将最近一次运行追加到当周飞书周报文档">飞书周报</button>
                 <button type="button" class="btn" onclick="openFlowRunManage()" style="border-color:rgba(248,113,113,.35);color:var(--red,#f87171)">按标记删 run</button>
               </div>
-              <p class="sidebar-hint" id="approvalFlowHint" style="margin:8px 0 0;color:var(--text-tertiary)">
-                快捷选例会同步「用例文件 / 用例 / 执行模式」（按钮高亮 = 已套用），不会自动跑；确认后点绿色「运行」。
+              <p class="sidebar-hint studio-compact-hide" id="approvalFlowHint" style="margin:8px 0 0;color:var(--text-tertiary)">
+                Golden 模式跑 <code>approval/golden-regression.spec.ts</code>；流程调试可选手动选例。确认后点绿色「运行」或 Golden 区按钮。
               </p>
               <pre id="approvalFlowSnapshot" class="url-input" readonly spellcheck="false"
                 style="display:none;width:100%;min-height:120px;resize:vertical;color:var(--text);line-height:1.5;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;margin:0"></pre>
@@ -1799,30 +1880,32 @@
       <!-- Report panel -->
       <div class="report-body" id="reportPanel" style="display:none">
         <div class="report-hub-tabs" role="tablist">
-          <button type="button" class="report-hub-tab active" data-report-hub="compare" onclick="switchReportHub('compare', this)">截图对比</button>
-          <button type="button" class="report-hub-tab" data-report-hub="replay" onclick="switchReportHub('replay', this)">回放汇总</button>
-          <button type="button" class="report-hub-tab" data-report-hub="stats" onclick="switchReportHub('stats', this)">运行统计</button>
-          <button type="button" class="report-hub-tab" data-report-hub="history" onclick="switchReportHub('history', this)">执行历史</button>
+          <button type="button" class="report-hub-tab studio-compact-hide" data-report-hub="compare" onclick="switchReportHub('compare', this)">截图对比</button>
+          <button type="button" class="report-hub-tab studio-compact-hide" data-report-hub="replay" onclick="switchReportHub('replay', this)">回放汇总</button>
+          <button type="button" class="report-hub-tab studio-compact-hide" data-report-hub="stats" onclick="switchReportHub('stats', this)">运行统计</button>
+          <button type="button" class="report-hub-tab studio-compact-hide" data-report-hub="history" onclick="switchReportHub('history', this)">执行历史</button>
+          <button type="button" class="report-hub-tab active studio-toc-only" data-report-hub="customer" onclick="switchReportHub('customer', this)">检测报告</button>
         </div>
-        <div class="report-hub-pane" id="reportHubStats">
+        <div class="report-hub-pane studio-compact-hide" id="reportHubStats">
           <div class="empty-hint" id="reportStatsEmpty">
             <div class="empty-icon">📊</div>
             <div>执行测试后点击「生成报告」，或完成项目内执行</div>
           </div>
           <div id="reportStatsContent"></div>
         </div>
-        <div class="report-hub-pane active" id="reportHubCompare">
-          <p class="sidebar-hint" id="compareHubHint">无需执行用例：只要有 screenshots/ 截图即可生成报告；若已有 HTML 可直接打开。</p>
-          <button type="button" class="btn btn-full" id="btnHubOpenCompare" onclick="openExistingCompareReport()" style="border-color:rgba(77,159,255,.35);color:var(--blue)">打开已有对比报告</button>
-          <button type="button" class="btn btn-full" id="btnHubCompare" onclick="regenerateCompareReport()" style="margin-top:8px">从 screenshots 重新生成并打开</button>
-          <button type="button" class="btn btn-full" id="btnHubCompareCancel" style="font-size:var(--fs-sm);padding:6px 10px;margin-top:6px" disabled onclick="send('cancel:repo-compare')">取消生成</button>
+        <div class="report-hub-pane studio-compact-hide active" id="reportHubCompare">
+          <p class="sidebar-hint studio-compact-hide" id="compareHubHint">无需执行用例：只要有 screenshots/ 截图即可生成报告；若已有 HTML 可直接打开。</p>
+          <button type="button" class="btn btn-full studio-compact-hide" id="btnHubOpenCompare" onclick="openExistingCompareReport()" style="border-color:rgba(77,159,255,.35);color:var(--blue)">打开已有对比报告</button>
+          <button type="button" class="btn btn-full studio-compact-hide" id="btnHubCompare" onclick="regenerateCompareReport()" style="margin-top:8px">从 screenshots 重新生成并打开</button>
+          <button type="button" class="btn btn-full studio-compact-hide" id="btnHubCompareCancel" style="font-size:var(--fs-sm);padding:6px 10px;margin-top:6px" disabled onclick="send('cancel:repo-compare')">取消生成</button>
           <div id="reportHubCompareExtra">
-          <hr style="border:none;border-top:1px solid var(--border,#2a3142);margin:14px 0 10px" />
-          <p class="sidebar-hint" id="customerHubHint" style="margin:0 0 8px">客户版 UI 衰退检测报告（结论 / 衰退明细 / 检测范围）。</p>
+          <hr class="studio-compact-hide" style="border:none;border-top:1px solid var(--border,#2a3142);margin:14px 0 10px" />
+          <p class="sidebar-hint" id="customerHubHint" style="margin:0 0 8px">UI 衰退检测报告（结论 / 衰退明细 / 检测范围）。</p>
           <button type="button" class="btn btn-full" id="btnHubOpenCustomer" onclick="openExistingCustomerReport()" style="border-color:rgba(52,211,153,.4);color:var(--green,#34d399)">打开客户报告</button>
           <button type="button" class="btn btn-full" id="btnHubCustomer" onclick="regenerateCustomerReport()" style="margin-top:8px">重新生成客户报告并打开</button>
-          <div id="compareUiIssuesSummary" class="sidebar-hint" style="margin-top:10px;display:none"></div>
-          <hr style="border:none;border-top:1px solid var(--border,#2a3142);margin:14px 0 10px" />
+          <div id="compareUiIssuesSummary" class="sidebar-hint studio-compact-hide" style="margin-top:10px;display:none"></div>
+          <hr class="studio-compact-hide" style="border:none;border-top:1px solid var(--border,#2a3142);margin:14px 0 10px" />
+          <div class="studio-compact-hide">
           <p class="sidebar-hint" style="margin:0 0 8px">
             <strong style="color:var(--purple,#a78bfa)">AI UI 审计（Layer 1）</strong><br />
             不依赖截图基线：直接读 screenshots/ 的截图 + .meta.json。可填 Figma 设计稿 URL，有稿按稿对比，无稿仍做单图审计。
@@ -1854,15 +1937,21 @@
           <div id="uiIssuesPanel" class="ui-issues-panel" style="margin-top:12px;max-height:240px;overflow:auto;font-size:12px"></div>
           <button type="button" class="btn btn-full" style="margin-top:8px;font-size:var(--fs-sm)" onclick="loadUiIssuesPanel()">刷新问题列表</button>
           </div>
+          </div>
           <ul class="compare-checklist studio-hidden" id="compareChecklistHub" aria-hidden="true"></ul>
         </div>
-        <div class="report-hub-pane" id="reportHubReplay">
+        <div class="report-hub-pane active studio-toc-only" id="reportHubCustomer">
+          <p class="sidebar-hint" style="margin:0 0 8px">UI 衰退检测报告（结论 / 衰退明细 / 检测范围）。</p>
+          <button type="button" class="btn btn-full" onclick="openExistingCustomerReport()" style="border-color:rgba(52,211,153,.4);color:var(--green,#34d399)">打开检测报告</button>
+          <button type="button" class="btn btn-full" onclick="regenerateCustomerReport()" style="margin-top:8px">重新生成并打开</button>
+        </div>
+        <div class="report-hub-pane studio-compact-hide" id="reportHubReplay">
           <p class="sidebar-hint">汇总 results/ego-studio 与 results/intent-runs 下带 flow.html 的最近回放：通过率、失败步骤 Top、回放入口。</p>
           <button type="button" class="btn btn-full" id="btnHubOpenReplaySummary" onclick="openExistingReplaySummary()" style="border-color:rgba(77,159,255,.35);color:var(--blue)">打开已有回放汇总</button>
           <button type="button" class="btn btn-full" id="btnHubReplaySummary" onclick="regenerateReplaySummary()" style="margin-top:8px">重新生成并打开</button>
           <p class="sidebar-hint" id="replaySummaryHint" style="margin-top:10px"></p>
         </div>
-        <div class="report-hub-pane" id="reportHubHistory">
+        <div class="report-hub-pane studio-compact-hide" id="reportHubHistory">
           <div id="runHistoryList" class="sidebar-hint">暂无执行记录</div>
         </div>
       </div>
@@ -2127,9 +2216,19 @@ function updateStudioStatusBar() {
     draftEl.className = 'status-pill' + (parts.length ? ' ok' : '');
   }
   if (storageEl) {
-    storageEl.textContent = accountState.hasStorage ? '登录态 已保存' : '登录态 未保存';
-    storageEl.className = 'status-pill' + (accountState.hasStorage ? ' ok' : ' warn');
-    if (accountState.storageState) storageEl.title = accountState.storageState;
+    const rfActive = document.getElementById('pane-request-flow')?.classList.contains('active');
+    const flowProf = rfActive
+      ? (requestFlowSubTab === 'probe' ? getSelectedWriteProfile() : getSelectedGoldenProfile())
+      : null;
+    if (flowProf) {
+      storageEl.textContent = flowProf.hasStorage ? `登录态 已就绪` : `登录态 未登录`;
+      storageEl.className = 'status-pill' + (flowProf.hasStorage ? ' ok' : ' warn');
+      storageEl.title = `${flowProf.id}${flowProf.storageState ? ' · ' + flowProf.storageState : ''}`;
+    } else {
+      storageEl.textContent = accountState.hasStorage ? '登录态 已保存' : '登录态 未保存';
+      storageEl.className = 'status-pill' + (accountState.hasStorage ? ' ok' : ' warn');
+      if (accountState.storageState) storageEl.title = accountState.storageState;
+    }
   }
 }
 
@@ -2277,7 +2376,7 @@ function refreshCompareReportStatus() {
   if (compareActive) loadUiIssuesPanel();
   if (compareActive) refreshUiAuditStatus();
   if (document.getElementById('pane-request-flow')?.classList.contains('active')) {
-    refreshRequestFlowStatus();
+    refreshRequestFlowStatus(true);
   }
   if (document.getElementById('pane-approval-flow')?.classList.contains('active')) {
     refreshApprovalFlowStatus();
@@ -2357,9 +2456,24 @@ function confirmPromoteGoldenBaseline() {
 function setFlowRunManageBusy(busy) {
   flowRunManageBusy = busy;
   const btnSearch = document.getElementById('btnFlowRunSearch');
+  const btnReset = document.getElementById('btnFlowRunReset');
   const btnDel = document.getElementById('btnFlowRunDeleteAll');
   if (btnSearch) btnSearch.disabled = busy;
+  if (btnReset) btnReset.disabled = busy;
   if (btnDel) btnDel.disabled = busy || !flowRunSearchHits.length;
+}
+
+function resetFlowRunSearch() {
+  flowRunSearchQuery = '';
+  flowRunSearchHits = [];
+  const input = document.getElementById('flowRunSearchQuery');
+  if (input) input.value = '';
+  const status = document.getElementById('flowRunSearchStatus');
+  const list = document.getElementById('flowRunSearchList');
+  if (status) status.textContent = '';
+  if (list) list.innerHTML = '';
+  setFlowRunManageBusy(false);
+  input?.focus();
 }
 
 function fillFlowRunSearchQuery(q, autoSearch) {
@@ -2406,9 +2520,15 @@ function renderFlowRunSearchList(msg) {
   const list = document.getElementById('flowRunSearchList');
   const btnDel = document.getElementById('btnFlowRunDeleteAll');
   if (status) {
+    const tokens = String(msg.query || flowRunSearchQuery || '')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    const qLabel = msg.query || flowRunSearchQuery;
+    const tokenNote = tokens.length > 1 ? ` · ${tokens.length} 个关键词` : '';
     status.textContent = flowRunSearchHits.length
-      ? `匹配 ${flowRunSearchHits.length} 条 · ${msg.query || flowRunSearchQuery}`
-      : `未找到匹配 · ${msg.query || flowRunSearchQuery}`;
+      ? `匹配 ${flowRunSearchHits.length} 条${tokenNote} · ${qLabel}`
+      : `未找到匹配${tokenNote} · ${qLabel}`;
   }
   if (btnDel) btnDel.disabled = !flowRunSearchHits.length || flowRunManageBusy;
   if (!list) return;
@@ -2932,8 +3052,23 @@ function openRequestFlowCustomerReport() {
   openFlowReportPath(lastRequestFlowRun?.customerReportOpenPath, '客户报告');
 }
 
+function openRequestFlowTocReport() {
+  if (lastRequestFlowRun?.customerReportOpenPath) {
+    openRequestFlowCustomerReport();
+    return;
+  }
+  openExistingCustomerReport();
+}
+
 function openRequestFlowSummaryReport() {
   openFlowReportPath(lastRequestFlowRun?.summaryReportOpenPath, '运行汇总');
+}
+
+function openRequestFlowProbeReport() {
+  openFlowReportPath(
+    lastRequestFlowRun?.probeReportOpenPath || '/repo-report/results/flow-probe-report.html',
+    '调试报告',
+  );
 }
 
 function openRequestFlowReplay() {
@@ -2951,7 +3086,8 @@ function hasFlowReplayPath(msg) {
 
 const REQUEST_FLOW_REPORT_BTNS = [
   { id: 'btnRequestOpenCompare', path: (m) => (m?.pipeline === 'probe' ? '' : m?.compareReportOpenPath), goldenOnly: true },
-  { id: 'btnRequestOpenCustomer', path: (m) => m.customerReportOpenPath },
+  { id: 'btnRequestOpenCustomer', path: (m) => m.customerReportOpenPath, hideOnGolden: true },
+  { id: 'btnRequestOpenProbeReport', path: (m) => m.probeReportOpenPath || '/repo-report/results/flow-probe-report.html', probeOnly: true },
   { id: 'btnRequestOpenSummary', path: (m) => m.summaryReportOpenPath, always: true },
   { id: 'btnRequestOpenReplayRun', path: (m) => m.replayReportOpenPath || m.videoReportOpenPath, always: true },
   { id: 'btnRequestOpenUiAudit', path: (m) => m.uiAuditReportOpenPath },
@@ -2960,16 +3096,27 @@ const REQUEST_FLOW_REPORT_BTNS = [
 const APPROVAL_FLOW_REPORT_BTNS = [
   { id: 'btnApprovalOpenCompare', path: (m) => m.compareReportOpenPath },
   { id: 'btnApprovalOpenCustomer', path: (m) => m.customerReportOpenPath },
+  { id: 'btnApprovalOpenProbeReport', path: (m) => m.probeReportOpenPath || '/repo-report/results/flow-probe-report.html', probeOnly: true },
   { id: 'btnApprovalOpenSummary', path: (m) => m.summaryReportOpenPath, always: true },
   { id: 'btnApprovalOpenReplay', path: (m) => m.replayReportOpenPath || m.videoReportOpenPath, always: true },
 ];
 
-function setFlowReportButtons(config, msg) {
-  const isGolden = requestFlowSubTab === 'golden';
+function setFlowReportButtons(config, msg, subTab) {
+  const tab = subTab || requestFlowSubTab;
+  const isGolden = tab === 'golden';
+  const isProbe = tab === 'probe';
   for (const item of config) {
     const btn = document.getElementById(item.id);
     if (!btn) continue;
     if (item.goldenOnly && !isGolden) {
+      btn.style.display = 'none';
+      continue;
+    }
+    if (item.probeOnly && !isProbe) {
+      btn.style.display = 'none';
+      continue;
+    }
+    if (item.hideOnGolden && isGolden) {
       btn.style.display = 'none';
       continue;
     }
@@ -2994,7 +3141,7 @@ function openRequestFlowUiAuditReport() {
 }
 
 function updateRequestFlowReportBtn(msg) {
-  setFlowReportButtons(REQUEST_FLOW_REPORT_BTNS, msg || lastRequestFlowRun);
+  setFlowReportButtons(REQUEST_FLOW_REPORT_BTNS, msg || lastRequestFlowRun, requestFlowSubTab);
 }
 
 let lastApprovalFlowRun = null;
@@ -3015,6 +3162,13 @@ function openApprovalFlowSummaryReport() {
   openFlowReportPath(lastApprovalFlowRun?.summaryReportOpenPath, '运行汇总');
 }
 
+function openApprovalFlowProbeReport() {
+  openFlowReportPath(
+    lastApprovalFlowRun?.probeReportOpenPath || '/repo-report/results/flow-probe-report.html',
+    '调试报告',
+  );
+}
+
 function openApprovalFlowReplay() {
   const path = lastApprovalFlowRun?.replayReportOpenPath || lastApprovalFlowRun?.videoReportOpenPath;
   if (!path) {
@@ -3025,7 +3179,7 @@ function openApprovalFlowReplay() {
 }
 
 function updateApprovalFlowReportBtn(msg) {
-  setFlowReportButtons(APPROVAL_FLOW_REPORT_BTNS, msg || lastApprovalFlowRun);
+  setFlowReportButtons(APPROVAL_FLOW_REPORT_BTNS, msg || lastApprovalFlowRun, approvalFlowSubTab);
 }
 
 function copyBatchFailureByIndex(i) {
@@ -3336,16 +3490,24 @@ function switchReportHub(name, el) {
   });
   document.querySelectorAll('.report-hub-pane').forEach((p) => p.classList.remove('active'));
   const paneId =
-    name === 'compare'
-      ? 'reportHubCompare'
-      : name === 'history'
-        ? 'reportHubHistory'
-        : name === 'replay'
-          ? 'reportHubReplay'
-          : 'reportHubStats';
+    name === 'customer'
+      ? 'reportHubCustomer'
+      : name === 'compare'
+        ? 'reportHubCompare'
+        : name === 'history'
+          ? 'reportHubHistory'
+          : name === 'replay'
+            ? 'reportHubReplay'
+            : 'reportHubStats';
   const pane = document.getElementById(paneId);
   if (pane) pane.classList.add('active');
   if (name === 'compare') refreshCompareReportStatus();
+}
+
+function ensureReportHubCompactDefault() {
+  if (!isStudioCompact()) return;
+  const tab = document.querySelector('.report-hub-tab[data-report-hub="customer"]');
+  switchReportHub('customer', tab);
 }
 
 function openExistingReplaySummary() {
@@ -3387,7 +3549,7 @@ function handleReplaySummaryDone(msg) {
 
 function openReportHub(tab) {
   switchPanel('report', document.querySelectorAll('.ptab')[1]);
-  const hubTab = tab || 'compare';
+  const hubTab = tab || (isStudioCompact() ? 'customer' : 'compare');
   const tabEl = document.querySelector(`.report-hub-tab[data-report-hub="${hubTab}"]`);
   switchReportHub(hubTab, tabEl);
 }
@@ -3529,7 +3691,7 @@ const SS_BROWSER_PROJECTS = 'pw_studio_browser_projects';
 const SS_EDITOR_TAB = 'pw_studio_editor_tab';
 const SS_RUN_HISTORY = 'pw_studio_run_history';
 const SS_STUDIO_COMPACT_ADV = 'pw_studio_compact_advanced';
-const STUDIO_COMPACT_HIDDEN_TABS = new Set(['intent-run', 'ego-audit']);
+const STUDIO_COMPACT_HIDDEN_TABS = new Set(['intent-run', 'ego-audit', 'jobs']);
 const RUN_HISTORY_MAX = 10;
 let workflowMode = 'new';
 let runSubMode = 'single';
@@ -3560,6 +3722,12 @@ function toggleStudioCompactAdvanced() {
       );
       switchTab('request-flow', tab);
     }
+    restoreRequestFlowSubTab();
+    restoreApprovalFlowSubTab();
+    ensureReportHubCompactDefault();
+  } else {
+    const compareTab = document.querySelector('.report-hub-tab[data-report-hub="compare"]');
+    switchReportHub('compare', compareTab);
   }
 }
 
@@ -3569,6 +3737,8 @@ function restoreStudioCompactAdvanced() {
       document.querySelector('.app')?.classList.add('studio-compact-off');
       const btn = document.getElementById('btnStudioCompactAdvanced');
       if (btn) btn.textContent = '收起高级功能';
+      const compareTab = document.querySelector('.report-hub-tab[data-report-hub="compare"]');
+      switchReportHub('compare', compareTab);
     }
   } catch {
     /* ignore */
@@ -3993,10 +4163,10 @@ function applyEnvChanged(msg) {
   }
   updateStudioStatusBar();
   if (envChanged && document.getElementById('pane-request-flow')?.classList.contains('active')) {
-    refreshRequestFlowStatus();
+    refreshRequestFlowStatus(true);
   }
   if (envChanged && document.getElementById('pane-approval-flow')?.classList.contains('active')) {
-    refreshApprovalFlowStatus();
+    refreshApprovalFlowStatus(true);
   }
 }
 
@@ -5347,6 +5517,23 @@ function openCompareReportInNewWindow(url) {
 }
 
 // ── WebSocket ──────────────────────────────────────────────────────────
+let studioRestarting = false;
+
+function restartStudioServer() {
+  if (studioRestarting) return;
+  const tip = '将重新启动 Playwright Studio 并自动重连，进行中的任务会被取消。继续？';
+  if (!confirm(tip)) return;
+  studioRestarting = true;
+  const btn = document.getElementById('btnStudioRestart');
+  if (btn) btn.disabled = true;
+  log('warn', '[studio] 正在请求重启服务…');
+  if (!send('studio:restart', { force: true })) {
+    studioRestarting = false;
+    if (btn) btn.disabled = false;
+    showToast('未连接 Studio 服务', 'err');
+  }
+}
+
 function connectWS() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(`${proto}//${location.host}`);
@@ -5369,6 +5556,12 @@ function connectWS() {
     syncCompareHubButtons();
     updateGlobalTaskBar();
     log('info', '已连接到 Playwright Studio 服务');
+    bindFlowProfileControls();
+    if (isRequestFlowPaneActive()) refreshRequestFlowStatus(true);
+    else if (isApprovalFlowPaneActive()) refreshApprovalFlowStatus(true);
+    studioRestarting = false;
+    const restartBtn = document.getElementById('btnStudioRestart');
+    if (restartBtn) restartBtn.disabled = false;
     setTimeout(refreshCompareReportStatus, 300);
     setTimeout(refreshIntentList, 400);
     setTimeout(refreshReplayList, 450);
@@ -5511,7 +5704,7 @@ function handleMessage(msg) {
         if (msg.storageSaved && msg.storageState) {
           log('ok', `[account] 登录态已保存: ${msg.storageState}${profNote ? ` (profile=${profNote})` : ''}`);
           showToast(profNote ? `profile=${profNote} 登录态已保存` : '登录态已保存', 'ok');
-          refreshRequestFlowStatus();
+          refreshRequestFlowStatus(true);
         } else {
           log('err', '[account] 未检测到有效登录态，请确认已在浏览器中登录后再停止');
           showToast('未检测到有效登录态，请确认已登录后再停止录制', 'err');
@@ -5550,7 +5743,7 @@ function handleMessage(msg) {
       }
       renderEnvChips();
       syncLoginStateControls();
-      refreshRequestFlowStatus();
+      refreshRequestFlowStatus(true);
       break;
     }
     case 'repo:suggest-path:done':
@@ -5737,7 +5930,10 @@ function handleMessage(msg) {
       break;
     case 'account:info':
       applyAccountInfo(msg);
-      if (msg.flowProfiles) renderRequestFlowProfileStorage(msg.flowProfiles);
+      if (msg.flowProfiles) {
+        flowProfileStorageKey = '';
+        renderRequestFlowProfileStorage(msg.flowProfiles);
+      }
       break;
     case 'account:changed':
       applyAccountChanged(msg);
@@ -5745,7 +5941,7 @@ function handleMessage(msg) {
     case 'account:golden-profile-added':
       log('ok', `[account] 新增 Golden 档案 ${msg.profile} → ${msg.storageState || ''}`);
       showToast(`已新增 ${msg.profile}，请在浏览器中完成登录`, 'ok');
-      refreshRequestFlowStatus();
+      refreshRequestFlowStatus(true);
       if (pendingGoldenProfileLogin && msg.profile) {
         pendingGoldenProfileLogin = false;
         setTimeout(() => startFlowProfileLogin(msg.profile), 200);
@@ -5754,12 +5950,12 @@ function handleMessage(msg) {
     case 'account:golden-profile-removed':
       log('ok', `[account] 已删除 Golden 档案 ${msg.profile}`);
       showToast(`已删除 ${msg.label || msg.profile}`, 'ok');
-      refreshRequestFlowStatus();
+      refreshRequestFlowStatus(true);
       break;
     case 'account:write-profile-added':
       log('ok', `[account] 新增 write 档案 ${msg.profile} → ${msg.storageState || ''}`);
       showToast(`已新增 ${msg.profile}，请在浏览器中完成登录`, 'ok');
-      refreshRequestFlowStatus();
+      refreshRequestFlowStatus(true);
       if (pendingWriteProfileLogin && msg.profile) {
         pendingWriteProfileLogin = false;
         setTimeout(() => startFlowProfileLogin(msg.profile), 200);
@@ -5768,7 +5964,7 @@ function handleMessage(msg) {
     case 'account:write-profile-removed':
       log('ok', `[account] 已删除 write 档案 ${msg.profile}`);
       showToast(`已删除 ${msg.label || msg.profile}`, 'ok');
-      refreshRequestFlowStatus();
+      refreshRequestFlowStatus(true);
       break;
     case 'account:login:start':
       busyState.accountLogin = true;
@@ -5785,7 +5981,7 @@ function handleMessage(msg) {
       updateGlobalTaskBar();
       if (msg.ok) showToast('账号登录成功', 'ok');
       else showToast('账号登录失败', 'err');
-      refreshRequestFlowStatus();
+      refreshRequestFlowStatus(true);
       break;
     case 'account:storage-cleared':
       applyAccountChanged({
@@ -5803,7 +5999,7 @@ function handleMessage(msg) {
         'info',
         `[account] ${msg.removed ? '已作废' : '无需清除'}: ${msg.storageState || ''}${msg.loginAccount ? ` · ${msg.loginAccount}` : ''}`,
       );
-      refreshRequestFlowStatus();
+      refreshRequestFlowStatus(true);
       break;
     case 'account:headed-debug:start':
       showToast(
@@ -6567,9 +6763,15 @@ function handleMessage(msg) {
       if (msg.ok) {
         showToast('申请单列表探活完成', 'ok');
         log('ok', `[request-flow] 探活完成 · ${msg.snapshotRel || 'live-snapshot.json'}`);
-      } else if (!msg.cancelled) {
+      } else if (msg.cancelled) {
+        showToast('探活已取消', 'warn');
+        log('warn', '[request-flow] 探活已取消');
+      } else {
         showToast('探活失败', 'err');
       }
+      break;
+    case 'request-flow:cancel:ack':
+      log('warn', '[request-flow] 取消指令已送达，正在终止进程…');
       break;
     case 'request-flow:run:start':
       setRequestFlowBusy(true);
@@ -6584,7 +6786,7 @@ function handleMessage(msg) {
       break;
     case 'request-flow:golden-all:done':
       setRequestFlowBusy(false);
-      refreshRequestFlowStatus();
+      refreshRequestFlowStatus(true);
       if (msg.ok) showToast('全部 Golden 角色回归完成', 'ok');
       else if (!msg.cancelled) showToast('Golden 全角色回归未全部完成', 'err');
       break;
@@ -6610,10 +6812,15 @@ function handleMessage(msg) {
         if (msg.pipeline === 'golden' && msg.baselinePromoted) extras.push('已 seed Golden 基线');
         if (hasFlowReplayPath(msg)) extras.push('回放已生成');
         if (msg.pipeline === 'probe' && msg.uiAuditReportOpenPath) extras.push('UI 审计报告已生成');
+        else if (msg.pipeline === 'probe' && msg.probeReportOpenPath) extras.push('调试报告已更新');
         else if (msg.pipeline === 'probe' && msg.ok) extras.push('可对截图点「AI 审计」');
         if (msg.accountProfile) extras.push(`profile=${msg.accountProfile}`);
         if (msg.roleSlug) extras.push(`role=${msg.roleSlug}`);
-        showToast(extras.length ? `申请单流程用例通过 · ${extras.join(' · ')}` : '申请单流程用例通过', 'ok');
+        if (isStudioCompact() && msg.pipeline === 'golden') {
+          showToast('检测完成，可点「查看报告」', 'ok');
+        } else {
+          showToast(extras.length ? `申请单流程用例通过 · ${extras.join(' · ')}` : '申请单流程用例通过', 'ok');
+        }
         log('ok', `[request-flow] 用例通过 · mode=${msg.mode || ''}${msg.pipeline ? ` · pipeline=${msg.pipeline}` : ''}`);
       } else if (!msg.cancelled) {
         const apiHint = msg.apiFailureCount > 0 ? `，${msg.apiFailureCount} 个接口报错` : '';
@@ -6673,9 +6880,26 @@ function handleMessage(msg) {
       if (msg.ok) {
         showToast('审批列表探活完成', 'ok');
         log('ok', `[approval-flow] 探活完成 · ${msg.snapshotRel || 'live-snapshot.json'}`);
-      } else if (!msg.cancelled) {
+      } else if (msg.cancelled) {
+        showToast('探活已取消', 'warn');
+        log('warn', '[approval-flow] 探活已取消');
+      } else {
         showToast('探活失败', 'err');
       }
+      break;
+    case 'approval-flow:cancel:ack':
+      log('warn', '[approval-flow] 取消指令已送达，正在终止进程…');
+      break;
+    case 'approval-flow:golden-all:start':
+      setApprovalFlowBusy(true);
+      switchToApprovalFlowTab();
+      log('info', `[approval-flow] Golden 全角色回归开始（${msg.total || 0} 个）`);
+      break;
+    case 'approval-flow:golden-all:done':
+      setApprovalFlowBusy(false);
+      refreshApprovalFlowStatus(true);
+      if (msg.ok) showToast('审批 Golden 全角色回归完成', 'ok');
+      else if (!msg.cancelled) showToast('审批 Golden 全角色回归未全部完成', 'err');
       break;
     case 'approval-flow:run:start':
       setApprovalFlowBusy(true);
@@ -6704,7 +6928,11 @@ function handleMessage(msg) {
       }
       if (msg.ok) {
         const skipNote = msg.skipped > 0 ? `（跳过 ${msg.skipped}）` : '';
-        showToast(`审批流程用例通过${skipNote}`, 'ok');
+        if (isStudioCompact() && (msg.pipeline === 'golden' || !msg.pipeline)) {
+          showToast('检测完成，可点「查看报告」', 'ok');
+        } else {
+          showToast(`审批流程用例通过${skipNote}`, 'ok');
+        }
         log('ok', `[approval-flow] 用例通过 · mode=${msg.mode || ''}`);
       } else if (!msg.cancelled) {
         showToast(`审批流程用例失败（退出码 ${msg.exitCode ?? '?' }）`, 'err');
@@ -6833,6 +7061,22 @@ function handleMessage(msg) {
       }
       break;
     }
+    case 'studio:restarting':
+      studioRestarting = true;
+      log('warn', '[studio] 服务正在重启，稍后自动重连…');
+      showToast('服务重启中，请稍候…', 'warn');
+      break;
+    case 'studio:restart:blocked':
+      studioRestarting = false;
+      {
+        const restartBtn = document.getElementById('btnStudioRestart');
+        if (restartBtn) restartBtn.disabled = false;
+        const n = Number(msg.busy) || 0;
+        if (confirm(`当前有 ${n} 个会话任务运行中，重启将取消它们。继续？`)) {
+          send('studio:restart', { force: true });
+        }
+      }
+      break;
     case 'error':
       if (dateCategoryState.loading) {
         dateCategoryState.loading = false;
@@ -7211,8 +7455,8 @@ function switchTab(name, el) {
   syncSidebarAccountLoginVisibility();
   syncEditorRunHint();
   syncActionButtons();
-  if (name === 'request-flow') refreshRequestFlowStatus();
-  if (name === 'approval-flow') refreshApprovalFlowStatus();
+  if (name === 'request-flow') refreshRequestFlowStatus(true);
+  if (name === 'approval-flow') refreshApprovalFlowStatus(true);
   if (name === 'jobs') {
     refreshTestJobsList();
     if (!testJobsState.selectedJobId && testJobsState.jobs.length) {
@@ -7579,7 +7823,7 @@ function refreshUiAuditStatus() {
 }
 
 function setRequestFlowBusy(busy) {
-  ['btnRequestProbe', 'btnRequestPresetPreview', 'btnRequestPresetReadOnly', 'btnRequestPresetWrite', 'btnRequestPresetSubmitApprove', 'btnRequestRunSelected', 'btnRequestGoldenRun', 'btnRequestGoldenRunAll', 'btnRequestTravelProbe', 'btnRequestProbeFlow', 'btnRequestTravelProbeChain', 'btnRequestProbeChain', 'btnRequestProbeRunUiAudit', 'btnRequestPromoteBaseline', 'btnRequestClearBaseline', 'btnAddGoldenProfile', 'btnAddWriteProfile'].forEach((id) => {
+  ['btnRequestProbe', 'btnRequestPresetPreview', 'btnRequestPresetReadOnly', 'btnRequestPresetWrite', 'btnRequestPresetSubmitApprove', 'btnRequestRunSelected', 'btnRequestGoldenRun', 'btnRequestGoldenRunAll', 'btnRequestTravelProbe', 'btnRequestProbeFlow', 'btnRequestTravelProbeChain', 'btnRequestProbeChain', 'btnRequestProbeRunUiAudit', 'btnRequestPromoteBaseline', 'btnRequestClearBaseline', 'btnAddGoldenProfile', 'btnAddWriteProfile', 'btnRequestTocRun', 'btnRequestTocRunAll', 'btnRequestTocReport'].forEach((id) => {
     const btn = document.getElementById(id);
     if (!btn) return;
     btn.disabled = busy;
@@ -7590,8 +7834,25 @@ function setRequestFlowBusy(busy) {
   const runBtn = document.getElementById('btnRequestRunSelected');
   const label = runBtn?.querySelector('.btn-label');
   if (label) label.textContent = busy ? '运行中…' : '运行';
+  const tocLabel = document.getElementById('btnRequestTocRunLabel');
+  if (tocLabel) tocLabel.textContent = busy ? '检测中…' : '开始检测';
+  const tocAllLabel = document.getElementById('btnRequestTocRunAllLabel');
+  if (tocAllLabel) tocAllLabel.textContent = busy ? '检测中…' : '检测全部';
   const cancel = document.getElementById('btnRequestCancel');
-  if (cancel) cancel.style.display = busy ? '' : 'none';
+  const tocCancel = document.getElementById('btnRequestTocCancel');
+  if (isStudioCompact()) {
+    if (cancel) cancel.style.display = 'none';
+    if (tocCancel) {
+      tocCancel.style.display = busy ? '' : 'none';
+      tocCancel.disabled = false;
+    }
+  } else {
+    if (tocCancel) tocCancel.style.display = 'none';
+    if (cancel) {
+      cancel.style.display = busy ? '' : 'none';
+      cancel.disabled = false;
+    }
+  }
 }
 
 const requestFlowProfileState = {};
@@ -7610,10 +7871,46 @@ function isWriteProfileId(id) {
   return s === 'write' || s.startsWith('write_') || s.startsWith('write-');
 }
 
+let flowProfileStorageKey = '';
+let flowProfileControlsBound = false;
+let requestFlowStatusLastAt = 0;
+let approvalFlowStatusLastAt = 0;
+const FLOW_STATUS_MIN_MS = 2500;
+
+function isRequestFlowPaneActive() {
+  return document.getElementById('pane-request-flow')?.classList.contains('active');
+}
+
+function isApprovalFlowPaneActive() {
+  return document.getElementById('pane-approval-flow')?.classList.contains('active');
+}
+
+function bindFlowProfileControls() {
+  if (flowProfileControlsBound) return;
+  flowProfileControlsBound = true;
+  document.getElementById('requestGoldenRoleSelect')?.addEventListener('change', () => {
+    loadRequestDocNoFromStorage();
+    refreshRequestFlowStatus(true);
+    updateStudioStatusBar();
+  });
+  document.getElementById('approvalGoldenRoleSelect')?.addEventListener('change', () => {
+    refreshApprovalFlowStatus(true);
+    updateStudioStatusBar();
+  });
+  document.getElementById('requestWriteRoleSelect')?.addEventListener('change', () => {
+    refreshRequestFlowStatus(true);
+    updateStudioStatusBar();
+  });
+}
+
 function renderRequestFlowProfileStorage(list) {
+  const key = JSON.stringify(list || []);
+  if (key === flowProfileStorageKey) return;
+  flowProfileStorageKey = key;
   const goldenEl = document.getElementById('requestFlowGoldenProfileStorage');
   const writeEl = document.getElementById('requestFlowWriteProfileStorage');
-  if (!goldenEl && !writeEl) return;
+  const approvalGoldenEl = document.getElementById('approvalFlowGoldenProfileStorage');
+  if (!goldenEl && !writeEl && !approvalGoldenEl) return;
   const items = Array.isArray(list) ? list : [];
   items.forEach((p) => {
     requestFlowProfileState[p.id] = p;
@@ -7659,6 +7956,13 @@ function renderRequestFlowProfileStorage(list) {
     }
     goldenEl.innerHTML = goldenHtml;
   }
+  if (approvalGoldenEl) {
+    if (goldenItems.length) {
+      approvalGoldenEl.innerHTML = goldenItems.map((p) => row(p, 'var(--green)', { hideProfileId: true, allowDelete: true })).join('');
+    } else {
+      approvalGoldenEl.innerHTML = `<div style="color:var(--amber)">未配置 golden* 档案（与申请单流程共用）</div>`;
+    }
+  }
   if (writeEl) {
     writeEl.innerHTML = writeList.map((p) => row(p, 'var(--purple,#a78bfa)', { hideProfileId: true, allowDelete: true })).join('');
   }
@@ -7677,8 +7981,23 @@ function renderRequestFlowProfileStorage(list) {
       const firstReady = goldenItems.find((p) => p.hasStorage);
       if (firstReady) roleSel.value = firstReady.id;
     }
-    roleSel.onchange = () => loadRequestDocNoFromStorage();
     loadRequestDocNoFromStorage();
+  }
+  const approvalRoleSel = document.getElementById('approvalGoldenRoleSelect');
+  if (approvalRoleSel) {
+    const prevApproval = approvalRoleSel.value;
+    const approvalOpts = goldenItems.map((p) => {
+      const hasRemark = p.label && p.loginAccount && p.label !== p.loginAccount;
+      const label = hasRemark ? `${p.label} · ${p.loginAccount}` : (p.roleLabel || p.label || p.id);
+      const suffix = p.hasStorage ? '' : ' · 未登录';
+      return `<option value="${escHtml(p.id)}"${p.hasStorage ? '' : ' disabled'}>${escHtml(label)}${suffix}</option>`;
+    });
+    approvalRoleSel.innerHTML = approvalOpts.length ? approvalOpts.join('') : '<option value="">无 golden* 档案</option>';
+    if ([...approvalRoleSel.options].some((o) => o.value === prevApproval && !o.disabled)) approvalRoleSel.value = prevApproval;
+    else {
+      const firstReady = goldenItems.find((p) => p.hasStorage);
+      if (firstReady) approvalRoleSel.value = firstReady.id;
+    }
   }
   const writeSel = document.getElementById('requestWriteRoleSelect');
   if (writeSel) {
@@ -7696,6 +8015,55 @@ function renderRequestFlowProfileStorage(list) {
       if (firstWriteReady) writeSel.value = firstWriteReady.id;
     }
   }
+  updateStudioStatusBar();
+}
+
+function getSelectedApprovalGoldenProfile() {
+  const sel = document.getElementById('approvalGoldenRoleSelect');
+  const id = sel?.value?.trim() || '';
+  if (id && requestFlowProfileState[id]) return requestFlowProfileState[id];
+  return getSelectedGoldenProfile();
+}
+
+function setApprovalFlowSubTab(mode, el, opts = {}) {
+  const next = mode === 'probe' && isStudioCompact() ? 'golden' : mode === 'probe' ? 'probe' : 'golden';
+  approvalFlowSubTab = next;
+  document.querySelectorAll('#pane-approval-flow .request-flow-sub-tab').forEach((tab) => {
+    tab.classList.toggle('active', tab.dataset.sub === next);
+  });
+  document.querySelectorAll('#pane-approval-flow .request-flow-pane').forEach((pane) => {
+    pane.classList.toggle('active', pane.dataset.sub === next);
+  });
+  try {
+    sessionStorage.setItem(SS_APPROVAL_FLOW_SUB_TAB, next);
+  } catch {
+    /* ignore */
+  }
+  updateApprovalFlowReportBtn(lastApprovalFlowRun);
+  if (opts.refreshStatus !== false) refreshApprovalFlowStatus(true);
+  updateStudioStatusBar();
+}
+
+function restoreApprovalFlowSubTab() {
+  if (isStudioCompact()) {
+    const tabEl = document.querySelector('#pane-approval-flow .request-flow-sub-tab[data-sub="golden"]');
+    setApprovalFlowSubTab('golden', tabEl, { refreshStatus: false });
+    return;
+  }
+  let saved = 'golden';
+  try {
+    saved = sessionStorage.getItem(SS_APPROVAL_FLOW_SUB_TAB) || 'golden';
+  } catch {
+    /* ignore */
+  }
+  const tabEl = document.querySelector(`#pane-approval-flow .request-flow-sub-tab[data-sub="${saved === 'probe' ? 'probe' : 'golden'}"]`);
+  setApprovalFlowSubTab(saved === 'probe' ? 'probe' : 'golden', tabEl, { refreshStatus: false });
+}
+
+function switchToApprovalFlowSubTab(mode) {
+  switchToApprovalFlowTab();
+  const tabEl = document.querySelector(`#pane-approval-flow .request-flow-sub-tab[data-sub="${mode === 'probe' ? 'probe' : 'golden'}"]`);
+  setApprovalFlowSubTab(mode === 'probe' ? 'probe' : 'golden', tabEl);
 }
 
 function getSelectedGoldenProfile() {
@@ -7710,6 +8078,21 @@ function getSelectedWriteProfile() {
   const id = sel?.value?.trim() || '';
   if (id && requestFlowProfileState[id]) return requestFlowProfileState[id];
   return Object.values(requestFlowProfileState).find((p) => isWriteProfileId(p.id) && p.hasStorage) || null;
+}
+
+function getActiveRequestFlowAccountProfile() {
+  if (requestFlowSubTab === 'probe') {
+    const p = getSelectedWriteProfile();
+    return p?.id || 'write';
+  }
+  const p = getSelectedGoldenProfile();
+  return p?.id || 'golden';
+}
+
+function requestFlowLoginHint() {
+  return requestFlowSubTab === 'probe'
+    ? '请先在下方「调试登录态」点登录'
+    : '请先在下方「Golden 登录态」点登录';
 }
 
 function addGoldenProfileEntry() {
@@ -7961,7 +8344,7 @@ function renderRequestFlowStatus(msg, opts = {}) {
   if (msg.profileStorage) renderRequestFlowProfileStorage(msg.profileStorage);
   const storage = msg.hasStorage
     ? `<span style="color:var(--green)">已就绪</span> · ${escHtml(msg.storageState || '')}`
-    : '<span style="color:var(--amber)">缺失</span> · 请先在侧栏登录';
+    : `<span style="color:var(--amber)">缺失</span> · ${escHtml(requestFlowLoginHint())}${msg.storageHint ? `（${escHtml(msg.storageHint)}）` : ''}`;
   const snap = msg.snapshot;
   let snapLine = '暂无 live-snapshot，可先点「实机探活」';
   if (snap) {
@@ -7971,7 +8354,8 @@ function renderRequestFlowStatus(msg, opts = {}) {
   let catalogLine = '';
   if (catalog && Array.isArray(catalog.warnings) && catalog.warnings.length) {
     const color = catalog.ok ? 'var(--text-secondary)' : 'var(--amber)';
-    catalogLine = `<div><strong>catalog</strong> <span style="color:${color}">${catalog.ok ? '通过' : '漂移'} · ${escHtml(catalog.warnings.slice(0, 2).join('；'))}${catalog.warnings.length > 2 ? '…' : ''}</span></div>`;
+    const staleNote = !msg.hasStorage && !catalog.ok ? '（未登录时探活可能不准，请先登录再探活）' : '';
+    catalogLine = `<div><strong>catalog</strong> <span style="color:${color}">${catalog.ok ? '通过' : '漂移'} · ${escHtml(catalog.warnings.slice(0, 2).join('；'))}${catalog.warnings.length > 2 ? '…' : ''}${staleNote}</span></div>`;
   }
   el.innerHTML = [
     `<div><strong>环境</strong> ${escHtml(msg.env || 'dev')} · <strong>BASE_URL</strong> ${escHtml(msg.baseURL || '')}${msg.accountProfile ? ` · <strong>profile</strong> <code>${escHtml(msg.accountProfile)}</code>` : ''}</div>`,
@@ -7997,14 +8381,13 @@ function renderRequestFlowStatus(msg, opts = {}) {
     const keepSpec = requestFlowDraft?.spec || document.getElementById('requestFlowSpec')?.value?.trim() || msg.spec;
     const keepGrep = requestFlowDraft?.grep ?? document.getElementById('requestFlowTest')?.value ?? '';
     fillRequestFlowSpecSelect(msg.specs, keepSpec);
-    fillRequestFlowTestSelect(msg.tests, keepGrep);
+    if (!msg.skipTests) fillRequestFlowTestSelect(msg.tests, keepGrep);
     if (requestFlowDraft) applyRequestFlowDraftToDom();
   }
   if (msg.testsError) {
     const hint = document.getElementById('requestFlowHint');
     if (hint) hint.textContent = `用例列表：${msg.testsError}`;
   }
-  if (msg.profileStorage) renderRequestFlowProfileStorage(msg.profileStorage);
   if (msg.lastRun) {
     lastRequestFlowRun = msg.lastRun;
     updateRequestFlowReportBtn(lastRequestFlowRun);
@@ -8013,11 +8396,22 @@ function renderRequestFlowStatus(msg, opts = {}) {
 
 let requestFlowStatusTimer = null;
 
-function refreshRequestFlowStatus() {
+function refreshRequestFlowStatus(force) {
   clearTimeout(requestFlowStatusTimer);
   requestFlowStatusTimer = setTimeout(() => {
+    if (!force && !isRequestFlowPaneActive()) return;
+    const now = Date.now();
+    if (!force && now - requestFlowStatusLastAt < FLOW_STATUS_MIN_MS) return;
     const spec = document.getElementById('requestFlowSpec')?.value?.trim() || '';
-    if (ws && ws.readyState === 1) send('request-flow:status', { env: envState.current, spec });
+    if (ws && ws.readyState === 1) {
+      requestFlowStatusLastAt = now;
+      send('request-flow:status', {
+        env: envState.current,
+        spec,
+        accountProfile: getActiveRequestFlowAccountProfile(),
+        withTests: Boolean(force),
+      });
+    }
   }, 120);
 }
 
@@ -8028,6 +8422,7 @@ function switchToRequestFlowTab() {
 }
 
 const SS_REQUEST_FLOW_SUB_TAB = 'pw_studio_request_flow_sub_tab';
+const SS_APPROVAL_FLOW_SUB_TAB = 'pw_studio_approval_flow_sub_tab';
 const SS_REQUEST_DOC_NO = 'pw_studio_request_doc_no';
 
 function requestDocNoStorageKey() {
@@ -8061,8 +8456,8 @@ function saveRequestDocNoToStorage() {
   }
 }
 
-function setRequestFlowSubTab(mode, el) {
-  const next = mode === 'probe' ? 'probe' : 'golden';
+function setRequestFlowSubTab(mode, el, opts = {}) {
+  const next = mode === 'probe' && isStudioCompact() ? 'golden' : mode === 'probe' ? 'probe' : 'golden';
   requestFlowSubTab = next;
   document.querySelectorAll('.request-flow-sub-tab').forEach((tab) => {
     tab.classList.toggle('active', tab.dataset.sub === next);
@@ -8076,9 +8471,16 @@ function setRequestFlowSubTab(mode, el) {
     /* ignore */
   }
   updateRequestFlowReportBtn(lastRequestFlowRun);
+  if (opts.refreshStatus !== false) refreshRequestFlowStatus(true);
+  updateStudioStatusBar();
 }
 
 function restoreRequestFlowSubTab() {
+  if (isStudioCompact()) {
+    const tabEl = document.querySelector('.request-flow-sub-tab[data-sub="golden"]');
+    setRequestFlowSubTab('golden', tabEl, { refreshStatus: false });
+    return;
+  }
   let saved = 'golden';
   try {
     saved = sessionStorage.getItem(SS_REQUEST_FLOW_SUB_TAB) || 'golden';
@@ -8086,7 +8488,7 @@ function restoreRequestFlowSubTab() {
     /* ignore */
   }
   const tabEl = document.querySelector(`.request-flow-sub-tab[data-sub="${saved === 'probe' ? 'probe' : 'golden'}"]`);
-  setRequestFlowSubTab(saved === 'probe' ? 'probe' : 'golden', tabEl);
+  setRequestFlowSubTab(saved === 'probe' ? 'probe' : 'golden', tabEl, { refreshStatus: false });
 }
 
 function switchToRequestFlowSubTab(mode) {
@@ -8099,7 +8501,11 @@ function startRequestFlowProbe() {
   switchToRequestFlowTab();
   const frontendRepo = document.getElementById('requestFrontendRepo')?.value?.trim() || '';
   setRequestFlowBusy(true);
-  if (!send('request-flow:probe', { frontendRepo, env: envState.current })) setRequestFlowBusy(false);
+  if (!send('request-flow:probe', {
+    frontendRepo,
+    env: envState.current,
+    accountProfile: getActiveRequestFlowAccountProfile(),
+  })) setRequestFlowBusy(false);
 }
 
 function getRequestFlowMode() {
@@ -8284,11 +8690,18 @@ function clearRequestFlowBaseline() {
 }
 
 function cancelRequestFlowRun() {
-  send('cancel:request-flow', {});
+  if (!send('cancel:request-flow', {})) {
+    showToast('未连接 Studio 服务', 'err');
+    return;
+  }
+  log('warn', '[request-flow] 已请求取消，正在终止…');
+  showToast('已请求取消，正在终止…', 'warn');
+  const cancel = document.getElementById('btnRequestCancel');
+  if (cancel) cancel.disabled = true;
 }
 
 function setApprovalFlowBusy(busy) {
-  ['btnApprovalProbe', 'btnApprovalPresetPreview', 'btnApprovalPresetReadOnly', 'btnApprovalPresetFilter', 'btnApprovalRunSelected'].forEach((id) => {
+  ['btnApprovalProbe', 'btnApprovalPresetPreview', 'btnApprovalPresetReadOnly', 'btnApprovalPresetFilter', 'btnApprovalRunSelected', 'btnApprovalGoldenRun', 'btnApprovalGoldenRunAll', 'btnApprovalPromoteBaseline', 'btnApprovalClearBaseline', 'btnApprovalTocRun', 'btnApprovalTocRunAll', 'btnApprovalTocReport'].forEach((id) => {
     const btn = document.getElementById(id);
     if (!btn) return;
     btn.disabled = busy;
@@ -8299,8 +8712,25 @@ function setApprovalFlowBusy(busy) {
   const runBtn = document.getElementById('btnApprovalRunSelected');
   const label = runBtn?.querySelector('.btn-label');
   if (label) label.textContent = busy ? '运行中…' : '运行';
+  const tocLabel = document.getElementById('btnApprovalTocRunLabel');
+  if (tocLabel) tocLabel.textContent = busy ? '检测中…' : '开始检测';
+  const tocAllLabel = document.getElementById('btnApprovalTocRunAllLabel');
+  if (tocAllLabel) tocAllLabel.textContent = busy ? '检测中…' : '检测全部';
   const cancel = document.getElementById('btnApprovalCancel');
-  if (cancel) cancel.style.display = busy ? '' : 'none';
+  const tocCancel = document.getElementById('btnApprovalTocCancel');
+  if (isStudioCompact()) {
+    if (cancel) cancel.style.display = 'none';
+    if (tocCancel) {
+      tocCancel.style.display = busy ? '' : 'none';
+      tocCancel.disabled = false;
+    }
+  } else {
+    if (tocCancel) tocCancel.style.display = 'none';
+    if (cancel) {
+      cancel.style.display = busy ? '' : 'none';
+      cancel.disabled = false;
+    }
+  }
 }
 
 const APPROVAL_FLOW_PRESETS = {
@@ -8310,8 +8740,10 @@ const APPROVAL_FLOW_PRESETS = {
   debug: { spec: 'approval/full-flow.spec.ts', grep: '搜索并打开详情', mode: 'debug' },
   ui: { spec: 'approval/full-flow.spec.ts', grep: '搜索并打开详情', mode: 'ui' },
   writeAll: { spec: 'approval/full-flow.spec.ts', grep: '', mode: 'headless' },
+  golden: { spec: 'approval/golden-regression.spec.ts', grep: '', mode: 'headless', pipeline: 'golden', accountProfile: 'golden' },
 };
 let approvalFlowDraft = null;
+let approvalFlowSubTab = 'golden';
 
 function ensureApprovalFlowSpecOption(spec) {
   const sel = document.getElementById('approvalFlowSpec');
@@ -8467,11 +8899,12 @@ function renderApprovalFlowStatus(msg, opts = {}) {
   if (repoInput && !repoInput.value.trim() && msg.frontendRepoDefault) {
     repoInput.value = msg.frontendRepoDefault;
   }
+  if (msg.profileStorage) renderRequestFlowProfileStorage(msg.profileStorage);
   if (!opts.skipSelects) {
     const keepSpec = approvalFlowDraft?.spec || document.getElementById('approvalFlowSpec')?.value?.trim() || msg.spec;
     const keepGrep = approvalFlowDraft?.grep ?? document.getElementById('approvalFlowTest')?.value ?? '';
     fillApprovalFlowSpecSelect(msg.specs, keepSpec);
-    fillApprovalFlowTestSelect(msg.tests, keepGrep);
+    if (!msg.skipTests) fillApprovalFlowTestSelect(msg.tests, keepGrep);
     if (approvalFlowDraft) applyApprovalFlowDraftToDom();
   }
   if (msg.testsError) {
@@ -8486,11 +8919,20 @@ function renderApprovalFlowStatus(msg, opts = {}) {
 
 let approvalFlowStatusTimer = null;
 
-function refreshApprovalFlowStatus() {
+function refreshApprovalFlowStatus(force) {
   clearTimeout(approvalFlowStatusTimer);
   approvalFlowStatusTimer = setTimeout(() => {
+    if (!force && !isApprovalFlowPaneActive()) return;
+    const now = Date.now();
+    if (!force && now - approvalFlowStatusLastAt < FLOW_STATUS_MIN_MS) return;
     const spec = document.getElementById('approvalFlowSpec')?.value?.trim() || '';
-    if (ws && ws.readyState === 1) send('approval-flow:status', { env: envState.current, spec });
+    const golden = getSelectedApprovalGoldenProfile();
+    const payload = { env: envState.current, spec, withTests: Boolean(force) };
+    if (golden?.id) payload.accountProfile = golden.id;
+    if (ws && ws.readyState === 1) {
+      approvalFlowStatusLastAt = now;
+      send('approval-flow:status', payload);
+    }
   }, 120);
 }
 
@@ -8535,11 +8977,34 @@ function startApprovalFlowRun(preset) {
 function runSelectedApprovalFlow(mode, opts = {}) {
   switchToApprovalFlowTab();
   approvalFlowDraft = null;
-  const writeEnabled = opts.writeEnabled != null ? opts.writeEnabled : Boolean(document.getElementById('approvalWriteEnabled')?.checked);
-  const docNo = opts.docNo != null ? opts.docNo : (document.getElementById('approvalDocNo')?.value?.trim() || '');
-  const spec = document.getElementById('approvalFlowSpec')?.value?.trim() || 'approval/full-flow.spec.ts';
+  const onGoldenTab = approvalFlowSubTab === 'golden';
+  const writeEnabled = opts.writeEnabled != null
+    ? opts.writeEnabled
+    : (onGoldenTab ? false : Boolean(document.getElementById('approvalWriteEnabled')?.checked));
+  const isGolden = opts.preset === 'golden' || opts.pipeline === 'golden' || (onGoldenTab && !writeEnabled);
+  if (isGolden) {
+    switchToApprovalFlowSubTab('golden');
+  } else if (writeEnabled) {
+    switchToApprovalFlowSubTab('probe');
+  }
+  const docNo = opts.docNo != null
+    ? opts.docNo
+    : (isGolden && !writeEnabled
+      ? (document.getElementById('approvalGoldenDocNo')?.value?.trim() || '')
+      : (document.getElementById('approvalDocNo')?.value?.trim() || ''));
+  const spec = document.getElementById('approvalFlowSpec')?.value?.trim() || (isGolden && !writeEnabled ? 'approval/golden-regression.spec.ts' : 'approval/full-flow.spec.ts');
   const grep = opts.grep != null ? opts.grep : (document.getElementById('approvalFlowTest')?.value?.trim() || '');
   const runMode = mode || getApprovalFlowMode();
+  const presetCfg = APPROVAL_FLOW_PRESETS[opts.preset] || null;
+  let accountProfile = opts.accountProfile || presetCfg?.accountProfile || '';
+  if (!accountProfile && isGolden && !writeEnabled) {
+    const goldenProf = getSelectedApprovalGoldenProfile();
+    if (!goldenProf?.hasStorage) {
+      showToast('请先选择并已登录 Golden 角色', 'err');
+      return;
+    }
+    accountProfile = goldenProf.id;
+  }
   const payload = {
     mode: runMode,
     env: envState.current,
@@ -8548,13 +9013,90 @@ function runSelectedApprovalFlow(mode, opts = {}) {
     spec,
     grep,
     preset: opts.preset || 'custom',
+    pipeline: opts.pipeline || presetCfg?.pipeline || '',
+    accountProfile,
   };
   setApprovalFlowBusy(true);
   if (!send('approval-flow:run', payload)) setApprovalFlowBusy(false);
 }
 
+function approvalFlowScriptKeyFromDom(spec) {
+  const base = (spec || '').split('/').pop()?.replace(/\.spec\.ts$/, '').replace(/\.spec$/, '') || 'flow';
+  const specSlug = base.replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]+/g, '-').slice(0, 60) || 'flow';
+  const golden = getSelectedApprovalGoldenProfile();
+  const roleSlug = golden?.roleSlug || '';
+  let key = `flows/approval-flow/${envState.current}/${specSlug}`;
+  if (roleSlug) key += `/by-account/${roleSlug}`;
+  return key;
+}
+
+function runApprovalFlowGolden() {
+  switchToApprovalFlowSubTab('golden');
+  const p = getSelectedApprovalGoldenProfile();
+  if (!p?.hasStorage) {
+    showToast('请先选择并已登录 Golden 角色', 'err');
+    return;
+  }
+  applyApprovalFlowPreset('golden');
+  runSelectedApprovalFlow('headless', {
+    preset: 'golden',
+    pipeline: 'golden',
+    writeEnabled: false,
+    accountProfile: p.id,
+    spec: 'approval/golden-regression.spec.ts',
+    grep: '',
+  });
+}
+
+function runApprovalFlowGoldenAll() {
+  switchToApprovalFlowSubTab('golden');
+  const ready = Object.values(requestFlowProfileState).filter((p) => isGoldenProfileId(p.id) && p.hasStorage);
+  if (!ready.length) {
+    showToast('请先为至少一个 golden* 档案完成登录', 'err');
+    return;
+  }
+  applyApprovalFlowPreset('golden');
+  const docNoEl = document.getElementById('approvalGoldenDocNo');
+  setApprovalFlowBusy(true);
+  if (!send('approval-flow:run', {
+    goldenAll: true,
+    env: envState.current,
+    docNo: docNoEl?.value?.trim() || '',
+    spec: 'approval/golden-regression.spec.ts',
+  })) {
+    setApprovalFlowBusy(false);
+  }
+}
+
+function promoteApprovalFlowBaseline() {
+  switchToApprovalFlowSubTab('golden');
+  const spec = 'approval/golden-regression.spec.ts';
+  const scriptKey = approvalFlowScriptKeyFromDom(spec);
+  const runTs = lastApprovalFlowRun?.runId || '';
+  setApprovalFlowBusy(true);
+  if (!send('repo:promote-baseline', { scriptKey, runTimestamp: runTs, latest: !runTs, onlyIfMissing: false })) {
+    setApprovalFlowBusy(false);
+  }
+}
+
+function clearApprovalFlowBaseline() {
+  switchToApprovalFlowSubTab('golden');
+  const spec = 'approval/golden-regression.spec.ts';
+  const scriptKey = approvalFlowScriptKeyFromDom(spec);
+  if (!confirm(`确认清空该脚本的 Golden 基线与 run 截图？\n\n${scriptKey}\n\n将删除 screenshots-baseline、screenshots 下对应目录及 results/diffs 缓存，不可恢复。`)) return;
+  setApprovalFlowBusy(true);
+  if (!send('repo:clear-baseline', { scriptKey })) setApprovalFlowBusy(false);
+}
+
 function cancelApprovalFlowRun() {
-  send('cancel:approval-flow', {});
+  if (!send('cancel:approval-flow', {})) {
+    showToast('未连接 Studio 服务', 'err');
+    return;
+  }
+  log('warn', '[approval-flow] 已请求取消，正在终止…');
+  showToast('已请求取消，正在终止…', 'warn');
+  const cancel = document.getElementById('btnApprovalCancel');
+  if (cancel) cancel.disabled = true;
 }
 
 function refreshReplayList() {
@@ -10025,6 +10567,8 @@ bindBrowserProjectControls();
 restoreStudioCompactAdvanced();
 restoreEditorTab();
 restoreRequestFlowSubTab();
+restoreApprovalFlowSubTab();
+ensureReportHubCompactDefault();
 onIntentEngineChange();
 onEgoNlEngineChange();
 renderRunHistory();

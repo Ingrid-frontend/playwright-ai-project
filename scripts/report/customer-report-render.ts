@@ -6,7 +6,8 @@ import {
   type CustomerReportModel,
 } from './customer-report-model.js';
 import { customerReportCss, customerReportClientJs } from './customer-report-assets.js';
-import { friendlyScriptLabel, friendlyStepLabel, regionZoneLabel } from './customer-report-naming.js';
+import { buildFeedbackRegisterDescription } from './customer-report-plain.js';
+import { friendlyScriptLabel, friendlyStepLabel, regionZoneLabel, extractEnvId, envIdSortKey } from './customer-report-naming.js';
 import { formatDurationSec, formatScriptStartedAt, summarizeScriptRuns } from './customer-report-run-meta.js';
 import { totalRunCount } from './customer-report-run-history.js';
 import type { ScriptRunHistoryEntry } from './customer-report-run-meta.js';
@@ -17,6 +18,29 @@ function esc(s: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function runIdForScript(model: CustomerReportModel, scriptKey: string): string {
+  return model.scriptRuns.get(scriptKey)?.runId || '';
+}
+
+function renderRunIdCopy(runId: string): string {
+  if (!runId) return '—';
+  return `<button type="button" class="run-marker run-id-copy" data-copy="${esc(runId)}" title="点击复制 runId · 删除: npm run flow:delete-runs -- --search=${esc(runId)} --delete">${esc(runId)}</button>`;
+}
+
+function renderRunIndexCell(r: ScriptRunHistoryEntry): string {
+  const latest = r.isLatest ? '<span class="tag-latest">最新</span>' : '';
+  const label = `第 ${r.runIndex} 次${latest}`;
+  if (!r.runId) return label;
+  return `<button type="button" class="run-index-copy run-id-copy" data-copy="${esc(r.runId)}" title="点击复制 runId · 删除: npm run flow:delete-runs -- --search=${esc(r.runId)} --delete">${label}</button>`;
+}
+
+function renderRunIdMeta(model: CustomerReportModel, scriptKeys: string[]): string {
+  const ids = [...new Set(scriptKeys.map((k) => runIdForScript(model, k)).filter(Boolean))];
+  if (!ids.length) return '';
+  const chips = ids.map((id) => renderRunIdCopy(id)).join(' ');
+  return `<span class="ig-run-id">runId ${chips}</span>`;
 }
 
 function badgeClass(v: CustomerBrowserCard['verdict']): string {
@@ -168,14 +192,28 @@ function renderOverlayView(card: CustomerBrowserCard): string {
     <div class="view-hint">红色为逐像素差异点</div>`;
 }
 
-function renderBrowserCard(card: CustomerBrowserCard, opts?: { stepLabel?: string }): string {
+function renderBrowserCard(
+  card: CustomerBrowserCard,
+  opts?: { stepLabel?: string; scriptKey?: string; scriptLabel?: string; stepName?: string; stepNumber?: number },
+): string {
+  const canAnnotate = Boolean(card.currentPath) && (card.verdict === 'regress' || card.verdict === 'minor');
+  const stepLabel = opts?.stepLabel || opts?.stepName || '';
+  const feedbackDesc = canAnnotate
+    ? buildFeedbackRegisterDescription(card, { stepLabel, browserLabel: card.browserLabel })
+    : '';
+  const dataAttrs = canAnnotate
+    ? ` data-script-key="${esc(opts?.scriptKey || '')}" data-step-name="${esc(opts?.stepName || '')}" data-step-number="${opts?.stepNumber ?? ''}" data-screenshot="${esc(card.currentPath || '')}" data-feedback-desc="${esc(feedbackDesc)}"`
+    : '';
   return `
-  <div class="browser-card ${esc(card.verdict)}">
+  <div class="browser-card ${esc(card.verdict)}"${dataAttrs}>
     <div class="bc-head">
       <strong>${esc(card.browserLabel)}</strong>
       <span class="badge ${badgeClass(card.verdict)}">${esc(card.verdictLabel)} · ${esc(card.differenceLabel)}</span>
+      ${canAnnotate ? '<button type="button" class="fb-annotate-btn" title="登记本条对比问题">登记问题</button>' : ''}
     </div>
-    ${renderSlider(card, opts)}
+    <div class="fb-shot-wrap">
+      ${renderSlider(card, opts)}
+    </div>
     <div class="plain">${esc(card.plainText)}</div>
   </div>`;
 }
@@ -190,13 +228,19 @@ function renderPageCard(page: CustomerPageCard, opts?: { compact?: boolean }): s
       </div>
     </div>
     <div class="browser-grid">
-      ${page.browsers.map((b) => renderBrowserCard(b, { stepLabel: page.stepLabel })).join('')}
+      ${page.browsers.map((b) => renderBrowserCard(b, {
+        stepLabel: page.stepLabel,
+        scriptKey: page.scriptKey,
+        scriptLabel: page.scriptLabel,
+        stepName: page.stepName,
+        stepNumber: page.stepNumber,
+      })).join('')}
     </div>
   </section>`;
 }
 
 /** 一个根因一张卡：代表页给出证据，同源步骤折叠在下方 */
-function renderIssueGroup(group: CustomerIssueGroup, index: number): string {
+function renderIssueGroup(group: CustomerIssueGroup, index: number, model: CustomerReportModel): string {
   const statusLabel = group.status === 'regress' ? '需要修复' : '无需处理';
   const primary = group.representative.browsers[0];
   const regionList = primary ? renderRegionList(primary) : '';
@@ -219,6 +263,7 @@ function renderIssueGroup(group: CustomerIssueGroup, index: number): string {
           <span>最大差异 ${esc(group.maxDifferenceLabel)}</span>
           <span>影响 ${group.affectedSteps} 个步骤</span>
           <span>${esc(group.scriptLabels.join('、'))}</span>
+          ${renderRunIdMeta(model, group.scriptKeys)}
         </div>
         ${regionList}
       </div>
@@ -385,12 +430,14 @@ function renderScopeRow(s: CustomerReportModel['coverage']['slots'][0], model: C
   const kind =
     s.compareKind === 'golden' ? '验收基线' : s.compareKind === 'last-green' ? '最近通过' : '—';
   const runStart = formatScriptStartedAt(model.scriptRuns.get(s.scriptKey)?.startedAt) || '—';
+  const runId = renderRunIdCopy(runIdForScript(model, s.scriptKey));
   return `<tr data-status="${esc(s.status)}">
     <td>${esc(friendlyStepLabel(s.pageTitle))}</td>
     <td>${esc(friendlyStepLabel(s.stepName))}${s.processOnly ? '<span class="tag-process">过程</span>' : ''}</td>
     <td>${s.difference != null ? `${(s.difference * 100).toFixed(2)}%` : '—'}</td>
     <td>${esc(kind)}</td>
     <td>${esc(runStart)}</td>
+    <td>${runId}</td>
     <td class="st-${esc(s.status)}">${esc(status)}</td>
   </tr>`;
 }
@@ -428,6 +475,7 @@ function renderScopeTable(model: CustomerReportModel): string {
             <th>差异</th>
             <th>基线来源</th>
             <th>开始时间</th>
+            <th>runId</th>
             <th>状态</th>
           </tr>
         </thead>
@@ -465,16 +513,14 @@ function renderRunHistoryRow(r: ScriptRunHistoryEntry, opts?: { showShots?: bool
         : r.ok === true
           ? '通过'
           : '—';
-  const latest = r.isLatest ? '<span class="tag-latest">最新</span>' : '';
-  const marker = r.runMarker
-    ? `<code class="run-marker" title="删除: npm run flow:delete-runs -- --marker=${esc(r.runMarker)} --delete">${esc(r.runMarker)}</code>`
-    : '—';
+  const shotCell = r.screenshotsPruned
+    ? `${r.screenshotCount}<span class="shot-pruned-tag" title="截图已清理，数量为清理前记录">已清理</span>`
+    : String(r.screenshotCount);
   const row = `<tr>
-    <td>第 ${r.runIndex} 次${latest}</td>
-    <td>${marker}</td>
+    <td>${renderRunIndexCell(r)}</td>
     <td>${esc(start)}</td>
     <td>${esc(dur)}</td>
-    <td>${r.screenshotCount}</td>
+    <td class="shot-count-cell">${shotCell}</td>
     <td>${r.comparedSteps}</td>
     <td>${diff}</td>
     <td>${esc(exec)}</td>
@@ -498,7 +544,7 @@ function renderRunHistoryCompareCards(pages: CustomerPageCard[]): string {
 
 function renderRunHistoryShotRow(r: ScriptRunHistoryEntry): string {
   if (r.comparePages?.length) {
-    return `<tr class="run-history-shots-row"><td colspan="9"><div class="run-history-compare">${renderRunHistoryCompareCards(r.comparePages)}</div></td></tr>`;
+    return `<tr class="run-history-shots-row"><td colspan="8"><div class="run-history-compare">${renderRunHistoryCompareCards(r.comparePages)}</div></td></tr>`;
   }
   if (r.previews?.length) {
     const items = r.previews
@@ -516,12 +562,82 @@ function renderRunHistoryShotRow(r: ScriptRunHistoryEntry): string {
       .filter(Boolean)
       .join('');
     if (!items) return '';
-    return `<tr class="run-history-shots-row"><td colspan="9"><div class="run-history-shot-grid">${items}</div></td></tr>`;
+    return `<tr class="run-history-shots-row"><td colspan="8"><div class="run-history-shot-grid">${items}</div></td></tr>`;
+  }
+  if (r.screenshotsPruned && r.screenshotCount > 0) {
+    return `<tr class="run-history-shots-row"><td colspan="8"><div class="run-history-shot-empty">第 ${r.runIndex} 次共 ${r.screenshotCount} 张截图已清理，仅保留历史判定（.golden-match.json）</div></td></tr>`;
   }
   if (r.screenshotCount > 0) {
-    return `<tr class="run-history-shots-row"><td colspan="9"><div class="run-history-shot-empty">第 ${r.runIndex} 次截图目录已清理或无法加载</div></td></tr>`;
+    return `<tr class="run-history-shots-row"><td colspan="8"><div class="run-history-shot-empty">第 ${r.runIndex} 次截图目录已清理或无法加载</div></td></tr>`;
   }
   return '';
+}
+
+type RunHistoryScriptEntry = [string, ScriptRunHistoryEntry[]];
+
+function envAnchorId(envId: string): string {
+  const slug = String(envId || 'other')
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-|-$/g, '');
+  return `run-env-${slug || 'other'}`;
+}
+
+function groupRunHistoryByEnv(entries: RunHistoryScriptEntry[]): Map<string, RunHistoryScriptEntry[]> {
+  const byEnv = new Map<string, RunHistoryScriptEntry[]>();
+  for (const entry of entries) {
+    const envId = extractEnvId(entry[0]) || 'other';
+    if (!byEnv.has(envId)) byEnv.set(envId, []);
+    byEnv.get(envId)!.push(entry);
+  }
+  for (const list of byEnv.values()) {
+    list.sort(([a], [b]) => friendlyScriptLabel(a).localeCompare(friendlyScriptLabel(b), 'zh-CN'));
+  }
+  return byEnv;
+}
+
+function sortedEnvIds(byEnv: Map<string, RunHistoryScriptEntry[]>): string[] {
+  return [...byEnv.keys()].sort((a, b) => {
+    const ka = envIdSortKey(a);
+    const kb = envIdSortKey(b);
+    if (ka !== kb) return ka - kb;
+    return a.localeCompare(b);
+  });
+}
+
+function renderRunHistoryEnvLayout(
+  grouped: Map<string, RunHistoryScriptEntry[]>,
+  renderBlock: (scriptKey: string, rows: ScriptRunHistoryEntry[]) => string,
+): string {
+  const envIds = sortedEnvIds(grouped);
+  if (!envIds.length) return '';
+
+  const mainParts: string[] = [];
+  const anchorParts: string[] = [];
+
+  for (const envId of envIds) {
+    const entries = grouped.get(envId)!;
+    const anchorId = envAnchorId(envId);
+    const blocks = entries.map(([scriptKey, rows]) => renderBlock(scriptKey, rows)).join('');
+    mainParts.push(`
+      <section class="run-history-env-group" id="${esc(anchorId)}" data-env="${esc(envId)}">
+        <h2 class="run-history-env-title">${esc(envId)}</h2>
+        ${blocks}
+      </section>`);
+    anchorParts.push(
+      `<a class="run-history-anchor-link" href="#${esc(anchorId)}" data-env-anchor="${esc(anchorId)}">${esc(envId)}</a>`,
+    );
+  }
+
+  if (envIds.length <= 1) return mainParts.join('');
+
+  return `
+  <div class="run-history-layout">
+    <div class="run-history-main">${mainParts.join('')}</div>
+    <aside class="run-history-anchor" aria-label="环境索引">
+      <nav class="run-history-anchor-nav">${anchorParts.join('')}</nav>
+    </aside>
+  </div>`;
 }
 
 function countMinorRuns(model: CustomerReportModel): number {
@@ -542,7 +658,6 @@ function renderRunHistoryTable(rows: ScriptRunHistoryEntry[], opts?: { showShots
         <thead>
           <tr>
             <th>次序</th>
-            <th>标记</th>
             <th>开始时间</th>
             <th>耗时</th>
             <th>截图</th>
@@ -562,34 +677,33 @@ function renderRunHistoryPanel(model: CustomerReportModel): string {
     return `<div class="empty">尚无 run 截图目录，请先执行 Golden 回归。</div>`;
   }
 
-  const blocks = entries.map(([scriptKey, rows]) => {
+  return renderRunHistoryEnvLayout(groupRunHistoryByEnv(entries), (scriptKey, rows) => {
     const label = friendlyScriptLabel(scriptKey);
     return `
     <section class="run-history-block">
       <h3 class="run-history-title">${esc(label)}</h3>
-      <p class="run-history-meta">共 ${rows.length} 次 run · 与验收基线逐步对比；「最新」一轮用于上方结论与检测覆盖</p>
+      <p class="run-history-meta">共 ${rows.length} 次 run · 与验收基线逐步对比；「最新」一轮用于上方结论与检测覆盖；截图已清理的 run 仅保留历史判定</p>
       ${renderRunHistoryTable(rows)}
     </section>`;
   });
-
-  return blocks.join('');
 }
 
 function renderMinorRunHistoryPanel(model: CustomerReportModel): string {
-  const blocks = [...model.runHistory.entries()]
-    .map(([scriptKey, rows]) => {
-      const minor = rows.filter((r) => r.verdict === 'minor');
-      if (!minor.length) return '';
-      const label = friendlyScriptLabel(scriptKey);
-      return `
+  const entries: RunHistoryScriptEntry[] = [...model.runHistory.entries()]
+    .map(([scriptKey, rows]): RunHistoryScriptEntry => [scriptKey, rows.filter((r) => r.verdict === 'minor')])
+    .filter(([, rows]) => rows.length > 0);
+
+  if (!entries.length) return '';
+
+  return renderRunHistoryEnvLayout(groupRunHistoryByEnv(entries), (scriptKey, rows) => {
+    const label = friendlyScriptLabel(scriptKey);
+    return `
     <section class="run-history-block">
       <h3 class="run-history-title">${esc(label)}</h3>
-      <p class="run-history-meta">共 ${minor.length} 次 run 判定为轻微变化 · 内容与基线一致，多为位置偏移或字体渲染差异</p>
-      ${renderRunHistoryTable(minor, { showShots: true })}
+      <p class="run-history-meta">共 ${rows.length} 次 run 判定为轻微变化 · 内容与基线一致，多为位置偏移或字体渲染差异</p>
+      ${renderRunHistoryTable(rows, { showShots: true })}
     </section>`;
-    })
-    .filter(Boolean);
-  return blocks.length ? blocks.join('') : '';
+  });
 }
 
 function renderMinorTabBody(
@@ -638,6 +752,47 @@ function renderUncoveredSummary(model: CustomerReportModel): string {
   </div>`;
 }
 
+function renderIncompleteNotice(model: CustomerReportModel): string {
+  const list = model.incompleteScripts;
+  if (!list?.length) return '';
+  const rows = list
+    .map((item) => `<li><strong>${esc(item.scriptLabel)}</strong> — ${esc(item.detail)}</li>`)
+    .join('');
+  return `<div class="incomplete-notice">
+    <div class="incomplete-notice-title">部分脚本最新 run 未完成</div>
+    <ul>${rows}</ul>
+    <p class="incomplete-notice-meta">上方结论与检测覆盖已基于最近一次<strong>完整</strong> run；未完成 run 见「技术附录」。</p>
+  </div>`;
+}
+
+function renderEnvBreakdown(model: CustomerReportModel): string {
+  const list = model.envSummaries;
+  if (!list?.length || list.length < 2) return '';
+  const rows = list
+    .map((env) => {
+      const verdict =
+        env.regressSteps > 0
+          ? `<span class="env-bad">${env.regressSteps} 需修复</span>`
+          : env.minorSteps > 0
+            ? `<span class="env-watch">${env.minorSteps} 轻微</span>`
+            : `<span class="env-ok">通过</span>`;
+      return `<tr>
+        <td>${esc(env.envLabel)}</td>
+        <td>${env.comparedSteps}/${env.expectedSteps}</td>
+        <td>${verdict}</td>
+      </tr>`;
+    })
+    .join('');
+  return `<div class="env-breakdown">
+    <h3 class="sec-title">分环境结论</h3>
+    <p class="sec-lead">本报告含 ${list.length} 个环境，各环境独立统计如下。</p>
+    <table class="scope-table env-table">
+      <thead><tr><th>环境</th><th>已对比</th><th>结论</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
+
 function renderConclusionBody(model: CustomerReportModel): string {
   if (model.coverage.comparedSteps === 0) {
     return `
@@ -669,6 +824,8 @@ function renderConclusionBody(model: CustomerReportModel): string {
   return `
     ${renderReadingGuide()}
     ${renderActionItems(model)}
+    ${renderIncompleteNotice(model)}
+    ${renderEnvBreakdown(model)}
     ${focus}
     ${minorBlock}
     ${renderUncoveredSummary(model)}
@@ -681,12 +838,12 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
   const regressList =
     model.regressionGroups.length > 0
       ? `<h3 class="sec-title sec-regress">需要修复 · ${model.regressionGroups.length} 个问题</h3>
-         ${model.regressionGroups.map((g, i) => renderIssueGroup(g, i)).join('')}`
+         ${model.regressionGroups.map((g, i) => renderIssueGroup(g, i, model)).join('')}`
       : `<div class="empty">本次未发现需要修复的问题</div>`;
   const minorList =
     model.minorGroups.length > 0
       ? `<p class="sec-lead">以下差异范围很小，多为位置偏移或字体渲染不同，不影响功能，可不处理。</p>
-         ${model.minorGroups.map((g, i) => renderIssueGroup(g, i)).join('')}`
+         ${model.minorGroups.map((g, i) => renderIssueGroup(g, i, model)).join('')}`
       : '';
   const verdictClass =
     c.regressSteps > 0 ? 'bad' : c.minorSteps > 0 ? 'watch' : c.comparedSteps === 0 ? 'unknown' : 'good';
@@ -774,10 +931,11 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
       ${renderScopeTable(model)}
     </div>
     ${showRunsTab ? `<div id="panel-runs" class="panel">
-      <p class="sec-lead">每次 Golden 回归对应一行：列出截图数量、与验收基线的逐步对比结果。标「最新」的一轮与上方结论、检测覆盖一致。「标记」列可用于搜索并删除历史数据：<code>npm run flow:delete-runs -- --search=标记 --delete</code></p>
+      <p class="sec-lead">按环境分组展示历次 Golden 回归（stage → stage9084 → uat → dev）。点击「次序」复制 runId；右侧索引可跳转环境区块。</p>
       ${renderRunHistoryPanel(model)}
     </div>` : ''}
   </div>
+  <script>window.STUDIO_API_BASE = ${JSON.stringify(process.env.STUDIO_API_BASE || 'http://localhost:3001')};</script>
   <script>${customerReportClientJs()}</script>
 </body>
 </html>`;

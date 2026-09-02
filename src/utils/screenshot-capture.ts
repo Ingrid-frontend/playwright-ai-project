@@ -277,7 +277,9 @@ async function writeStepDiagnostics(
       /* ignore */
     }
     if (frameItems.length) {
-      const child = page.frames().find((f) => f !== page.mainFrame());
+      const child =
+        page.frames().find((f) => /openBySelf=zoom/i.test(f.url())) ||
+        page.frames().find((f) => f !== page.mainFrame());
       if (child) {
         try {
           Object.assign(selectors, await probeSelectorsInContext(child, frameItems));

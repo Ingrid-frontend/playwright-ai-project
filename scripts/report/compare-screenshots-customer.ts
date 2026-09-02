@@ -17,7 +17,7 @@ import { buildCustomerReportModel } from './customer-report-model.js';
 import { renderCustomerReportHtml } from './customer-report-render.js';
 import { writeCustomerReportSummary } from './customer-report-summary.js';
 import { resolveScriptRunMeta, resolveScriptRunHistory } from './customer-report-run-meta.js';
-import { enrichRunHistoryComparisons } from './customer-report-run-history.js';
+import { enrichRunHistoryComparisons, screenshotsForMainReport } from './customer-report-run-history.js';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
@@ -55,16 +55,25 @@ async function main() {
 
   const testDirComparisons: TestDirComparisons[] = [];
   const screenshotsByDir = new Map<string, ReturnType<typeof getAllScreenshots>>();
+  const usedRunIds = new Map<string, string>();
   let hasCurrentPng = false;
+
+  const runHistory = resolveScriptRunHistory(
+    scanTargets.map((t) => t.testDir),
+    scanTargets,
+  );
 
   for (let i = 0; i < scanTargets.length; i++) {
     const { testDir, scriptPath } = scanTargets[i]!;
     console.log(`\n[${i + 1}/${scanTargets.length}] ${testDir}`);
     const screenshots = getAllScreenshots(scriptPath, 'optimized', outputPath);
     screenshotsByDir.set(testDir, screenshots);
-    if (screenshots.size === 0) continue;
+    const rows = runHistory.get(testDir) || [];
+    const { filtered, runId } = screenshotsForMainReport(screenshots, rows);
+    if (runId) usedRunIds.set(testDir, runId);
+    if (filtered.size === 0) continue;
     hasCurrentPng = true;
-    const comparisons = await generateTestComparisons(testDir, screenshots, outputPath);
+    const comparisons = await generateTestComparisons(testDir, filtered, outputPath);
     testDirComparisons.push({ testDir, comparisons });
   }
 
@@ -76,7 +85,6 @@ async function main() {
   const coverage = buildCoverageStats(testDirComparisons);
   const scriptKeys = [...new Set(coverage.slots.map((s) => s.scriptKey))];
   const scriptRuns = resolveScriptRunMeta(scriptKeys, scanTargets);
-  const runHistory = resolveScriptRunHistory(scriptKeys, scanTargets);
   for (const { testDir, scriptPath } of scanTargets) {
     const rows = runHistory.get(testDir);
     const shots = screenshotsByDir.get(testDir);
@@ -89,7 +97,7 @@ async function main() {
   const model = buildCustomerReportModel(coverage, undefined, scriptRuns, runHistory, {
     releaseTag: process.env.RELEASE_TAG || process.env.npm_package_version,
     reportScope: allScripts ? 'all' : 'golden',
-  });
+  }, usedRunIds);
   writeCustomerReportSummary(model);
   const html = renderCustomerReportHtml(model);
 

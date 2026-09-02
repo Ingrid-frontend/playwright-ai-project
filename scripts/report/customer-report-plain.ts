@@ -3,6 +3,92 @@ import { isActionableNature, natureLabel } from './change-nature.js';
 import { regionZoneLabel } from './customer-report-naming.js';
 import type { CustomerReportModel } from './customer-report-model.js';
 
+export type FeedbackRegisterCard = {
+  verdict: string;
+  plainText: string;
+  benignOnly?: boolean;
+  actionableRegions?: number;
+  shiftLabel?: string;
+  regions?: Array<{ actionable: boolean; natureLabel: string; x?: number; y?: number; w?: number; h?: number }>;
+  imageWidth?: number;
+  imageHeight?: number;
+};
+
+function natureToPlain(label: string): string {
+  const map: Record<string, string> = {
+    新增内容: '多了新内容',
+    内容缺失: '少了部分内容',
+    内容变化: '内容有变化',
+    位置偏移: '位置有偏移',
+    渲染差异: '显示效果有差别',
+  };
+  return map[label] || label;
+}
+
+function stripTechnicalNoise(text: string): string {
+  return text
+    .replace(/（整页差异 [\d.]+%）/g, '')
+    .replace(/整页差异 [\d.]+%[，,]?/g, '')
+    .replace(/与验收基线/g, '与上次验收标准')
+    .replace(/验收基线/g, '上次验收标准')
+    .replace(/仅字体渲染存在细微差异/g, '仅显示效果有细微差别')
+    .replace(/字体渲染\/抗锯齿[^，。]*/g, '显示效果有细微差别')
+    .replace(/字体渲染[^，。]*/g, '显示效果有细微差别')
+    .replace(/无需处理：/g, '')
+    .replace(/需要修复：/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** 客户报告「登记问题」用的单行描述，避免内部判定术语 */
+export function buildFeedbackRegisterDescription(
+  card: FeedbackRegisterCard,
+  opts: { stepLabel: string; browserLabel: string },
+): string {
+  const head = `【${opts.stepLabel}·${opts.browserLabel}】`;
+  const actionable = (card.regions || []).filter((r) => r.actionable);
+
+  if (card.verdict === 'minor') {
+    if (card.benignOnly || (card.actionableRegions ?? 0) === 0) {
+      if (card.shiftLabel) {
+        return `${head}页面内容和上次验收一致，整体位置偏移约 ${card.shiftLabel}，不影响使用`;
+      }
+      return `${head}页面内容和上次验收一致，仅显示效果有细微差别，不影响使用`;
+    }
+    const top = actionable[0];
+    if (top) {
+      const zone = regionZoneLabel(top, card.imageWidth || 0, card.imageHeight || 0);
+      const what = natureToPlain(top.natureLabel);
+      if (actionable.length === 1) {
+        return `${head}${zone}${what}，变化较小，建议确认是否接受`;
+      }
+      return `${head}页面有 ${actionable.length} 处轻微变化（如${zone}${what}），建议确认是否接受`;
+    }
+    const body = stripTechnicalNoise(card.plainText);
+    return `${head}${body || '页面有轻微变化，建议确认是否接受'}`;
+  }
+
+  if (card.verdict === 'regress') {
+    if (actionable.length === 1) {
+      const r = actionable[0];
+      const zone = regionZoneLabel(r, card.imageWidth || 0, card.imageHeight || 0);
+      return `${head}${zone}${natureToPlain(r.natureLabel)}，与上次验收标准不一致，需要修复`;
+    }
+    if (actionable.length > 1) {
+      const bits = actionable.slice(0, 2).map((r) => {
+        const zone = regionZoneLabel(r, card.imageWidth || 0, card.imageHeight || 0);
+        return `${zone}${natureToPlain(r.natureLabel)}`;
+      });
+      const more = actionable.length > 2 ? `等 ${actionable.length} 处` : '';
+      return `${head}页面${bits.join('、')}${more}与上次验收标准不一致，需要修复`;
+    }
+    const body = stripTechnicalNoise(card.plainText);
+    return `${head}${body || '页面与上次验收标准不一致'}，需要修复`;
+  }
+
+  return `${head}${stripTechnicalNoise(card.plainText) || '发现页面变化'}`;
+}
+
 export type ShipAdvice = 'fix' | 'confirm' | 'ship' | 'baseline';
 
 export function deriveShipAdvice(coverage: CoverageStats): { advice: ShipAdvice; label: string } {

@@ -9,7 +9,7 @@
  *   npm run feishu:grant-bitable-editor -- --email=you@company.com
  *   npm run feishu:grant-bitable-editor -- --mobile=13800138000
  *
- * 应用需开通 drive:permission（获取与编辑云空间权限）
+ * 应用需开通「添加云文档协作者」(docs:permission.member:create)，或已有多维表格管理权限 (bitable:app)
  * 邮箱/手机号查询需开通 contact:user.id:readonly
  */
 import dotenv from 'dotenv';

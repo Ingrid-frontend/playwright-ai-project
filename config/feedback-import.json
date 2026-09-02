@@ -1,0 +1,14 @@
+{
+  "fields": {
+    "description": "description",
+    "reporter": "reporter",
+    "pageUrl": "page_url",
+    "route": "route",
+    "selector": "element_selector",
+    "xpath": "element_xpath",
+    "status": "status",
+    "env": "env"
+  },
+  "importOnlyStatus": ["待处理", "open", "处理中"],
+  "defaultScript": "flows/request-flow"
+}

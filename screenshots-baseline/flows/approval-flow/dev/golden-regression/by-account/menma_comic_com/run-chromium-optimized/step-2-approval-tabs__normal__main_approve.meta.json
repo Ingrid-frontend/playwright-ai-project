@@ -1,0 +1,62 @@
+{
+  "capturedAt": "2026-09-02T08:15:20.822Z",
+  "viewport": {
+    "name": "desktop",
+    "width": 1280,
+    "height": 720,
+    "deviceScaleFactor": 1
+  },
+  "imageWidth": 1280,
+  "imageHeight": 720,
+  "layout": {
+    "horizontalOverflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280
+  },
+  "domHash": "SEC|8100aee46f819a47",
+  "sections": [
+    {
+      "key": "approval-tabs-bar",
+      "structureHash": "8100aee46f819a47",
+      "textHash": "099e9cbfb63fa063",
+      "nodeCount": 28,
+      "childTags": "DIV,DIV"
+    }
+  ],
+  "selectors": {
+    "approval-tabs-bar": {
+      "exists": true,
+      "bbox": {
+        "x": 192,
+        "y": 96,
+        "width": 1396,
+        "height": 44
+      },
+      "domHash": "8100aee46f819a47",
+      "structureHash": "8100aee46f819a47",
+      "textHash": "099e9cbfb63fa063",
+      "resolvedBy": "selector",
+      "fingerprint": {
+        "tag": "DIV",
+        "stableAttributes": {
+          "role": "tablist"
+        },
+        "textHint": "待审批-全部 (38)\n已审批抄送我操作历史",
+        "xpath": "/html[1]/body[1]/div[1]/div[1]/div[1]/main[1]/span[1]/div[1]/div[1]/div[1]/div[1]",
+        "fallbackSelectors": [],
+        "baselineRect": {
+          "x": 192,
+          "y": 96,
+          "width": 1396,
+          "height": 44
+        },
+        "baselinePageWidth": 1600,
+        "baselinePageHeight": 900
+      }
+    }
+  },
+  "consoleErrors": [],
+  "pageErrors": [],
+  "snapshotName": "approval-tabs",
+  "state": "normal"
+}

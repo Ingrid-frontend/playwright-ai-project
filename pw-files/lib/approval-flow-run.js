@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { spawnTracked, spawnTsx, spawnPlaywright, killProcessTree, killProcessTreeHard } = require('./kill-proc');
 const { send, logLine, stripAnsi, errText } = require('./ws-safe');
 const { getEnvEntryResolved } = require('./repo-context');
 const {
@@ -11,7 +12,11 @@ const {
   createPlaywrightLogSink,
   headedFailurePlaceholder,
 } = require('./failure-report');
-const { finalizeFlowRun, readLastFlowRun } = require('./flow-run-common');
+const { finalizeFlowRun, detectPipeline, flowScriptKey, readLastFlowRun } = require('./flow-run-common');
+const { makeRunMarker, writeRunMarkerFile } = require('./flow-run-marker.js');
+const { resolveApprovalGoldenSeed } = require('./approval-golden-seed.js');
+const repoEnv = require('../repo-env');
+const { getFrontendRepoDefaults, prepareFrontendIndex, resolveFrontendRepoConfig } = require('./frontend-repo-sync');
 
 const catalogCheckMod = (() => {
   try {
@@ -25,19 +30,36 @@ const checkCatalogAgainstSnapshot = catalogCheckMod?.checkCatalogAgainstSnapshot
 const FLOW_DIR = 'approval-flow';
 const CONFIG_REL = path.join(FLOW_DIR, 'playwright.config.ts');
 const SNAPSHOT_REL = path.join(FLOW_DIR, 'datasource/live-snapshot.json');
-const DEFAULT_FRONTEND_REPO = '/Users/hly/project/huilianyi-refactoring';
 
 function flowDir(repoRoot) {
   return path.join(repoRoot, FLOW_DIR);
 }
 
-function resolveStorage(repoRoot, envId) {
+function resolveProfile(session, repoRoot, msg = {}) {
+  const envId = String(msg.env || '').trim();
+  const override = String(msg.accountProfile || '').trim();
+  if (override) return override;
+  const { getSessionAccountProfile } = require('./repo-context');
+  return getSessionAccountProfile(session, repoRoot);
+}
+
+function resolveStorageAbs(repoRoot, envId, profileId) {
+  const rel = repoEnv.resolveStorageStateRelDirect(repoRoot, envId, profileId);
+  if (rel && repoEnv.storageExists(repoRoot, rel)) {
+    return path.resolve(repoRoot, rel);
+  }
+  const prof = String(profileId || '').trim();
+  if (prof && prof !== 'default') return '';
   const ids = [envId, 'dev'].filter(Boolean);
   for (const id of ids) {
     const p = path.join(repoRoot, 'storage/loginState', `${id}.json`);
     if (fs.existsSync(p)) return p;
   }
   return '';
+}
+
+function resolveStorage(repoRoot, envId, profileId) {
+  return resolveStorageAbs(repoRoot, envId, profileId);
 }
 
 function readSnapshot(repoRoot) {
@@ -58,6 +80,8 @@ function pickSnapshotFrame(snapshot) {
 }
 
 const DEFAULT_SPEC = 'approval/full-flow.spec.ts';
+const GOLDEN_SPEC = 'approval/golden-regression.spec.ts';
+const ENTRY_PATH = '/main/approve';
 
 function listApprovalFlowSpecs(repoRoot) {
   const dir = path.join(repoRoot, FLOW_DIR, 'tests', 'approval');
@@ -142,11 +166,16 @@ function snapshotSummary(snapshot) {
 }
 
 function getApprovalFlowStatus(repoRoot, session, deps, msg = {}) {
-  const { getSessionPlaywrightEnv, getSessionAccountProfile } = deps;
+  const { getSessionPlaywrightEnv } = deps;
   const envId = String(msg.env || getSessionPlaywrightEnv(session) || 'dev').trim();
-  const profile = getSessionAccountProfile(session, repoRoot);
+  const profile = resolveProfile(session, repoRoot, { env: envId, accountProfile: msg.accountProfile });
   const resolved = getEnvEntryResolved(repoRoot, envId, profile);
-  const storage = resolveStorage(repoRoot, envId);
+  const enriched = repoEnv.enrichProfileStorageEntry(repoRoot, envId, profile);
+  const storageRel =
+    repoEnv.resolveStorageStateRelDirect(repoRoot, envId, profile) ||
+    repoEnv.resolveStorageStateRel(repoRoot, envId, profile) ||
+    '';
+  const storageCheck = storageRel ? repoEnv.validateStorageForRun(repoRoot, storageRel) : { ok: false, reason: '' };
   const snapshot = readSnapshot(repoRoot);
   const catalogCheck =
     snapshot && checkCatalogAgainstSnapshot
@@ -156,24 +185,42 @@ function getApprovalFlowStatus(repoRoot, session, deps, msg = {}) {
   const specs = listApprovalFlowSpecs(repoRoot);
   const spec = String(msg.spec || DEFAULT_SPEC).trim() || DEFAULT_SPEC;
   const spawnEnv = buildSpawnEnv(session, deps, msg).spawnEnv;
-  const listed = hasConfig ? listApprovalFlowTests(repoRoot, spec, spawnEnv) : { spec, tests: [], error: '' };
+  const withTests = Boolean(msg.withTests);
+  const listed = hasConfig && withTests
+    ? listApprovalFlowTests(repoRoot, spec, spawnEnv)
+    : { spec, tests: [], error: '' };
+  const flowProfileIds = [
+    ...repoEnv.listGoldenProfileIds(repoRoot, envId),
+    ...repoEnv.listWriteProfileIds(repoRoot, envId),
+  ].filter((id) => {
+    const profiles = repoEnv.getEnvAccountConfig(repoRoot, envId)?.profiles;
+    return profiles?.[id] || id === 'write' || id === 'golden';
+  });
+  const profileStorage = repoEnv.listProfilesStorageStatus(repoRoot, envId, flowProfileIds);
   return {
     ready: hasConfig,
     env: envId,
+    accountProfile: profile,
+    roleSlug: enriched.roleSlug,
+    roleLabel: enriched.roleLabel,
     baseURL: resolved?.baseURL || 'https://dev.huilianyi.com',
-    storageState: storage,
-    hasStorage: Boolean(storage),
+    storageState: storageRel,
+    hasStorage: storageCheck.ok,
+    storageHint: storageCheck.ok ? '' : storageCheck.reason || '',
     configRel: CONFIG_REL,
     snapshotRel: snapshot ? SNAPSHOT_REL : '',
     snapshot: snapshotSummary(snapshot),
     catalogCheck,
     reportOpenPath: approvalFlowReportHref(repoRoot),
-    frontendRepoDefault: DEFAULT_FRONTEND_REPO,
+    ...getFrontendRepoDefaults(envId),
     specs,
     defaultSpec: DEFAULT_SPEC,
+    goldenSpec: GOLDEN_SPEC,
     spec: listed.spec,
     tests: listed.tests,
     testsError: listed.error || '',
+    skipTests: !withTests,
+    profileStorage,
     lastRun: readLastFlowRun(repoRoot, 'approval-flow'),
   };
 }
@@ -192,33 +239,50 @@ function sendApprovalFlowTestList(ws, session, deps, msg = {}) {
 
 function buildSpawnEnv(session, deps, msg = {}) {
   const repoRoot = deps.resolveRepoRoot();
-  const { getSessionPlaywrightEnv, getSessionAccountProfile, buildRepoSpawnEnv } = deps;
+  const { getSessionPlaywrightEnv, buildRepoSpawnEnv } = deps;
   const envId = String(msg.env || getSessionPlaywrightEnv(session) || 'dev').trim();
-  const profile = getSessionAccountProfile(session, repoRoot);
+  const profile = resolveProfile(session, repoRoot, { env: envId, accountProfile: msg.accountProfile });
   const resolved = getEnvEntryResolved(repoRoot, envId, profile);
   const spawnEnv = buildRepoSpawnEnv(session, profile, envId);
   spawnEnv.BASE_URL = String(msg.baseURL || resolved?.baseURL || 'https://dev.huilianyi.com').trim();
   spawnEnv.PLAYWRIGHT_ENV = envId;
+  spawnEnv.PLAYWRIGHT_ACCOUNT = profile;
   spawnEnv.FLOW_SPEC = String(msg.spec || DEFAULT_SPEC).trim() || DEFAULT_SPEC;
-  const storage = resolveStorage(repoRoot, envId);
-  if (storage) spawnEnv.STORAGE_STATE = storage;
+  const storageAbs = resolveStorageAbs(repoRoot, envId, profile);
+  if (storageAbs) spawnEnv.STORAGE_STATE = storageAbs;
+  const roleSlug = repoEnv.resolveFlowRoleSlug(repoRoot, envId, profile);
+  if (roleSlug) spawnEnv.FLOW_ACCOUNT_SLUG = roleSlug;
+  else delete spawnEnv.FLOW_ACCOUNT_SLUG;
+  const creds = repoEnv.resolveAccountCredentials(repoRoot, envId, profile);
+  if (creds) {
+    spawnEnv.LOGIN_USERNAME = creds.username;
+    spawnEnv.LOGIN_PASSWORD = creds.password;
+  }
   if (msg.writeEnabled) spawnEnv.APPROVAL_ENABLE_WRITE = '1';
   else delete spawnEnv.APPROVAL_ENABLE_WRITE;
-  const docNo = String(msg.docNo || '').trim();
+  const profileDefaults = repoEnv.resolveProfileFlowDefaults(repoRoot, envId, profile);
+  const goldenSeed = resolveApprovalGoldenSeed(repoRoot, envId, roleSlug);
+  const snapshotDocNo = String(snapshotSummary(readSnapshot(repoRoot))?.sampleDocNo || '').trim();
+  const docNo = String(
+    msg.docNo || profileDefaults.approvalDocNo || goldenSeed.approvalDocNo || snapshotDocNo || '',
+  ).trim();
   if (docNo) spawnEnv.APPROVAL_DOC_NO = docNo;
   else delete spawnEnv.APPROVAL_DOC_NO;
-  return { repoRoot, envId, spawnEnv, storage };
+  return { repoRoot, envId, profile, roleSlug, spawnEnv, storage: storageAbs };
 }
 
 async function streamProc(ws, session, procKey, cancelKey, label, cmd, args, opts) {
-  session[cancelKey] = false;
+  if (session[cancelKey]) {
+    return { ok: false, cancelled: true, exitCode: 130 };
+  }
   let proc;
   try {
-    proc = opts.spawn(cmd, args, {
-      cwd: opts.cwd,
-      env: opts.env,
-      shell: false,
-    });
+    proc = opts.spawnTsx
+      ? opts.spawnTsx()
+      : spawnTracked(cmd, args, {
+          cwd: opts.cwd,
+          env: opts.env,
+        });
   } catch (e) {
     send(ws, 'error', { message: `${label} 启动失败: ${errText(e)}` });
     return { ok: false, exitCode: -1 };
@@ -243,9 +307,9 @@ async function streamProc(ws, session, procKey, cancelKey, label, cmd, args, opt
 
 async function runApprovalFlowProbe(ws, session, msg, deps) {
   const { repoRoot, envId, spawnEnv } = buildSpawnEnv(session, deps, msg);
-  const frontendRepo = String(msg.frontendRepo || DEFAULT_FRONTEND_REPO).trim();
+  const cfg = resolveFrontendRepoConfig({ ...msg, repoRoot });
+  const frontendRepo = cfg.url || cfg.localPath;
   const outRel = SNAPSHOT_REL;
-  const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 
   if (!fs.existsSync(flowDir(repoRoot))) {
     send(ws, 'error', { message: `未找到 ${FLOW_DIR}/ 目录` });
@@ -253,18 +317,24 @@ async function runApprovalFlowProbe(ws, session, msg, deps) {
     return;
   }
 
+  session.approvalFlowCancelled = false;
   send(ws, 'approval-flow:probe:start', { env: envId, frontendRepo, outRel });
   logLine(ws, `[approval-flow] 实机探活 · env=${envId} · ${frontendRepo} · /main/approve`, 'info');
 
+  const indexPrep = await prepareFrontendIndex(ws, repoRoot, msg, spawnEnv);
+  if (!indexPrep.ok) {
+    send(ws, 'error', { message: indexPrep.reason || '前端仓库同步/索引失败' });
+    send(ws, 'approval-flow:probe:done', { ok: false });
+    return;
+  }
+
   const args = [
-    'tsx',
-    'scripts/index-frontend/probe-live-page.ts',
     `--env=${envId}`,
     '--entry=/main/approve',
     `--out=${outRel}`,
   ];
-  const result = await streamProc(ws, session, 'approvalFlowProc', 'approvalFlowCancelled', 'approval-flow/probe', npx, args, {
-    spawn: deps.spawn,
+  const result = await streamProc(ws, session, 'approvalFlowProc', 'approvalFlowCancelled', 'approval-flow/probe', null, args, {
+    spawnTsx: () => spawnTsx(repoRoot, 'scripts/index-frontend/probe-live-page.ts', args, spawnEnv),
     cwd: repoRoot,
     env: spawnEnv,
   });
@@ -276,9 +346,11 @@ async function runApprovalFlowProbe(ws, session, msg, deps) {
 }
 
 async function runApprovalFlowTests(ws, session, msg, deps) {
-  const { repoRoot, envId, spawnEnv } = buildSpawnEnv(session, deps, msg);
+  if (msg.goldenAll) {
+    return runApprovalFlowGoldenAll(ws, session, msg, deps);
+  }
+  const { repoRoot, envId, profile, roleSlug, spawnEnv, storage } = buildSpawnEnv(session, deps, msg);
   const configRel = CONFIG_REL;
-  const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
   const mode = String(msg.mode || 'headless').trim();
   const spec = String(msg.spec || DEFAULT_SPEC).trim() || DEFAULT_SPEC;
   const grep = msg.grep === undefined || msg.grep === null ? '' : String(msg.grep);
@@ -288,13 +360,29 @@ async function runApprovalFlowTests(ws, session, msg, deps) {
     send(ws, 'approval-flow:run:done', { ok: false, mode });
     return;
   }
-  if (!resolveStorage(repoRoot, envId)) {
-    send(ws, 'error', { message: `缺少登录态 storage/loginState/${envId}.json，请先在侧栏登录` });
+  if (!storage) {
+    const relHint = repoEnv.resolveStorageStateRel(repoRoot, envId, profile) || `storage/loginState/${envId}.json`;
+    send(ws, 'error', {
+      message: `缺少登录态 profile=${profile}（${relHint}），请先在侧栏用该档案登录`,
+    });
     send(ws, 'approval-flow:run:done', { ok: false, mode });
     return;
   }
+  const storageRel = repoEnv.resolveStorageStateRelDirect(repoRoot, envId, profile) ||
+    repoEnv.resolveStorageStateRel(repoRoot, envId, profile);
+  const storageCheck = repoEnv.validateStorageForRun(repoRoot, storageRel);
+  if (!storageCheck.ok) {
+    send(ws, 'error', {
+      message: `${storageCheck.reason}，请重新登录 profile=${profile}`,
+    });
+    send(ws, 'approval-flow:run:done', { ok: false, mode });
+    return;
+  }
+  if (storageCheck.account) {
+    logLine(ws, `[approval-flow] 登录态: ${storageCheck.account} · ${storageRel}`, 'dim');
+  }
 
-  const args = ['playwright', 'test', '--config', configRel, spec];
+  const args = ['test', '--config', configRel, spec];
   if (grep) args.push('--grep', grep);
   const headless = mode === 'headless';
   if (mode === 'headed') args.push('--headed');
@@ -305,18 +393,44 @@ async function runApprovalFlowTests(ws, session, msg, deps) {
   const startTime = Date.now();
   const startedAt = new Date(startTime).toISOString();
   const runId = startedAt.replace(/[:.]/g, '-');
+  const runMarker = makeRunMarker({
+    custom: msg.runMarker,
+    roleSlug,
+    env: envId,
+    spec,
+    startedAt,
+  });
   spawnEnv.FLOW_RUN_ID = runId;
   spawnEnv.FLOW_RUN_STARTED_AT = startedAt;
+  spawnEnv.FLOW_RUN_MARKER = runMarker;
   spawnEnv.FLOW_SPEC = spec;
   spawnEnv.FLOW_RUN_MODE = mode;
+  const scriptKey = flowScriptKey('approval-flow', envId, spec, roleSlug);
+  writeRunMarkerFile(
+    path.join(repoRoot, 'screenshots', scriptKey, 'run-chromium-flow', runId),
+    runMarker,
+    { runId, flowId: 'approval-flow', scriptKey, startedAt },
+  );
 
-  send(ws, 'approval-flow:run:start', { env: envId, mode, spec, grep });
-  logLine(ws, `[approval-flow] 运行用例 · mode=${mode} · ${spec}${grep ? ` · grep=${grep}` : ''}`, 'info');
+  send(ws, 'approval-flow:run:start', {
+    env: envId,
+    accountProfile: profile,
+    roleSlug,
+    roleLabel: repoEnv.enrichProfileStorageEntry(repoRoot, envId, profile).roleLabel,
+    mode,
+    spec,
+    grep,
+  });
+  logLine(
+    ws,
+    `[approval-flow] 运行用例 · profile=${profile}${roleSlug ? ` · role=${roleSlug}` : ''} · mode=${mode} · ${spec}${grep ? ` · grep=${grep}` : ''}`,
+    'info',
+  );
 
-  session.approvalFlowCancelled = false;
+  if (!session.approvalFlowGoldenAllRun) session.approvalFlowCancelled = false;
   let proc;
   try {
-    proc = deps.spawn(npx, args, { cwd: repoRoot, env: spawnEnv, shell: false });
+    proc = spawnPlaywright(repoRoot, args, spawnEnv);
   } catch (e) {
     send(ws, 'error', { message: `用例启动失败: ${errText(e)}` });
     send(ws, 'approval-flow:run:done', { ok: false, mode, spec, grep, env: envId });
@@ -431,6 +545,10 @@ async function runApprovalFlowTests(ws, session, msg, deps) {
     playwrightReportDir: 'approval-flow/playwright-report',
     reportHint: reportRel,
     reportOpenPath,
+    pipeline: msg.pipeline || detectPipeline(spec, msg),
+    accountProfile: profile,
+    roleSlug,
+    runMarker,
   });
 
   send(ws, 'approval-flow:run:done', finalized);
@@ -438,14 +556,75 @@ async function runApprovalFlowTests(ws, session, msg, deps) {
   else send(ws, 'error', { message: `用例退出码 ${exitCode}` });
 }
 
-function cancelApprovalFlow(session) {
+async function runApprovalFlowGoldenAll(ws, session, msg, deps) {
+  const repoRoot = deps.resolveRepoRoot();
+  const { getSessionPlaywrightEnv } = deps;
+  const envId = String(msg.env || getSessionPlaywrightEnv(session) || 'dev').trim();
+  const goldenIds = repoEnv.listGoldenProfileIds(repoRoot, envId);
+  const ready = goldenIds.filter((id) => {
+    const rel = repoEnv.resolveStorageStateRelDirect(repoRoot, envId, id);
+    return repoEnv.storageExists(repoRoot, rel);
+  });
+
+  if (!ready.length) {
+    send(ws, 'error', { message: '无已登录 Golden 角色，请先为 golden* 档案完成登录' });
+    send(ws, 'approval-flow:golden-all:done', { ok: false, results: [], env: envId });
+    return;
+  }
+
+  const spec = String(msg.spec || GOLDEN_SPEC).trim();
+  const results = [];
+
+  session.approvalFlowGoldenAllRun = true;
+  session.approvalFlowCancelled = false;
+  send(ws, 'approval-flow:golden-all:start', { env: envId, profiles: ready, total: ready.length });
+  logLine(ws, `[approval-flow] Golden 全角色回归 · ${ready.length} 个角色`, 'info');
+
+  try {
+  for (let i = 0; i < ready.length; i++) {
+    if (session.approvalFlowCancelled) break;
+    const profileId = ready[i];
+    const entry = repoEnv.enrichProfileStorageEntry(repoRoot, envId, profileId);
+    logLine(ws, `[approval-flow] Golden 角色 ${i + 1}/${ready.length}: ${entry.roleLabel} (${profileId})`, 'info');
+    await runApprovalFlowTests(ws, session, {
+      ...msg,
+      goldenAll: false,
+      accountProfile: profileId,
+      spec,
+      pipeline: 'golden',
+      writeEnabled: false,
+      mode: 'headless',
+    }, deps);
+    results.push({
+      profile: profileId,
+      roleSlug: entry.roleSlug,
+      roleLabel: entry.roleLabel,
+    });
+  }
+
+  send(ws, 'approval-flow:golden-all:done', {
+    ok: results.length > 0 && !session.approvalFlowCancelled,
+    env: envId,
+    results,
+    cancelled: Boolean(session.approvalFlowCancelled),
+  });
+  } finally {
+    session.approvalFlowGoldenAllRun = false;
+  }
+}
+
+function cancelApprovalFlow(session, ws) {
   session.approvalFlowCancelled = true;
   if (session.approvalFlowProc) {
-    try {
-      session.approvalFlowProc.kill('SIGTERM');
-    } catch {
-      /* ignore */
-    }
+    killProcessTree(session.approvalFlowProc);
+    setTimeout(() => {
+      if (session.approvalFlowProc) {
+        killProcessTreeHard(session.approvalFlowProc);
+      }
+    }, 400);
+    if (ws) logLine(ws, '[approval-flow] 已请求取消，正在终止进程…', 'warn');
+  } else if (ws) {
+    logLine(ws, '[approval-flow] 当前无运行中的任务', 'dim');
   }
 }
 
@@ -457,6 +636,9 @@ module.exports = {
   listApprovalFlowTests,
   runApprovalFlowProbe,
   runApprovalFlowTests,
+  runApprovalFlowGoldenAll,
   cancelApprovalFlow,
   DEFAULT_SPEC,
+  GOLDEN_SPEC,
+  flowScriptKey,
 };

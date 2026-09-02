@@ -201,6 +201,19 @@ async function main() {
 
   writeUiIssuesReport(issuesReport, issuesOut);
 
+  try {
+    const { writeFeedbackDocsFromReport } = await import('./ui-feedback-doc.js');
+    const docIndex = writeFeedbackDocsFromReport(issuesReport, {
+      env: process.env.PLAYWRIGHT_ENV,
+    });
+    writeUiIssuesReport(issuesReport, issuesOut);
+    if (docIndex.docs.length) {
+      console.log(`   AI 分析文档: ${docIndex.docs.length} 条 → results/ui-feedback-docs/latest.md（compact）`);
+    }
+  } catch (e) {
+    console.log(`   ⚠️  AI 分析文档生成跳过: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
   const analysisMdPath = path.join(path.dirname(issuesOut), 'ui-issues-analysis.md');
   fs.writeFileSync(analysisMdPath, issuesReport.plainLanguageAnalysis.markdown, 'utf-8');
 

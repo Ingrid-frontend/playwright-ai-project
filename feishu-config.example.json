@@ -9,6 +9,7 @@
     "runTableId": "",
     "issueTableId": "",
     "dailySummaryTableId": "",
+    "feedbackTableId": "",
     "dashboardUrl": "https://xxx.feishu.cn/base/{appToken}?block={blockId}"
   },
   "settings": {

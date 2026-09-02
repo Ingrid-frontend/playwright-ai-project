@@ -5,6 +5,7 @@ const { makeRunMarker, writeRunMarkerFile, readRunMarkerFile } = require('./flow
 
 const FLOW_COMPARE_REL = 'results/flow-screenshot-comparison.html';
 const FLOW_CUSTOMER_REL = 'results/flow-customer-report.html';
+const FLOW_PROBE_REL = 'results/flow-probe-report.html';
 const FLOW_SUMMARY_REL = 'results/flow-run-summary.html';
 const UI_AUDIT_REPORT_REL = path.join('results', 'ui-audit', 'index.html');
 
@@ -227,6 +228,7 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
 
   let compareReportRel = '';
   let customerReportRel = '';
+  let probeReportRel = '';
   let uiAuditReportRel = '';
   let replayReportRel = '';
   let videoReportRel = '';
@@ -366,6 +368,7 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     screenshotDir: `screenshots/flows/${flowId}`,
     compareReportRel: compareReportRel || undefined,
     customerReportRel: customerReportRel || undefined,
+    probeReportRel: probeReportRel || undefined,
     uiAuditReportRel: uiAuditReportRel || undefined,
     replayReportRel: replayReportRel || undefined,
     videoReportRel: videoReportRel || undefined,
@@ -389,6 +392,15 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     startedAt,
   });
 
+  if (!fastDebug) {
+    const probe = runNpmScript(repoRoot, 'report:flow-probe');
+    if (probe.ok && fs.existsSync(path.join(repoRoot, FLOW_PROBE_REL))) {
+      probeReportRel = FLOW_PROBE_REL;
+      manifest.probeReportRel = probeReportRel;
+      writeFlowManifest(repoRoot, manifest);
+    }
+  }
+
   if (!fastDebug) runNpmScript(repoRoot, 'report:flow-summary');
 
   return {
@@ -404,6 +416,7 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     screenshotsDiscarded,
     compareReportOpenPath: compareReportRel ? `/repo-report/${compareReportRel}` : '',
     customerReportOpenPath: customerReportRel ? `/repo-report/${customerReportRel}` : '',
+    probeReportOpenPath: probeReportRel ? `/repo-report/${FLOW_PROBE_REL}` : '',
     uiAuditReportOpenPath: uiAuditReportRel ? `/repo-report/${UI_AUDIT_REPORT_REL.split(path.sep).join('/')}` : '',
     replayReportOpenPath: replayReportRel ? `/repo-report/${replayReportRel}` : '',
     videoReportOpenPath: videoReportRel ? `/repo-report/${videoReportRel}` : '',
@@ -438,6 +451,9 @@ function readLastFlowRun(repoRoot, flowId) {
     reportOpenPath: href(pwRel),
     compareReportOpenPath: href(manifest.compareReportRel),
     customerReportOpenPath: href(manifest.customerReportRel),
+    probeReportOpenPath: href(
+      manifest.probeReportRel || (manifest.debugFast ? '' : FLOW_PROBE_REL),
+    ),
     summaryReportOpenPath: href(
       manifest.summaryReportRel || (manifest.debugFast ? '' : FLOW_SUMMARY_REL),
     ),
@@ -451,6 +467,7 @@ function readLastFlowRun(repoRoot, flowId) {
 module.exports = {
   FLOW_COMPARE_REL,
   FLOW_CUSTOMER_REL,
+  FLOW_PROBE_REL,
   FLOW_SUMMARY_REL,
   finalizeFlowRun,
   hasFlowScreenshots,

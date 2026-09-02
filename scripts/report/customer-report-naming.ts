@@ -118,15 +118,51 @@ export function friendlyScriptLabel(scriptKey: string): string {
   return scriptKey;
 }
 
-/** 从脚本路径提取环境名，用于报告头展示 */
-export function extractEnvLabel(scriptKeys: string[]): string {
-  for (const key of scriptKeys) {
-    for (const seg of key.split('/')) {
-      const hit = envLabelForSegment(seg);
-      if (hit) return hit;
-    }
+/** 技术附录环境分组顺序 */
+export const RUN_HISTORY_ENV_ORDER = ['stage', 'stage9084', 'uat', 'dev'] as const;
+
+/** 从 scriptKey 提取环境段，如 flows/request-flow/dev/... -> dev */
+export function extractEnvId(scriptKey: string): string {
+  for (const seg of String(scriptKey || '').split('/')) {
+    if (isEnvSegment(seg)) return seg.toLowerCase();
   }
   return '';
+}
+
+export function envIdSortKey(envId: string): number {
+  const key = String(envId || '').toLowerCase();
+  const i = RUN_HISTORY_ENV_ORDER.indexOf(key as (typeof RUN_HISTORY_ENV_ORDER)[number]);
+  if (i >= 0) return i;
+  if (!key) return RUN_HISTORY_ENV_ORDER.length + 1;
+  return RUN_HISTORY_ENV_ORDER.length;
+}
+
+export function envLabelFromId(envId: string): string {
+  if (!envId) return '';
+  if (envId.toLowerCase() === 'dev') return 'dev';
+  return envLabelForSegment(envId) || envId;
+}
+
+/** 从 scriptKeys 收集去重环境段，按 RUN_HISTORY_ENV_ORDER 排序 */
+export function collectEnvIds(scriptKeys: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const key of scriptKeys) {
+    const id = extractEnvId(key);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  out.sort((a, b) => envIdSortKey(a) - envIdSortKey(b));
+  return out;
+}
+
+/** 从脚本路径提取全部环境名，用于报告头展示 */
+export function extractEnvLabel(scriptKeys: string[]): string {
+  return collectEnvIds(scriptKeys)
+    .map((id) => envLabelFromId(id))
+    .filter(Boolean)
+    .join('、');
 }
 
 /**

@@ -12,7 +12,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { chromium, type Page, type Response } from '@playwright/test';
+import { chromium, type BrowserContext, type Page, type Response } from '@playwright/test';
 
 function getArg(name: string, fallback = ''): string {
   const prefix = `--${name}=`;
@@ -29,15 +29,68 @@ function pickEnvUrl(env: Record<string, string>): string {
 }
 
 function pickStorageState(env: Record<string, string>): string | undefined {
-  const p = env.storageState || env.storageState;
-  return p && fs.existsSync(p) ? p : undefined;
+  const p = env.storageState;
+  if (!p) return undefined;
+  const abs = path.isAbsolute(p) ? p : path.resolve(p);
+  return fs.existsSync(abs) ? abs : undefined;
 }
 
+function isClosedError(err: unknown): boolean {
+  const msg = String((err as Error)?.message || err);
+  return /has been closed|Target closed|browser has been closed/i.test(msg);
+}
+
+let shuttingDown = false;
+
+async function safeWait(page: Page, ms: number): Promise<void> {
+  if (shuttingDown) return;
+  try {
+    await page.waitForTimeout(ms);
+  } catch (err) {
+    if (shuttingDown || isClosedError(err)) return;
+    throw err;
+  }
+}
+
+/**
+ * 已知的列表接口（两个既有流程）。新流程不必来改这里：
+ * 传 --list-api=<正则> 显式指定，或依赖 looksLikeListBody() 自动发现。
+ */
+const KNOWN_LIST_API_RE =
+  /\/api\/approvals\/(pendingApproval|approved|copiedToMe)(?:\?|$)|\/api\/applications\/(?:v4\/)?search(?:\?|$)/;
+
+/** --list-api=<正则> 覆盖 */
+function customListApiRe(): RegExp | null {
+  const raw = getArg('list-api', '').trim();
+  if (!raw) return null;
+  try {
+    return new RegExp(raw);
+  } catch {
+    console.warn(`[probe] --list-api 不是合法正则，已忽略：${raw}`);
+    return null;
+  }
+}
+
+const CUSTOM_LIST_API_RE = customListApiRe();
+
 function isListApi(url: string): boolean {
-  return (
-    /\/api\/approvals\/(pendingApproval|approved|copiedToMe)(?:\?|$)/.test(url) ||
-    /\/api\/applications\/(?:v4\/)?search(?:\?|$)/.test(url)
-  );
+  if (CUSTOM_LIST_API_RE) return CUSTOM_LIST_API_RE.test(url);
+  return KNOWN_LIST_API_RE.test(url);
+}
+
+/**
+ * 自动发现列表接口：POST /api/... 且响应体里带「数组 + 分页总数」形状。
+ * 用于新流程首次探活——此时既没人知道接口名，也来不及先写正则。
+ */
+function looksLikeListBody(body: unknown): boolean {
+  if (!body || typeof body !== 'object') return false;
+  const obj = body as Record<string, unknown>;
+  const nested = obj.data && typeof obj.data === 'object' ? (obj.data as Record<string, unknown>) : null;
+  const arrays = [obj.rows, obj.data, obj.content, nested?.rows, nested?.content];
+  const hasArray = arrays.some((a) => Array.isArray(a) && a.length > 0);
+  if (!hasArray) return false;
+  const totals = [obj.total, obj.totalCount, obj.totalElements, nested?.total, nested?.totalElements];
+  return totals.some((t) => typeof t === 'number') || hasArray;
 }
 
 function sampleRecords(body: unknown): unknown[] {
@@ -122,6 +175,32 @@ async function dumpDom(page: Page) {
   return { ...main, childFrames: frames };
 }
 
+const LOGIN_RE = /二维码登录|账号登录|请使用.*APP扫码登录/;
+
+async function isLoginPage(page: Page): Promise<boolean> {
+  if (/\/login/i.test(page.url())) return true;
+  for (const frame of page.frames()) {
+    const text = await frame.evaluate(() => document.body?.innerText || '').catch(() => '');
+    if (LOGIN_RE.test(text)) return true;
+  }
+  return false;
+}
+
+async function waitForListReady(page: Page): Promise<void> {
+  await Promise.all([
+    page
+      .waitForResponse((r) => isListApi(r.url()) && r.status() === 200, { timeout: 12_000 })
+      .catch(() => undefined),
+    page
+      .waitForSelector('.approve-list, .approve-request, .application-list, .ant-tabs-tab', { timeout: 12_000 })
+      .catch(() => undefined),
+    page
+      .waitForSelector('.ant-table, .approve-card-list, .ant-table-tbody tr.ant-table-row', { timeout: 12_000 })
+      .catch(() => undefined),
+  ]);
+  await safeWait(page, 800);
+}
+
 async function main(): Promise<void> {
   const envName = getArg('env', 'stage');
   const entry = getArg('entry', '/main/approve');
@@ -141,50 +220,86 @@ async function main(): Promise<void> {
   if (!baseURL) throw new Error(`环境 ${envName} 未配置 baseURL/baseURL`);
   const storageState = pickStorageState(env);
 
-  const browser = await chromium.launch();
-  const context = await browser.newContext({
+  let browser: Awaited<ReturnType<typeof chromium.launch>> | null = null;
+  let context: BrowserContext | null = null;
+  let page: Page | null = null;
+  const shutdown = async (code = 130) => {
+    shuttingDown = true;
+    try {
+      await page?.close().catch(() => undefined);
+      await context?.close().catch(() => undefined);
+      await browser?.close();
+    } catch {
+      /* ignore */
+    }
+    process.exit(code);
+  };
+  process.once('SIGTERM', () => {
+    shuttingDown = true;
+    void shutdown(130);
+  });
+  process.once('SIGINT', () => {
+    shuttingDown = true;
+    void shutdown(130);
+  });
+
+  browser = await chromium.launch();
+  context = await browser.newContext({
     baseURL,
     storageState,
     locale: 'zh-CN',
     viewport: { width: 1440, height: 900 },
   });
-  const page = await context.newPage();
+  page = await context.newPage();
   const apiCalls: string[] = [];
   const listApis: Array<{ method: string; status: number; url: string; sample: unknown[] }> = [];
+  /** 形状像列表接口但没被 isListApi 命中的 POST 接口——新流程靠它发现接口名 */
+  const listApiCandidates: Array<{ method: string; url: string; rows: number }> = [];
 
   page.on('response', (res: Response) => {
     const url = res.url();
     if (!url.includes('/api/')) return;
-    apiCalls.push(`${res.request().method()} ${res.status()} ${url.replace(baseURL, '')}`);
+    const method = res.request().method();
+    apiCalls.push(`${method} ${res.status()} ${url.replace(baseURL, '')}`);
     if (isListApi(url) && res.status() === 200) {
       void res
         .json()
         .then((body) => {
           listApis.push({
-            method: res.request().method(),
+            method,
             status: res.status(),
             url: url.replace(baseURL, ''),
             sample: sampleRecords(body),
           });
         })
         .catch(() => undefined);
+      return;
     }
+    // 自动发现：POST 且响应体像列表
+    if (method !== 'POST' || res.status() !== 200) return;
+    void res
+      .json()
+      .then((body) => {
+        if (!looksLikeListBody(body)) return;
+        const rows = sampleRecords(body).length;
+        const rel = url.replace(baseURL, '').split('?')[0];
+        if (listApiCandidates.some((c) => c.url === rel)) return;
+        listApiCandidates.push({ method, url: rel, rows });
+      })
+      .catch(() => undefined);
   });
 
-  await page.goto(entry, { waitUntil: 'domcontentloaded', timeout: 60_000 });
-  await page
-    .waitForResponse((r) => isListApi(r.url()) && r.status() === 200, { timeout: 25_000 })
-    .catch(() => undefined);
-  await page.waitForSelector('.approve-list, .approve-request, .application-list, .ant-tabs-tab', { timeout: 30_000 }).catch(() => undefined);
-  await page
-    .waitForSelector('.ant-table, .approve-card-list, .ant-table-tbody tr.ant-table-row', { timeout: 30_000 })
-    .catch(() => undefined);
-  await page.waitForTimeout(2_000);
+  await page.goto(entry, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+  await safeWait(page, 800);
+  const onLogin = await isLoginPage(page);
+  if (!onLogin) {
+    await waitForListReady(page);
+  }
 
   const listDom = (await dumpDom(page)) as { url?: string };
 
   let detailDom: unknown = null;
-  if (clickFirstRow) {
+  if (clickFirstRow && !onLogin) {
     const frame = page.frameLocator('iframe[src*="openBySelf=zoom"]');
     const inZoom = await page.locator('iframe[src*="openBySelf=zoom"]').count();
     const root = inZoom ? frame : page;
@@ -198,7 +313,7 @@ async function main(): Promise<void> {
         .first()
         .waitFor({ timeout: 15_000 })
         .catch(() => undefined);
-      await page.waitForTimeout(2_000);
+      await safeWait(page, 2_000);
       detailDom = await dumpDom(page);
     }
   }
@@ -207,22 +322,41 @@ async function main(): Promise<void> {
     env: envName,
     entry,
     storageState: storageState || null,
-    loginRedirect: /login/i.test(listDom.url || ''),
+    loginRedirect: onLogin || /login/i.test(listDom.url || ''),
     list: listDom,
     detail: detailDom,
     listApis,
+    listApiCandidates,
     apiCalls: Array.from(new Set(apiCalls)).slice(0, 50),
     capturedAt: new Date().toISOString(),
   };
 
-  console.log(JSON.stringify(snapshot, null, 2));
+  if (snapshot.loginRedirect) {
+    console.warn(
+      '[probe] 落在登录页，快照内容为空。先跑登录（如 npm run login:dev）生成 storageState，再重新探活。',
+    );
+  } else if (!listApis.length && listApiCandidates.length) {
+    console.warn(
+      `[probe] 未命中已知列表接口，但发现 ${listApiCandidates.length} 个候选：\n` +
+        listApiCandidates.map((c) => `    ${c.method} ${c.url}  (rows≈${c.rows})`).join('\n') +
+        `\n  确认后可用 --list-api=<正则> 重探，或直接填进 catalog 的 LIST_API。`,
+    );
+  }
+
   if (outPath) {
     const abs = path.resolve(outPath);
     fs.mkdirSync(path.dirname(abs), { recursive: true });
     fs.writeFileSync(abs, JSON.stringify(snapshot, null, 2), 'utf8');
-    console.log(`\n--- wrote ${abs} ---`);
+  } else {
+    console.log(JSON.stringify(snapshot, null, 2));
   }
   await browser.close();
 }
 
-main();
+main().catch((err) => {
+  if (shuttingDown || isClosedError(err)) {
+    process.exit(130);
+  }
+  console.error(err);
+  process.exit(1);
+});

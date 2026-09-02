@@ -135,6 +135,7 @@ const { createAccountEnvActions } = require('./lib/account-env');
 const { generateSampleScript, simulateRecording } = require('./lib/recording-utils');
 const { createRecordingActions } = require('./lib/recording');
 const { generateReport } = require('./lib/studio-report');
+const { createStudioRestart } = require('./lib/studio-restart');
 const { runScript } = require('./lib/studio-run');
 const { streamDeepSeekChat } = require('./lib/deepseek');
 const {
@@ -297,6 +298,30 @@ const { sessions, makeSession } = createSessionStore({
   draftOptimizedRelative: DRAFT_OPTIMIZED_RELATIVE,
   defaultPlaywrightEnv: DEFAULT_PLAYWRIGHT_ENV,
 });
+
+function cancelAllSessionTasks(allSessions, ws) {
+  for (const session of allSessions.values()) {
+    cancelRequestFlow(session, ws);
+    cancelApprovalFlow(session, ws);
+    cancelRun(session);
+    cancelOptimize(session);
+    cancelRepoPipeline(session);
+    cancelRepoTest(session);
+    cancelRepoBatch(session);
+    cancelRepoCompare(session);
+    cancelIntentRun(session);
+    cancelEgoAudit(session);
+    cancelEgoExplore(session);
+    cancelRepoRerun(session);
+    cancelUiAudit(session);
+  }
+}
+
+const studioRestart = createStudioRestart({
+  studioDir: __dirname,
+  send,
+  cancelAll: cancelAllSessionTasks,
+});
 registerHttpRoutes(app, { resolveRepoRoot, sessions });
 
 const { sendHello, handleMessage } = createWsDispatcher({
@@ -325,6 +350,8 @@ const { sendHello, handleMessage } = createWsDispatcher({
   normalizeDateCategoryList,
   getCompareReportStatus,
   sendEnvInfo,
+  restartStudio: (ws) => studioRestart.restart(ws, sessions, server, wss),
+  countBusyStudioSessions: () => studioRestart.countBusySessions(sessions),
   studio: {
     startRecording,
     stopRecording,

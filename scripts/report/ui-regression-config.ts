@@ -137,6 +137,8 @@ export interface CustomerReportConfig {
   identicalRatio: number;
   /** 判为「明显衰退」的差异占比下限，默认 0.005 */
   majorRatio: number;
+  /** 多处小 spot 判 regress 的总占比下限，默认 0.01 */
+  multiSpotRegressRatio: number;
   /** 单个差异块达到该像素数即判「明显衰退」（哪怕总占比很小），默认 1500 */
   majorRegionPixels: number;
   /** 单个差异块同时达到该宽高即判「明显衰退」，默认 160x60 */
@@ -272,6 +274,7 @@ const DEFAULT_CONFIG: UiRegressionConfig = {
   customerReport: {
     identicalRatio: 0.0005,
     majorRatio: 0.005,
+    multiSpotRegressRatio: 0.01,
     majorRegionPixels: 1500,
     majorRegionMinWidth: 160,
     majorRegionMinHeight: 60,

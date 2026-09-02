@@ -2,7 +2,19 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const express = require('express');
+const { require: tsxRequire } = require('tsx/cjs/api');
 const { stripAnsi } = require('./ws-safe');
+
+let buildFlowRunAiDebug;
+function getFlowRunAiDebugBuilder() {
+  if (!buildFlowRunAiDebug) {
+    ({ buildFlowRunAiDebug } = tsxRequire(
+      path.join(__dirname, '../../src/utils/flow-run-ai-debug.ts'),
+      __filename,
+    ));
+  }
+  return buildFlowRunAiDebug;
+}
 
 function resolveFeishuNotifyReady(resolveRepoRoot) {
   const repoRoot = resolveRepoRoot();
@@ -174,6 +186,108 @@ function registerHttpRoutes(app, deps) {
         url = fs.readFileSync(urlFile, 'utf8').trim();
       }
       return res.json({ ok: true, url, flow: flowId });
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
+  const manualFeedbackCors = (res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  };
+
+  app.options('/api/manual-feedback', (req, res) => {
+    manualFeedbackCors(res);
+    res.status(204).end();
+  });
+
+  app.post('/api/manual-feedback', express.json(), async (req, res) => {
+    manualFeedbackCors(res);
+    const body = req.body || {};
+    const reporter = String(body.reporter || '').trim();
+    const description = String(body.description || '').trim();
+    if (!reporter || !description) {
+      return res.status(400).json({ ok: false, error: '需要 reporter、description' });
+    }
+    const repoRoot = resolveRepoRoot();
+    const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    const payload = {
+      reporter,
+      description,
+      env: body.env,
+      url: body.url,
+      scriptKey: body.scriptKey,
+      stepName: body.stepName,
+      stepNumber: body.stepNumber,
+      bbox: body.bbox,
+      selector: body.selector,
+      xpath: body.xpath,
+      screenshotPath: body.screenshotPath,
+      syncFeishu: body.syncFeishu !== false,
+    };
+    const tmpFile = path.join(repoRoot, 'results', `.manual-feedback-${Date.now()}.json`);
+    fs.mkdirSync(path.dirname(tmpFile), { recursive: true });
+    fs.writeFileSync(tmpFile, JSON.stringify(payload), 'utf8');
+    try {
+      const out = await new Promise((resolve, reject) => {
+        const proc = spawn(npmCmd, ['run', 'feedback:submit', '--', `--file=${tmpFile}`], {
+          cwd: repoRoot,
+          shell: false,
+        });
+        let stdout = '';
+        let stderr = '';
+        proc.stdout.on('data', (d) => {
+          stdout += d.toString();
+        });
+        proc.stderr.on('data', (d) => {
+          stderr += d.toString();
+        });
+        proc.on('close', (code) => {
+          if (code !== 0) {
+            reject(new Error(stripAnsi(stderr || stdout || `退出码 ${code}`).slice(0, 400)));
+            return;
+          }
+          resolve(stdout);
+        });
+        proc.on('error', reject);
+      });
+      const line = String(out).trim().split('\n').filter((l) => l.startsWith('{')).pop() || '{}';
+      const parsed = JSON.parse(line);
+      return res.json(parsed);
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
+    } finally {
+      try {
+        fs.unlinkSync(tmpFile);
+      } catch {
+        /* ignore */
+      }
+    }
+  });
+
+  app.get('/api/flow-run/ai-debug', (req, res) => {
+    const flowId = String(req.query.flowId || '').trim();
+    const runId = String(req.query.runId || '').trim();
+    if (flowId !== 'request-flow' && flowId !== 'approval-flow') {
+      return res.status(400).json({ ok: false, error: 'flowId 须为 request-flow 或 approval-flow' });
+    }
+    if (!runId) {
+      return res.status(400).json({ ok: false, error: '需要 runId' });
+    }
+    const repoRoot = resolveRepoRoot();
+    try {
+      const result = getFlowRunAiDebugBuilder()(repoRoot, flowId, runId);
+      if (!result) {
+        return res.status(404).json({ ok: false, error: '未找到该次运行记录' });
+      }
+      return res.json({
+        ok: true,
+        flowId,
+        runId,
+        runMarker: result.manifest.runMarker || runId,
+        markdown: result.markdown,
+      });
     } catch (e) {
       return res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
     }

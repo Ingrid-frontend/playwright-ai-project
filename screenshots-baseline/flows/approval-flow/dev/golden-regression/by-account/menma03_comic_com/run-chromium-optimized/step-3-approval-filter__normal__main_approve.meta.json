@@ -1,0 +1,60 @@
+{
+  "capturedAt": "2026-09-01T12:05:34.105Z",
+  "viewport": {
+    "name": "desktop",
+    "width": 1280,
+    "height": 720,
+    "deviceScaleFactor": 1
+  },
+  "imageWidth": 1280,
+  "imageHeight": 720,
+  "layout": {
+    "horizontalOverflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280
+  },
+  "domHash": "SEC|f9300a639080e23c",
+  "sections": [
+    {
+      "key": "approval-filter-bar",
+      "structureHash": "f9300a639080e23c",
+      "textHash": "9cbe88a06373f8b8",
+      "nodeCount": 9,
+      "childTags": "DIV"
+    }
+  ],
+  "selectors": {
+    "approval-filter-bar": {
+      "exists": true,
+      "bbox": {
+        "x": 294,
+        "y": -3,
+        "width": 160,
+        "height": 32
+      },
+      "domHash": "f9300a639080e23c",
+      "structureHash": "f9300a639080e23c",
+      "textHash": "9cbe88a06373f8b8",
+      "resolvedBy": "selector",
+      "fingerprint": {
+        "tag": "DIV",
+        "stableAttributes": {},
+        "textHint": "全部业务类型",
+        "xpath": "/html[1]/body[1]/div[1]/div[1]/div[1]/main[1]/span[1]/div[1]/div[1]/div[2]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[2]/div[1]",
+        "fallbackSelectors": [],
+        "baselineRect": {
+          "x": 294,
+          "y": -3,
+          "width": 160,
+          "height": 32
+        },
+        "baselinePageWidth": 1600,
+        "baselinePageHeight": 900
+      }
+    }
+  },
+  "consoleErrors": [],
+  "pageErrors": [],
+  "snapshotName": "approval-filter",
+  "state": "normal"
+}

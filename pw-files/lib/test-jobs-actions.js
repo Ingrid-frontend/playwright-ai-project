@@ -51,7 +51,7 @@ function createTestJobsActions(deps) {
 
   function isFlowRunnerJob(merged) {
     const key = merged.runner || merged.id;
-    return key === 'request-flow-golden' || key === 'request-flow-write' || key === 'approval-flow-write';
+    return key === 'request-flow-golden' || key === 'request-flow-write' || key === 'approval-flow-golden' || key === 'approval-flow-write';
   }
 
   function countRequestFlowWriteSpecs(merged) {

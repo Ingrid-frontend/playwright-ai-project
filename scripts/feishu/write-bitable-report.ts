@@ -15,6 +15,7 @@ import {
 } from './bitable-schema.js';
 import type { JobSummaryFile } from '../jobs/job-lock.js';
 import type { UiIssue, UiIssuesReport } from '../report/ui-issues-index.js';
+import { writeFeedbackDocsFromReport } from '../report/ui-feedback-doc.js';
 
 dotenv.config();
 
@@ -68,6 +69,18 @@ export async function writeBitableReport(input: BitableWriteInput = {}): Promise
   const generatedAt = issuesReport?.generatedAt || new Date().toISOString();
   const executionId = summary.runId || buildExecutionId(generatedAt, env, summary.specPaths);
   const status = input.status ?? resolveStatus(summary);
+
+  if (issuesReport?.issues?.length) {
+    writeFeedbackDocsFromReport(issuesReport, { env, executionId });
+    const issuesOut = process.env.UI_ISSUES_OUT || 'results/ui-issues.json';
+    const flowOut = process.env.FLOW_UI_ISSUES_OUT || 'results/flow-ui-issues.json';
+    const outFile = fs.existsSync(issuesOut) ? issuesOut : flowOut;
+    if (fs.existsSync(outFile)) {
+      fs.writeFileSync(outFile, JSON.stringify(issuesReport, null, 2), 'utf-8');
+    }
+    console.log(`📝 AI 分析文档 ${issuesReport.issues.filter((i) => i.aiDocPath).length} 条 → results/ui-feedback-docs/latest.md`);
+  }
+
   const client = new BitableClient(config);
 
   const runFields = buildRunFields({ config, summary, issuesReport, env, status, generatedAt, executionId });
@@ -198,6 +211,10 @@ function buildRunFields(input: {
 
 function buildIssueFields(executionId: string, issue: UiIssue) {
   const issueRecordId = `${executionId}|${issue.issueId}`;
+  const publicBase = process.env.PUBLIC_REPORT_URL || process.env.FEISHU_REPORT_URL || '';
+  const aiDocUrl =
+    issue.aiDocUrl ||
+    (issue.aiDocPath && publicBase ? `${publicBase.replace(/\/$/, '')}/${issue.aiDocPath}` : '');
   return {
     [ISSUE_FIELDS.issueRecordId]: issueRecordId,
     [ISSUE_FIELDS.executionId]: executionId,
@@ -215,6 +232,13 @@ function buildIssueFields(executionId: string, issue: UiIssue) {
     [ISSUE_FIELDS.baselinePath]: issue.baselinePath,
     [ISSUE_FIELDS.currentPath]: issue.currentPath,
     [ISSUE_FIELDS.diffImagePath]: issue.diffImagePath,
+    [ISSUE_FIELDS.source]: issue.source || 'automated',
+    [ISSUE_FIELDS.reporter]: issue.reporter || '',
+    [ISSUE_FIELDS.description]: issue.description || issue.detail || '',
+    [ISSUE_FIELDS.elementXpath]: issue.elementXpath || '',
+    [ISSUE_FIELDS.elementSelector]: issue.elementSelector || '',
+    [ISSUE_FIELDS.aiDocPath]: issue.aiDocPath || '',
+    [ISSUE_FIELDS.aiDocUrl]: aiDocUrl ? toUrlField(aiDocUrl) : null,
   };
 }
 

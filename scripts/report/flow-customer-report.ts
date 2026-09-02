@@ -12,28 +12,18 @@ import {
   generateTestComparisons,
   type TestDirComparisons,
 } from './compare-screenshots-engine.js';
-import { discoverFlowScriptScanTargets } from './compare-screenshots-scan.js';
+import { discoverFlowScriptScanTargets, isGoldenRegressionTarget } from './compare-screenshots-scan.js';
 import { buildCoverageStats } from './coverage-stats.js';
 import { buildCustomerReportModel } from './customer-report-model.js';
 import { renderCustomerReportHtml } from './customer-report-render.js';
-import { writeCustomerReportSummary } from './customer-report-summary.js';
+import { FLOW_CUSTOMER_SUMMARY_FILE, writeCustomerReportSummary } from './customer-report-summary.js';
 import { resolveScriptRunMeta, resolveScriptRunHistory } from './customer-report-run-meta.js';
-import { enrichRunHistoryComparisons } from './customer-report-run-history.js';
+import { enrichRunHistoryComparisons, screenshotsForMainReport } from './customer-report-run-history.js';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
 const FLOW_ROOT = path.join('screenshots', 'flows');
 const DEFAULT_OUT = 'results/flow-customer-report.html';
-
-function filterFlowTargets(targets: ReturnType<typeof discoverFlowScriptScanTargets>) {
-  return targets.filter(
-    (t) =>
-      t.testDir.startsWith('flows/request-flow') ||
-      t.testDir.startsWith('flows/approval-flow') ||
-      t.testDir.startsWith('request-flow') ||
-      t.testDir.startsWith('approval-flow'),
-  );
-}
 
 async function main() {
   const args = process.argv.slice(2);
@@ -46,28 +36,40 @@ async function main() {
     process.exit(1);
   }
 
-  const scanTargets = filterFlowTargets(discoverFlowScriptScanTargets(scanRoot));
+  const scanTargets = discoverFlowScriptScanTargets(scanRoot).filter((t) =>
+    isGoldenRegressionTarget(t.testDir),
+  );
   if (scanTargets.length === 0) {
-    console.error('未发现流程截图，请先运行申请单/审批用例');
+    console.error('未发现 Golden 回归流程截图，请先运行 golden-regression 用例');
     process.exit(1);
   }
 
   console.log('正在生成流程客户报告…');
+  console.log(`  范围: Golden 回归`);
   console.log(`  脚本数: ${scanTargets.length}`);
   console.log(`  输出: ${outputPath}`);
 
   const testDirComparisons: TestDirComparisons[] = [];
   const screenshotsByDir = new Map<string, ReturnType<typeof getAllScreenshots>>();
+  const usedRunIds = new Map<string, string>();
   let hasPng = false;
+
+  const runHistory = resolveScriptRunHistory(
+    scanTargets.map((t) => t.testDir),
+    scanTargets,
+  );
 
   for (let i = 0; i < scanTargets.length; i++) {
     const { testDir, scriptPath } = scanTargets[i]!;
     console.log(`\n[${i + 1}/${scanTargets.length}] ${testDir}`);
     const screenshots = getAllScreenshots(scriptPath, 'optimized', outputPath);
     screenshotsByDir.set(testDir, screenshots);
-    if (screenshots.size === 0) continue;
+    const rows = runHistory.get(testDir) || [];
+    const { filtered, runId } = screenshotsForMainReport(screenshots, rows);
+    if (runId) usedRunIds.set(testDir, runId);
+    if (filtered.size === 0) continue;
     hasPng = true;
-    const comparisons = await generateTestComparisons(testDir, screenshots, outputPath);
+    const comparisons = await generateTestComparisons(testDir, filtered, outputPath);
     testDirComparisons.push({ testDir, comparisons });
   }
 
@@ -79,7 +81,6 @@ async function main() {
   const coverage = buildCoverageStats(testDirComparisons);
   const scriptKeys = [...new Set(coverage.slots.map((s) => s.scriptKey))];
   const scriptRuns = resolveScriptRunMeta(scriptKeys, scanTargets);
-  const runHistory = resolveScriptRunHistory(scriptKeys, scanTargets);
   for (const { testDir, scriptPath } of scanTargets) {
     const rows = runHistory.get(testDir);
     const shots = screenshotsByDir.get(testDir);
@@ -91,8 +92,9 @@ async function main() {
   }
   const model = buildCustomerReportModel(coverage, undefined, scriptRuns, runHistory, {
     releaseTag: process.env.RELEASE_TAG || process.env.npm_package_version,
-  });
-  writeCustomerReportSummary(model);
+    reportScope: 'golden',
+  }, usedRunIds);
+  writeCustomerReportSummary(model, FLOW_CUSTOMER_SUMMARY_FILE);
   const html = renderCustomerReportHtml(model);
 
   const outAbs = path.resolve(outputPath);

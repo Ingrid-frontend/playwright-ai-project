@@ -85,6 +85,17 @@ export function isGoldenRegressionTarget(testDir: string): boolean {
   return GOLDEN_PATH_MARKERS.some((m) => norm.includes(m));
 }
 
+/** 流程调试截图（非 Golden 回归），如 full-flow / travel-submit */
+export function isProbeFlowTarget(testDir: string): boolean {
+  const norm = testDir.replace(/\\/g, '/');
+  if (!norm.includes('flows/')) return false;
+  return !isGoldenRegressionTarget(testDir);
+}
+
+export function discoverProbeFlowScanTargets(screenshotsDir: string): ScriptScanTarget[] {
+  return discoverFlowScriptScanTargets(screenshotsDir).filter((t) => isProbeFlowTarget(t.testDir));
+}
+
 export function discoverGoldenScriptScanTargets(screenshotsDir: string): ScriptScanTarget[] {
   return discoverScriptScanTargets(screenshotsDir).filter((t) => isGoldenRegressionTarget(t.testDir));
 }

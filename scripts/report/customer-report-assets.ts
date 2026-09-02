@@ -495,6 +495,34 @@ body {
   border-radius: 3px;
   word-break: break-all;
 }
+.run-id-copy {
+  border: none;
+  cursor: pointer;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-align: left;
+}
+.run-id-copy:hover { background: #e9ecef; }
+.run-marker.run-id-copy.copied { background: #d3f9d8; color: #2b8a3e; }
+.run-index-copy {
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.run-index-copy:hover { color: #1971c2; }
+.run-index-copy.copied { color: #2b8a3e; }
+.ig-run-id {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+.ig-run-id .run-marker { max-width: min(320px, 100%); }
 .scope-table td.st-uncovered { color: var(--muted); }
 .scope-filters {
   display: flex;
@@ -543,6 +571,49 @@ body {
   color: var(--text);
 }
 .run-history-block { margin-bottom: 20px; }
+.run-history-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 28px;
+}
+.run-history-main { flex: 1; min-width: 0; }
+.run-history-env-group {
+  scroll-margin-top: 20px;
+  margin-bottom: 28px;
+}
+.run-history-env-group:last-child { margin-bottom: 0; }
+.run-history-env-title {
+  margin: 0 0 14px;
+  padding-bottom: 8px;
+  font-size: 18px;
+  font-weight: 650;
+  border-bottom: 1px solid var(--line);
+}
+.run-history-anchor {
+  flex: 0 0 108px;
+  position: sticky;
+  top: 16px;
+  align-self: flex-start;
+}
+.run-history-anchor-nav {
+  border-left: 2px solid #f0f0f0;
+  padding-left: 0;
+}
+.run-history-anchor-link {
+  display: block;
+  margin-left: -2px;
+  padding: 4px 0 4px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(0, 0, 0, 0.45);
+  text-decoration: none;
+  border-left: 2px solid transparent;
+}
+.run-history-anchor-link:hover { color: #1677ff; }
+.run-history-anchor-link.active {
+  color: #1677ff;
+  border-left-color: #1677ff;
+}
 .run-history-title { font-size: 15px; font-weight: 650; margin: 0 0 6px; }
 .run-history-meta { margin: 0 0 10px; font-size: 12px; color: var(--muted); }
 .run-history-table { margin-bottom: 0; }
@@ -692,6 +763,28 @@ body {
   align-items: center;
 }
 .minor-block[open] > summary { margin-bottom: 12px; }
+.incomplete-notice {
+  margin: 16px 0;
+  padding: 12px 14px;
+  border: 1px solid #ffe8cc;
+  border-radius: 8px;
+  background: #fff9db;
+}
+.incomplete-notice-title { font-weight: 650; margin-bottom: 6px; color: #e67700; }
+.incomplete-notice ul { margin: 0; padding-left: 18px; }
+.incomplete-notice-meta { margin: 8px 0 0; font-size: 12px; color: #868e96; }
+.env-breakdown { margin: 20px 0; }
+.env-table { margin-top: 8px; }
+.env-bad { color: #e03131; font-weight: 600; }
+.env-watch { color: #f08c00; font-weight: 600; }
+.env-ok { color: #2f9e44; font-weight: 600; }
+.shot-count-cell { white-space: nowrap; }
+.shot-pruned-tag {
+  margin-left: 4px;
+  font-size: 11px;
+  color: #868e96;
+  font-weight: 500;
+}
 .mark-wrap {
   position: relative;
   border-radius: 6px;
@@ -798,6 +891,22 @@ body {
 }
 .mark-legend .lg-real::before { border: 2px solid var(--red); }
 .mark-legend .lg-benign::before { border: 2px dashed #868e96; }
+.fb-annotate-btn {
+  margin-left: auto;
+  padding: 4px 10px;
+  font-size: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+}
+.fb-annotate-btn:hover { border-color: var(--blue); color: var(--blue); }
+.fb-annotate-btn.submitting { opacity: 0.65; cursor: wait; }
+.fb-annotate-btn.done { border-color: #2b8a3e; color: #2b8a3e; background: #ebfbee; }
+.fb-annotate-btn:disabled { cursor: not-allowed; }
+.bc-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fb-shot-wrap { position: relative; }
 @media (max-width: 720px) {
   .stats { grid-template-columns: repeat(2, 1fr); }
   .brief {
@@ -820,6 +929,47 @@ function switchCustomerTab(name) {
   document.querySelectorAll('.panel').forEach(function (el) {
     el.classList.toggle('active', el.id === 'panel-' + name);
   });
+  if (name === 'runs' || name === 'minor') {
+    var panel = document.getElementById('panel-' + name);
+    if (panel) {
+      initRunHistoryAnchor(panel);
+      initRunIdCopy(panel);
+    }
+  }
+}
+function initRunHistoryAnchor(root) {
+  var scope = root || document;
+  var links = scope.querySelectorAll('.run-history-anchor-link');
+  if (!links.length) return;
+  var groups = scope.querySelectorAll('.run-history-env-group');
+  function setActive(id) {
+    links.forEach(function (a) {
+      a.classList.toggle('active', a.getAttribute('data-env-anchor') === id);
+    });
+  }
+  links.forEach(function (a) {
+    if (a.dataset.anchorInit) return;
+    a.dataset.anchorInit = '1';
+    a.addEventListener('click', function (e) {
+      e.preventDefault();
+      var id = a.getAttribute('data-env-anchor');
+      var el = id && document.getElementById(id);
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setActive(id);
+      if (history.replaceState) history.replaceState(null, '', '#' + id);
+    });
+  });
+  if ('IntersectionObserver' in window && groups.length) {
+    var io = new IntersectionObserver(function (entries) {
+      var visible = entries.filter(function (e) { return e.isIntersecting; })
+        .sort(function (a, b) { return a.boundingClientRect.top - b.boundingClientRect.top; });
+      if (visible.length) setActive(visible[0].target.id);
+    }, { rootMargin: '-12% 0px -55% 0px', threshold: 0 });
+    groups.forEach(function (g) { io.observe(g); });
+  } else if (groups.length) {
+    setActive(groups[0].id);
+  }
 }
 function filterScopeStatus(status) {
   document.querySelectorAll('.scope-filter').forEach(function (btn) {
@@ -882,15 +1032,130 @@ function initViewButtons(root) {
     });
   });
 }
+function copyReportText(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    return navigator.clipboard.writeText(text);
+  }
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); } catch (e) {}
+  document.body.removeChild(ta);
+  return Promise.resolve();
+}
+function initRunIdCopy(root) {
+  (root || document).querySelectorAll('.run-id-copy').forEach(function (btn) {
+    if (btn.dataset.copyInit) return;
+    btn.dataset.copyInit = '1';
+    btn.addEventListener('click', function () {
+      var text = btn.getAttribute('data-copy') || btn.textContent || '';
+      text = text.trim();
+      if (!text) return;
+      copyReportText(text).then(function () {
+        btn.classList.add('copied');
+        var prev = btn.getAttribute('title');
+        btn.setAttribute('title', '已复制');
+        setTimeout(function () {
+          btn.classList.remove('copied');
+          if (prev != null) btn.setAttribute('title', prev);
+        }, 1200);
+      });
+    });
+  });
+}
 document.addEventListener('DOMContentLoaded', function () {
   initSliders(document);
   initViewButtons(document);
-  // details 展开后其中的图片才有布局尺寸，滑块需要重新对齐
+  initRunIdCopy(document);
+  initRunHistoryAnchor(document);
+  initFeedbackAnnotate();
   document.querySelectorAll('details').forEach(function (d) {
     d.addEventListener('toggle', function () {
       if (d.open) initSliders(d);
     });
   });
 });
+
+function studioApiBase() {
+  if (window.STUDIO_API_BASE) return window.STUDIO_API_BASE;
+  if (location.protocol === 'file:') return 'http://localhost:3001';
+  return location.origin;
+}
+
+function buildFeedbackDescription(card) {
+  return (card.getAttribute('data-feedback-desc') || '').trim() || '发现页面变化';
+}
+
+var fbSubmitting = false;
+var FB_REPORTER_DEFAULT = '机器人';
+
+function setAnnotateBtnState(btn, state) {
+  if (!btn) return;
+  btn.classList.remove('submitting', 'done');
+  if (state === 'submitting') {
+    btn.classList.add('submitting');
+    btn.textContent = '登记中…';
+    btn.disabled = true;
+  } else if (state === 'done') {
+    btn.classList.add('done');
+    btn.textContent = '已登记';
+    btn.disabled = true;
+  } else {
+    btn.textContent = '登记问题';
+    btn.title = '登记本条对比问题';
+    btn.disabled = false;
+  }
+}
+
+function submitFeedback(card) {
+  if (fbSubmitting) return;
+  var btn = card.querySelector('.fb-annotate-btn');
+  fbSubmitting = true;
+  setAnnotateBtnState(btn, 'submitting');
+  var payload = {
+    reporter: FB_REPORTER_DEFAULT,
+    description: buildFeedbackDescription(card),
+    scriptKey: card.getAttribute('data-script-key') || '',
+    stepName: card.getAttribute('data-step-name') || '',
+    stepNumber: Number(card.getAttribute('data-step-number') || 0) || undefined,
+    screenshotPath: card.getAttribute('data-screenshot') || ''
+  };
+  fetch(studioApiBase() + '/api/manual-feedback', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }).then(function (r) {
+    return r.json().then(function (data) {
+      if (!r.ok || !data.ok) throw new Error((data && data.error) || ('HTTP ' + r.status));
+      return data;
+    });
+  }).then(function () {
+    fbSubmitting = false;
+    setAnnotateBtnState(btn, 'done');
+    setTimeout(function () { setAnnotateBtnState(btn, 'idle'); }, 2000);
+  }).catch(function (e) {
+    fbSubmitting = false;
+    setAnnotateBtnState(btn, 'idle');
+    alert('登记失败（请确认通过 Studio 打开报告且 npm run studio 已启动）: ' + (e.message || e));
+  });
+}
+
+function initFeedbackAnnotate() {
+  if (document.body.dataset.fbInit === '1') return;
+  document.body.dataset.fbInit = '1';
+
+  document.querySelectorAll('.fb-annotate-btn').forEach(function (btn) {
+    if (btn.dataset.fbBtnInit === '1') return;
+    btn.dataset.fbBtnInit = '1';
+    btn.addEventListener('click', function () {
+      var card = btn.closest('.browser-card');
+      if (!card || fbSubmitting) return;
+      submitFeedback(card);
+    });
+  });
+}
 `;
 }

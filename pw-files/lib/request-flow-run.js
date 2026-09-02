@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { spawnTracked, spawnTsx, spawnPlaywright, killProcessTree, killProcessTreeHard } = require('./kill-proc');
 const { send, logLine, stripAnsi, errText } = require('./ws-safe');
 const { getEnvEntryResolved } = require('./repo-context');
 const {
@@ -15,6 +16,7 @@ const { finalizeFlowRun, detectPipeline, flowScriptKey, readLastFlowRun } = requ
 const { makeRunMarker, writeRunMarkerFile } = require('./flow-run-marker.js');
 const { resolveGoldenSeed } = require('./golden-seed.js');
 const repoEnv = require('../repo-env');
+const { getFrontendRepoDefaults, prepareFrontendIndex, resolveFrontendRepoConfig } = require('./frontend-repo-sync');
 
 const catalogCheckMod = (() => {
   try {
@@ -28,7 +30,6 @@ const checkCatalogAgainstSnapshot = catalogCheckMod?.checkCatalogAgainstSnapshot
 const FLOW_DIR = 'request-flow';
 const CONFIG_REL = path.join(FLOW_DIR, 'playwright.config.ts');
 const SNAPSHOT_REL = path.join(FLOW_DIR, 'datasource/live-snapshot.json');
-const DEFAULT_FRONTEND_REPO = '/Users/hly/project/huilianyi-refactoring';
 const ENTRY_PATH = '/main/request';
 
 function flowDir(repoRoot) {
@@ -48,6 +49,8 @@ function resolveStorageAbs(repoRoot, envId, profileId) {
   if (rel && repoEnv.storageExists(repoRoot, rel)) {
     return path.resolve(repoRoot, rel);
   }
+  const prof = String(profileId || '').trim();
+  if (prof && prof !== 'default') return '';
   const ids = [envId, 'dev'].filter(Boolean);
   for (const id of ids) {
     const p = path.join(repoRoot, 'storage/loginState', `${id}.json`);
@@ -160,8 +163,11 @@ function getRequestFlowStatus(repoRoot, session, deps, msg = {}) {
   const profile = resolveProfile(session, repoRoot, { env: envId, accountProfile: msg.accountProfile });
   const resolved = getEnvEntryResolved(repoRoot, envId, profile);
   const enriched = repoEnv.enrichProfileStorageEntry(repoRoot, envId, profile);
-  const storageAbs = resolveStorageAbs(repoRoot, envId, profile);
-  const storageRel = storageAbs ? path.relative(repoRoot, storageAbs).replace(/\\/g, '/') : '';
+  const storageRel =
+    repoEnv.resolveStorageStateRelDirect(repoRoot, envId, profile) ||
+    repoEnv.resolveStorageStateRel(repoRoot, envId, profile) ||
+    '';
+  const storageCheck = storageRel ? repoEnv.validateStorageForRun(repoRoot, storageRel) : { ok: false, reason: '' };
   const snapshot = readSnapshot(repoRoot);
   const catalogCheck =
     snapshot && checkCatalogAgainstSnapshot
@@ -171,7 +177,10 @@ function getRequestFlowStatus(repoRoot, session, deps, msg = {}) {
   const specs = listRequestFlowSpecs(repoRoot);
   const spec = String(msg.spec || DEFAULT_SPEC).trim() || DEFAULT_SPEC;
   const spawnEnv = buildSpawnEnv(session, deps, msg).spawnEnv;
-  const listed = hasConfig ? listRequestFlowTests(repoRoot, spec, spawnEnv) : { spec, tests: [], error: '' };
+  const withTests = Boolean(msg.withTests);
+  const listed = hasConfig && withTests
+    ? listRequestFlowTests(repoRoot, spec, spawnEnv)
+    : { spec, tests: [], error: '' };
   const flowProfileIds = [
     ...repoEnv.listGoldenProfileIds(repoRoot, envId),
     ...repoEnv.listWriteProfileIds(repoRoot, envId),
@@ -188,18 +197,20 @@ function getRequestFlowStatus(repoRoot, session, deps, msg = {}) {
     roleLabel: enriched.roleLabel,
     baseURL: resolved?.baseURL || 'https://dev.huilianyi.com',
     storageState: storageRel,
-    hasStorage: Boolean(storageAbs),
+    hasStorage: storageCheck.ok,
+    storageHint: storageCheck.ok ? '' : storageCheck.reason || '',
     configRel: CONFIG_REL,
     snapshotRel: snapshot ? SNAPSHOT_REL : '',
     snapshot: snapshotSummary(snapshot),
     catalogCheck,
     reportOpenPath: requestFlowReportHref(repoRoot),
-    frontendRepoDefault: DEFAULT_FRONTEND_REPO,
+    ...getFrontendRepoDefaults(envId),
     specs,
     defaultSpec: DEFAULT_SPEC,
     spec: listed.spec,
     tests: listed.tests,
     testsError: listed.error || '',
+    skipTests: !withTests,
     profileStorage,
     lastRun: readLastFlowRun(repoRoot, 'request-flow'),
   };
@@ -260,14 +271,17 @@ function buildSpawnEnv(session, deps, msg = {}) {
 }
 
 async function streamProc(ws, session, procKey, cancelKey, label, cmd, args, opts) {
-  session[cancelKey] = false;
+  if (session[cancelKey]) {
+    return { ok: false, cancelled: true, exitCode: 130 };
+  }
   let proc;
   try {
-    proc = opts.spawn(cmd, args, {
-      cwd: opts.cwd,
-      env: opts.env,
-      shell: false,
-    });
+    proc = opts.spawnTsx
+      ? opts.spawnTsx()
+      : spawnTracked(cmd, args, {
+          cwd: opts.cwd,
+          env: opts.env,
+        });
   } catch (e) {
     send(ws, 'error', { message: `${label} 启动失败: ${errText(e)}` });
     return { ok: false, exitCode: -1 };
@@ -287,9 +301,9 @@ async function streamProc(ws, session, procKey, cancelKey, label, cmd, args, opt
 
 async function runRequestFlowProbe(ws, session, msg, deps) {
   const { repoRoot, envId, spawnEnv } = buildSpawnEnv(session, deps, msg);
-  const frontendRepo = String(msg.frontendRepo || DEFAULT_FRONTEND_REPO).trim();
+  const cfg = resolveFrontendRepoConfig({ ...msg, repoRoot });
+  const frontendRepo = cfg.url || cfg.localPath;
   const outRel = SNAPSHOT_REL;
-  const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 
   if (!fs.existsSync(flowDir(repoRoot))) {
     send(ws, 'error', { message: `未找到 ${FLOW_DIR}/ 目录` });
@@ -297,18 +311,24 @@ async function runRequestFlowProbe(ws, session, msg, deps) {
     return;
   }
 
+  session.requestFlowCancelled = false;
   send(ws, 'request-flow:probe:start', { env: envId, frontendRepo, outRel });
   logLine(ws, `[request-flow] 实机探活 · env=${envId} · ${frontendRepo} · ${ENTRY_PATH}`, 'info');
 
+  const indexPrep = await prepareFrontendIndex(ws, repoRoot, msg, spawnEnv);
+  if (!indexPrep.ok) {
+    send(ws, 'error', { message: indexPrep.reason || '前端仓库同步/索引失败' });
+    send(ws, 'request-flow:probe:done', { ok: false });
+    return;
+  }
+
   const args = [
-    'tsx',
-    'scripts/index-frontend/probe-live-page.ts',
     `--env=${envId}`,
     `--entry=${ENTRY_PATH}`,
     `--out=${outRel}`,
   ];
-  const result = await streamProc(ws, session, 'requestFlowProc', 'requestFlowCancelled', 'request-flow/probe', npx, args, {
-    spawn: deps.spawn,
+  const result = await streamProc(ws, session, 'requestFlowProc', 'requestFlowCancelled', 'request-flow/probe', null, args, {
+    spawnTsx: () => spawnTsx(repoRoot, 'scripts/index-frontend/probe-live-page.ts', args, spawnEnv),
     cwd: repoRoot,
     env: spawnEnv,
   });
@@ -325,7 +345,6 @@ async function runRequestFlowTests(ws, session, msg, deps) {
   }
   const { repoRoot, envId, profile, roleSlug, spawnEnv, storage } = buildSpawnEnv(session, deps, msg);
   const configRel = CONFIG_REL;
-  const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
   const mode = String(msg.mode || 'headless').trim();
   const spec = String(msg.spec || DEFAULT_SPEC).trim() || DEFAULT_SPEC;
   const grep = msg.grep === undefined || msg.grep === null ? '' : String(msg.grep);
@@ -357,7 +376,7 @@ async function runRequestFlowTests(ws, session, msg, deps) {
     logLine(ws, `[request-flow] 登录态: ${storageCheck.account} · ${storageRel}`, 'dim');
   }
 
-  const args = ['playwright', 'test', '--config', configRel, spec];
+  const args = ['test', '--config', configRel, spec];
   if (grep) args.push('--grep', grep);
   const headless = mode === 'headless';
   if (mode === 'headed') args.push('--headed');
@@ -402,10 +421,10 @@ async function runRequestFlowTests(ws, session, msg, deps) {
     'info',
   );
 
-  session.requestFlowCancelled = false;
+  if (!session.requestFlowGoldenAllRun) session.requestFlowCancelled = false;
   let proc;
   try {
-    proc = deps.spawn(npx, args, { cwd: repoRoot, env: spawnEnv, shell: false });
+    proc = spawnPlaywright(repoRoot, args, spawnEnv);
   } catch (e) {
     send(ws, 'error', { message: `用例启动失败: ${errText(e)}` });
     send(ws, 'request-flow:run:done', { ok: false, mode, spec, grep, env: envId });
@@ -582,9 +601,12 @@ async function runRequestFlowGoldenAll(ws, session, msg, deps) {
   const spec = String(msg.spec || 'request/golden-regression.spec.ts').trim();
   const results = [];
 
+  session.requestFlowGoldenAllRun = true;
+  session.requestFlowCancelled = false;
   send(ws, 'request-flow:golden-all:start', { env: envId, profiles: ready, total: ready.length });
   logLine(ws, `[request-flow] Golden 全角色回归 · ${ready.length} 个角色`, 'info');
 
+  try {
   for (let i = 0; i < ready.length; i++) {
     if (session.requestFlowCancelled) break;
     const profileId = ready[i];
@@ -613,16 +635,23 @@ async function runRequestFlowGoldenAll(ws, session, msg, deps) {
     results,
     cancelled: Boolean(session.requestFlowCancelled),
   });
+  } finally {
+    session.requestFlowGoldenAllRun = false;
+  }
 }
 
-function cancelRequestFlow(session) {
+function cancelRequestFlow(session, ws) {
   session.requestFlowCancelled = true;
   if (session.requestFlowProc) {
-    try {
-      session.requestFlowProc.kill('SIGTERM');
-    } catch {
-      /* ignore */
-    }
+    killProcessTree(session.requestFlowProc);
+    setTimeout(() => {
+      if (session.requestFlowProc) {
+        killProcessTreeHard(session.requestFlowProc);
+      }
+    }, 400);
+    if (ws) logLine(ws, '[request-flow] 已请求取消，正在终止进程…', 'warn');
+  } else if (ws) {
+    logLine(ws, '[request-flow] 当前无运行中的任务', 'dim');
   }
 }
 

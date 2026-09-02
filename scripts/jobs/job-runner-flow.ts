@@ -10,7 +10,7 @@ import {
   sendJobFeishuNotification,
 } from "./job-notify.js";
 import { formatRunId, type AccountProfileFilter } from "./job-utils.js";
-import { resolveJobRunEnv, type NotifyOn, type ResolvedTestJob } from "./test-jobs-config.js";
+import { listJobRunEnvs, resolveJobRunEnv, type NotifyOn, type ResolvedTestJob } from "./test-jobs-config.js";
 import {
   clearLock,
   writeLock,
@@ -44,8 +44,8 @@ function shouldNotify(notifyOn: NotifyOn[], success: boolean): boolean {
   return false;
 }
 
-function readLastFlowManifest(repoRoot: string) {
-  const p = path.join(repoRoot, "results/flow-runs", FLOW_ID, "last-run.json");
+function readLastFlowManifest(repoRoot: string, flowId = FLOW_ID) {
+  const p = path.join(repoRoot, "results/flow-runs", flowId, "last-run.json");
   if (!fs.existsSync(p)) return null;
   try {
     return JSON.parse(fs.readFileSync(p, "utf8")) as {
@@ -87,6 +87,9 @@ function resolveFlowSpecPaths(runnerKey: FlowRunnerKey, job: ResolvedTestJob): s
   if (runnerKey === "approval-flow-write" && Array.isArray(job.specs)) {
     return job.specs.map((s) => `approval-flow/tests/${s}`);
   }
+  if (runnerKey === "approval-flow-golden") {
+    return ["approval-flow/tests/approval/golden-regression.spec.ts"];
+  }
   return ["request-flow/tests/request/golden-regression.spec.ts"];
 }
 
@@ -97,7 +100,12 @@ function buildFlowScriptArgs(
   job: ResolvedTestJob,
 ): string[] {
   const scriptPath = path.join(process.cwd(), "scripts/flow", FLOW_RUNNER_SCRIPTS[runnerKey]);
-  const args = [`tsx`, scriptPath, `--env=${effectiveEnv}`];
+  const args = [`tsx`, scriptPath];
+  if (effectiveEnv === "all" && runnerKey === "request-flow-golden") {
+    args.push("--all-envs");
+  } else {
+    args.push(`--env=${effectiveEnv}`);
+  }
   if (profile) args.push(`--profile=${profile}`);
   if (runnerKey === "request-flow-write" && Array.isArray(job.specs)) {
     for (const spec of job.specs) {
@@ -170,7 +178,7 @@ export async function runFlowJob(
     });
   }
 
-  if (effectiveEnv) process.env.PLAYWRIGHT_ENV = effectiveEnv;
+  if (effectiveEnv && effectiveEnv !== "all") process.env.PLAYWRIGHT_ENV = effectiveEnv;
 
   if (job.steps.promoteBaselineIfClean) {
     process.env.FLOW_PROMOTE_IF_CLEAN = "1";
@@ -184,14 +192,23 @@ export async function runFlowJob(
     delete process.env.FLOW_UI_AUDIT_GATE;
   }
 
-  const loginProfiles = listFlowLoginProfiles(repoRoot, runnerKey, effectiveEnv, profile, job);
   if (job.steps.login || job.steps.refreshLogin) {
-    const loginResult = repoEnv.ensureFlowProfilesLogin(repoRoot, effectiveEnv, loginProfiles, {
-      login: job.steps.login,
-      refresh: job.steps.refreshLogin,
-    });
-    if (!loginResult.ok) {
-      console.error(`\n❌ ${loginResult.reason || "登录态准备失败"}\n`);
+    const loginEnvs = listJobRunEnvs(job, ctxPartial.playwrightEnv);
+    const loginFailures: string[] = [];
+    for (const loginEnv of loginEnvs) {
+      const loginProfiles = listFlowLoginProfiles(repoRoot, runnerKey, loginEnv, profile, job);
+      if (!loginProfiles.length) continue;
+      const loginResult = repoEnv.ensureFlowProfilesLogin(repoRoot, loginEnv, loginProfiles, {
+        login: job.steps.login,
+        refresh: job.steps.refreshLogin,
+      });
+      if (!loginResult.ok) {
+        loginFailures.push(`${loginEnv}: ${loginResult.reason || "登录态准备失败"}`);
+      }
+    }
+    if (loginFailures.length) {
+      const reason = loginFailures.join("; ");
+      console.error(`\n❌ ${reason}\n`);
       const specPaths = resolveFlowSpecPaths(runnerKey, job);
       const summary: JobSummaryFile = {
         jobId: job.id,
@@ -208,7 +225,7 @@ export async function runFlowJob(
         projects: job.projects,
         specPaths,
         compareGate: job.steps.compareGate,
-        failReasons: [loginResult.reason || "登录态准备失败"],
+        failReasons: [reason],
       };
       if (persist && ctx.jobId) {
         writeSummary(ctx.jobId, runId, summary);
@@ -234,7 +251,7 @@ export async function runFlowJob(
           feishuDocAttempted: false,
           feishuDocPassed: true,
           aborted: false,
-          errorSummary: loginResult.reason,
+          errorSummary: reason,
         });
       }
       return {
@@ -268,10 +285,13 @@ export async function runFlowJob(
   const testPassed = exitCode === 0;
   const specPaths = resolveFlowSpecPaths(runnerKey, job);
 
-  const compareSkipped = !job.steps.compare || runnerKey !== "request-flow-golden";
+  const compareSkipped =
+    !job.steps.compare ||
+    (runnerKey !== "request-flow-golden" && runnerKey !== "approval-flow-golden");
   let comparePassed = true;
   if (!compareSkipped) {
-    const manifest = readLastFlowManifest(repoRoot);
+    const flowId = runnerKey === "approval-flow-golden" ? "approval-flow" : FLOW_ID;
+    const manifest = readLastFlowManifest(repoRoot, flowId);
     const hasCompare = Boolean(manifest?.compareReportRel);
     if (hasCompare && job.steps.compareGate) {
       const ui = readUiIssuesSummaryCounts();

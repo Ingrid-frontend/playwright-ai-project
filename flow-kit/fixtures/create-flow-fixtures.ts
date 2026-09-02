@@ -85,8 +85,7 @@ export function createFlowFixtures<Extra extends Record<string, unknown>>(
 
   const workerScoped = {
     _flowWorkerRun: [
-      // 不依赖任何 fixture；用 _deps 而非 {} 避免 eslint no-empty-pattern
-      async (_deps: Record<string, never>, use: (r: void) => Promise<void>) => {
+      async ({}, use: (r: void) => Promise<void>) => {
         const spec = process.env.FLOW_SPEC || defaultSpec;
         workerRun = initWorkerRun({
           flowId,
@@ -162,7 +161,7 @@ export function createFlowFixtures<Extra extends Record<string, unknown>>(
     page: async ({ sharedPage }: { sharedPage: Page }, use: (r: Page) => Promise<void>) => {
       await use(sharedPage);
     },
-    flowRunDir: async (_deps: Record<string, never>, use: (r: string) => Promise<void>) => {
+    flowRunDir: async ({}, use: (r: string) => Promise<void>) => {
       await use(workerRun?.runDir || '');
     },
     homePage: async ({ page }: { page: Page }, use: (r: HomePage) => Promise<void>) => {

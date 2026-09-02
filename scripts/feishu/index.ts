@@ -16,6 +16,7 @@ export {
   BITABLE_RESULT_FILE,
   RUN_FIELDS,
   ISSUE_FIELDS,
+  FEEDBACK_FIELDS,
   DAILY_FIELDS,
   loadBitableRuntimeConfig,
   explainMissingBitableConfig,

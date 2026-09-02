@@ -5,6 +5,8 @@ export type BitableTableConfig = {
   runTableId: string;
   issueTableId?: string;
   dailySummaryTableId?: string;
+  /** 中控 UI 采集反馈表（手动登记） */
+  feedbackTableId?: string;
   dashboardUrl?: string;
 };
 
@@ -69,6 +71,31 @@ export const ISSUE_FIELDS = {
   baselinePath: 'baseline_path',
   currentPath: 'current_path',
   diffImagePath: 'diff_image_path',
+  source: 'source',
+  reporter: 'reporter',
+  description: 'description',
+  elementXpath: 'element_xpath',
+  elementSelector: 'element_selector',
+  aiDocPath: 'ai_doc_path',
+  aiDocUrl: 'ai_doc_url',
+} as const;
+
+/** 中控 UI 采集反馈表字段（手动登记，与自动化 issue 表可分开） */
+export const FEEDBACK_FIELDS = {
+  feedbackId: 'feedback_id',
+  reporter: 'reporter',
+  description: 'description',
+  env: 'env',
+  pageUrl: 'page_url',
+  route: 'route',
+  selector: 'element_selector',
+  xpath: 'element_xpath',
+  bbox: 'element_bbox',
+  screenshotUrl: 'screenshot_url',
+  aiDocUrl: 'ai_doc_url',
+  assignees: 'assignees',
+  status: 'status',
+  createdAt: 'created_at',
 } as const;
 
 export const DAILY_FIELDS = {
@@ -111,6 +138,7 @@ export function loadBitableRuntimeConfig(): BitableRuntimeConfig | null {
     runTableId: process.env.FEISHU_BITABLE_RUN_TABLE_ID || bitable.runTableId || '',
     issueTableId: process.env.FEISHU_BITABLE_ISSUE_TABLE_ID || bitable.issueTableId || '',
     dailySummaryTableId: process.env.FEISHU_BITABLE_DAILY_SUMMARY_TABLE_ID || bitable.dailySummaryTableId || '',
+    feedbackTableId: process.env.FEISHU_BITABLE_FEEDBACK_TABLE_ID || bitable.feedbackTableId || '',
     dashboardUrl: process.env.FEISHU_BITABLE_DASHBOARD_URL || bitable.dashboardUrl || '',
   };
 
