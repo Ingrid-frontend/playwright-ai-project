@@ -121,6 +121,74 @@ export function apiFailureLogPath(flowId: FlowId, runId: string): string {
   return path.join(flowRunsDir(flowId), runId, 'api-failures.json');
 }
 
+export const RUN_PROGRESS_FILE = '.run-progress.json';
+
+export type FlowRunStepProgress = {
+  num: number;
+  name: string;
+  snapshot?: string;
+  startedAt: string;
+  finishedAt?: string;
+};
+
+export type FlowRunProgress = {
+  runId: string;
+  flowId?: FlowId;
+  status: 'running' | 'done' | 'failed';
+  currentStep?: FlowRunStepProgress;
+  completedSteps: FlowRunStepProgress[];
+  updatedAt: string;
+  pageUrl?: string;
+  error?: string;
+};
+
+export function flowRunProgressPath(flowId: FlowId, runId: string): string {
+  return path.join(flowRunsDir(flowId), runId, 'progress.json');
+}
+
+function readProgressFile(p: string): FlowRunProgress | null {
+  if (!fs.existsSync(p)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(p, 'utf-8')) as FlowRunProgress;
+  } catch {
+    return null;
+  }
+}
+
+export function readFlowRunProgress(runDir: string, flowId?: FlowId, runId?: string): FlowRunProgress | null {
+  const fromRunDir = runDir ? readProgressFile(path.join(runDir, RUN_PROGRESS_FILE)) : null;
+  if (fromRunDir) return fromRunDir;
+  if (flowId && runId) return readProgressFile(flowRunProgressPath(flowId, runId));
+  return null;
+}
+
+export function writeFlowRunProgress(
+  runDir: string,
+  patch: Partial<FlowRunProgress> & Pick<FlowRunProgress, 'runId'>,
+): void {
+  if (!runDir) return;
+  fs.mkdirSync(runDir, { recursive: true });
+  const cur = readProgressFile(path.join(runDir, RUN_PROGRESS_FILE));
+  const next: FlowRunProgress = {
+    runId: patch.runId,
+    flowId: patch.flowId ?? cur?.flowId,
+    status: patch.status ?? cur?.status ?? 'running',
+    currentStep: patch.currentStep !== undefined ? patch.currentStep : cur?.currentStep,
+    completedSteps: patch.completedSteps ?? cur?.completedSteps ?? [],
+    updatedAt: patch.updatedAt || new Date().toISOString(),
+    pageUrl: patch.pageUrl ?? cur?.pageUrl,
+    error: patch.error !== undefined ? patch.error : cur?.error,
+  };
+  fs.writeFileSync(path.join(runDir, RUN_PROGRESS_FILE), JSON.stringify(next, null, 2), 'utf-8');
+
+  const flowId = next.flowId;
+  if (flowId && next.runId) {
+    const metaPath = flowRunProgressPath(flowId, next.runId);
+    fs.mkdirSync(path.dirname(metaPath), { recursive: true });
+    fs.writeFileSync(metaPath, JSON.stringify(next, null, 2), 'utf-8');
+  }
+}
+
 export function initWorkerRun(opts: {
   flowId: FlowId;
   env: string;
@@ -146,7 +214,17 @@ export function initWorkerRun(opts: {
 
   process.env.FLOW_RUN_ID = runId;
   process.env.FLOW_RUN_STARTED_AT = startedAt;
+  process.env.FLOW_ID = opts.flowId;
   process.env.PLAYWRIGHT_SCREENSHOT_RUN_SEGMENT = RUN_SEGMENT;
+
+  fs.mkdirSync(runDir, { recursive: true });
+  writeFlowRunProgress(runDir, {
+    runId,
+    flowId: opts.flowId,
+    status: 'running',
+    completedSteps: [],
+    updatedAt: startedAt,
+  });
 
   return { runId, startedAt, screenshotDir: root, runDir };
 }
