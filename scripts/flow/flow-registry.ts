@@ -83,6 +83,24 @@ const RAW: FlowDescriptor[] = [
     seedsRel: 'approval-flow/datasource/golden-seeds.json',
     tabbed: true,
   },
+  {
+    id: 'expense-flow',
+    label: '报销流程',
+    domain: 'expense',
+    entry: '/main/expense',
+    configRel: 'expense-flow/playwright.config.ts',
+    goldenSpec: 'expense/golden-regression.spec.ts',
+    fullFlowSpec: 'expense/full-flow.spec.ts',
+    reportDir: 'expense-flow/playwright-report',
+    goldenRunner: 'run-expense-flow-golden.ts',
+    writeRunner: null,
+    docNoEnv: 'EXPENSE_DOC_NO',
+    keywordEnv: 'EXPENSE_FILTER_KEYWORD',
+    defaultKeyword: '',
+    writeEnvVar: 'EXPENSE_ENABLE_WRITE',
+    seedsRel: 'expense-flow/datasource/golden-seeds.json',
+    tabbed: false,
+  },
 ];
 
 /** 流程 ID → 描述对象 */
