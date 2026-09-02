@@ -20,10 +20,25 @@ export type FlowStepOpts = {
 
 let captureCtx: FlowStepCtx | null = null;
 
-export function bindFlowStepCapture(ctx: { page: Page; runDir: string; stepCounter?: { n: number } }): void {
+/**
+ * 绑定截图上下文。
+ *
+ * 历史上 spec 里有两种写法：`runDir`（fixture 名）与 `flowRunDir`（Playwright fixture 实际暴露的名字），
+ * 这里都接受，避免每个 spec 各写一份适配。
+ */
+export function bindFlowStepCapture(ctx: {
+  page: Page;
+  runDir?: string;
+  flowRunDir?: string;
+  stepCounter?: { n: number };
+}): void {
+  const runDir = ctx.runDir ?? ctx.flowRunDir;
+  if (!runDir) {
+    throw new Error('bindFlowStepCapture：需要 runDir 或 flowRunDir');
+  }
   captureCtx = {
     page: ctx.page,
-    runDir: ctx.runDir,
+    runDir,
     stepCounter: ctx.stepCounter ?? { n: 0 },
   };
 }

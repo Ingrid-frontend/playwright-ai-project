@@ -8,7 +8,12 @@ const { writeRunMarkerFile } = require('../../pw-files/lib/flow-run-marker.js') 
   writeRunMarkerFile: (runDir: string, marker: string, extra?: Record<string, unknown>) => void;
 };
 
-export type FlowId = 'request-flow' | 'approval-flow';
+/**
+ * 已知内置流程。新增流程走 `npm run flow:new` 注册，
+ * 因此这里放宽为「已知字面量 + 任意字符串」，新流程无需改动本文件即可接入。
+ */
+export type KnownFlowId = 'request-flow' | 'approval-flow';
+export type FlowId = KnownFlowId | (string & Record<never, never>);
 
 export type FlowRunManifest = {
   runId: string;
@@ -20,6 +25,7 @@ export type FlowRunManifest = {
   spec: string;
   grep?: string;
   mode: string;
+  pipeline?: string;
   ok?: boolean;
   exitCode?: number;
   passed?: number;
@@ -32,6 +38,8 @@ export type FlowRunManifest = {
   screenshotDir?: string;
   compareReportRel?: string;
   customerReportRel?: string;
+  probeReportRel?: string;
+  uiAuditReportRel?: string;
   summaryReportRel?: string;
   apiFailureLogRel?: string;
   playwrightReportRel?: string;
@@ -60,7 +68,7 @@ export type ApiFailureLogEntry = {
   }>;
 };
 
-const FLOW_LABELS: Record<FlowId, string> = {
+const FLOW_LABELS: Record<string, string> = {
   'request-flow': '申请单流程',
   'approval-flow': '审批流程',
 };

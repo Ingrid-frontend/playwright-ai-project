@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import { createRequire } from "module";
 import dotenv from "dotenv";
+import { listKnownEnvs } from "../../src/utils/test-env-path.js";
 
 dotenv.config({ path: path.join(process.cwd(), ".env") });
 
@@ -35,6 +36,7 @@ function parseArgs(argv: string[]) {
   let env = process.env.PLAYWRIGHT_ENV?.trim() || "dev";
   let profile = "";
   let filterKeyword = process.env.REQUEST_FILTER_KEYWORD?.trim() || "测试";
+  let allEnvs = false;
   let grep = "";
 
   for (const arg of argv) {
@@ -42,9 +44,10 @@ function parseArgs(argv: string[]) {
     else if (arg.startsWith("--profile=")) profile = arg.slice(10).trim();
     else if (arg.startsWith("--filter-keyword=")) filterKeyword = arg.slice(17).trim();
     else if (arg.startsWith("--grep=")) grep = arg.slice(7).trim();
+    else if (arg === "--all-envs") allEnvs = true;
   }
 
-  return { env, profile, filterKeyword, grep };
+  return { env, profile, filterKeyword, allEnvs, grep };
 }
 
 function resolveStorage(repoRoot: string, envId: string, profileId: string): string {
@@ -298,13 +301,21 @@ function main(): void {
     process.exit(1);
   }
 
-  const { env, profile, filterKeyword, grep } = parseArgs(process.argv.slice(2));
-  const result = runEnv(repoRoot, env, profile, filterKeyword, grep);
-  if (!result.ran) {
-    console.error(`[request-flow:golden] 无已登录 golden* 档案（env=${env}）`);
+  const { env, profile, filterKeyword, allEnvs, grep } = parseArgs(process.argv.slice(2));
+  const envs = allEnvs ? listKnownEnvs(repoRoot) : [env];
+
+  let allOk = true;
+  let ranAny = false;
+  for (const envId of envs) {
+    const result = runEnv(repoRoot, envId, profile, filterKeyword, grep);
+    if (result.ran) ranAny = true;
+    if (!result.ok) allOk = false;
+  }
+
+  if (!ranAny) {
+    console.error(`[request-flow:golden] 无已登录 golden* 档案（env=${allEnvs ? "all" : env}）`);
     process.exit(1);
   }
-  const allOk = result.ok;
 
   if (process.env.FLOW_DEBUG_FAST !== "1") {
     runNpmScript("feishu:flow-weekly-doc", [`--flow=${FLOW_ID}`]);
