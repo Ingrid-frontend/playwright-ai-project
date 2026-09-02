@@ -35,14 +35,16 @@ function parseArgs(argv: string[]) {
   let env = process.env.PLAYWRIGHT_ENV?.trim() || "dev";
   let profile = "";
   let filterKeyword = process.env.REQUEST_FILTER_KEYWORD?.trim() || "测试";
+  let grep = "";
 
   for (const arg of argv) {
     if (arg.startsWith("--env=")) env = arg.slice(6).trim();
     else if (arg.startsWith("--profile=")) profile = arg.slice(10).trim();
     else if (arg.startsWith("--filter-keyword=")) filterKeyword = arg.slice(17).trim();
+    else if (arg.startsWith("--grep=")) grep = arg.slice(7).trim();
   }
 
-  return { env, profile, filterKeyword };
+  return { env, profile, filterKeyword, grep };
 }
 
 function resolveStorage(repoRoot: string, envId: string, profileId: string): string {
@@ -60,11 +62,24 @@ function listProfiles(repoRoot: string, envId: string, profile?: string): string
   return ids.filter((id: string) => resolveStorage(repoRoot, envId, id));
 }
 
+function writeDebugPlaywrightResult(
+  repoRoot: string,
+  runId: string,
+  result: unknown,
+): string {
+  const runDir = path.join(repoRoot, "results", "flow-runs", FLOW_ID, runId);
+  fs.mkdirSync(runDir, { recursive: true });
+  const resultPath = path.join(runDir, "playwright-result.json");
+  fs.writeFileSync(resultPath, JSON.stringify(result, null, 2), "utf8");
+  return path.relative(repoRoot, resultPath).replace(/\\/g, "/");
+}
+
 function runOne(
   repoRoot: string,
   envId: string,
   profileId: string,
   filterKeyword: string,
+  grep: string,
 ): RunOneResult {
   const storage = resolveStorage(repoRoot, envId, profileId);
   if (!storage) {
@@ -100,6 +115,8 @@ function runOne(
   spawnEnv.FLOW_RUN_ID = runId;
   spawnEnv.FLOW_RUN_STARTED_AT = startedAt;
   spawnEnv.FLOW_RUN_MARKER = runMarker;
+  if (grep) spawnEnv.FLOW_GREP = grep;
+  else delete spawnEnv.FLOW_GREP;
   const scriptKey = flowScriptKey(FLOW_ID, envId, SPEC, roleSlug);
   writeRunMarkerFile(
     path.join(repoRoot, "screenshots", scriptKey, "run-chromium-flow", runId),
@@ -119,13 +136,26 @@ function runOne(
   }
 
   console.log(
-    `[request-flow:golden] 角色 ${entry.roleLabel || profileId} (${profileId}) · env=${envId} · filter=${filterKeyword} · marker=${runMarker}`,
+    `[request-flow:golden] 角色 ${entry.roleLabel || profileId} (${profileId}) · env=${envId} · filter=${filterKeyword}${
+      grep ? ` · grep=${grep}` : ""
+    } · marker=${runMarker}`,
   );
 
   const npx = process.platform === "win32" ? "npx.cmd" : "npx";
+  const reporter = process.env.FLOW_DEBUG_FAST === "1" ? "json" : "json,html";
+  const pwArgs = [
+    "playwright",
+    "test",
+    "--config",
+    CONFIG_REL,
+    SPEC,
+    `--reporter=${reporter}`,
+    "--retries=0",
+  ];
+  if (grep) pwArgs.push(`--grep=${grep}`);
   const proc = spawnSync(
     npx,
-    ["playwright", "test", "--config", CONFIG_REL, SPEC, "--reporter=json,html", "--retries=0"],
+    pwArgs,
     {
       cwd: repoRoot,
       env: spawnEnv,
@@ -147,9 +177,11 @@ function runOne(
   let skipped = 0;
   let skips: Array<{ title?: string; reason?: string }> = [];
   let failures: Array<{ title?: string; message?: string }> = [];
+  let parsedResult: unknown | null = null;
 
   try {
     const result = parsePlaywrightResultJson(stdout);
+    parsedResult = result;
     const s = result.stats || {};
     const expected = Number(s.expected) || 0;
     const unexpected = Number(s.unexpected) || 0;
@@ -159,7 +191,7 @@ function runOne(
     failed = unexpected;
     total = expected + unexpected + skipped + flaky;
     skips = parsePlaywrightSkips(result);
-    failures = parsePlaywrightFailures(result, null, exitCode).map((item) => ({
+    failures = parsePlaywrightFailures(result, null, exitCode).map((item: { title?: string; message?: string }) => ({
       title: item.title,
       message: item.message,
     }));
@@ -193,7 +225,7 @@ function runOne(
     cancelled: false,
     mode: "headless",
     spec: SPEC,
-    grep: "",
+    grep,
     env: envId,
     passed,
     failed,
@@ -207,6 +239,10 @@ function runOne(
     failures,
     specRelative,
     runMode: "headless",
+    playwrightReportRel:
+      process.env.FLOW_DEBUG_FAST === "1" && parsedResult
+        ? writeDebugPlaywrightResult(repoRoot, runId, parsedResult)
+        : undefined,
     playwrightReportDir: "request-flow/playwright-report",
     reportHint: "request-flow/playwright-report/index.html",
     pipeline: "golden",
@@ -227,6 +263,33 @@ function runNpmScript(script: string, extraArgs: string[] = []): void {
   });
 }
 
+function runEnv(
+  repoRoot: string,
+  envId: string,
+  profile: string,
+  filterKeyword: string,
+  grep: string,
+): { ok: boolean; ran: boolean } {
+  let profiles = listProfiles(repoRoot, envId, profile || undefined);
+  if (!profiles.length) {
+    console.warn(`[request-flow:golden] 跳过 env=${envId}: 无已登录 golden* 档案`);
+    return { ok: true, ran: false };
+  }
+  if (process.env.FLOW_DEBUG_FAST === "1" && profiles.length > 1) {
+    console.log(`[request-flow:golden] debug-fast 仅运行第一个角色: ${profiles[0]}`);
+    profiles = [profiles[0]];
+  }
+
+  console.log(`[request-flow:golden] 开始 · env=${envId} · ${profiles.length} 个角色 · ${SPEC}`);
+
+  let ok = true;
+  for (const profileId of profiles) {
+    const result = runOne(repoRoot, envId, profileId, filterKeyword, grep);
+    if (!result.ok && !result.skipped) ok = false;
+  }
+  return { ok, ran: true };
+}
+
 function main(): void {
   const repoRoot = process.cwd();
   const configAbs = path.join(repoRoot, CONFIG_REL);
@@ -235,23 +298,18 @@ function main(): void {
     process.exit(1);
   }
 
-  const { env, profile, filterKeyword } = parseArgs(process.argv.slice(2));
-  const profiles = listProfiles(repoRoot, env, profile || undefined);
-  if (!profiles.length) {
+  const { env, profile, filterKeyword, grep } = parseArgs(process.argv.slice(2));
+  const result = runEnv(repoRoot, env, profile, filterKeyword, grep);
+  if (!result.ran) {
     console.error(`[request-flow:golden] 无已登录 golden* 档案（env=${env}）`);
     process.exit(1);
   }
+  const allOk = result.ok;
 
-  console.log(`[request-flow:golden] 开始 · env=${env} · ${profiles.length} 个角色 · ${SPEC}`);
-
-  let allOk = true;
-  for (const profileId of profiles) {
-    const result = runOne(repoRoot, env, profileId, filterKeyword);
-    if (!result.ok && !result.skipped) allOk = false;
+  if (process.env.FLOW_DEBUG_FAST !== "1") {
+    runNpmScript("feishu:flow-weekly-doc", [`--flow=${FLOW_ID}`]);
+    runNpmScript("feishu:flow-notify", [`--flow=${FLOW_ID}`]);
   }
-
-  runNpmScript("feishu:flow-weekly-doc", [`--flow=${FLOW_ID}`]);
-  runNpmScript("feishu:flow-notify", [`--flow=${FLOW_ID}`]);
 
   process.exit(allOk ? 0 : 1);
 }

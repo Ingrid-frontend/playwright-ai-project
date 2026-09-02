@@ -240,7 +240,9 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
   let compareGateFailed = false;
   let uiAuditGateFailed = false;
 
-  if (!payload.cancelled) {
+  const fastDebug = process.env.FLOW_DEBUG_FAST === '1';
+
+  if (!payload.cancelled && !fastDebug) {
     const runShotDir = flowScreenshotRunAbs(repoRoot, flowId, payload, runId);
     const altRunShotDir =
       payload.runId && payload.runId !== runId
@@ -290,7 +292,13 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     }
   }
 
-  if (pipeline === 'probe' && payload.runUiAudit && payload.ok && !payload.cancelled) {
+  if (
+    pipeline === 'probe' &&
+    payload.runUiAudit &&
+    payload.ok &&
+    !payload.cancelled &&
+    !fastDebug
+  ) {
     const auditGate = Boolean(payload.uiAuditGate || process.env.FLOW_UI_AUDIT_GATE === '1');
     const audit = runFlowUiAudit(repoRoot, flowId, payload.uiAuditLimit || 24, auditGate);
     if (auditGate && !audit.ok) uiAuditGateFailed = true;
@@ -299,13 +307,12 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     }
   }
 
-  const playwrightReportRel = payload.playwrightReportDir
-    ? `${payload.playwrightReportDir}/index.html`
-    : `${flowId}/playwright-report/index.html`;
+  const playwrightReportRel = payload.playwrightReportRel ||
+    (payload.playwrightReportDir ? `${payload.playwrightReportDir}/index.html` : '');
 
   const runOk = Boolean(payload.ok) && !compareGateFailed && !uiAuditGateFailed;
 
-  if (pipeline === 'golden' && runOk && fullPass && !payload.cancelled) {
+  if (pipeline === 'golden' && runOk && fullPass && !payload.cancelled && !fastDebug) {
     const scriptKey = flowScriptKey(flowId, payload.env, payload.spec, payload.roleSlug);
     const promoted = tryPromoteFlowBaseline(repoRoot, scriptKey);
     baselinePromoted = promoted.seeded;
@@ -345,6 +352,7 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     grep: payload.grep || '',
     mode: payload.mode || 'headless',
     pipeline,
+    debugFast: fastDebug || undefined,
     ok: runOk,
     exitCode: payload.exitCode,
     passed: payload.passed,
@@ -363,7 +371,7 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     videoReportRel: videoReportRel || undefined,
     baselinePromoted: baselinePromoted || undefined,
     screenshotsDiscarded: screenshotsDiscarded || undefined,
-    summaryReportRel: FLOW_SUMMARY_REL,
+    summaryReportRel: fastDebug ? undefined : FLOW_SUMMARY_REL,
     apiFailureLogRel: apiFailures.length
       ? `results/flow-runs/${flowId}/${runId}/api-failures.json`
       : undefined,
@@ -381,7 +389,7 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     startedAt,
   });
 
-  runNpmScript(repoRoot, 'report:flow-summary');
+  if (!fastDebug) runNpmScript(repoRoot, 'report:flow-summary');
 
   return {
     ...payload,
@@ -399,7 +407,7 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     uiAuditReportOpenPath: uiAuditReportRel ? `/repo-report/${UI_AUDIT_REPORT_REL.split(path.sep).join('/')}` : '',
     replayReportOpenPath: replayReportRel ? `/repo-report/${replayReportRel}` : '',
     videoReportOpenPath: videoReportRel ? `/repo-report/${videoReportRel}` : '',
-    summaryReportOpenPath: `/repo-report/${FLOW_SUMMARY_REL}`,
+    summaryReportOpenPath: fastDebug ? '' : `/repo-report/${FLOW_SUMMARY_REL}`,
     apiFailureCount,
     apiFailures,
     manifest,
@@ -409,7 +417,8 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
 function readLastFlowRun(repoRoot, flowId) {
   const manifest = readJsonSafe(path.join(repoRoot, 'results', 'flow-runs', flowId, 'last-run.json'));
   if (!manifest) return null;
-  const pwRel = manifest.playwrightReportRel || `${flowId}/playwright-report/index.html`;
+  const pwRel = manifest.playwrightReportRel ||
+    (manifest.debugFast ? '' : `${flowId}/playwright-report/index.html`);
   const href = (rel) => {
     if (!rel) return '';
     const norm = String(rel).replace(/\\/g, '/');
@@ -429,7 +438,9 @@ function readLastFlowRun(repoRoot, flowId) {
     reportOpenPath: href(pwRel),
     compareReportOpenPath: href(manifest.compareReportRel),
     customerReportOpenPath: href(manifest.customerReportRel),
-    summaryReportOpenPath: href(manifest.summaryReportRel || FLOW_SUMMARY_REL),
+    summaryReportOpenPath: href(
+      manifest.summaryReportRel || (manifest.debugFast ? '' : FLOW_SUMMARY_REL),
+    ),
     replayReportOpenPath: href(manifest.replayReportRel),
     videoReportOpenPath: href(manifest.videoReportRel),
     uiAuditReportOpenPath: href(manifest.uiAuditReportRel),

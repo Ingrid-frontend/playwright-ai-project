@@ -44,6 +44,7 @@ type WorkerFixtures = {
 };
 
 const VIEWPORT = { width: 1440, height: 900 };
+const videoDisabled = process.env.FLOW_DISABLE_VIDEO === '1' || process.env.FLOW_DEBUG_FAST === '1';
 
 export const test = base.extend<AppFixtures, WorkerFixtures>({
   _flowWorkerRun: [
@@ -70,10 +71,14 @@ export const test = base.extend<AppFixtures, WorkerFixtures>({
         timezoneId: 'Asia/Shanghai',
         viewport: VIEWPORT,
         storageState,
-        recordVideo: {
-          dir: path.join(process.cwd(), 'test-results', 'videos'),
-          size: VIEWPORT,
-        },
+        ...(videoDisabled
+          ? {}
+          : {
+              recordVideo: {
+                dir: path.join(process.cwd(), 'test-results', 'videos'),
+                size: VIEWPORT,
+              },
+            }),
       });
       await use(context);
       const page = context.pages()[0];

@@ -1,0 +1,20 @@
+{
+  "uat": {
+    "199702_comic_com": {
+      "approvalDocNo": "EAXXXXXXXXXXXXXXXX"
+    }
+  },
+  "dev": {
+    "menma_comic_com": {
+      "approvalDocNo": ""
+    },
+    "menma03_comic_com": {
+      "approvalDocNo": ""
+    }
+  },
+  "stage9084": {
+    "*": {
+      "approvalDocNo": ""
+    }
+  }
+}

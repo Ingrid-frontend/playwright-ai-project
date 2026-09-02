@@ -42,6 +42,7 @@ type WorkerFixtures = {
 };
 
 const VIEWPORT = { width: 1440, height: 900 };
+const videoDisabled = process.env.FLOW_DISABLE_VIDEO === '1' || process.env.FLOW_DEBUG_FAST === '1';
 
 /**
  * 整次跑测共用一个浏览器窗口：用例之间不关窗，worker 结束才 close。
@@ -72,10 +73,14 @@ export const test = base.extend<AppFixtures, WorkerFixtures>({
         timezoneId: 'Asia/Shanghai',
         viewport: VIEWPORT,
         storageState,
-        recordVideo: {
-          dir: path.join(process.cwd(), 'test-results', 'videos'),
-          size: VIEWPORT,
-        },
+        ...(videoDisabled
+          ? {}
+          : {
+              recordVideo: {
+                dir: path.join(process.cwd(), 'test-results', 'videos'),
+                size: VIEWPORT,
+              },
+            }),
       });
       await use(context);
       const page = context.pages()[0];
