@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "description": "Golden 基线分层策略：控制 CI gate 范围，防止基线按 环境×账号×流程 无限膨胀",
+  "tiers": {
+    "L1": {
+      "label": "核心门禁",
+      "scope": "dev + 主 golden 账号",
+      "gate": true,
+      "schedule": "PR / 工作日定时",
+      "jobs": ["request-flow-golden", "approval-flow-golden"]
+    },
+    "L2": {
+      "label": "多角色 / 周检",
+      "scope": "by-account 扩展 + catalog 漂移",
+      "gate": false,
+      "schedule": "每周",
+      "jobs": ["catalog-drift-check"]
+    },
+    "L3": {
+      "label": "全环境",
+      "scope": "stage / uat / 多环境 golden",
+      "gate": false,
+      "schedule": "发版前手动 / 每日 06:00",
+      "jobs": ["request-flow-golden-all-envs"]
+    }
+  },
+  "rules": [
+    "L1 失败阻断 PR / 日构建",
+    "L2 失败发飞书告警，不阻断 PR",
+    "L3 仅在发版前或手动触发时执行",
+    "新环境基线需独立 by-account 目录，不自动晋升到 L1"
+  ]
+}

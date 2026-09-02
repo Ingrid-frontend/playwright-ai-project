@@ -24,8 +24,9 @@
     {
       "id": "request-flow-golden",
       "enabled": true,
-      "description": "申请单 Golden 回归（dev，golden* 角色串行跑 golden-regression）",
+      "description": "L1 申请单 Golden 回归（dev，golden* 角色串行跑 golden-regression）",
       "runner": "request-flow-golden",
+      "tier": "L1",
       "schedule": null,
       "timezone": "Asia/Shanghai",
       "playwrightEnv": "dev",
@@ -38,8 +39,8 @@
         "recordLastGreen": false,
         "feishuNotify": true,
         "createFeishuDoc": false,
-        "writeFeishuBitable": false,
-        "refreshLogin": false,
+        "writeFeishuBitable": true,
+        "refreshLogin": true,
         "promoteBaselineIfClean": false
       },
       "notifyOn": ["failure", "success"]
@@ -47,8 +48,9 @@
     {
       "id": "request-flow-golden-all-envs",
       "enabled": true,
-      "description": "申请单 Golden 回归（全环境 golden* 角色串行跑 golden-regression）",
+      "description": "L3 申请单 Golden 回归（全环境 golden* 角色串行跑 golden-regression，发版前手动触发）",
       "runner": "request-flow-golden",
+      "tier": "L3",
       "schedule": "0 6 * * *",
       "timezone": "Asia/Shanghai",
       "playwrightEnv": "all",
@@ -61,8 +63,8 @@
         "recordLastGreen": false,
         "feishuNotify": true,
         "createFeishuDoc": false,
-        "writeFeishuBitable": false,
-        "refreshLogin": false,
+        "writeFeishuBitable": true,
+        "refreshLogin": true,
         "promoteBaselineIfClean": false
       },
       "notifyOn": ["failure", "success"]
@@ -85,7 +87,7 @@
         "feishuNotify": true,
         "createFeishuDoc": false,
         "writeFeishuBitable": false,
-        "refreshLogin": false,
+        "refreshLogin": true,
         "resetFlowArtifacts": true,
         "uiAuditGate": true
       },
@@ -94,8 +96,9 @@
     {
       "id": "approval-flow-golden",
       "enabled": true,
-      "description": "审批 Golden 回归（dev，golden* 角色串行跑 golden-regression，复用申请单登录态）",
+      "description": "L1 审批 Golden 回归（dev，golden* 角色串行跑 golden-regression，复用申请单登录态）",
       "runner": "approval-flow-golden",
+      "tier": "L1",
       "schedule": null,
       "timezone": "Asia/Shanghai",
       "playwrightEnv": "dev",
@@ -108,8 +111,8 @@
         "recordLastGreen": false,
         "feishuNotify": true,
         "createFeishuDoc": false,
-        "writeFeishuBitable": false,
-        "refreshLogin": false,
+        "writeFeishuBitable": true,
+        "refreshLogin": true,
         "promoteBaselineIfClean": false
       },
       "notifyOn": ["failure", "success"]
@@ -132,9 +135,32 @@
         "feishuNotify": true,
         "createFeishuDoc": false,
         "writeFeishuBitable": false,
-        "refreshLogin": false,
+        "refreshLogin": true,
         "resetFlowArtifacts": true,
-        "uiAuditGate": false
+        "uiAuditGate": true
+      },
+      "notifyOn": ["failure"]
+    },
+    {
+      "id": "catalog-drift-check",
+      "enabled": true,
+      "description": "L2 catalog 漂移检测（dev，对比实机快照与 catalog 定义）",
+      "runner": "catalog-drift-check",
+      "tier": "L2",
+      "schedule": "0 1 * * 1",
+      "timezone": "Asia/Shanghai",
+      "playwrightEnv": "dev",
+      "accountProfile": null,
+      "specs": "all",
+      "steps": {
+        "login": false,
+        "compare": false,
+        "compareGate": false,
+        "recordLastGreen": false,
+        "feishuNotify": true,
+        "createFeishuDoc": false,
+        "writeFeishuBitable": false,
+        "refreshLogin": false
       },
       "notifyOn": ["failure"]
     }
