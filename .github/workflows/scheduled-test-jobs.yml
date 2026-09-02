@@ -3,6 +3,7 @@ name: Scheduled Test Jobs
 on:
   schedule:
     - cron: '0 2 * * 1-5'
+    - cron: '0 1 * * 1'
     - cron: '0 3 * * 2,4'
     - cron: '0 4 * * 3'
     - cron: '0 22 * * *'
@@ -19,6 +20,7 @@ on:
           - request-flow-write
           - approval-flow-golden
           - approval-flow-write
+          - catalog-drift-check
       playwright_env:
         description: 覆盖 Job 的 playwrightEnv（留空则用 Job 配置）
         required: false
@@ -63,6 +65,7 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "schedule" ]; then
             case "${{ github.event.schedule }}" in
+              "0 1 * * 1") JOB_ID=catalog-drift-check ;;
               "0 3 * * 2,4") JOB_ID=request-flow-write ;;
               "0 4 * * 3") JOB_ID=approval-flow-write ;;
               "0 22 * * *") JOB_ID=request-flow-golden-all-envs ;;

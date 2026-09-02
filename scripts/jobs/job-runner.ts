@@ -31,6 +31,7 @@ import {
 import { assertSpecEnvMatch, listKnownEnvs } from '../../src/utils/test-env-path.js';
 import { executeTests, runCommandBool, type DirectRunOptions } from './job-runner-execute.js';
 import { isFlowRunner, runFlowJob } from './job-runner-flow.js';
+import { runCatalogDriftJob } from './job-runner-catalog.js';
 
 export type { DirectRunOptions } from './job-runner-execute.js';
 
@@ -102,6 +103,13 @@ export async function runJobById(
 
   const effectiveEnv = resolveJobRunEnv(job, ctxPartial.playwrightEnv);
   const effectiveProfile = ctxPartial.accountProfile ?? job.accountProfile ?? null;
+
+  if (job.runner === 'catalog-drift-check') {
+    return runCatalogDriftJob(job, {
+      ...ctxPartial,
+      playwrightEnv: effectiveEnv,
+    });
+  }
 
   if (isFlowRunner(job.runner, job.id)) {
     return runFlowJob(job, {
