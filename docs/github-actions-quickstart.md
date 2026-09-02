@@ -1,5 +1,7 @@
 # GitHub Actions 快速开始
 
+> 索引：[docs/README.md](./README.md)
+
 目标：在 GitHub Actions 中跑 Playwright 测试并上传报告产物。
 
 ## 现状说明（先看）

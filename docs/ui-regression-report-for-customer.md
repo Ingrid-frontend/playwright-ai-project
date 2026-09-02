@@ -1,5 +1,7 @@
 # UI 衰退检测报告 · 交付说明
 
+> 索引：[docs/README.md](./README.md)
+
 > 面向对象：验收方 / 项目负责人。
 > 交付物：`results/ui-regression-customer.html`（单文件，双击即可在浏览器打开，无需安装任何东西）。
 > 生成命令：`npm run report:customer`

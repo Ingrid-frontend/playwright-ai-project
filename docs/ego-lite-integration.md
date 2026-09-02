@@ -1,5 +1,7 @@
 # ego lite 集成
 
+> 索引：[docs/README.md](./README.md)
+
 ego lite 是 Chromium 内核浏览器，Agent 在独立 task space 中操作，**默认继承当前用户的登录态**。
 
 本项目把 ego 定位为 **AI 驱动测试体系里的智能执行层**，不是 Playwright 的替代品。

@@ -1,5 +1,7 @@
 # 运行优化测试套件
 
+> 索引：[docs/README.md](./README.md)
+
 目标：批量执行 `tests/optimized/` 下的用例，并生成截图对比报告。
 
 ## 速查

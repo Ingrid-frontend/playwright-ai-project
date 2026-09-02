@@ -1,5 +1,7 @@
 # Visual Review Lite
 
+> 索引：[docs/README.md](./README.md)
+
 本重构的方案说明与唯一改动记录。后续相关代码改动只追加本文 Change Log，不写到 `OPTIMIZATION-ROADMAP.md` 或其他 changelog。
 
 ## 目标

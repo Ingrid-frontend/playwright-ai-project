@@ -128,7 +128,9 @@
     "ego:export-storage": "tsx scripts/ego/export-storage-state-from-ego.ts",
     "approval:verify-catalog": "node scripts/verify/verify-approval-catalog.cjs",
     "approval:test:readonly": "playwright test --config approval-flow/playwright.config.ts approval/filter.spec.ts approval/filter-tabs.spec.ts approval/filter-panel.spec.ts approval/load-and-tabs.spec.ts approval/search-and-open.spec.ts approval/full-flow.spec.ts",
-    "approval:test:write": "APPROVAL_ENABLE_WRITE=1 playwright test --config approval-flow/playwright.config.ts approval/approve-reject.spec.ts"
+    "approval:test:write": "APPROVAL_ENABLE_WRITE=1 playwright test --config approval-flow/playwright.config.ts approval/approve-reject.spec.ts",
+    "docs:check": "tsx scripts/verify/check-docs-index.ts",
+    "hooks:install": "git config core.hooksPath .githooks"
   },
   "keywords": [
     "playwright",

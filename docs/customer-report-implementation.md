@@ -1,5 +1,7 @@
 # 客户版 UI 衰退报告 · 实现说明（内部）
 
+> 索引：[docs/README.md](./README.md)
+
 > 客户可见的交付文档见 `ui-regression-report-for-customer.md`。本文只记实现口径与维护要点。
 > 入口：`npm run report:customer` → `scripts/report/compare-screenshots-customer.ts` → `results/ui-regression-customer.html`
 > 工程师报告 `npm run compare-screenshots` 与 CI `--gate` 逻辑均未改动。

@@ -1,5 +1,7 @@
 # Golden Set 定义
 
+> 索引：[docs/README.md](./README.md)
+
 > 环境：`stage`（`https://stage.huilianyi.com`）  
 > 范围：登录 → 工作台首页 → 我的审批列表  
 > 断言预期由人确认；截图走项目 `visualTest` + `compare-screenshots`（非 Playwright 内置 snapshot）

@@ -1,5 +1,7 @@
 # 流程调试提速指南
 
+> 索引：[docs/README.md](./README.md)
+
 新增流程时先用 debug-fast 通道定位问题，通过后再跑完整 golden。debug-fast 不生成截图基线、不晋升 golden、不产出客户报告，也不发送飞书通知；它保留 Playwright JSON、步骤进度和 manifest，用于快速判断脚本是否跑通。
 
 ## 快速调试

@@ -1,5 +1,7 @@
 # 测试错误收集功能指南
 
+> 索引：[docs/README.md](./README.md)
+
 目标：在执行 Playwright 测试时，自动记录失败信息，并可离线分析。
 
 ## 速查
@@ -156,7 +158,7 @@ chmod 755 tests/deprecated/errors
 
 ## 📚 相关文档
 
-- [README.md](../README.md) - 项目主文档
+- [文档索引](./README.md) - 全部文档按用途分组
 - [Playwright配置](../playwright.config.ts) - Playwright配置文件
 - [错误收集器优化](error-reporter-optimization.md) - 优化详情文档
 - [GitHub Actions 快速开始](github-actions-quickstart.md) - CI 配置指南

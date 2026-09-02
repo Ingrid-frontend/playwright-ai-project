@@ -1,5 +1,7 @@
 # Studio：YAML 用例与口语试跑
 
+> 索引：[docs/README.md](./README.md)
+
 Playwright Studio（`npm run studio`）编辑器区有两个与 AI 测试相关的 Tab，定位不同，不要混用。
 
 ## Tab 对照

@@ -1,0 +1,21 @@
+#!/bin/sh
+#
+# 文档索引门禁。仅在本次提交动了 docs/ 时才跑，其余提交零开销。
+#
+# 启用（一次性，克隆仓库后执行）：
+#   npm run hooks:install
+# 临时跳过：
+#   git commit --no-verify
+#
+# 只查文档，不跑 lint / typecheck / 测试——pre-commit 拖慢一秒都会让人想绕过它。
+
+if git diff --cached --name-only | grep -q '^docs/'; then
+  echo "[pre-commit] docs/ 有改动，检查文档索引…"
+  if ! npm run --silent docs:check; then
+    echo ""
+    echo "[pre-commit] ✗ 文档索引检查未通过。修完再提交，或用 git commit --no-verify 跳过。"
+    exit 1
+  fi
+fi
+
+exit 0

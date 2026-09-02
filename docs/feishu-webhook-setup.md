@@ -1,5 +1,7 @@
 # 飞书 Webhook 配置（速查）
 
+> 索引：[docs/README.md](./README.md)
+
 目标：配置 `FEISHU_WEBHOOK_URL`，让测试流程可发送飞书通知（可选）。
 
 ## 1) 获取 Webhook URL

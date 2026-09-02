@@ -1,0 +1,66 @@
+name: Docs & Lint
+
+# 轻量门禁：只做不需要浏览器、不需要 secrets 的静态检查。
+#
+# 为什么独立于 playwright.yml：
+# 那个工作流要装浏览器 + 登录 + 跑 e2e，timeout 90 分钟。文档写错一个链接
+# 不该等 90 分钟才知道，也不该因为 stage 环境挂了就看不到文档检查结果。
+# 这个工作流通常 1 分钟内结束。
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    name: Docs index
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - run: npm ci
+
+      # 硬门禁：索引完整性 + 链接有效性 + 返回链接，失败即挂。
+      # 这三项是「加了文档忘了挂索引」的唯一防线，且零误报。
+      - name: Check docs index
+        run: npm run docs:check
+
+  lint:
+    name: Lint (report only)
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - run: npm ci
+
+      # 非阻塞。截至接入时全仓有 194 个既有 error（scripts 102 / pw-files 52 /
+      # custom-reporters 30 / 其他 10），大多是 no-undef 与 no-unused-vars。
+      # 设成硬门禁会立刻变成永久红灯，红灯久了就没人看了——那比没有门禁更糟。
+      #
+      # 收敛路径：按目录逐步清零，某个目录清干净后，把它加进下面的「已清零」
+      # 硬门禁步骤。全清完再把本步骤的 continue-on-error 去掉。
+      - name: Lint (full, non-blocking)
+        run: npm run lint
+        continue-on-error: true
+
+      # 已清零的目录做硬门禁，防止回退。新目录清干净后往这里加。
+      - name: Lint (clean dirs, blocking)
+        run: npx eslint flow-kit/ scripts/verify/check-docs-index.ts --ext .ts

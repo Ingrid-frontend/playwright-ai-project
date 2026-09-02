@@ -1,5 +1,7 @@
 # Raw 录制 → 预处理 → optimize-raw-recordings 流水线
 
+> 索引：[docs/README.md](./README.md)
+
 ## 1. 目标
 
 - 在**不修改** `optimize-raw-recordings` 核心逻辑的前提下，增加**预处理**层。

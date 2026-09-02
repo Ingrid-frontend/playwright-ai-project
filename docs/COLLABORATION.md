@@ -1,5 +1,7 @@
 # Playwright AI 项目协作指南
 
+> 索引：[docs/README.md](./README.md)
+
 ## 🎬 录制与协作
 
 ### 录制限制说明

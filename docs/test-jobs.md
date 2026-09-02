@@ -1,5 +1,7 @@
 # 测试任务（Test Jobs）
 
+> 索引：[docs/README.md](./README.md)
+
 通过 `config/test-jobs.json` 配置后台运行、失败即停与飞书通知。
 
 ## 快速开始

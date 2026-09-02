@@ -1,5 +1,7 @@
 # 页面变化检测设计（对标 PageWatch）
 
+> 索引：[docs/README.md](./README.md)
+
 本文是对 [pagewatch.tech](https://www.pagewatch.tech/#how-it-works) 的逆向分析结论，以及落到本项目的改造建议。
 相关文档：[ui-regression-workflow.md](./ui-regression-workflow.md)、[style-drift-workflow.md](./style-drift-workflow.md)、[test-jobs.md](./test-jobs.md)。
 

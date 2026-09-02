@@ -1,5 +1,7 @@
 # UI 回归工作流
 
+> 索引：[docs/README.md](./README.md)
+
 Visual Review Lite（UI State、Diff Region、人审 Approve）见 [visual-review-lite.md](./visual-review-lite.md)。
 
 **Style-Drift 样式守护**（YAML Intent + computed style 指纹、Gate style-only）见 [style-drift-workflow.md](./style-drift-workflow.md)。

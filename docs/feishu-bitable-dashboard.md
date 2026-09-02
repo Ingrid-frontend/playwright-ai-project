@@ -1,5 +1,7 @@
 # 飞书多维表内置仪表盘搭建指南
 
+> 索引：[docs/README.md](./README.md)
+
 ## 流程总览
 
 飞书多维表涉及 **三层权限 / 两类操作**，不要混在一起：
@@ -9,6 +11,7 @@
 | 开放平台应用权限 | [开发者后台](https://open.feishu.cn/app) | **一次** | 让应用能用 API 读写多维表 |
 | 文档协作者权限 | 项目脚本 `feishu:grant-bitable-editor` | **每个要编辑 UI 的人一次** | 让你在飞书里建仪表盘（所有者是 @自动化测试 时必需） |
 | 日常数据写入 | `npm run feishu:bitable` / test-job | **每次跑测试** | 写入执行记录、问题明细、日汇总 |
+| UI 反馈写入 | `npm run feishu:feedback-write` / 客户报告标注 | **每次登记** | 写入 UI 采集反馈表（手动） |
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -20,6 +23,8 @@
 ┌─────────────────────────────────────────────────────────┐
 │  日常流程（CI / test-job / 手动跑测试）                    │
 │  compare-screenshots → feishu:bitable 自动写入           │
+│  手动登记 → feedback:submit → feishu:feedback-write      │
+│  feedback:import → 规则入库 → 下次 Golden 自动验证        │
 │  （不需要再跑 grant，不需要再改开发者后台）                 │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -36,9 +41,11 @@
 
 | 权限代码 | 必需场景 |
 |----------|----------|
-| `bitable:app` | API 读写多维表（**必开**） |
-| `drive:permission` | 用脚本给人加「可编辑」协作者 |
-| `contact:user.id:readonly` | 用邮箱/手机号查 open_id（grant 时用） |
+| `bitable:app` | 多维表格读写（**通常已开**，建表/写记录就靠它） |
+| `docs:permission.member:create` | **添加云文档协作者**（`grant-bitable-editor` 推荐开这个） |
+| `contact:user.id:readonly` | 用手机号/邮箱查 open_id（grant 时用） |
+
+> **注意**：文档旧版写的 `drive:permission` 在现行飞书后台**已搜不到**，不必找。给个人开编辑权用上面第二项即可。
 
 `.env` 最小配置：
 
@@ -49,6 +56,7 @@ FEISHU_BITABLE_APP_TOKEN=
 FEISHU_BITABLE_RUN_TABLE_ID=
 FEISHU_BITABLE_ISSUE_TABLE_ID=
 FEISHU_BITABLE_DAILY_SUMMARY_TABLE_ID=
+FEISHU_BITABLE_FEEDBACK_TABLE_ID=   # UI 采集反馈表（手动登记，见第三节）
 FEISHU_BITABLE_DASHBOARD_URL=    # 第 4 步建完仪表盘后再填
 ```
 
@@ -61,7 +69,9 @@ npm run feishu:bitable-setup -- --fix-fields   # 缺字段时自动补
 
 ### 2. 给自己 UI 编辑权限（Base 所有者是 @自动化测试 时）
 
-应用创建的 Base，组织链接默认「可阅读」，需用应用身份授权：
+应用创建的 Base，组织链接默认「可阅读」。**不需要去开 `drive:permission`**（后台已无此项），按下面做即可。
+
+**方式 A（推荐）：跑 grant 脚本**
 
 ```bash
 # 仅查 open_id
@@ -73,6 +83,21 @@ npm run feishu:grant-bitable-editor -- --mobile=13800138000
 npm run feishu:grant-bitable-editor -- --email=you@company.com
 npm run feishu:grant-bitable-editor -- --open-id=ou_xxxxxxxx
 ```
+
+脚本依赖的应用权限（开发者后台 → 权限管理 → 搜索）：
+
+| 在后台搜这些词 | 权限代码 |
+|----------------|----------|
+| **添加云文档协作者** | `docs:permission.member:create` |
+| 查看、评论、编辑和管理多维表格 | `bitable:app`（多半已有） |
+| 以应用身份访问通讯录 | `contact:user.id:readonly`（用手机号查人时需要） |
+
+开通后记得 **创建版本并发布**。
+
+**方式 B（不开新权限）：请管理员在飞书里手动加你**
+
+若你有同事能管理该 Base：右上角 **分享** → 添加你为 **可编辑** 协作者。  
+所有者是机器人时，在 UI 里点「申请编辑」无效，只能由有管理权的人分享。
 
 授权后刷新 Base，左下角应能 **「+ → 仪表盘」**。  
 **每个需要建/改仪表盘的人跑一次即可**；日常测试不必重复执行。
@@ -101,7 +126,11 @@ npm run feishu:bitable-setup   # 会列出 block_id 和建议 URL
 | 步骤 | 命令 / 触发点 | 说明 |
 |------|---------------|------|
 | 截图对比 | `compare-screenshots` | 生成 `results/ui-issues.json` |
-| 写入多维表 | `writeFeishuBitable: true` 或 `npm run feishu:bitable` | upsert 三张表 |
+| 写入多维表 | `writeFeishuBitable: true` 或 `npm run feishu:bitable` | upsert 执行记录 / 问题明细 / 日汇总 |
+| 生成 AI 分析文档 | `compare-screenshots` 自动 | `results/ui-feedback-docs/latest.md`（compact，默认） |
+| 手动登记反馈 | 客户报告「标注问题」或 `npm run feedback:submit` | 本地 `results/manual-feedback.json` |
+| 同步反馈到飞书 | `npm run feishu:feedback-write` | upsert UI 采集反馈表 |
+| 导入为回归规则 | `npm run feedback:import` | 写入 `ui-audit-rules` + `structureChecks` |
 | 通知 | 飞书卡片 | 含报告链接、质量看板链接（若已配 URL） |
 | HTML 仪表盘 | `npm run report:dashboard` | 本地/CI 静态页，不依赖飞书 UI 权限 |
 
@@ -111,16 +140,147 @@ npm run feishu:bitable-setup   # 会列出 block_id 和建议 URL
 npm run feishu:bitable
 ```
 
+```bash
+npm run feishu:bitable
+npm run feishu:feedback-write   # 仅当有新的手动登记时
+npm run feedback:import         # 将待处理反馈导入回归规则（按需）
+```
+
 **日常流程不需要：** 再跑 grant、再改开发者后台、再在 UI 里建表。
 
 ---
 
-## 三、按需工具（排障 / 新人 onboarding）
+## 三、UI 采集反馈表 Setup（手动登记）
+
+中控页面 **Cmd+B / Ctrl+B** 登记的 UI 问题，以及客户报告里的 **「标注问题」**，最终可落到同一张「UI 细节例外」反馈表，并与自动回归闭环。
+
+### 1. 建表
+
+在飞书多维表 Base 中新建数据表，建议命名 **UI采集反馈**（或与 Wiki「UI细节例外收集与管理」对齐）。
+
+复制表 ID 写入：
+
+```bash
+FEISHU_BITABLE_FEEDBACK_TABLE_ID=tblxxxxxxxx
+```
+
+或 `feishu-config.json`：
+
+```json
+"bitable": {
+  "feedbackTableId": "tblxxxxxxxx"
+}
+```
+
+### 2. 自动补字段
+
+```bash
+npm run feishu:feedback-table-setup    # 在 Base 内新建「UI采集反馈」表并写 .env
+npm run feishu:bitable-setup -- --fix-fields
+```
+
+`setup` 会校验 **执行记录 / 问题明细 / 日汇总 / UI采集反馈** 四张表。反馈表字段如下：
+
+| 字段名 | 类型 | 用途 |
+|--------|------|------|
+| feedback_id | 文本 | 唯一键（如 `mf-1788244766437-txd766`） |
+| reporter | 文本 | 登记人姓名 |
+| description | 文本 | 问题描述（支持 `@负责人`） |
+| env | 单选 | dev / uat / stage9084 / stage |
+| page_url | 超链接 | 页面地址 |
+| route | 文本 | 路由或 URL 文本 |
+| element_selector | 文本 | 目标元素选择器 |
+| element_xpath | 文本 | XPath 兜底 |
+| element_bbox | 文本 | 框选区域 `x,y,w,h` |
+| screenshot_url | 超链接 | 截图路径或外链 |
+| ai_doc_url | 超链接 | AI 分析文档（`latest.md#<id>` 或单条 `.md`） |
+| assignees | 文本 | 从描述解析的 `@` 负责人 |
+| status | 单选 | 待处理 / 处理中 / 已修复 / 忽略 |
+| created_at | 日期 | 登记时间 |
+
+若你方飞书表字段名不同，改 `config/feedback-import.json` 的 `fields` 映射后再跑 `feedback:import`。
+
+### 3. 登记入口
+
+| 入口 | 说明 |
+|------|------|
+| 中控 Cmd+B | 产品/测试在页面内框选 + 填描述（Wiki 流程） |
+| 客户报告「登记问题」 | 需 `npm run studio`；点按钮即登记对比问题（登记人默认「机器人」，描述自动取自对比结论） |
+| CLI | `npm run feedback:submit -- --json='{"reporter":"张三","description":"@李四 按钮未对齐"}'` |
+
+登记后本地产出：
+
+- `results/manual-feedback.json` — 结构化列表
+- `results/ui-feedback-docs/latest.md` — 汇总 AI 分析文档（每条以 `## <id>` 分段；`aiDocPath` 为 `latest.md#<id>`）
+
+**存储模式：** 默认 compact（单文件 `latest.json` + `latest.md`），避免每条 issue 单独占一个 `.md`。若需恢复旧行为（每条单独文件），设环境变量 `UI_FEEDBACK_DOC_SPLIT=1`。按需导出单条：
+
+```bash
+npm run feedback:docs -- --export=mf-xxx --out=tmp.md
+```
+
+### 4. 写入飞书
+
+```bash
+npm run feishu:feedback-write
+npm run feishu:feedback-write -- --entry=mf-xxx   # 指定单条
+```
+
+`feedback:submit` 默认会尝试同步飞书（`syncFeishu: false` 可跳过）。
+
+### 5. 导入为自动回归规则
+
+```bash
+npm run feedback:import              # 飞书反馈表 + 本地 manual-feedback
+npm run feedback:import -- --local-only
+npm run feedback:import -- --feishu-only
+npm run feedback:import -- --dry-run
+```
+
+导入结果：
+
+| 写入位置 | 内容 |
+|----------|------|
+| `config/ui-audit-rules.json` | `expect` 业务白名单（含 `@负责人` 描述） |
+| `config/ui-regression.json` → `structureChecks.items` | 有 `selector` 时新增监测项 |
+| `results/feedback-import-log.json` | 导入日志 |
+
+下次跑 Golden / `compare-flow-screenshots` 时会自动验证该问题是否仍存在。
+
+### 6. 与自动回归问题明细的关系
+
+| 维度 | 问题明细（issue） | UI 采集反馈（feedback） |
+|------|-------------------|-------------------------|
+| 来源 | `automated`（默认） | `manual` |
+| 触发 | compare / ui-audit | 人登记 |
+| 表 | `FEISHU_BITABLE_ISSUE_TABLE_ID` | `FEISHU_BITABLE_FEEDBACK_TABLE_ID` |
+| AI 文档 | `ai_doc_path` / `ai_doc_url` | 同上 |
+| 闭环 | 直接参与 gate | 经 `feedback:import` 进入规则后再参与回归 |
+
+问题明细表在原有字段基础上已扩展（`feishu:bitable-setup --fix-fields` 可补）：
+
+| 字段名 | 类型 | 用途 |
+|--------|------|------|
+| source | 单选 | automated / manual |
+| reporter | 文本 | 登记人（手动时有值） |
+| description | 文本 | 问题描述 |
+| element_xpath | 文本 | 元素 XPath |
+| element_selector | 文本 | CSS 选择器 |
+| ai_doc_path | 文本 | 分析文档相对路径 |
+| ai_doc_url | 超链接 | 分析文档外链（配了 `PUBLIC_REPORT_URL` 时） |
+
+---
+
+## 四、按需工具（排障 / 新人 onboarding）
 
 | 命令 | 何时用 |
 |------|--------|
 | `npm run feishu:bitable-setup` | 检查字段、列出仪表盘 URL |
 | `npm run feishu:grant-bitable-editor` | 新人要编辑 Base / 建仪表盘 |
+| `npm run feishu:feedback-write` | 手动反馈写入飞书反馈表 |
+| `npm run feedback:submit` | CLI 登记一条 UI 反馈 |
+| `npm run feedback:import` | 反馈 → 回归规则 |
+| `npm run feedback:docs` | 从 `ui-issues.json` 补生成 AI 分析文档 |
 | `npm run report:dashboard` | 飞书 UI 暂时没权限时的替代看板 |
 
 ---
@@ -148,10 +308,17 @@ npm run feishu:bitable
 |--------|------|------|
 | severity | 单选 | blocker / warning / noise |
 | script_key | 文本 | 脚本 |
-| compare_kind | 单选 | golden / cross-browser / run-drift |
+| compare_kind | 单选 | golden / cross-browser / run-drift / structure / style-drift |
 | difference_percent | 数字 | 差异百分比 |
 | route | 文本 | 路由 |
 | browser | 单选 | chrome / webkit |
+| source | 单选 | automated / manual |
+| reporter | 文本 | 登记人 |
+| description | 文本 | 问题描述 |
+| element_selector | 文本 | 目标选择器 |
+| element_xpath | 文本 | XPath |
+| ai_doc_path | 文本 | AI 分析文档路径 |
+| ai_doc_url | 超链接 | AI 分析文档链接 |
 
 ### 日汇总（daily）
 
@@ -165,9 +332,13 @@ npm run feishu:bitable
 | blocker_delta | 数字 | 较上日变化 |
 | warning_delta | 数字 | 较上日变化 |
 
+### UI 采集反馈（feedback）
+
+见 [第三节](#三ui-采集反馈表-setup手动登记)。
+
 ---
 
-## 推荐图表（8 个）
+## 推荐图表（9 个）
 
 ### ① 日趋势 · Blocker / Warning
 
@@ -245,6 +416,16 @@ npm run feishu:bitable
 | 指标 | blocker_count |
 | 聚合 | 最新值 / 最大值 |
 
+### ⑨ 待处理 UI 反馈（可选）
+
+| 项 | 值 |
+|----|-----|
+| 数据源 | UI采集反馈 |
+| 图表 | 表格 |
+| 列 | created_at、reporter、description、status、ai_doc_url |
+| 筛选 | status = 待处理 |
+| 排序 | created_at 降序 |
+
 ---
 
 ## 配置仪表盘 URL
@@ -298,13 +479,28 @@ https://xxx.feishu.cn/base/{appToken}?block={blockId}
 **Q: 申请编辑权限没反应？**  
 所有者是机器人，不会处理。用 `feishu:grant-bitable-editor` 代替。
 
+**Q: 客户报告「标注问题」失败？**  
+需先 `npm run studio`（默认 `http://localhost:3001`）。本地 `file://` 打开报告时会回连该地址。
+
+**Q: feedback:import 读不到飞书表？**  
+确认 `FEISHU_BITABLE_FEEDBACK_TABLE_ID` 与 `config/feedback-import.json` 字段名一致；`--local-only` 可仅导入本地 `manual-feedback.json`。
+
+**Q: AI 分析文档在哪？**  
+默认 `results/ui-feedback-docs/latest.md`（compact）；`latest.json` 存结构化索引。设 `UI_FEEDBACK_DOC_SPLIT=1` 可恢复每条单独 `.md`。compare / submit 后自动生成；单条导出：`npm run feedback:docs -- --export=<id> --out=tmp.md`。
+
 ---
 
 ## 关联脚本
 
 | 脚本 | 类型 |
 |------|------|
-| `scripts/feishu/write-bitable-report.ts` | 日常写入 |
+| `scripts/feishu/write-bitable-report.ts` | 日常写入（执行记录 / 问题明细 / 日汇总） |
+| `scripts/feishu/write-feedback-bitable.ts` | 手动反馈写入飞书 |
 | `scripts/feishu/setup-bitable-dashboard.ts` | 一次性 / 排障 |
 | `scripts/feishu/grant-bitable-editor.ts` | 一次性 / 按人 onboarding |
+| `scripts/feedback/import-feedback.ts` | 反馈 → 回归规则 |
+| `scripts/feedback/submit-manual-feedback.ts` | CLI 登记反馈 |
+| `scripts/report/ui-feedback-doc.ts` | AI 分析文档生成 |
+| `scripts/report/generate-feedback-docs.ts` | 从 ui-issues 补生成文档 |
+| `config/feedback-import.json` | 飞书反馈表字段映射 |
 | `scripts/report/generate-quality-dashboard.ts` | 日常 / 离线替代看板 |

@@ -1,5 +1,7 @@
 # 用例路径与环境分区
 
+> 索引：[docs/README.md](./README.md)
+
 用例、录制与截图按 **Playwright 环境**（`PLAYWRIGHT_ENV` / `datasource/base-config.json` 中的 env id）分区，避免在 stage 环境误跑 uat 用例。
 
 ## 路径约定

@@ -8,9 +8,14 @@ export default [
   {
     ignores: [
       'node_modules/**',
+      // 前端仓库本地克隆（index:frontend 产物，1G+ / 3 万文件）。
+      // 漏掉它会让 npm run lint 报出 12 万个问题，把真实问题彻底埋掉。
+      '.cache/**',
       'dist/**',
       'build/**',
       'playwright-report/**',
+      'public-reports/**',
+      'ci-artifacts/**',
       'test-results/**',
       'results/**',
       'screenshots/**',

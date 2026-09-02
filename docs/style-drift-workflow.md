@@ -1,5 +1,7 @@
 # Style-Drift 样式守护工作流
 
+> 索引：[docs/README.md](./README.md)
+
 本文档是 **Style-Drift UI 样式衰退检测** 的唯一记录入口。像素 diff 仍可用于 Visual Review 附件，但 **Gate 默认仅 style-drift + required structure**。
 
 ## 核心路径
