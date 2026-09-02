@@ -1,5 +1,5 @@
-import { type FrameLocator, type Locator, type Page, expect } from '@playwright/test';
-import { waitForAppRoot, type AppRoot } from '../utils/app-frame';
+import { type Locator, type Page, expect } from '@playwright/test';
+import { GenericListPage, type ListCatalog } from '../../flow-kit/list/generic-list-page';
 import {
   BUSINESS_TYPE_SELECT,
   COMBO_TRIGGER,
@@ -22,63 +22,58 @@ import {
   TABS,
 } from '../utils/approval-catalog';
 
-type Scope = FrameLocator | Page;
-
 /** 审批中心页签（dev 实机：待审批-全部 / 我的已办 / 抄送我 / 操作历史） */
 export type ApprovalTab = '待审批-全部' | '待审批' | '我的已办' | '已审批' | '抄送我' | '操作历史';
 
 /**
  * 审批列表页对象模型。
  *
+ * 通用列表能力（加载等待 / 读列 / 取单号 / 行定位）继承自 flow-kit 的 GenericListPage，
+ * 由 APPROVAL_LIST_CATALOG 描述本页差异；这里只保留审批特有动作：
+ * 页签切换、业务类型下拉、外露筛选填值、通过/驳回、详情断言。
+ *
  * 页面事实（dev 实机 + 源码）：
  * - 路由 /main/approve；列表 POST /api/approvals/pendingApproval
- * - 业务 DOM 在 iframe[src*="openBySelf=zoom"] 内（waitForAppRoot 处理）
+ * - 业务 DOM 在 iframe[src*="openBySelf=zoom"] 内
  * - 表格 .ant-table / .ant-table-tbody tr.ant-table-row（虚拟滚动，只校验视口内行）
  * - 搜索 placeholder「申请人/事由/单号」
  * - 筛选条：全部业务类型 Select、筛选面板、外露 ComboTrigger（单号等）、搜索/清除外露筛选值
  * - 行内操作列有「通过」「驳回」；点行打开全屏 .approve-entrance
  */
-export class ApprovalListPage {
-  readonly page: Page;
-  private root: AppRoot | null = null;
+export const APPROVAL_LIST_CATALOG: ListCatalog = {
+  name: '审批列表',
+  listPath: LIST_PATH,
+  urlPattern: /approve/,
+  listApiRe: LIST_API_RE,
+  table: TABLE,
+  row: ROW,
+  searchPlaceholder: SEARCH_PLACEHOLDER,
+  searchPlaceholderAlts: ['单号', '申请人'],
+  docNoColumn: FILTER_LABELS.docNo,
+  docNoRe: DOC_NO_RE,
+  emptyTextRe: /暂无数据|No Data|没有更多|暂无待审批/,
+  loadedTextRe: /我的审批|待审批/,
+  requireRowsOnLoad: true,
+  searchActionSearch: SEARCH_ACTION_SEARCH,
+  searchActionClear: SEARCH_ACTION_CLEAR,
+  comboTrigger: COMBO_TRIGGER,
+  comboClear: '.combo-trigger__clear',
+  clearLabels: [...EXPOSED_FILTER_FIELDS],
+  dashIsEmpty: false,
+};
 
+export class ApprovalListPage extends GenericListPage {
   constructor(page: Page) {
-    this.page = page;
+    super(page, APPROVAL_LIST_CATALOG);
   }
 
-  private scope(): Scope {
-    if (!this.root) {
-      throw new Error('ApprovalListPage：请先调用 goto()');
-    }
-    return this.root.scope;
+  /** 等待「待审批」主数据接口返回（可能在 goto 前已返回，故 catch 兜底） */
+  async waitPendingApi() {
+    await this.waitListApi();
   }
 
-  // ---------- 导航 / 加载 ----------
-
-  async goto() {
-    await this.page.goto(LIST_PATH, {
-      waitUntil: 'domcontentloaded',
-      timeout: 60_000,
-    });
-    this.root = await waitForAppRoot(this.page);
-  }
-
-  /** 已在审批列表时复用当前页，避免重复 goto 整页导航 */
-  async ensureOnList() {
-    if (!/\/approve/.test(this.page.url())) {
-      await this.goto();
-      await this.expectLoaded();
-      return;
-    }
-    if (!this.root) {
-      this.root = await waitForAppRoot(this.page);
-    }
-    await this.waitListSettled();
-    await this.expectListReady();
-  }
-
-  /** 用例间还原筛选，尽量走「清除外露筛选值」 */
-  async resetFilterState() {
+  /** 已在审批列表时还原筛选，尽量走「清除外露筛选值」 */
+  async resetFilterState(): Promise<void> {
     await this.closeFilterPanel().catch(() => undefined);
     await this.resetBusinessType().catch(() => undefined);
     if (await this.hasExposedClear()) {
@@ -89,145 +84,23 @@ export class ApprovalListPage {
     await this.expectListReady();
   }
 
-  async switchToPending() {
+  async switchToPending(): Promise<void> {
     await this.switchTab(TABS.pending);
     await this.expectListReady();
   }
 
-  /** 进入审批列表并断言「待审批」列表已加载出数据 */
-  async expectLoaded() {
-    await expect(this.page).toHaveURL(/approve/, { timeout: 60_000 });
-    await this.waitPendingApi();
-    await expect(
-      this.scope().getByText(/我的审批|待审批/).first()
-    ).toBeVisible({ timeout: 60_000 });
-    await expect(this.scope().locator(TABLE).first()).toBeVisible({
-      timeout: 60_000,
-    });
-    await this.waitListSettled();
-    await this.expectRowsGreaterThan(0);
-  }
-
-  /** 等待「待审批」主数据接口返回（可能在 goto 前已返回，故 catch 兜底） */
-  async waitPendingApi() {
-    await this.waitListApi();
-  }
-
-  /** 等待列表查询接口（待审批 / 已办 / 抄送）POST 200；超时返回 null */
-  async waitListApi(timeout = 20_000) {
-    return this.page
-      .waitForResponse(
-        (r) =>
-          LIST_API_RE.test(r.url()) &&
-          r.request().method() === 'POST' &&
-          r.status() === 200,
-        { timeout },
-      )
-      .catch(() => null);
-  }
-
-  /** 等 loading 遮罩消失 */
-  async waitListSettled() {
-    const spin = this.scope().locator('.ant-spin-spinning');
-    await spin.waitFor({ state: 'hidden', timeout: 60_000 }).catch(() => undefined);
-  }
-
-  /** 列表已就绪：要么渲染出数据行，要么出现空状态（适用于非待审批页签） */
-  async expectListReady() {
-    await this.waitListSettled();
-    await expect
-      .poll(
-        async () => {
-          const rows = await this.dataRows().count().catch(() => 0);
-          const empty = await this.scope()
-            .getByText(/暂无数据|No Data|没有更多|暂无待审批/)
-            .filter({ visible: true })
-            .count()
-            .catch(() => 0);
-          return rows > 0 || empty > 0;
-        },
-        { timeout: 20_000, message: '审批列表既无数据行也无空状态' }
-      )
-      .toBeTruthy();
-  }
-
-  dataRows(): Locator {
-    return this.scope().locator(ROW).filter({ visible: true });
-  }
-
-  /** 从当前列表首行解析单号；优先读「单号」列 */
-  async pickFirstDocNo(): Promise<string> {
-    try {
-      return (await this.pickFirstRowCell(FILTER_LABELS.docNo)).replace(/\s+/g, '');
-    } catch {
-      /* fallback regex */
-    }
-    const row = this.dataRows().first();
-    await expect(row, '列表没有可解析单号的数据行').toBeVisible({ timeout: 20_000 });
-    const text = (await row.innerText()).replace(/\s+/g, ' ');
-    const match = text.match(DOC_NO_RE) || text.match(/[A-Za-z0-9]{8,}/);
-    if (!match) {
-      throw new Error(`首行未解析到单号：${text.slice(0, 120)}`);
-    }
-    return match[0];
-  }
-
-  private headerCells(): Locator {
-    return this.scope().locator('.ant-table-thead th');
-  }
-
-  /** 按表头文案找列下标（支持子串，如「待审批-全部」页签下的标准列） */
-  async columnIndex(header: string): Promise<number> {
-    const headers = this.headerCells();
-    const count = await headers.count();
-    for (let i = 0; i < count; i += 1) {
-      const text = ((await headers.nth(i).innerText()) || '').replace(/\s+/g, ' ').trim();
-      if (!text || text === '+') continue;
-      if (text.includes(header) || header.includes(text)) return i;
-    }
-    throw new Error(`未找到列「${header}」`);
-  }
-
-  /** 取首行指定列单元格文本（用于筛选用例从列表取样） */
-  async pickFirstRowCell(header: string): Promise<string> {
-    const idx = await this.columnIndex(header);
-    const cell = this.dataRows().first().locator('td').nth(idx);
-    await expect(cell, `首行没有「${header}」列`).toBeVisible({ timeout: 20_000 });
-    const text = ((await cell.innerText()) || '').replace(/\s+/g, ' ').trim();
-    if (!text) throw new Error(`首行「${header}」为空`);
-    return text;
-  }
-
-  async expectFirstRowCellContains(header: string, value: string) {
-    const text = await this.pickFirstRowCell(header);
-    expect(text, `首行「${header}」=${text}，不含「${value}」`).toContain(value);
-  }
-
-  async expectRowsGreaterThan(n: number) {
-    await expect
-      .poll(async () => await this.dataRows().count().catch(() => 0), {
-        timeout: 20_000,
-        message: '审批列表未渲染出数据行',
-      })
-      .toBeGreaterThan(n);
-  }
-
   // ---------- 页签切换 ----------
 
-  /** 切换到指定页签（待审批 / 已审批 / 我发起的 / 抄送我），支持子串匹配 */
-  async switchTab(tab: ApprovalTab | string) {
-    const tabEl = this.scope()
-      .locator(TAB)
-      .filter({ hasText: tab })
-      .first();
+  /** 切换到指定页签（待审批 / 已审批 / 抄送我 / 操作历史），支持子串匹配 */
+  async switchTab(tab: ApprovalTab | string): Promise<void> {
+    const tabEl = this.scope().locator(TAB).filter({ hasText: tab }).first();
     await expect(tabEl, `未找到页签「${tab}」`).toBeVisible({ timeout: 20_000 });
 
-    const apiHint =
-      /已办|已审批/.test(String(tab))
-        ? '/api/approvals/approved'
-        : /抄送/.test(String(tab))
-          ? '/api/approvals/copiedToMe'
-          : LIST_API;
+    const apiHint = /已办|已审批/.test(String(tab))
+      ? '/api/approvals/approved'
+      : /抄送/.test(String(tab))
+        ? '/api/approvals/copiedToMe'
+        : LIST_API;
 
     for (let i = 0; i < 4; i += 1) {
       const respP = this.page.waitForResponse(
@@ -244,36 +117,40 @@ export class ApprovalListPage {
 
   // ---------- 搜索 ----------
 
-  async search(keyword: string) {
-    const input = this.scope()
-      .locator(`input[placeholder="${SEARCH_PLACEHOLDER}"], input[placeholder*="单号"], input[placeholder*="申请人"]`)
-      .first();
+  /** 触发列表刷新后等待：部分筛选/清除不会打列表接口，避免空等 waitListApi 满超时 */
+  private async withListMutation(action: () => Promise<void>, apiTimeout = 8_000): Promise<void> {
+    const respP = this.waitListApi(apiTimeout);
+    await action();
+    await Promise.race([respP, this.waitListSettled()]);
+    await this.waitListSettled();
+  }
+
+  override async search(keyword: string): Promise<void> {
+    const input = this.searchInput();
     await expect(input, '未找到审批列表搜索框').toBeVisible({ timeout: 15_000 });
     await input.click();
     await input.fill('');
     await input.fill(keyword);
 
-    const respP = this.waitListApi();
-    // 输入框旁搜索图标（a11y 名常为「图标: search」）；其次外露「搜索」文案；再退回 Enter
     const icon = this.scope()
       .getByRole('img', { name: /search/i })
       .or(this.scope().locator('.anticon-search'))
       .filter({ visible: true })
       .first();
     const textSearch = this.scope().getByText('搜索', { exact: true }).filter({ visible: true }).first();
-    if (await icon.isVisible({ timeout: 1_500 }).catch(() => false)) {
-      await icon.click();
-    } else if (await textSearch.isVisible({ timeout: 1_000 }).catch(() => false)) {
-      await textSearch.click();
-    } else {
-      await input.press('Enter');
-    }
-    await respP;
-    await this.waitListSettled();
+    await this.withListMutation(async () => {
+      if (await icon.isVisible({ timeout: 1_500 }).catch(() => false)) {
+        await icon.click();
+      } else if (await textSearch.isVisible({ timeout: 1_000 }).catch(() => false)) {
+        await textSearch.click();
+      } else {
+        await input.press('Enter');
+      }
+    });
   }
 
   /** 新建提交后审批列表偶发索引延迟：多次搜索直到行出现 */
-  async searchUntilRow(code: string, attempts = 4) {
+  async searchUntilRow(code: string, attempts = 4): Promise<void> {
     let lastErr: unknown;
     for (let i = 0; i < attempts; i += 1) {
       try {
@@ -302,7 +179,7 @@ export class ApprovalListPage {
     return this.scope().locator(FILTER_POP).first();
   }
 
-  async expectFilterBarVisible() {
+  async expectFilterBarVisible(): Promise<void> {
     await expect(
       this.scope().getByText(FILTER_LABELS.businessType).first(),
       '未找到「全部业务类型」',
@@ -312,7 +189,7 @@ export class ApprovalListPage {
     });
   }
 
-  async expectExposedFiltersVisible() {
+  async expectExposedFiltersVisible(): Promise<void> {
     for (const label of EXPOSED_FILTER_FIELDS) {
       await expect(this.exposedField(label), `未找到外露「${label}」`).toBeVisible({
         timeout: 15_000,
@@ -326,18 +203,18 @@ export class ApprovalListPage {
     });
   }
 
-  async isFilterPanelOpen() {
+  async isFilterPanelOpen(): Promise<boolean> {
     return this.filterPanel().isVisible({ timeout: 1_000 }).catch(() => false);
   }
 
-  async openFilterPanel() {
+  async openFilterPanel(): Promise<void> {
     if (await this.isFilterPanelOpen()) return;
     await expect(this.filterTrigger()).toBeVisible({ timeout: 15_000 });
     await this.filterTrigger().click();
     await this.expectFilterPanelVisible();
   }
 
-  async expectFilterPanelVisible() {
+  async expectFilterPanelVisible(): Promise<void> {
     await expect(this.filterPanel(), '筛选面板未打开').toBeVisible({
       timeout: 15_000,
     });
@@ -347,7 +224,7 @@ export class ApprovalListPage {
     ).toBeVisible({ timeout: 15_000 });
   }
 
-  async closeFilterPanel() {
+  async closeFilterPanel(): Promise<void> {
     if (!(await this.isFilterPanelOpen())) return;
     const closeIcon = this.scope()
       .locator('.advanced-search-filter-title')
@@ -378,30 +255,23 @@ export class ApprovalListPage {
   }
 
   /** 切换业务类型；不传则选第一条非「全部」；选完等列表刷新 */
-  async selectBusinessType(name?: string) {
+  async selectBusinessType(name?: string): Promise<void> {
     const select = this.scope().locator(BUSINESS_TYPE_SELECT).first();
     await expect(select, '未找到业务类型下拉').toBeVisible({ timeout: 15_000 });
-    const respP = this.waitListApi();
     await select.click();
-    const dropdown = this.scope()
-      .locator('.ant-select-dropdown:visible')
-      .last();
+    const dropdown = this.scope().locator('.ant-select-dropdown:visible').last();
     await expect(dropdown).toBeVisible({ timeout: 10_000 });
-    const items = dropdown.locator(
-      '.ant-select-dropdown-menu-item, .ant-select-item-option',
-    );
+    const items = dropdown.locator('.ant-select-dropdown-menu-item, .ant-select-item-option');
     const option = name
       ? items.filter({ hasText: name }).first()
       : items.filter({ hasNotText: /全部业务类型/ }).first();
     await expect(option, `业务类型下拉没有「${name || '非全部'}」`).toBeVisible({
       timeout: 10_000,
     });
-    await option.click();
-    await respP;
-    await this.waitListSettled();
+    await this.withListMutation(() => option.click());
   }
 
-  async resetBusinessType() {
+  async resetBusinessType(): Promise<void> {
     const select = this.scope().locator(BUSINESS_TYPE_SELECT).first();
     const current = ((await select.innerText()) || '').replace(/\s+/g, ' ');
     if (/全部业务类型/.test(current)) return;
@@ -415,7 +285,7 @@ export class ApprovalListPage {
       .first();
   }
 
-  async fillExposedField(label: string, value: string) {
+  async fillExposedField(label: string, value: string): Promise<void> {
     if (label === FILTER_LABELS.company) {
       await this.selectExposedCompany(value);
       return;
@@ -457,7 +327,7 @@ export class ApprovalListPage {
   }
 
   /** 单据公司：弹窗「选择公司」 */
-  async selectExposedCompany(search?: string) {
+  async selectExposedCompany(search?: string): Promise<void> {
     const trigger = this.exposedField(FILTER_LABELS.company);
     await expect(trigger).toBeVisible({ timeout: 15_000 });
     await trigger.locator('.combo-trigger__toggle').click();
@@ -501,7 +371,7 @@ export class ApprovalListPage {
   }
 
   /** 提交日期：只读日历，点选日期格 */
-  async fillExposedDate(value: string) {
+  async fillExposedDate(value: string): Promise<void> {
     const m = value.match(/(\d{4})-(\d{2})-(\d{2})/);
     if (!m) throw new Error(`日期格式无效：${value}`);
     const title = `${m[1]}-${m[2]}-${m[3]}`;
@@ -515,7 +385,9 @@ export class ApprovalListPage {
     }
 
     const calendar = this.scope()
-      .locator('.ant-calendar-picker-container:visible, .ant-calendar:visible, .ant-picker-dropdown:visible')
+      .locator(
+        '.ant-calendar-picker-container:visible, .ant-calendar:visible, .ant-picker-dropdown:visible',
+      )
       .last();
     await expect(calendar).toBeVisible({ timeout: 10_000 });
 
@@ -524,7 +396,11 @@ export class ApprovalListPage {
       await byTitle.click();
     } else {
       const day = String(Number(m[3]));
-      await calendar.locator('.ant-calendar-date, .ant-picker-cell-inner').filter({ hasText: day }).first().click();
+      await calendar
+        .locator('.ant-calendar-date, .ant-picker-cell-inner')
+        .filter({ hasText: day })
+        .first()
+        .click();
     }
 
     const endCell = calendar.locator(`td[title="${title}"], td[title*="${title}"]`).first();
@@ -534,35 +410,39 @@ export class ApprovalListPage {
     await this.page.keyboard.press('Escape').catch(() => undefined);
   }
 
-  async fillExposedDocNo(docNo: string) {
+  async fillExposedDocNo(docNo: string): Promise<void> {
+    const trigger = this.exposedField(FILTER_LABELS.docNo);
+    await expect(trigger, `未找到外露「${FILTER_LABELS.docNo}」筛选`).toBeVisible({
+      timeout: 15_000,
+    });
+    const input = trigger.locator('input:not([readonly])').first();
+    if (await input.isVisible({ timeout: 1_500 }).catch(() => false)) {
+      await input.fill('');
+      await input.fill(docNo);
+      return;
+    }
     await this.fillExposedField(FILTER_LABELS.docNo, docNo);
   }
 
-  async filterByExposedField(label: string, value: string) {
+  async filterByExposedField(label: string, value: string): Promise<void> {
     await this.fillExposedField(label, value);
     await this.clickExposedSearch();
   }
 
-  async clickExposedSearch() {
+  async clickExposedSearch(): Promise<void> {
     const btn = this.scope().locator(SEARCH_ACTION_SEARCH).first();
     await expect(btn, '未找到「搜索」').toBeVisible({ timeout: 10_000 });
-    const respP = this.waitListApi();
-    await btn.click();
-    await respP;
-    await this.waitListSettled();
+    await this.withListMutation(() => btn.click());
   }
 
-  async clearExposedFilters() {
+  async clearExposedFilters(): Promise<void> {
     const btn = this.scope().locator(SEARCH_ACTION_CLEAR).first();
     await expect(btn, '未找到「清除外露筛选值」').toBeVisible({ timeout: 10_000 });
-    const respP = this.waitListApi();
-    await btn.click();
-    await respP;
-    await this.waitListSettled();
+    await this.withListMutation(() => btn.click());
   }
 
   /** 在筛选面板里给指定字段填值（字段已存在则直接填，否则添加条件） */
-  async fillFilterPanelField(label: string, value: string) {
+  async fillFilterPanelField(label: string, value: string): Promise<void> {
     await this.openFilterPanel();
     const rows = this.scope().locator(FILTER_ROW);
     const hit = rows.filter({ hasText: label }).first();
@@ -579,7 +459,9 @@ export class ApprovalListPage {
     const lastRow = rows.last();
     await lastRow.locator('.ant-select').first().click();
     const opt = this.scope()
-      .locator('.ant-select-dropdown:visible .ant-select-dropdown-menu-item, .ant-select-dropdown:visible .ant-select-item-option')
+      .locator(
+        '.ant-select-dropdown:visible .ant-select-dropdown-menu-item, .ant-select-dropdown:visible .ant-select-item-option',
+      )
       .filter({ hasText: label })
       .first();
     await expect(opt, `筛选字段没有「${label}」`).toBeVisible({ timeout: 10_000 });
@@ -589,24 +471,21 @@ export class ApprovalListPage {
     await input.fill(value);
   }
 
-  async submitFilterPanel() {
+  async submitFilterPanel(): Promise<void> {
     const btn = this.filterPanel()
       .locator('.search-btn')
       .or(this.filterPanel().getByRole('button', { name: FILTER_LABELS.search }))
       .first();
     await expect(btn, '筛选面板没有「搜索」').toBeVisible({ timeout: 10_000 });
-    const respP = this.waitListApi();
-    await btn.click();
-    await respP;
-    await this.waitListSettled();
+    await this.withListMutation(() => btn.click());
   }
 
-  async filterByPanelField(label: string, value: string) {
+  async filterByPanelField(label: string, value: string): Promise<void> {
     await this.fillFilterPanelField(label, value);
     await this.submitFilterPanel();
   }
 
-  async clearFilterPanel() {
+  async clearFilterPanel(): Promise<void> {
     await this.openFilterPanel();
     const clearBtn = this.scope()
       .locator('.advanced-search-filter-footer')
@@ -615,40 +494,32 @@ export class ApprovalListPage {
       await this.closeFilterPanel();
       return;
     }
-    const respP = this.waitListApi();
-    await clearBtn.click();
+    await this.withListMutation(async () => {
+      await clearBtn.click();
+    });
     if (await this.isFilterPanelOpen()) {
       await this.submitFilterPanel();
-    } else {
-      await respP;
-      await this.waitListSettled();
     }
   }
 
   /** 取首行单号并走顶部关键词搜索 */
-  async searchByFirstDocNo() {
+  async searchByFirstDocNo(): Promise<string> {
     const docNo = await this.pickFirstDocNo();
     await this.search(docNo);
     await this.expectRowContains(docNo);
     return docNo;
   }
 
-  async expectRowContains(text: string) {
-    await expect(this.rowByCode(text), `筛选后未看到「${text}」`).toBeVisible({
-      timeout: 20_000,
-    });
-  }
-
-  async hasExposedDocNo() {
+  async hasExposedDocNo(): Promise<boolean> {
     return this.exposedField(FILTER_LABELS.docNo).isVisible({ timeout: 3_000 }).catch(() => false);
   }
 
-  async hasExposedClear() {
+  async hasExposedClear(): Promise<boolean> {
     return this.scope().locator(SEARCH_ACTION_CLEAR).isVisible({ timeout: 3_000 }).catch(() => false);
   }
 
   /** 优先走外露单号；没有外露则打开筛选面板填单号 */
-  async filterByDocNo(docNo: string) {
+  async filterByDocNo(docNo: string): Promise<void> {
     if (await this.hasExposedDocNo()) {
       await this.filterByExposedField(FILTER_LABELS.docNo, docNo);
       return;
@@ -658,7 +529,7 @@ export class ApprovalListPage {
   }
 
   /** 清除外露筛选；没有外露清除时走面板「清除筛选值」 */
-  async clearFilters() {
+  async clearFilters(): Promise<void> {
     if (await this.hasExposedClear()) {
       await this.clearExposedFilters();
       return;
@@ -682,7 +553,7 @@ export class ApprovalListPage {
   // ---------- 打开单据详情 ----------
 
   /** 打开列表第一条数据行的详情 */
-  async openFirstRow() {
+  async openFirstRow(): Promise<void> {
     const row = this.dataRows().first();
     await expect(row).toBeVisible({ timeout: 20_000 });
     const code = await this.pickFirstDocNo();
@@ -690,20 +561,25 @@ export class ApprovalListPage {
     await this.waitDetailVisible();
   }
 
-  async openByCode(code: string) {
+  override async openByCode(code: string): Promise<void> {
     const row = this.rowByCode(code);
     await expect(row, `未找到单据「${code}」，请确认其存在于当前列表`).toBeVisible({
       timeout: 20_000,
     });
-    await row.getByText(code).first().click();
+    await this.closeFilterPanel().catch(() => undefined);
+    await this.waitListSettled();
+    await row.scrollIntoViewIfNeeded();
+    const cell = row.locator('td', { hasText: code }).first();
+    const target = (await cell.count()) > 0 ? cell : row.getByText(code).first();
+    try {
+      await target.click({ timeout: 8_000 });
+    } catch {
+      await target.click({ force: true, timeout: 8_000 });
+    }
     await this.waitDetailVisible();
   }
 
-  rowByCode(code: string): Locator {
-    return this.dataRows()
-      .filter({ has: this.scope().locator('td, [class*="cell"]', { hasText: code }) })
-      .first();
-  }
+  // ---------- 详情断言 ----------
 
   /** 全屏详情（dev 实机为 .approve-entrance，不是 .ant-modal） */
   detailEntrance(): Locator {
@@ -720,14 +596,14 @@ export class ApprovalListPage {
     return this.scope().getByText(/详情|审批意见|基本信息|操作历史|单号/);
   }
 
-  async waitDetailVisible() {
+  async waitDetailVisible(): Promise<void> {
     const entrance = this.scope().locator(`${DETAIL}, .full-screen, .full-screen-mask`).first();
     await expect(entrance, '未打开审批详情（.approve-entrance / full-screen）').toBeVisible({
       timeout: 20_000,
     });
   }
 
-  async expectDetailVisible() {
+  async expectDetailVisible(): Promise<void> {
     await this.waitDetailVisible();
   }
 
@@ -747,7 +623,7 @@ export class ApprovalListPage {
   }
 
   /** 在指定行（或首行）的操作列点击「通过」；若弹出意见框则自动填写 */
-  async approveRow(comment?: string, code?: string) {
+  async approveRow(comment?: string, code?: string): Promise<void> {
     if (code) {
       await expect(this.rowByCode(code), `未找到单据「${code}」`).toBeVisible({ timeout: 20_000 });
     } else {
@@ -761,7 +637,7 @@ export class ApprovalListPage {
   }
 
   /** 在指定行（或首行）的操作列点击「驳回」；若弹出意见框则自动填写 */
-  async rejectRow(comment?: string, code?: string) {
+  async rejectRow(comment?: string, code?: string): Promise<void> {
     if (code) {
       await expect(this.rowByCode(code), `未找到单据「${code}」`).toBeVisible({ timeout: 20_000 });
     } else {
@@ -779,7 +655,7 @@ export class ApprovalListPage {
   }
 
   /** 点击通过/驳回后，填写意见并点弹窗内「确定」 */
-  private async fillCommentDialogIfNeeded(comment?: string, required = false) {
+  private async fillCommentDialogIfNeeded(comment?: string, required = false): Promise<void> {
     if (!comment) return;
     const dialog = this.scope()
       .getByRole('dialog')
@@ -812,11 +688,10 @@ export class ApprovalListPage {
 
     const ok = dialog.getByRole('button', { name: /^确\s*定$/ }).filter({ visible: true }).last();
     await expect(ok, '审批意见弹窗未找到「确定」').toBeVisible({ timeout: 8_000 });
-    const respP = this.waitListApi(15_000);
-    await ok.click();
-    await expect(dialog).toBeHidden({ timeout: 20_000 });
-    await respP;
-    await this.waitListSettled();
+    await this.withListMutation(async () => {
+      await ok.click();
+      await expect(dialog).toBeHidden({ timeout: 20_000 });
+    }, 15_000);
   }
 
   private async fillDialogComment(dialog: Locator, comment: string): Promise<boolean> {
@@ -832,11 +707,14 @@ export class ApprovalListPage {
     for (const target of targets) {
       if (!(await target.isVisible({ timeout: 500 }).catch(() => false))) continue;
       await target.click();
-      const ok = await target.fill(comment).then(() => true).catch(async () => {
-        await this.page.keyboard.press('Meta+a').catch(() => this.page.keyboard.press('Control+a'));
-        await this.page.keyboard.type(comment, { delay: 15 });
-        return true;
-      });
+      const ok = await target
+        .fill(comment)
+        .then(() => true)
+        .catch(async () => {
+          await this.page.keyboard.press('Meta+a').catch(() => this.page.keyboard.press('Control+a'));
+          await this.page.keyboard.type(comment, { delay: 15 });
+          return true;
+        });
       if (ok) return true;
     }
 
@@ -858,7 +736,7 @@ export class ApprovalListPage {
   }
 
   /** 填写「审批意见」（详情弹窗场景） */
-  async fillApprovalComment(comment: string) {
+  async fillApprovalComment(comment: string): Promise<void> {
     const ta = this.scope()
       .locator(`${DETAIL} textarea, .approve-bar textarea, .ant-modal textarea, .ant-drawer textarea`)
       .first();
@@ -867,31 +745,25 @@ export class ApprovalListPage {
   }
 
   /** 审批通过（带意见），并兜底处理二次确认弹窗 */
-  async approve(comment: string) {
+  async approve(comment: string): Promise<void> {
     await this.fillApprovalComment(comment);
-    const btn = this.scope()
-      .getByRole('button', { name: /通\s*过|同\s*意|批\s*准/ })
-      .last();
+    const btn = this.scope().getByRole('button', { name: /通\s*过|同\s*意|批\s*准/ }).last();
     await expect(btn).toBeVisible({ timeout: 15_000 });
     await btn.click();
     await this.confirmIfNeeded();
   }
 
   /** 审批驳回（带意见），并兜底处理二次确认弹窗 */
-  async reject(comment: string) {
+  async reject(comment: string): Promise<void> {
     await this.fillApprovalComment(comment);
-    const btn = this.scope()
-      .getByRole('button', { name: /驳\s*回|拒\s*绝/ })
-      .last();
+    const btn = this.scope().getByRole('button', { name: /驳\s*回|拒\s*绝/ }).last();
     await expect(btn).toBeVisible({ timeout: 15_000 });
     await btn.click();
     await this.confirmIfNeeded();
   }
 
-  private async confirmIfNeeded() {
-    const confirm = this.scope()
-      .getByRole('button', { name: /确\s*定|确\s*认/ })
-      .last();
+  private async confirmIfNeeded(): Promise<void> {
+    const confirm = this.scope().getByRole('button', { name: /确\s*定|确\s*认/ }).last();
     if (await confirm.isVisible({ timeout: 3000 }).catch(() => false)) {
       await confirm.click();
     }
@@ -900,7 +772,7 @@ export class ApprovalListPage {
   // ---------- 结果校验 ----------
 
   /** 断言出现审批成功类提示；toast 闪过时用「待审批行消失」兜底 */
-  async expectApprovalSuccess(goneText?: string) {
+  async expectApprovalSuccess(goneText?: string): Promise<void> {
     const msg = /审批成功|驳回成功|提交成功|操作成功|已通过|已驳回|审批完成|处理成功/;
     const toast = this.scope()
       .locator('.ant-message, .ant-notification')
@@ -925,7 +797,7 @@ export class ApprovalListPage {
   }
 
   /** 断言回到列表（详情关闭、表格可见） */
-  async expectBackToList() {
+  async expectBackToList(): Promise<void> {
     await expect(this.scope().locator(TABLE).first()).toBeVisible({
       timeout: 20_000,
     });

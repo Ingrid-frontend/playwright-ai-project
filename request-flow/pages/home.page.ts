@@ -1,20 +1,5 @@
-import { type Locator, type Page, expect } from '@playwright/test';
-
-export class HomePage {
-  readonly page: Page;
-  readonly heading: Locator;
-
-  constructor(page: Page) {
-    this.page = page;
-    this.heading = page.getByRole('heading').first();
-  }
-
-  async goto() {
-    await this.page.goto('/');
-  }
-
-  async expectLoaded() {
-    await expect(this.page).not.toHaveTitle('');
-    await expect(this.page.locator('body')).toBeVisible();
-  }
-}
+/**
+ * 已迁移到共享包 flow-kit（见 docs/flow-kit-and-flow-new.md）。
+ * 这里保留转发，避免改动既有 import。
+ */
+export * from '../../flow-kit/pages/home.page';

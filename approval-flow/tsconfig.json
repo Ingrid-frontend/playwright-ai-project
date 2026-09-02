@@ -15,7 +15,6 @@
     "pages/**/*.ts",
     "fixtures/**/*.ts",
     "utils/**/*.ts",
-    "../request-flow/utils/request-fields.ts",
-    "../request-flow/utils/feishu-api-failure.ts"
+    "../flow-kit/**/*.ts"
   ]
 }

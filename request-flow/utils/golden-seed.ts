@@ -1,44 +1,13 @@
-import fs from 'fs';
-import path from 'path';
+import { createGoldenSeedResolver } from '../../flow-kit/utils/golden-seed';
 
-type GoldenSeedEntry = {
-  requestDocNo?: string;
-  requestFilterKeyword?: string;
-};
+/**
+ * 申请单 Golden 种子：request-flow/datasource/golden-seeds.json
+ * { "<env>": { "<roleSlug>": { requestDocNo, requestFilterKeyword } } }
+ */
+export const resolveGoldenSeed = createGoldenSeedResolver({
+  seedsRel: 'request-flow/datasource/golden-seeds.json',
+  docNoKeys: ['requestDocNo', 'docNo'],
+  keywordKeys: ['requestFilterKeyword', 'keyword'],
+});
 
-const SEEDS_REL = path.join('request-flow', 'datasource', 'golden-seeds.json');
-
-function readSeedsFile(repoRoot?: string): Record<string, Record<string, GoldenSeedEntry>> {
-  const roots = repoRoot
-    ? [path.join(repoRoot, SEEDS_REL)]
-    : [
-        path.join(process.cwd(), SEEDS_REL),
-        path.join(process.cwd(), '..', SEEDS_REL),
-      ];
-  for (const abs of roots) {
-    if (!fs.existsSync(abs)) continue;
-    try {
-      const data = JSON.parse(fs.readFileSync(abs, 'utf8'));
-      return data && typeof data === 'object' ? data : {};
-    } catch {
-      return {};
-    }
-  }
-  return {};
-}
-
-export function resolveGoldenSeed(
-  envId: string,
-  roleSlug: string,
-  repoRoot?: string,
-): { docNo: string; keyword: string } {
-  const env = String(envId || 'dev').trim();
-  const slug = String(roleSlug || '').trim();
-  const seeds = readSeedsFile(repoRoot);
-  const bucket = seeds[env] || {};
-  const entry = (slug && bucket[slug]) || bucket['*'] || bucket.default || {};
-  return {
-    docNo: String(entry.requestDocNo || '').trim(),
-    keyword: String(entry.requestFilterKeyword || '').trim(),
-  };
-}
+export type { GoldenSeed } from '../../flow-kit/utils/golden-seed';

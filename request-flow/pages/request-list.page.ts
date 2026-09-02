@@ -1,6 +1,6 @@
-import { type FrameLocator, type Locator, type Page, expect } from '@playwright/test';
+import { type Locator, type Page, expect } from '@playwright/test';
+import { GenericListPage, type ListCatalog } from '../../flow-kit/list/generic-list-page';
 import { RequestEditPage } from './request-edit.page';
-import { waitForAppRoot, type AppRoot } from '../utils/app-frame';
 import {
   COMBO_CLEAR,
   COMBO_TRIGGER,
@@ -16,156 +16,58 @@ import {
   TABLE,
 } from '../utils/request-catalog';
 
-type Scope = FrameLocator | Page;
+/**
+ * 申请单列表页对象模型。
+ *
+ * 通用列表能力（加载等待 / 读列 / 取单号 / 清筛选 / 行定位）全部继承自
+ * flow-kit 的 GenericListPage，由 REQUEST_LIST_CATALOG 描述本页差异；
+ * 这里只保留申请单特有的动作：事由筛选、新建单据、草稿复用处理。
+ *
+ * 页面事实（dev 实机 + 源码）：
+ * - 路由 /main/request；列表 POST /api/applications/v4/search
+ * - 业务 DOM 在 iframe[src*="openBySelf=zoom"] 内
+ * - 表格 .application-table-v2 .ant-table / .ant-table-tbody tr.ant-table-row
+ * - 搜索 placeholder「申请单号」；筛选条：高级搜索 + 外露 ComboTrigger（创建日期/状态…）
+ */
+export const REQUEST_LIST_CATALOG: ListCatalog = {
+  name: '申请单列表',
+  listPath: LIST_PATH,
+  urlPattern: /request/,
+  listApiRe: LIST_API_RE,
+  table: TABLE,
+  row: ROW,
+  rowFallback: '.application-table-v2 .ant-table-tbody > tr[data-row-key]',
+  searchPlaceholder: SEARCH_PLACEHOLDER,
+  searchPlaceholderAlts: ['申请单号'],
+  docNoColumn: FILTER_LABELS.docNo,
+  docNoRe: DOC_NO_RE,
+  emptyTextRe: /暂无数据|No Data/,
+  loadedTextRe: /申请单/,
+  requireRowsOnLoad: false,
+  searchActionSearch: SEARCH_ACTION_SEARCH,
+  searchActionClear: SEARCH_ACTION_CLEAR,
+  comboTrigger: COMBO_TRIGGER,
+  comboClear: COMBO_CLEAR,
+  clearLabels: [
+    FILTER_LABELS.createdDate,
+    FILTER_LABELS.status,
+    FILTER_LABELS.submitDate,
+    FILTER_LABELS.applicant,
+    FILTER_LABELS.company,
+    FILTER_LABELS.formName,
+  ],
+  dashIsEmpty: true,
+};
 
-export class RequestListPage {
-  readonly page: Page;
-  private root: AppRoot | null = null;
-
+export class RequestListPage extends GenericListPage {
   constructor(page: Page) {
-    this.page = page;
+    super(page, REQUEST_LIST_CATALOG);
   }
 
-  private scope(): Scope {
-    if (!this.root) {
-      throw new Error('RequestListPage：请先调用 goto()');
-    }
-    return this.root.scope;
-  }
-
-  async goto() {
-    await this.page.goto(LIST_PATH, {
-      waitUntil: 'domcontentloaded',
-      timeout: 60_000,
-    });
-    this.root = await waitForAppRoot(this.page);
-  }
-
-  async ensureOnList() {
-    if (!/\/request/.test(this.page.url())) {
-      await this.goto();
-      await this.expectLoaded();
-      return;
-    }
-    if (!this.root) {
-      this.root = await waitForAppRoot(this.page);
-    }
-    await this.waitListSettled();
-    await this.expectListReady();
-  }
-
-  async expectLoaded() {
-    await expect(this.page).toHaveURL(/request/, { timeout: 60_000 });
-    await this.waitListApi();
-    await expect(this.scope().getByText(/申请单/).first()).toBeVisible({ timeout: 60_000 });
-    await expect(this.scope().locator(TABLE).first()).toBeVisible({ timeout: 60_000 });
-    await this.waitListSettled();
-    await this.expectListReady();
-  }
-
-  async waitListApi(timeout = 20_000) {
-    return this.page
-      .waitForResponse(
-        (r) =>
-          LIST_API_RE.test(r.url()) &&
-          r.request().method() === 'POST' &&
-          r.status() === 200,
-        { timeout },
-      )
-      .catch(() => null);
-  }
-
-  async waitListSettled() {
-    const spin = this.scope().locator('.ant-spin-spinning');
-    await spin.waitFor({ state: 'hidden', timeout: 60_000 }).catch(() => undefined);
-  }
-
-  async expectListReady() {
-    await this.waitListSettled();
-    await expect
-      .poll(
-        async () => {
-          const rows = await this.dataRows().count().catch(() => 0);
-          const empty = await this.scope()
-            .getByText(/暂无数据|No Data/)
-            .filter({ visible: true })
-            .count()
-            .catch(() => 0);
-          return rows > 0 || empty > 0;
-        },
-        { timeout: 20_000, message: '申请单列表既无数据行也无空状态' },
-      )
-      .toBeTruthy();
-  }
-
-  dataRows(): Locator {
-    return this.scope()
-      .locator(`${ROW}, .application-table-v2 .ant-table-tbody > tr[data-row-key]`)
-      .filter({ hasNot: this.scope().locator('.ant-table-placeholder') })
-      .filter({ visible: true });
-  }
-
-  async hasDataRows(): Promise<boolean> {
-    return (await this.dataRows().count().catch(() => 0)) > 0;
-  }
-
-  private listRowsFromBody(body: unknown): Record<string, unknown>[] {
-    if (!body || typeof body !== 'object') return [];
-    const obj = body as Record<string, unknown>;
-    const nested =
-      obj.data && typeof obj.data === 'object' ? (obj.data as Record<string, unknown>) : null;
-    const rows =
-      (Array.isArray(obj.rows) && obj.rows) ||
-      (Array.isArray(obj.data) && obj.data) ||
-      (nested && Array.isArray(nested.rows) && nested.rows) ||
-      (nested && Array.isArray(nested.content) && nested.content) ||
-      (Array.isArray(obj.content) && obj.content) ||
-      [];
-    return rows.filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === 'object');
-  }
-
-  private docNoFromRow(row: Record<string, unknown>): string {
-    const candidates = [
-      row.businessCode,
-      row.documentNumber,
-      row.formCode,
-      row.applicationCode,
-      row.code,
-    ];
-    for (const val of candidates) {
-      const text = String(val || '').replace(/\s+/g, '').trim();
-      if (text && text !== '-' && (DOC_NO_RE.test(text) || text.length >= 8)) return text;
-    }
-    const blob = JSON.stringify(row);
-    const match = blob.match(DOC_NO_RE) || blob.match(/[A-Za-z0-9]{10,}/);
-    return match?.[0] || '';
-  }
-
-  /** 列表 UI 无行时，从最近一次 search 接口响应解析单号 */
-  async readDocNoFromListApi(opts: { refresh?: boolean } = {}): Promise<string> {
-    if (opts.refresh) {
-      await this.clickFilterSearch();
-    }
-    const resp = await this.page
-      .waitForResponse(
-        (r) =>
-          LIST_API_RE.test(r.url()) &&
-          r.request().method() === 'POST' &&
-          r.status() === 200,
-        { timeout: 20_000 },
-      )
-      .catch(() => null);
-    if (!resp) return '';
-    const body = await resp.json().catch(() => null);
-    for (const row of this.listRowsFromBody(body)) {
-      const docNo = this.docNoFromRow(row);
-      if (docNo) return docNo;
-    }
-    return '';
-  }
+  // ---------- 申请单特有的筛选组合 ----------
 
   /** 清掉顶栏单号搜索与高级筛选，避免 Golden 串行用例读到空列表 */
-  async clearListQuery() {
+  async clearListQuery(): Promise<void> {
     await this.clearDocNoSearch();
     await this.clearExposedFilters();
     await this.clearAllExposedComboFilters();
@@ -188,211 +90,117 @@ export class RequestListPage {
     return this.hasDataRows();
   }
 
-  private exposedComboByLabel(label: string | RegExp): Locator {
-    return this.scope()
-      .locator(COMBO_TRIGGER)
-      .filter({ has: this.scope().locator('.combo-trigger__label', { hasText: label }) })
-      .filter({ visible: true })
-      .first();
-  }
-
-  private async clickComboClear(trigger: Locator): Promise<boolean> {
-    const clears = [
-      trigger.locator(COMBO_CLEAR),
-      trigger.locator('.anticon-close'),
-      trigger.locator('.anticon-close-circle'),
-      trigger.locator('[class*="clear"]'),
-    ];
-    for (const clear of clears) {
-      const btn = clear.filter({ visible: true }).first();
-      if (!(await btn.isVisible({ timeout: 300 }).catch(() => false))) continue;
-      const respP = this.waitListApi();
-      await btn.click({ force: true });
-      await respP.catch(() => null);
-      await this.waitListSettled();
-      return true;
-    }
-    return false;
-  }
-
-  private async clearExposedComboByLabel(label: string | RegExp): Promise<boolean> {
-    const trigger = this.exposedComboByLabel(label);
-    if (await trigger.isVisible({ timeout: 500 }).catch(() => false)) {
-      if (await this.clickComboClear(trigger)) return true;
-    }
-    const tag = this.scope()
-      .locator('.combo-trigger, [class*="filter-tag"], [class*="search-tag"]')
-      .filter({ hasText: label })
-      .filter({ visible: true })
-      .first();
-    if (await tag.isVisible({ timeout: 300 }).catch(() => false)) {
-      return this.clickComboClear(tag);
-    }
-    return false;
-  }
-
-  /** 清掉外露 combo（创建日期、状态等）上的 × */
-  private async clearAllExposedComboFilters() {
-    const labels: Array<string | RegExp> = [
-      FILTER_LABELS.createdDate,
-      FILTER_LABELS.status,
-      FILTER_LABELS.submitDate,
-      FILTER_LABELS.applicant,
-      FILTER_LABELS.company,
-      FILTER_LABELS.formName,
-    ];
-    for (const label of labels) {
-      for (let i = 0; i < 3; i += 1) {
-        if (!(await this.clearExposedComboByLabel(label))) break;
-        await this.page.waitForTimeout(350);
-      }
-    }
-
-    const roots = [
-      this.advancedSearchRoot(),
-      this.scope().locator('.advanced-table-search-head, .search-action-bar').first(),
-    ];
-    for (const root of roots) {
-      for (let i = 0; i < 8; i += 1) {
-        const clear = root
-          .locator(`${COMBO_CLEAR}, .combo-trigger .anticon-close, .combo-trigger .anticon-close-circle`)
-          .filter({ visible: true })
-          .first();
-        if (!(await clear.isVisible({ timeout: 300 }).catch(() => false))) break;
-        const respP = this.waitListApi();
-        await clear.click({ force: true });
-        await respP.catch(() => null);
-        await this.waitListSettled();
-        await this.page.waitForTimeout(350);
-      }
-    }
-  }
-
-  private advancedSearchRoot(): Locator {
-    return this.scope().locator('.advanced-search, .advanced-table-search').filter({ visible: true }).first();
-  }
-
-  private async clearExposedFilters() {
-    const btn = this.scope().locator(SEARCH_ACTION_CLEAR).first();
-    if (!(await btn.isVisible({ timeout: 1_000 }).catch(() => false))) return;
-    const respP = this.waitListApi();
-    await btn.click();
-    await respP;
-    await this.waitListSettled();
-  }
-
-  /** 点 fixed 外露项（如创建日期）上的 ×；重置只会恢复默认日期，不能代替这一步 */
-  private async clearCreatedDateFilter() {
-    await this.clearExposedComboByLabel(FILTER_LABELS.createdDate);
-  }
-
-  private async clearFixedFilterTags() {
-    await this.clearAllExposedComboFilters();
-  }
-
-  private async clickFilterSearch() {
-    const btn = this.scope()
-      .locator(SEARCH_ACTION_SEARCH)
-      .or(this.scope().getByRole('button', { name: /搜\s*索|查\s*询/ }))
-      .filter({ visible: true })
-      .first();
-    if (!(await btn.isVisible({ timeout: 1_000 }).catch(() => false))) return;
-    const respP = this.waitListApi();
-    await btn.click();
-    await respP;
-    await this.waitListSettled();
-  }
-
-  async expectSearchEmpty(timeout = 5_000) {
-    const input = this.searchInput();
-    await expect(input).toBeVisible({ timeout });
-    await expect
-      .poll(async () => ((await input.inputValue().catch(() => '')) || '').trim(), {
-        timeout,
-        message: '单号搜索框未清空',
-      })
-      .toBe('');
-  }
-
-  private async clearDocNoSearch() {
-    const input = this.searchInput();
-    if (!(await input.isVisible({ timeout: 2_000 }).catch(() => false))) return;
-    const val = ((await input.inputValue().catch(() => '')) || '').trim();
-    if (!val) return;
-
-    const clearBtn = input
-      .locator('xpath=ancestor::*[contains(@class,"ant-input-affix-wrapper") or contains(@class,"ant-input-group")][1]')
-      .locator('.ant-input-clear-icon, .anticon-close-circle')
-      .first();
-    const respP = this.waitListApi();
-    if (await clearBtn.isVisible({ timeout: 500 }).catch(() => false)) {
-      await clearBtn.click();
-    } else {
-      await input.click();
-      await input.fill('');
-      await input.press('Enter').catch(() => undefined);
-    }
-    await respP;
+  async restoreDefaultList(): Promise<void> {
+    await this.clearDocNoSearch();
+    await this.resetFilters();
+    await this.clickFilterSearch();
     await this.waitListSettled();
     await this.expectSearchEmpty();
   }
 
-  private headerCells(): Locator {
-    return this.scope().locator('.ant-table-thead th');
-  }
-
-  async columnIndex(header: string): Promise<number> {
-    const headers = this.headerCells();
-    const count = await headers.count();
-    for (let i = 0; i < count; i += 1) {
-      const text = ((await headers.nth(i).innerText()) || '').replace(/\s+/g, ' ').trim();
-      if (!text || text === '+') continue;
-      if (text.includes(header) || header.includes(text)) return i;
+  async search(keyword: string, opts: { keepListFilters?: boolean } = {}): Promise<void> {
+    if (opts.keepListFilters) {
+      await this.clearDocNoSearch();
+    } else {
+      await this.clearListQuery();
     }
-    throw new Error(`未找到列「${header}」`);
+    const input = this.searchInput();
+    await expect(input).toBeVisible({ timeout: 15_000 });
+    const respP = this.waitListApi();
+    await input.click();
+    await input.fill('');
+    await input.fill(keyword);
+    await input.press('Enter').catch(() => undefined);
+    await respP;
+    await this.waitListSettled();
   }
 
-  async pickFirstRowCell(header: string): Promise<string> {
-    const idx = await this.columnIndex(header);
-    const cell = this.dataRows().first().locator('td').nth(idx);
-    await expect(cell, `首行没有「${header}」列`).toBeVisible({ timeout: 20_000 });
-    const text = ((await cell.innerText()) || '').replace(/\s+/g, ' ').trim();
-    if (!text || text === '-') throw new Error(`首行「${header}」为空`);
-    return text;
+  protected filterPanel(): Locator {
+    return this.scope()
+      .locator('.advanced-search, .advanced-table-search-form, .advanced-search-filter-pop')
+      .filter({ visible: true })
+      .last();
   }
 
-  async readFirstDocNo(): Promise<string> {
+  private reasonFilterInput(): Locator {
+    const panel = this.filterPanel();
+    return panel
+      .locator('.ant-form-item, [class*="form-item"]')
+      .filter({ hasText: /事\s*由/ })
+      .locator(
+        'input#title, input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]), textarea',
+      )
+      .filter({ visible: true })
+      .first()
+      .or(panel.locator('input#title').filter({ visible: true }).first())
+      .or(
+        this.scope()
+          .locator('.advanced-search input#title, .advanced-table-search-form input#title')
+          .filter({ visible: true })
+          .first(),
+      );
+  }
+
+  /** AdvancedSearch：重置/搜索左侧的「展开所有条件」下拉箭头 */
+  private expandAllFiltersBtn(): Locator {
+    return this.scope()
+      .locator('.advanced-search-footer-buttons .advanced-table-head-container-setting')
+      .filter({ visible: true })
+      .first();
+  }
+
+  async openFilterPanel(): Promise<void> {
+    if (await this.reasonFilterInput().isVisible({ timeout: 1_000 }).catch(() => false)) return;
+
+    const expandAll = this.expandAllFiltersBtn();
+    await expect(expandAll, '未找到「展开所有条件」箭头').toBeVisible({ timeout: 10_000 });
+    await expandAll.click();
+    await this.reasonFilterInput()
+      .waitFor({ state: 'visible', timeout: 10_000 })
+      .catch(() => undefined);
+  }
+
+  async filterByReason(reason: string, opts: { keepListFilters?: boolean } = {}): Promise<void> {
+    if (opts.keepListFilters) {
+      await this.clearDocNoSearch();
+    } else {
+      await this.clearListQuery();
+    }
+    await this.openFilterPanel();
+    const input = this.reasonFilterInput();
+    await expect(input, '筛选区未展开可见的「事由」输入框').toBeVisible({ timeout: 10_000 });
+    await input.click();
+    await input.fill('');
+    await input.fill(reason);
+    await expect(input, '事由筛选关键字未写入').toHaveValue(reason, { timeout: 3_000 });
+    const panel = this.filterPanel();
+    const searchBtn = panel
+      .getByRole('button', { name: /搜\s*索|查\s*询/ })
+      .filter({ visible: true })
+      .first();
+    const respP = this.waitListApi();
+    await expect(searchBtn, '筛选区未找到「搜索/查询」按钮').toBeVisible({ timeout: 5_000 });
+    await searchBtn.click();
+    await respP;
+    await this.waitListSettled();
+  }
+
+  /** 「事由」列是否出现包含 keyword 的单元格 */
+  async reasonKeywordExists(keyword: string): Promise<boolean> {
+    return this.columnContains(FILTER_LABELS.reason, keyword);
+  }
+
+  async expectReasonFilterResult(keyword: string): Promise<void> {
     await expect
       .poll(async () => await this.dataRows().count().catch(() => 0), {
         timeout: 20_000,
-        message: '列表没有可解析单号的数据行',
+        message: `事由筛选「${keyword}」后列表无数据行`,
       })
       .toBeGreaterThan(0);
-
-    try {
-      const fromCol = (await this.pickFirstRowCell(FILTER_LABELS.docNo)).replace(/\s+/g, '');
-      if (fromCol && fromCol !== '-') return fromCol;
-    } catch {
-      /* fallback */
-    }
-
-    const rows = this.dataRows();
-    const n = await rows.count();
-    for (let i = 0; i < Math.min(n, 12); i += 1) {
-      const text = ((await rows.nth(i).innerText()) || '').replace(/\s+/g, ' ');
-      const match = text.match(DOC_NO_RE) || text.match(/[A-Za-z0-9]{8,}/);
-      if (match?.[0]) return match[0];
-    }
-    throw new Error('列表行中未解析到单号');
   }
 
-  async readFirstReasonKeyword(maxLen = 8): Promise<string> {
-    const reason = await this.pickFirstRowCell(FILTER_LABELS.reason);
-    if (!reason || reason === '-') throw new Error('首行事由为空');
-    return reason.slice(0, Math.min(maxLen, reason.length));
-  }
-
-  async pickFirstDocNo(): Promise<string> {
+  /** 先清筛选再取首行单号（申请单列表默认筛选常导致列表为空） */
+  override async pickFirstDocNo(): Promise<string> {
     await this.clearListQuery();
     if (!(await this.hasDataRows())) {
       await this.clickFilterSearch();
@@ -419,169 +227,10 @@ export class RequestListPage {
     return match[0];
   }
 
-  async expectRowsGreaterThan(n: number) {
-    await expect
-      .poll(async () => await this.dataRows().count().catch(() => 0), {
-        timeout: 20_000,
-        message: '申请单列表未渲染出数据行',
-      })
-      .toBeGreaterThan(n);
-  }
+  // ---------- 新建申请单 ----------
 
-  searchInput(): Locator {
-    return this.scope()
-      .locator(`input[placeholder="${SEARCH_PLACEHOLDER}"], input[placeholder*="申请单号"]`)
-      .first();
-  }
-
-  async restoreDefaultList() {
-    await this.clearDocNoSearch();
-    await this.resetFilters();
-    await this.clickFilterSearch();
-    await this.waitListSettled();
-    await this.expectSearchEmpty();
-  }
-
-  async search(keyword: string, opts: { keepListFilters?: boolean } = {}) {
-    if (opts.keepListFilters) {
-      await this.clearDocNoSearch();
-    } else {
-      await this.clearListQuery();
-    }
-    const input = this.searchInput();
-    await expect(input).toBeVisible({ timeout: 15_000 });
-    const respP = this.waitListApi();
-    await input.click();
-    await input.fill('');
-    await input.fill(keyword);
-    await input.press('Enter').catch(() => undefined);
-    await respP;
-    await this.waitListSettled();
-  }
-
-  private filterPanel(): Locator {
-    return this.scope()
-      .locator('.advanced-search, .advanced-table-search-form, .advanced-search-filter-pop')
-      .filter({ visible: true })
-      .last();
-  }
-
-  private reasonFilterInput(): Locator {
-    const panel = this.filterPanel();
-    return panel
-      .locator('.ant-form-item, [class*="form-item"]')
-      .filter({ hasText: /事\s*由/ })
-      .locator('input#title, input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]), textarea')
-      .filter({ visible: true })
-      .first()
-      .or(panel.locator('input#title').filter({ visible: true }).first())
-      .or(
-        this.scope()
-          .locator('.advanced-search input#title, .advanced-table-search-form input#title')
-          .filter({ visible: true })
-          .first(),
-      );
-  }
-
-  /** AdvancedSearch：重置/搜索左侧的「展开所有条件」下拉箭头 */
-  private expandAllFiltersBtn(): Locator {
-    return this.scope()
-      .locator('.advanced-search-footer-buttons .advanced-table-head-container-setting')
-      .filter({ visible: true })
-      .first();
-  }
-
-  async openFilterPanel() {
-    if (await this.reasonFilterInput().isVisible({ timeout: 1_000 }).catch(() => false)) return;
-
-    const expandAll = this.expandAllFiltersBtn();
-    await expect(expandAll, '未找到「展开所有条件」箭头').toBeVisible({ timeout: 10_000 });
-    await expandAll.click();
-    await this.reasonFilterInput().waitFor({ state: 'visible', timeout: 10_000 }).catch(() => undefined);
-  }
-
-  async filterByReason(reason: string, opts: { keepListFilters?: boolean } = {}) {
-    if (opts.keepListFilters) {
-      await this.clearDocNoSearch();
-    } else {
-      await this.clearListQuery();
-    }
-    await this.openFilterPanel();
-    const input = this.reasonFilterInput();
-    await expect(input, '筛选区未展开可见的「事由」输入框').toBeVisible({ timeout: 10_000 });
-    await input.click();
-    await input.fill('');
-    await input.fill(reason);
-    await expect(input, '事由筛选关键字未写入').toHaveValue(reason, { timeout: 3_000 });
-    const panel = this.filterPanel();
-    const searchBtn = panel
-      .getByRole('button', { name: /搜\s*索|查\s*询/ })
-      .filter({ visible: true })
-      .first();
-    const respP = this.waitListApi();
-    await expect(searchBtn, '筛选区未找到「搜索/查询」按钮').toBeVisible({ timeout: 5_000 });
-    await searchBtn.click();
-    await respP;
-    await this.waitListSettled();
-  }
-
-  async resetFilters() {
-    const btn = this.scope().getByRole('button', { name: /重\s*置/ }).first();
-    if (!(await btn.isVisible({ timeout: 2_000 }).catch(() => false))) return;
-    const respP = this.waitListApi();
-    await btn.click();
-    await respP;
-    await this.waitListSettled();
-  }
-
-  rowByCode(code: string): Locator {
-    return this.dataRows()
-      .filter({ has: this.scope().locator('td, [class*="cell"]', { hasText: code }) })
-      .first();
-  }
-
-  async reasonKeywordExists(keyword: string): Promise<boolean> {
-    if (!keyword) return false;
-    try {
-      const idx = await this.columnIndex(FILTER_LABELS.reason);
-      const rows = this.dataRows();
-      const n = await rows.count();
-      for (let i = 0; i < Math.min(n, 20); i += 1) {
-        const text = ((await rows.nth(i).locator('td').nth(idx).innerText()) || '')
-          .replace(/\s+/g, ' ')
-          .trim();
-        if (text.includes(keyword)) return true;
-      }
-    } catch {
-      return false;
-    }
-    return false;
-  }
-
-  async expectReasonFilterResult(keyword: string) {
-    await expect
-      .poll(async () => await this.dataRows().count().catch(() => 0), {
-        timeout: 20_000,
-        message: `事由筛选「${keyword}」后列表无数据行`,
-      })
-      .toBeGreaterThan(0);
-  }
-
-  async expectRowContains(text: string) {
-    await expect(this.rowByCode(text), `筛选后未看到「${text}」`).toBeVisible({
-      timeout: 20_000,
-    });
-  }
-
-  async openByCode(code: string) {
-    const row = this.rowByCode(code);
-    await expect(row, `未找到单据「${code}」`).toBeVisible({ timeout: 20_000 });
-    await row.getByText(code).first().click();
-    await this.page.waitForTimeout(1_000);
-  }
-
-  /** 关掉仍打开的详情/全屏，避免「新建」落到旧单 */
-  private async closeDetailIfOpen() {
+  /** 关掉仍打开的详情/全屏，避免「新建」落到旧单；spec 的失败恢复也会直接调它 */
+  async closeDetailIfOpen(): Promise<void> {
     const back = this.scope().getByRole('button', { name: /^返\s*回$/ }).filter({ visible: true }).first();
     if (await back.isVisible({ timeout: 1_500 }).catch(() => false)) {
       await back.click();
@@ -628,7 +277,7 @@ export class RequestListPage {
     throw new Error(`新建仍复用草稿单号 ${left}`);
   }
 
-  async clickNewRequest() {
+  async clickNewRequest(): Promise<void> {
     await this.closeDetailIfOpen();
     const btn = this.scope().getByRole('button', { name: NEW_REQUEST_BTN }).first();
     await expect(btn, '未找到「新建申请单」按钮').toBeVisible({ timeout: 15_000 });

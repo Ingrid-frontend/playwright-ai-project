@@ -1,28 +1,11 @@
-const fs = require('fs');
-const path = require('path');
-
-const SEEDS_REL = path.join('approval-flow', 'datasource', 'golden-seeds.json');
-
-function readSeedsFile(repoRoot) {
-  const abs = path.join(repoRoot, SEEDS_REL);
-  if (!fs.existsSync(abs)) return {};
-  try {
-    const data = JSON.parse(fs.readFileSync(abs, 'utf8'));
-    return data && typeof data === 'object' ? data : {};
-  } catch {
-    return {};
-  }
-}
+/**
+ * approval-flow 的 golden 档案解析。
+ * 实现已收敛到 flow-golden-seed.js，这里只保留原有导出名，避免改调用方。
+ */
+const { resolveFlowGoldenSeed } = require('./flow-golden-seed.js');
 
 function resolveApprovalGoldenSeed(repoRoot, envId, roleSlug) {
-  const env = String(envId || 'dev').trim();
-  const slug = String(roleSlug || '').trim();
-  const seeds = readSeedsFile(repoRoot);
-  const bucket = seeds[env] || {};
-  const entry = (slug && bucket[slug]) || bucket['*'] || bucket.default || {};
-  return {
-    approvalDocNo: String(entry.approvalDocNo || '').trim(),
-  };
+  return resolveFlowGoldenSeed(repoRoot, 'approval-flow', envId, roleSlug, ['approvalDocNo']);
 }
 
 module.exports = { resolveApprovalGoldenSeed };

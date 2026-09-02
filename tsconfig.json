@@ -22,6 +22,7 @@
     "playwright.config.ts",
     "utils/**/*",
     "scripts/**/*",
+    "flow-kit/**/*",
     "custom-reporters/**/*"
   ],
   "exclude": [

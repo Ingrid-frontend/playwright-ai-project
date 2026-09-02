@@ -1,29 +1,14 @@
-const fs = require('fs');
-const path = require('path');
-
-const SEEDS_REL = path.join('request-flow', 'datasource', 'golden-seeds.json');
-
-function readSeedsFile(repoRoot) {
-  const abs = path.join(repoRoot, SEEDS_REL);
-  if (!fs.existsSync(abs)) return {};
-  try {
-    const data = JSON.parse(fs.readFileSync(abs, 'utf8'));
-    return data && typeof data === 'object' ? data : {};
-  } catch {
-    return {};
-  }
-}
+/**
+ * request-flow 的 golden 档案解析。
+ * 实现已收敛到 flow-golden-seed.js，这里只保留原有导出名，避免改调用方。
+ */
+const { resolveFlowGoldenSeed } = require('./flow-golden-seed.js');
 
 function resolveGoldenSeed(repoRoot, envId, roleSlug) {
-  const env = String(envId || 'dev').trim();
-  const slug = String(roleSlug || '').trim();
-  const seeds = readSeedsFile(repoRoot);
-  const bucket = seeds[env] || {};
-  const entry = (slug && bucket[slug]) || bucket['*'] || bucket.default || {};
-  return {
-    requestDocNo: String(entry.requestDocNo || '').trim(),
-    requestFilterKeyword: String(entry.requestFilterKeyword || '').trim(),
-  };
+  return resolveFlowGoldenSeed(repoRoot, 'request-flow', envId, roleSlug, [
+    'requestDocNo',
+    'requestFilterKeyword',
+  ]);
 }
 
 module.exports = { resolveGoldenSeed };

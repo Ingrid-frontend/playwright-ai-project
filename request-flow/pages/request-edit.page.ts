@@ -162,7 +162,8 @@ export class RequestEditPage {
     return type !== 'number';
   }
 
-  private async findReasonInput(root: Locator): Promise<Locator | null> {
+  /** root 既可能是 Locator（表单容器），也可能是 Scope（iframe / page）；两者都只用到 .locator() */
+  private async findReasonInput(root: Locator | Scope): Promise<Locator | null> {
     const textInput = this.reasonTextInputSel();
     const blocks = root.locator('.ant-form-item, [class*="form-item"]').filter({ hasText: /事\s*由/ });
     const n = await blocks.count();
