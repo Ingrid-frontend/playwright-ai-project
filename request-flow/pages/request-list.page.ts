@@ -9,6 +9,7 @@ import {
   LIST_API_RE,
   LIST_PATH,
   NEW_REQUEST_BTN,
+  ROOT,
   ROW,
   SEARCH_ACTION_CLEAR,
   SEARCH_ACTION_SEARCH,
@@ -43,6 +44,7 @@ export const REQUEST_LIST_CATALOG: ListCatalog = {
   docNoRe: DOC_NO_RE,
   emptyTextRe: /暂无数据|No Data/,
   loadedTextRe: /申请单/,
+  loadedSelector: ROOT,
   requireRowsOnLoad: false,
   searchActionSearch: SEARCH_ACTION_SEARCH,
   searchActionClear: SEARCH_ACTION_CLEAR,
@@ -66,30 +68,6 @@ export class RequestListPage extends GenericListPage {
 
   // ---------- 申请单特有的筛选组合 ----------
 
-  /** 清掉顶栏单号搜索与高级筛选，避免 Golden 串行用例读到空列表 */
-  async clearListQuery(): Promise<void> {
-    await this.clearDocNoSearch();
-    await this.clearExposedFilters();
-    await this.clearAllExposedComboFilters();
-    await this.resetFilters();
-    await this.clearAllExposedComboFilters();
-    await this.clickFilterSearch();
-    await this.waitListSettled();
-  }
-
-  /** 列表因默认筛选为空时，尝试去掉条件并重新搜索 */
-  async recoverIfEmptyList(): Promise<boolean> {
-    if (await this.hasDataRows()) return true;
-    await this.clearDocNoSearch();
-    await this.clearExposedFilters();
-    await this.clearAllExposedComboFilters();
-    await this.clickFilterSearch();
-    if (await this.hasDataRows()) return true;
-    await this.clearAllExposedComboFilters();
-    await this.clickFilterSearch();
-    return this.hasDataRows();
-  }
-
   async restoreDefaultList(): Promise<void> {
     await this.clearDocNoSearch();
     await this.resetFilters();
@@ -107,7 +85,6 @@ export class RequestListPage extends GenericListPage {
     const input = this.searchInput();
     await expect(input).toBeVisible({ timeout: 15_000 });
     const respP = this.waitListApi();
-    await input.click();
     await input.fill('');
     await input.fill(keyword);
     await input.press('Enter').catch(() => undefined);
