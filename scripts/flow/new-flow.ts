@@ -10,8 +10,8 @@
  *   2. 写业务特有的 spec 步骤
  *
  * 用法：
- *   npm run flow:new -- --id=expense-flow --label=报销流程 --entry=/main/expense
- *   npm run flow:new -- --id=expense-flow --label=报销流程 --entry=/main/expense --dry-run
+ *   npm run flow:new -- --id=expense-flow --label=报销流程 --entry=/main/expense-parent-report/expense-report
+ *   npm run flow:new -- --id=expense-flow --label=报销流程 --entry=/main/expense-parent-report/expense-report --dry-run
  *
  * 生成后立刻能跑：
  *   npm run flow:list                                  # 确认已注册
@@ -59,7 +59,7 @@ function printHelp(): void {
 必填
   --id=<flow-id>     目录名 & FlowId，约定以 -flow 结尾，如 expense-flow
   --label=<中文名>    报告 / 飞书通知里显示的名字，如 报销流程
-  --entry=<path>     列表页路由，如 /main/expense
+  --entry=<path>     列表页路由，如 /main/expense-parent-report/expense-report
 
 可选
   --domain=<name>    业务域（默认由 id 去掉 -flow 得到），决定 tests/<domain>/ 与 <domain>-catalog.ts
@@ -124,7 +124,7 @@ type Ctx = {
   domain: string;
   Domain: string;
   PREFIX: string;
-  /** 正则字面量内部片段，如 /main/expense → main\/expense */
+  /** 正则字面量内部片段，如 /main/expense-parent-report/expense-report → main\/expense-parent-report\/expense-report */
   urlReLiteral: string;
   /** golden-seeds.json 里的单号字段名，如 expense → expenseDocNo */
   docNoField: string;
@@ -132,7 +132,7 @@ type Ctx = {
 
 /**
  * 把路由转成「可直接嵌进正则字面量」的片段。
- * /main/expense → main\/expense（去掉开头 /，其余 / 转义一次）
+ * /main/expense-parent-report/expense-report → main\/expense-parent-report\/expense-report（去掉开头 /，其余 / 转义一次）
  */
 export function urlRegexBody(entry: string): string {
   return entry.replace(/^\//, '').replace(/\//g, '\\/');
@@ -318,8 +318,8 @@ export const TABS: readonly string[] = [];
 export const TAB = '.ant-tabs-tab';
 
 /** 搜索区动作 */
-export const SEARCH_ACTION_SEARCH = '.search-action-search';
-export const SEARCH_ACTION_CLEAR = '.search-action-clear';
+export const SEARCH_ACTION_SEARCH = '.search-action-bar__search, button:has-text("搜")';
+export const SEARCH_ACTION_CLEAR = '.search-action-bar__clear';
 
 /** 外露筛选 */
 export const COMBO_TRIGGER = '.combo-trigger';
@@ -331,6 +331,13 @@ export const DETAIL = '.full-screen';
 /** 空状态 / 已加载文案 */
 export const EMPTY_TEXT_RE = /暂无数据|No Data/;
 export const LOADED_TEXT_RE = /${c.label.replace(/流程$/, '')}/;
+
+/** GenericListPage 加载行为（对齐申请单 advanced-table：重置 → 搜索 → 空列表恢复） */
+export const LIST_LOAD_OPTS = {
+  clickSearchOnLoad: true,
+  resetFiltersOnLoad: true,
+  recoverEmptyOnLoad: true,
+} as const;
 `;
 }
 
@@ -344,6 +351,7 @@ import {
   EMPTY_TEXT_RE,
   EXPOSED_FILTER_FIELDS,
   LIST_API_RE,
+  LIST_LOAD_OPTS,
   LIST_PATH,
   LOADED_TEXT_RE,
   ROW,
@@ -382,22 +390,12 @@ export const ${c.PREFIX}_LIST_CATALOG: ListCatalog = {
   comboTrigger: COMBO_TRIGGER,
   comboClear: '.combo-trigger__clear',
   clearLabels: [...EXPOSED_FILTER_FIELDS],
+  ...LIST_LOAD_OPTS,
 };
 
 export class ${c.Domain}ListPage extends GenericListPage {
   constructor(page: Page) {
     super(page, ${c.PREFIX}_LIST_CATALOG);
-  }
-
-  /**
-   * 回到默认列表状态：清关键字 + 清外露筛选 + 重置。
-   * golden 回归的每个用例结束都该调它，避免筛选状态串到下一个用例。
-   */
-  async restoreDefaultList(): Promise<void> {
-    await this.clearDocNoSearch().catch(() => undefined);
-    await this.clearAllExposedComboFilters().catch(() => undefined);
-    await this.resetFilters().catch(() => undefined);
-    await this.expectListReady();
   }
 
   // ---------- 本流程特有动作写在下面 ----------
@@ -459,6 +457,7 @@ test.describe('${c.label} golden 回归', () => {
     await flowStep('校验表格结构', async () => {
       await expect(page).toHaveURL(/${c.urlReLiteral}/);
       await list.expectListReady();
+      await list.restoreDefaultList();
     }, { capture: false });
   });
 

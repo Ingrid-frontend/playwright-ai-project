@@ -16,7 +16,7 @@
 ### 0. 生成骨架（自动）
 
 ```bash
-npm run flow:new -- --id=expense-flow --label=报销流程 --entry=/main/expense --domain=expense
+npm run flow:new -- --id=expense-flow --label=报销流程 --entry=/main/expense-parent-report/expense-report --domain=expense
 # 先看不落盘的计划：加 --dry-run
 ```
 
@@ -28,7 +28,7 @@ fixtures / golden-regression.spec / golden-seeds.json.example / run-<id>-golden.
 
 ```bash
 # 前提：该环境已有登录态（storageState）。没有先跑登录。
-npx tsx scripts/index-frontend/probe-live-page.ts --env=dev --entry=/main/expense \
+npx tsx scripts/index-frontend/probe-live-page.ts --env=dev --entry=/main/expense-parent-report/expense-report \
   --out=expense-flow/datasource/live-snapshot.json
 
 npm run flow:gen-catalog -- --flow=expense-flow --force
@@ -44,6 +44,16 @@ npm run flow:debug-fast -- --flow=expense-flow --grep=列表加载
 ```
 
 骨架自带「列表加载」与「按首行单号搜索」两个用例。跑通后按 catalog 里的页签 / 筛选项补业务用例。
+
+### Studio 配置模式：先解析入口，再探活
+
+在 Studio「配置」页新建流程时，只需填**流程名称**（如「报销流程」）。一键配置会：
+
+1. 从 `datasource/menu_items.json` + `menu_routes.json` 解析列表路由
+2. 实机探活（`probe-live-page`）
+3. 生成 catalog 草稿
+
+页面入口可留空；也可手填 `/main/...` 路由，或填菜单名如「报销单」。解析逻辑见 `scripts/flow/resolve-flow-entry.ts`。
 
 ## 中央注册表：scripts/flow/flow-registry.ts
 
@@ -138,7 +148,7 @@ export const env = {
 // <flow>/utils/<domain>-catalog.ts
 export const EXPENSE_CATALOG: ListCatalog = {
   flowId: 'expense-flow',
-  entry: '/main/expense',
+  entry: '/main/expense-parent-report/expense-report',
   urlPattern: /main\/expense/,
   listApi: /\/api\/expense\/list/,        // 用于 waitForResponse 与接口侧兜底
   tableSelector: '.ant-table-tbody',

@@ -87,7 +87,7 @@ const RAW: FlowDescriptor[] = [
     id: 'expense-flow',
     label: '报销流程',
     domain: 'expense',
-    entry: '/main/expense',
+    entry: '/main/expense-parent-report/expense-report',
     configRel: 'expense-flow/playwright.config.ts',
     goldenSpec: 'expense/golden-regression.spec.ts',
     fullFlowSpec: 'expense/full-flow.spec.ts',

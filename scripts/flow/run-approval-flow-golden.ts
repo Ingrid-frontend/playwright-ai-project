@@ -268,7 +268,10 @@ function main(): void {
     console.error(`[approval-flow:golden] 无已登录 golden* 档案（env=${env}）`);
     process.exit(1);
   }
-  if (process.env.FLOW_DEBUG_FAST === "1" && profiles.length > 1) {
+  if (
+    (process.env.FLOW_DEBUG_FAST === "1" || process.env.FLOW_CONFIG_TRY_RUN === "1") &&
+    profiles.length > 1
+  ) {
     console.log(`[approval-flow:golden] debug-fast 仅运行第一个角色: ${profiles[0]}`);
     profiles = [profiles[0]];
   }

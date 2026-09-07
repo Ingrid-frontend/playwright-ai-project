@@ -278,7 +278,10 @@ function runEnv(
     console.warn(`[request-flow:golden] 跳过 env=${envId}: 无已登录 golden* 档案`);
     return { ok: true, ran: false };
   }
-  if (process.env.FLOW_DEBUG_FAST === "1" && profiles.length > 1) {
+  if (
+    (process.env.FLOW_DEBUG_FAST === "1" || process.env.FLOW_CONFIG_TRY_RUN === "1") &&
+    profiles.length > 1
+  ) {
     console.log(`[request-flow:golden] debug-fast 仅运行第一个角色: ${profiles[0]}`);
     profiles = [profiles[0]];
   }

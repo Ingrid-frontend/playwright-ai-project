@@ -29,6 +29,12 @@ function pickEnvUrl(env: Record<string, string>): string {
 }
 
 function pickStorageState(env: Record<string, string>): string | undefined {
+  for (const raw of [process.env.STORAGE_STATE, process.env.STORAGE_STATE_PATH]) {
+    const p = String(raw || '').trim();
+    if (!p) continue;
+    const abs = path.isAbsolute(p) ? p : path.resolve(p);
+    if (fs.existsSync(abs)) return abs;
+  }
   const p = env.storageState;
   if (!p) return undefined;
   const abs = path.isAbsolute(p) ? p : path.resolve(p);
@@ -57,7 +63,7 @@ async function safeWait(page: Page, ms: number): Promise<void> {
  * 传 --list-api=<正则> 显式指定，或依赖 looksLikeListBody() 自动发现。
  */
 const KNOWN_LIST_API_RE =
-  /\/api\/approvals\/(pendingApproval|approved|copiedToMe)(?:\?|$)|\/api\/applications\/(?:v4\/)?search(?:\?|$)/;
+  /\/api\/approvals\/(pendingApproval|approved|copiedToMe)(?:\?|$)|\/api\/applications\/(?:v4\/)?search(?:\?|$)|\/api\/expense\/queryPage(?:\?|$)/;
 
 /** --list-api=<正则> 覆盖 */
 function customListApiRe(): RegExp | null {
@@ -201,6 +207,24 @@ async function waitForListReady(page: Page): Promise<void> {
   await safeWait(page, 800);
 }
 
+/** 报销等列表默认不自动查数，空表时点「搜索」触发列表接口 */
+async function maybeTriggerListSearch(page: Page): Promise<void> {
+  const inZoom = await page.locator('iframe[src*="openBySelf=zoom"]').count();
+  const root = inZoom ? page.frameLocator('iframe[src*="openBySelf=zoom"]') : page;
+  const rows = await root.locator('.ant-table-tbody tr.ant-table-row').count().catch(() => 0);
+  if (rows > 0) return;
+  const searchBtn = root.getByRole('button', { name: /搜\s*索|查\s*询/ }).first();
+  if (!(await searchBtn.isVisible({ timeout: 2_000 }).catch(() => false))) return;
+  const respP = page
+    .waitForResponse((r) => r.request().method() === 'POST' && r.url().includes('/api/') && r.status() === 200, {
+      timeout: 15_000,
+    })
+    .catch(() => undefined);
+  await searchBtn.click();
+  await respP;
+  await safeWait(page, 1_500);
+}
+
 async function main(): Promise<void> {
   const envName = getArg('env', 'stage');
   const entry = getArg('entry', '/main/approve');
@@ -294,6 +318,7 @@ async function main(): Promise<void> {
   const onLogin = await isLoginPage(page);
   if (!onLogin) {
     await waitForListReady(page);
+    await maybeTriggerListSearch(page);
   }
 
   const listDom = (await dumpDom(page)) as { url?: string };

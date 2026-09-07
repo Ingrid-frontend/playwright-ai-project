@@ -8,7 +8,7 @@
  *
  * 用法：
  *   # 1. 探活（未登录会提示先跑 login）
- *   npx tsx scripts/index-frontend/probe-live-page.ts --env=dev --entry=/main/expense \
+ *   npx tsx scripts/index-frontend/probe-live-page.ts --env=dev --entry=/main/expense-parent-report/expense-report \
  *     --out=expense-flow/datasource/live-snapshot.json
  *   # 2. 生成 catalog 草稿
  *   npm run flow:gen-catalog -- --flow=expense-flow
@@ -142,6 +142,23 @@ export function guessListApi(snapshot: ProbeSnapshot): { api: string; confident:
   return { api: '/api/TODO/search', confident: false };
 }
 
+/** 推断 GenericListPage 加载行为（对齐申请单 advanced-table） */
+export function guessListLoadOpts(dom: ProbeDom): {
+  clickSearchOnLoad: boolean;
+  resetFiltersOnLoad: boolean;
+  recoverEmptyOnLoad: boolean;
+} {
+  const snippet = dom.bodySnippet || '';
+  const clickSearch =
+    /点击右上角【搜索】后查看/.test(snippet) ||
+    ((dom.tbodyRows || 0) === 0 && Boolean(dom.hasAntTable));
+  return {
+    clickSearchOnLoad: clickSearch,
+    resetFiltersOnLoad: true,
+    recoverEmptyOnLoad: true,
+  };
+}
+
 export type CatalogDraft = {
   code: string;
   warnings: string[];
@@ -232,6 +249,10 @@ export function buildCatalogCode(opts: {
     warnings.push('注册表标记该流程有页签，但快照里没探到，需确认 TABS。');
   }
   const inIframe = Boolean((dom.iframeSrcs || []).length) || Boolean(snapshot.list?.childFrames?.length);
+  const loadOpts = guessListLoadOpts(dom);
+  const emptyTextRe = loadOpts.clickSearchOnLoad
+    ? '/点击右上角【搜索】后查看|暂无数据|No Data/'
+    : '/暂无数据|No Data/';
 
   const code = `/**
  * ${label} UI 契约（catalog）。
@@ -290,8 +311,15 @@ export const EXPOSED_FILTER_FIELDS: readonly string[] = ${arr(headers.slice(0, 3
 export const DETAIL = '.full-screen';  ${TODO} 确认详情容器（.approve-entrance / .ant-modal / .slide-frame）
 
 /** 空状态 / 已加载文案 */
-export const EMPTY_TEXT_RE = /暂无数据|No Data/;
+export const EMPTY_TEXT_RE = ${emptyTextRe};
 export const LOADED_TEXT_RE = /${label.replace(/流程$/, '')}/;  ${TODO} 换成页面上稳定出现的文案
+
+/** GenericListPage 加载行为（对齐申请单 advanced-table：重置 → 搜索 → 空列表恢复） */
+export const LIST_LOAD_OPTS = {
+  clickSearchOnLoad: ${loadOpts.clickSearchOnLoad},
+  resetFiltersOnLoad: ${loadOpts.resetFiltersOnLoad},
+  recoverEmptyOnLoad: ${loadOpts.recoverEmptyOnLoad},
+} as const;
 `;
 
   return { code, warnings };
@@ -441,6 +469,12 @@ function main(): void {
   }
 
   const snapshot = JSON.parse(fs.readFileSync(snapAbs, 'utf8')) as ProbeSnapshot;
+  if (looksLikeLoginSnapshot(snapshot)) {
+    process.stderr.write(
+      '[gen-catalog] 探活落到登录页（storageState 无效或未传入）。请先在 Studio 左侧登录，再重新一键配置。\n',
+    );
+    process.exit(1);
+  }
   entry ||= snapshot.entry || '/main/unknown';
   domain ||= 'biz';
   label ||= domain;
