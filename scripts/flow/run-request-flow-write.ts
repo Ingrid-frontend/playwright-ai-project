@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import { createRequire } from "module";
 import dotenv from "dotenv";
+import { cleanSpecScreenshots } from "../../src/utils/clean-spec-screenshots.js";
 
 dotenv.config({ path: path.join(process.cwd(), ".env") });
 
@@ -15,7 +16,6 @@ const {
   parsePlaywrightFailures,
   logConcisePlaywrightFailures,
 } = require("../../pw-files/lib/failure-report.js");
-const { cleanSpecScreenshots } = require("../../src/utils/clean-spec-screenshots.cjs");
 
 const FLOW_ID = "request-flow";
 const FLOW_LABEL = "申请单流程";
