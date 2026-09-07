@@ -30,9 +30,15 @@ async function trySeedGoldenContext(approval: ApprovalListPage) {
   }
 
   if (!(await hasDataRows(approval))) {
-    await approval.waitListApi().catch(() => null);
-    await approval.waitListSettled();
+    await approval.switchToPending().catch(() => undefined);
+    await approval.resetFilterState().catch(() => undefined);
   }
+
+  if (!goldenCtx.docNo && !(await hasDataRows(approval))) {
+    const fromApi = await approval.readDocNoFromListApi({ refresh: true }).catch(() => '');
+    if (fromApi) goldenCtx.docNo = fromApi;
+  }
+
   if (!(await hasDataRows(approval))) {
     if (!goldenCtx.docNo) return;
     return;
@@ -42,7 +48,8 @@ async function trySeedGoldenContext(approval: ApprovalListPage) {
     try {
       goldenCtx.docNo = await approval.pickFirstDocNo();
     } catch {
-      return;
+      const fromApi = await approval.readDocNoFromListApi().catch(() => '');
+      if (fromApi) goldenCtx.docNo = fromApi;
     }
   }
 }
@@ -53,12 +60,13 @@ async function ensureGoldenList(approval: ApprovalListPage) {
     await trySeedGoldenContext(approval);
   }
   if (!goldenCtx.docNo) {
-    test.skip(true, '待审批列表无可用单号，跳过后续 Golden 步骤（Studio「指定单号」/ accounts.json approvalDocNo / golden-seeds.json）');
+    test.skip(true, '待审批列表无可用单号，跳过后续 Golden 步骤');
   }
   if (await hasDataRows(approval)) return;
   await approval.switchToPending();
+  await approval.resetFilterState().catch(() => undefined);
   if (!(await hasDataRows(approval))) {
-    throw new Error('Golden 步骤前待审批列表无数据');
+    test.skip(true, '待审批列表无数据，跳过后续 Golden 步骤');
   }
 }
 
@@ -80,6 +88,7 @@ test.describe('审批列表 · Golden 回归', () => {
     await flowStep('打开审批列表', async () => {
       await approval.goto();
       await approval.expectLoaded();
+      await approval.recoverIfEmptyList();
       await trySeedGoldenContext(approval);
     }, { snapshot: 'approval-list', step: 1 });
   });

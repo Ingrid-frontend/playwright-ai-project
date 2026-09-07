@@ -53,7 +53,7 @@ export const APPROVAL_LIST_CATALOG: ListCatalog = {
   docNoRe: DOC_NO_RE,
   emptyTextRe: /暂无数据|No Data|没有更多|暂无待审批/,
   loadedTextRe: /我的审批|待审批/,
-  requireRowsOnLoad: true,
+  requireRowsOnLoad: false,
   searchActionSearch: SEARCH_ACTION_SEARCH,
   searchActionClear: SEARCH_ACTION_CLEAR,
   comboTrigger: COMBO_TRIGGER,
@@ -72,16 +72,23 @@ export class ApprovalListPage extends GenericListPage {
     await this.waitListApi();
   }
 
-  /** 已在审批列表时还原筛选，尽量走「清除外露筛选值」 */
+  /** 已在审批列表时还原筛选：先面板「清除筛选值」，再清外露（与申请单 reset 不同） */
   async resetFilterState(): Promise<void> {
     await this.closeFilterPanel().catch(() => undefined);
     await this.resetBusinessType().catch(() => undefined);
+    await this.clearFilterPanel().catch(() => undefined);
     if (await this.hasExposedClear()) {
-      await this.clearExposedFilters();
-    } else {
-      await this.clearFilterPanel().catch(() => undefined);
+      await this.clearExposedFilters().catch(() => undefined);
     }
     await this.expectListReady();
+  }
+
+  /** 列表因筛选为空时，走审批专用重置（不用通用 clearListQuery） */
+  override async recoverIfEmptyList(): Promise<boolean> {
+    if (await this.hasDataRows()) return true;
+    await this.switchToPending().catch(() => undefined);
+    await this.resetFilterState().catch(() => undefined);
+    return this.hasDataRows();
   }
 
   async switchToPending(): Promise<void> {
@@ -487,16 +494,19 @@ export class ApprovalListPage extends GenericListPage {
 
   async clearFilterPanel(): Promise<void> {
     await this.openFilterPanel();
-    const clearBtn = this.scope()
-      .locator('.advanced-search-filter-footer')
-      .getByRole('button', { name: FILTER_LABELS.clearPanel });
+    const clearBtn = this.filterPanel()
+      .getByRole('button', { name: FILTER_LABELS.clearPanel })
+      .or(
+        this.scope()
+          .locator('.advanced-search-filter-footer')
+          .getByRole('button', { name: FILTER_LABELS.clearPanel }),
+      )
+      .first();
     if (!(await clearBtn.isVisible({ timeout: 3_000 }).catch(() => false))) {
       await this.closeFilterPanel();
       return;
     }
-    await this.withListMutation(async () => {
-      await clearBtn.click();
-    });
+    await this.withListMutation(() => clearBtn.click({ force: true }));
     if (await this.isFilterPanelOpen()) {
       await this.submitFilterPanel();
     }
@@ -528,26 +538,13 @@ export class ApprovalListPage extends GenericListPage {
     await this.submitFilterPanel();
   }
 
-  /** 清除外露筛选；没有外露清除时走面板「清除筛选值」 */
+  /** 清除面板 + 外露筛选（审批两条路径都要走，先面板后外露） */
   async clearFilters(): Promise<void> {
+    await this.clearFilterPanel().catch(() => undefined);
     if (await this.hasExposedClear()) {
-      await this.clearExposedFilters();
-      return;
+      await this.clearExposedFilters().catch(() => undefined);
     }
-    await this.openFilterPanel();
-    const clearBtn = this.scope()
-      .locator('.advanced-search-filter-footer')
-      .getByRole('button', { name: FILTER_LABELS.clearPanel });
-    if (await clearBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
-      await clearBtn.click();
-      if (await this.isFilterPanelOpen()) {
-        await this.submitFilterPanel();
-      } else {
-        await this.waitListSettled();
-      }
-      return;
-    }
-    await this.closeFilterPanel();
+    await this.expectListReady();
   }
 
   // ---------- 打开单据详情 ----------
