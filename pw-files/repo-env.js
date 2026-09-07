@@ -134,7 +134,7 @@ function storageExists(repoRoot, storageRel) {
 
 /** 开跑前校验 storage：文件存在且含 userId / 账号 / 有效 localStorage */
 function resolveStorageMaxAgeMs() {
-  const days = Number(process.env.PLAYWRIGHT_STORAGE_MAX_AGE_DAYS || '7');
+  const days = Number(process.env.PLAYWRIGHT_STORAGE_MAX_AGE_DAYS || '0');
   if (!Number.isFinite(days) || days <= 0) return 0;
   return days * 86400000;
 }

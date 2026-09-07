@@ -17,6 +17,14 @@ const {
   cancelRequestFlow,
 } = require('./request-flow-run');
 const { flowSearchRuns, flowDeleteRuns } = require('./flow-run-marker-actions');
+const {
+  sendFlowConfigList,
+  sendFlowConfigStatus,
+  runFlowConfigSetup,
+  saveFlowConfigCatalog,
+  runFlowConfigTryRun,
+  cancelFlowConfig,
+} = require('./flow-config-actions');
 
 function createRepoHandlers(ctx) {
   const {
@@ -550,6 +558,55 @@ function createRepoHandlers(ctx) {
 
     'flow:search-runs': async (ws, _session, _sessionId, msg) => {
       await flowSearchRuns(ws, msg, resolveRepoRoot());
+    },
+
+    'flow:config:list': async (ws) => {
+      sendFlowConfigList(ws, {
+        resolveRepoRoot,
+        getSessionPlaywrightEnv,
+        getSessionAccountProfile,
+        buildRepoSpawnEnv,
+      });
+    },
+
+    'flow:config:status': async (ws, _session, _sessionId, msg) => {
+      sendFlowConfigStatus(ws, msg, {
+        resolveRepoRoot,
+        getSessionPlaywrightEnv,
+        getSessionAccountProfile,
+        buildRepoSpawnEnv,
+      });
+    },
+
+    'flow:config:setup': async (ws, session, _sessionId, msg) => {
+      await runFlowConfigSetup(ws, session, msg, {
+        resolveRepoRoot,
+        getSessionPlaywrightEnv,
+        getSessionAccountProfile,
+        buildRepoSpawnEnv,
+      });
+    },
+
+    'flow:config:catalog-save': async (ws, _session, _sessionId, msg) => {
+      saveFlowConfigCatalog(ws, msg, {
+        resolveRepoRoot,
+        getSessionPlaywrightEnv,
+        getSessionAccountProfile,
+        buildRepoSpawnEnv,
+      });
+    },
+
+    'flow:config:try-run': async (ws, session, _sessionId, msg) => {
+      await runFlowConfigTryRun(ws, session, msg, {
+        resolveRepoRoot,
+        getSessionPlaywrightEnv,
+        getSessionAccountProfile,
+        buildRepoSpawnEnv,
+      });
+    },
+
+    'cancel:flow-config': async (ws, session) => {
+      cancelFlowConfig(session, ws);
     },
 
     'flow:delete-runs': async (ws, _session, _sessionId, msg) => {

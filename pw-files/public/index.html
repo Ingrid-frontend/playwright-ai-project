@@ -127,6 +127,64 @@
   .studio-compact:not(.studio-compact-off) .studio-toc-only.flow-toc-actions { display: flex !important; }
   .studio-compact-off .studio-toc-only { display: none !important; }
   .flow-toc-actions { align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+  .studio-mode-config .studio-detect-only { display: none !important; }
+  .studio-mode-detect .studio-config-only { display: none !important; }
+  .studio-mode-config .tab-bar { display: none !important; }
+  .studio-mode-config .editor-run-bar { display: none !important; }
+  .studio-mode-config .editor-pane { display: none !important; visibility: hidden !important; }
+  .studio-mode-config .editor-pane#pane-flow-config {
+    display: flex !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    z-index: 1 !important;
+  }
+  .studio-compact:not(.studio-compact-off):not(.studio-mode-config) .sidebar-config-login { display: none !important; }
+  .studio-mode-config .sidebar-config-login { display: block !important; }
+  .studio-mode-config #btnStudioCompactAdvanced { display: none !important; }
+  .studio-compact.studio-mode-config.config-more-tools .sidebar .studio-config-tools-panel {
+    display: block !important;
+  }
+  .studio-mode-config .flow-config-more-hint {
+    display: none; margin-top: 8px; padding: 8px 10px; border: 1px dashed var(--border); border-radius: 8px;
+    font-size: var(--fs-xs); line-height: 1.6; color: var(--text-secondary);
+  }
+  .studio-mode-config.config-more-tools .flow-config-more-hint { display: block; }
+  .studio-mode-switch {
+    display: inline-flex; gap: 4px; margin-right: 12px; padding: 2px;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--bg3);
+  }
+  .studio-mode-switch button {
+    font-size: var(--fs-xs); padding: 4px 12px; border: none; border-radius: 6px;
+    background: transparent; color: var(--text-secondary); cursor: pointer;
+  }
+  .studio-mode-switch button.active {
+    background: var(--bg2); color: var(--text); font-weight: 600;
+  }
+  .flow-config-layout { display: flex; gap: 16px; min-height: 0; flex: 1; }
+  .flow-config-sidebar { width: 220px; flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; }
+  .flow-config-list { display: flex; flex-direction: column; gap: 6px; max-height: 420px; overflow-y: auto; }
+  .flow-config-item {
+    padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer;
+    background: var(--bg2); text-align: left;
+  }
+  .flow-config-item.active { border-color: rgba(52,211,153,.45); background: var(--bg3); }
+  .flow-config-item-title { font-size: var(--fs-sm); color: var(--text); font-weight: 500; }
+  .flow-config-item-sub { font-size: var(--fs-xs); color: var(--text-tertiary); margin-top: 2px; }
+  .flow-config-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+  .flow-config-progress { font-size: var(--fs-xs); color: var(--teal); min-height: 1.2em; }
+  .flow-config-try-result {
+    margin-top: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg2); font-size: var(--fs-xs); line-height: 1.6; color: var(--text-secondary);
+  }
+  .flow-config-try-result .try-head { color: var(--text); font-weight: 600; margin-bottom: 6px; }
+  .flow-config-try-result .try-line.ok { color: var(--green); }
+  .flow-config-try-result .try-line.fail { color: var(--red); }
+  .flow-config-try-result .try-line.dim { color: var(--text-tertiary); }
+  .flow-config-form { padding: 12px; border: 1px dashed var(--border); border-radius: 8px; }
+  .studio-config-hide-toggle {
+    border-style: dashed; color: var(--text-tertiary); background: transparent;
+    font-size: var(--fs-xs); padding: 4px 10px;
+  }
   .studio-compact-hide-toggle {
     border-style: dashed; color: var(--text-tertiary); background: transparent;
   }
@@ -774,7 +832,7 @@
 </style>
 </head>
 <body>
-<div class="app studio-compact">
+<div class="app studio-compact studio-mode-detect">
 
   <!-- Header -->
   <header class="header">
@@ -785,6 +843,10 @@
       Playwright Studio
     </div>
     <div class="header-right">
+      <div class="studio-mode-switch" role="tablist" aria-label="Studio 模式">
+        <button type="button" id="btnStudioModeDetect" class="active" onclick="setStudioMode('detect')">检测</button>
+        <button type="button" id="btnStudioModeConfig" onclick="setStudioMode('config')">配置</button>
+      </div>
       <div class="header-meta">
         <button type="button" class="btn studio-compact-hide" id="btnSendFeishu" style="font-size:var(--fs-xs);padding:4px 10px" onclick="sendFeishuMessage()" title="通过 Webhook 发送飞书测试消息">发送飞书</button>
         <button type="button" class="btn studio-compact-hide" id="btnStudioRestart" style="font-size:var(--fs-xs);padding:4px 10px" onclick="restartStudioServer()" title="重新加载服务端代码（等同终端里重新执行 npm run studio）">重启服务</button>
@@ -815,9 +877,9 @@
         </div>
       </div>
 
-      <div class="sidebar-section studio-compact-hide" id="sidebarAccountLoginBlock">
+      <div class="sidebar-section studio-compact-hide sidebar-config-login" id="sidebarAccountLoginBlock">
         <p class="sidebar-hint" style="margin:0 0 6px;color:var(--text-secondary)">登录态</p>
-        <p class="sidebar-hint" style="margin-bottom:8px">供录制 / YAML 用例使用（default 档案）。<strong>申请单 Golden</strong> 请在 Tab 内「Golden 登录态」管理。</p>
+        <p class="sidebar-hint" style="margin-bottom:8px">配置模式请使用流程区顶部的 <strong>Golden 账号</strong>；下方 default 仅供录制 YAML 用例。</p>
         <select class="url-input studio-hidden" id="accountProfileSelect" style="width:100%;margin-bottom:8px" disabled hidden aria-hidden="true">
           <option value="default">default</option>
         </select>
@@ -827,7 +889,7 @@
         </div>
       </div>
 
-      <div class="sidebar-accordion sidebar-accordion-compact studio-compact-hide" id="accordionDateCategories">
+      <div class="sidebar-accordion studio-compact-hide studio-config-tools-panel" id="accordionDateCategories">
         <button type="button" class="accordion-trigger" aria-expanded="false">
           迭代 <span class="acc-chevron">›</span>
         </button>
@@ -848,7 +910,7 @@
         </div>
       </div>
 
-      <div class="sidebar-accordion studio-compact-hide" id="accordionWorkflowNew">
+      <div class="sidebar-accordion studio-compact-hide studio-config-tools-panel" id="accordionWorkflowNew">
         <button type="button" class="accordion-trigger" aria-expanded="false">
           录制用例 <span class="acc-chevron">›</span>
         </button>
@@ -1150,19 +1212,19 @@
         <div class="tab studio-hidden" onclick="switchTab('diff',this)" hidden aria-hidden="true">
           Diff 对比
         </div>
-        <div class="tab active" onclick="switchTab('request-flow',this)">
+        <div class="tab active studio-detect-only" onclick="switchTab('request-flow',this)">
           申请单流程
         </div>
-        <div class="tab" onclick="switchTab('approval-flow',this)">
+        <div class="tab studio-detect-only" onclick="switchTab('approval-flow',this)">
           审批流程
         </div>
-        <div class="tab studio-compact-hide" onclick="switchTab('jobs',this)">
+        <div class="tab studio-compact-hide studio-config-tools-tab" onclick="switchTab('jobs',this)">
           定时任务
         </div>
-        <div class="tab studio-compact-hide" onclick="switchTab('intent-run',this)">
+        <div class="tab studio-compact-hide studio-config-tools-tab" onclick="switchTab('intent-run',this)">
           YAML 用例
         </div>
-        <div class="tab studio-compact-hide" onclick="switchTab('ego-audit',this)">
+        <div class="tab studio-compact-hide studio-config-tools-tab" onclick="switchTab('ego-audit',this)">
           口语试跑
         </div>
       </div>
@@ -1461,7 +1523,7 @@
           </div>
         </div>
 
-        <div class="editor-pane active" id="pane-request-flow">
+        <div class="editor-pane active studio-detect-only" id="pane-request-flow">
           <div class="editor-pane-body">
             <div style="display:flex;flex-direction:column;gap:12px;max-width:820px">
               <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg2)">
@@ -1476,7 +1538,7 @@
                 </p>
               </div>
 
-              <div id="requestFlowStatus" class="sidebar-hint" style="padding:10px 12px;border:1px dashed var(--border);border-radius:8px;line-height:1.7;color:var(--text-secondary)">
+              <div id="requestFlowStatus" class="sidebar-hint studio-compact-hide" style="padding:10px 12px;border:1px dashed var(--border);border-radius:8px;line-height:1.7;color:var(--text-secondary)">
                 连接后自动加载状态…
               </div>
 
@@ -1607,6 +1669,7 @@
                   <span class="btn-label" id="btnRequestTocRunAllLabel">检测全部</span>
                 </button>
                 <button type="button" class="btn" id="btnRequestTocReport" onclick="openRequestFlowTocReport()" style="border-color:rgba(52,211,153,.4);color:var(--green,#34d399)">查看报告</button>
+                <button type="button" class="btn" id="btnRequestTocAiDebug" style="display:none;border-color:rgba(167,139,250,.45);color:var(--purple,#a78bfa)" onclick="copyRequestFlowAiDebug()">AI 排查</button>
                 <button type="button" class="btn" id="btnRequestTocCancel" style="display:none" onclick="cancelRequestFlowRun()">取消</button>
               </div>
 
@@ -1645,13 +1708,13 @@
                 <div id="flowRunSearchStatus" class="sidebar-hint" style="margin:0 0 6px;color:var(--text-tertiary)"></div>
                 <div id="flowRunSearchList" style="max-height:220px;overflow:auto;font-size:12px"></div>
               </div>
-              <pre id="requestFlowSnapshot" class="url-input" readonly spellcheck="false"
+              <pre id="requestFlowSnapshot" class="url-input studio-compact-hide" readonly spellcheck="false"
                 style="display:none;width:100%;min-height:120px;resize:vertical;color:var(--text);line-height:1.5;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;margin:0"></pre>
             </div>
           </div>
         </div>
 
-        <div class="editor-pane" id="pane-approval-flow">
+        <div class="editor-pane studio-detect-only" id="pane-approval-flow">
           <div class="editor-pane-body">
             <div style="display:flex;flex-direction:column;gap:12px;max-width:820px">
               <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg2)">
@@ -1661,7 +1724,7 @@
                 </p>
               </div>
 
-              <div id="approvalFlowStatus" class="sidebar-hint" style="padding:10px 12px;border:1px dashed var(--border);border-radius:8px;line-height:1.7;color:var(--text-secondary)">
+              <div id="approvalFlowStatus" class="sidebar-hint studio-compact-hide" style="padding:10px 12px;border:1px dashed var(--border);border-radius:8px;line-height:1.7;color:var(--text-secondary)">
                 连接后自动加载状态…
               </div>
 
@@ -1761,6 +1824,7 @@
                   <span class="btn-label" id="btnApprovalTocRunAllLabel">检测全部</span>
                 </button>
                 <button type="button" class="btn" id="btnApprovalTocReport" onclick="openApprovalFlowCustomerReport()" style="border-color:rgba(52,211,153,.4);color:var(--green,#34d399)">查看报告</button>
+                <button type="button" class="btn" id="btnApprovalTocAiDebug" style="display:none;border-color:rgba(167,139,250,.45);color:var(--purple,#a78bfa)" onclick="copyApprovalFlowAiDebug()">AI 排查</button>
                 <button type="button" class="btn" id="btnApprovalTocCancel" style="display:none" onclick="cancelApprovalFlowRun()">取消</button>
               </div>
 
@@ -1781,13 +1845,83 @@
               <p class="sidebar-hint studio-compact-hide" id="approvalFlowHint" style="margin:8px 0 0;color:var(--text-tertiary)">
                 Golden 模式跑 <code>approval/golden-regression.spec.ts</code>；流程调试可选手动选例。确认后点绿色「运行」或 Golden 区按钮。
               </p>
-              <pre id="approvalFlowSnapshot" class="url-input" readonly spellcheck="false"
+              <pre id="approvalFlowSnapshot" class="url-input studio-compact-hide" readonly spellcheck="false"
                 style="display:none;width:100%;min-height:120px;resize:vertical;color:var(--text);line-height:1.5;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;margin:0"></pre>
             </div>
           </div>
         </div>
 
-        <div class="editor-pane" id="pane-jobs">
+        <div class="editor-pane studio-config-only" id="pane-flow-config">
+          <div class="editor-pane-body" style="display:flex;flex-direction:column;min-height:0;flex:1">
+            <div class="flow-config-layout">
+              <aside class="flow-config-sidebar">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                  <span class="sidebar-label" style="margin:0">流程</span>
+                  <button type="button" class="btn" style="font-size:var(--fs-xs);padding:2px 8px" onclick="showFlowConfigNewForm()">+ 新建</button>
+                </div>
+                <div id="flowConfigList" class="flow-config-list sidebar-hint">连接后加载…</div>
+                <button type="button" class="btn btn-full studio-config-hide-toggle" id="btnStudioConfigMoreTools" onclick="toggleStudioConfigMoreTools()">更多工具</button>
+                <div id="flowConfigMoreHint" class="flow-config-more-hint">
+                  已在<strong>最左侧</strong>展开：迭代、录制用例。Golden 登录态在流程区顶部管理。
+                </div>
+              </aside>
+              <div class="flow-config-main">
+                <div id="flowConfigAccountBlock" style="padding:10px 12px;border:1px dashed var(--border);border-radius:8px;margin-bottom:12px">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+                    <span class="sidebar-hint" style="margin:0;color:var(--text-secondary)">配置账号（复用检测 Golden 登录态）</span>
+                    <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 10px;border-color:rgba(52,211,153,.45);color:var(--green)" onclick="addGoldenProfileEntry()">新增账号</button>
+                  </div>
+                  <div id="flowConfigGoldenProfileStorage" class="sidebar-hint" style="line-height:1.7;color:var(--text-secondary);margin-bottom:8px">连接后加载…</div>
+                  <label style="display:block;margin-bottom:4px;color:var(--text-secondary);font-size:var(--fs-xs)">当前账号</label>
+                  <select class="url-input" id="flowConfigGoldenRoleSelect" style="width:100%;color:var(--text)">
+                    <option value="">加载中…</option>
+                  </select>
+                </div>
+                <div id="flowConfigEmpty" class="sidebar-hint" style="padding:16px;line-height:1.7;color:var(--text-secondary)">
+                  <div style="font-weight:600;color:var(--text);margin-bottom:8px">配置新流程</div>
+                  <p style="margin:0 0 8px">填写流程名称后一键配置：先从菜单路由表解析入口，再实机探活分析页面。</p>
+                  <p style="margin:0">从左侧选择已有流程，或点「+ 新建」。</p>
+                </div>
+                <div id="flowConfigNewPanel" class="studio-hidden" style="display:none">
+                  <div style="font-weight:600;color:var(--text);margin-bottom:8px">新建流程</div>
+                  <label style="display:block;margin-bottom:4px;color:var(--text-secondary);font-size:var(--fs-xs)">流程名称</label>
+                  <input type="text" class="url-input" id="flowConfigNewLabel" placeholder="如：报销流程" style="width:100%;margin-bottom:8px;color:var(--text)">
+                  <label style="display:block;margin-bottom:4px;color:var(--text-secondary);font-size:var(--fs-xs)">页面入口（可选）</label>
+                  <input type="text" class="url-input" id="flowConfigNewEntry" placeholder="留空则按流程名称解析，如：报销单" style="width:100%;margin-bottom:10px;color:var(--text)">
+                  <button type="button" class="btn btn-run" id="btnFlowConfigSetupNew" onclick="runFlowConfigSetupFromNew()">一键配置</button>
+                </div>
+                <div id="flowConfigDetail" class="studio-hidden" style="display:none;flex-direction:column;gap:12px">
+                  <div>
+                    <div style="font-weight:600;color:var(--text)" id="flowConfigDetailTitle">—</div>
+                    <div class="sidebar-hint" id="flowConfigDetailEntry" style="margin:4px 0 0">—</div>
+                    <div class="flow-config-progress" id="flowConfigProgress"></div>
+                    <div id="flowConfigTryResult" class="flow-config-try-result studio-hidden" style="display:none"></div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <button type="button" class="btn btn-run" id="btnFlowConfigSetup" onclick="runFlowConfigSetupSelected()">一键配置</button>
+                    <button type="button" class="btn" id="btnFlowConfigTryRun" onclick="runFlowConfigTryRun()" style="border-color:rgba(52,211,153,.4);color:var(--green)">试跑</button>
+                    <button type="button" class="btn" id="btnFlowConfigOpenReplay" style="display:none;border-color:rgba(77,159,255,.4);color:var(--blue)" onclick="openFlowConfigReplay()">查看回放</button>
+                    <button type="button" class="btn" id="btnFlowConfigAiDebug" style="display:none;border-color:rgba(167,139,250,.45);color:var(--purple,#a78bfa)" onclick="copyFlowConfigAiDebug()">AI 排查</button>
+                    <button type="button" class="btn" id="btnFlowConfigCancel" style="display:none" onclick="cancelFlowConfigRun()">取消</button>
+                  </div>
+                  <div id="flowConfigFormWrap" class="flow-config-form studio-hidden" style="display:none">
+                    <div style="font-weight:600;color:var(--text);margin-bottom:8px;font-size:var(--fs-sm)">确认页面信息</div>
+                    <p class="sidebar-hint" id="flowConfigReviewHint" style="margin:0 0 8px"></p>
+                    <label style="display:block;margin-bottom:4px;color:var(--text-secondary);font-size:var(--fs-xs)">搜索框提示文字</label>
+                    <input type="text" class="url-input" id="flowConfigSearchPlaceholder" style="width:100%;margin-bottom:8px;color:var(--text)">
+                    <label style="display:block;margin-bottom:4px;color:var(--text-secondary);font-size:var(--fs-xs)">单号列名</label>
+                    <input type="text" class="url-input" id="flowConfigDocNoColumn" style="width:100%;margin-bottom:8px;color:var(--text)">
+                    <label style="display:block;margin-bottom:4px;color:var(--text-secondary);font-size:var(--fs-xs)">页签（逗号分隔，无则留空）</label>
+                    <input type="text" class="url-input" id="flowConfigTabs" placeholder="待审批, 已审批" style="width:100%;margin-bottom:8px;color:var(--text)">
+                    <button type="button" class="btn" onclick="saveFlowConfigCatalog()">保存</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="editor-pane studio-config-more-tools" id="pane-jobs">
           <div class="jobs-tab-layout">
             <aside class="jobs-tab-sidebar">
               <div class="sidebar-section">
@@ -2016,7 +2150,7 @@
 // ── State ──────────────────────────────────────────────────────────────
 let ws = null;
 let state = { recording: false, hasRaw: false, hasOpt: false, hasRun: false };
-const busyState = { optimize: false, run: false, repoPipeline: false, repoCompare: false, repoRerunKeep: false, repoBatch: false, accountLogin: false };
+const busyState = { optimize: false, run: false, repoPipeline: false, repoCompare: false, repoRerunKeep: false, repoBatch: false, accountLogin: false, flowConfig: false };
 let intentRunSeq = 0;let intentLoadSeq = 0;
 let intentLoadSilent = false;
 /** 最近一次 Intent 运行，用于自愈写回 */
@@ -2265,6 +2399,10 @@ function updateGlobalTaskBar() {
   }
   if (busyState.accountLogin) {
     el.textContent = '● 登录中';
+    return;
+  }
+  if (busyState.flowConfig) {
+    el.textContent = '● 流程配置中';
     return;
   }
   el.textContent = '';
@@ -3142,6 +3280,12 @@ function openRequestFlowUiAuditReport() {
 
 function updateRequestFlowReportBtn(msg) {
   setFlowReportButtons(REQUEST_FLOW_REPORT_BTNS, msg || lastRequestFlowRun, requestFlowSubTab);
+  syncFlowRunAiDebugBtn('request-flow', msg, 'btnRequestTocAiDebug', lastRequestFlowRun);
+}
+
+function updateApprovalFlowReportBtn(msg) {
+  setFlowReportButtons(APPROVAL_FLOW_REPORT_BTNS, msg || lastApprovalFlowRun, approvalFlowSubTab);
+  syncFlowRunAiDebugBtn('approval-flow', msg, 'btnApprovalTocAiDebug', lastApprovalFlowRun);
 }
 
 let lastApprovalFlowRun = null;
@@ -3176,10 +3320,6 @@ function openApprovalFlowReplay() {
     return;
   }
   openFlowReplay(path);
-}
-
-function updateApprovalFlowReportBtn(msg) {
-  setFlowReportButtons(APPROVAL_FLOW_REPORT_BTNS, msg || lastApprovalFlowRun, approvalFlowSubTab);
 }
 
 function copyBatchFailureByIndex(i) {
@@ -3633,6 +3773,7 @@ function loadBatchResultSpecByIndex(i) {
 
 function restoreEditorTab() {
   try {
+    if (isStudioConfigMode()) return;
     let saved = sessionStorage.getItem(SS_EDITOR_TAB);
     if (!saved) {
       const wf = sessionStorage.getItem(SS_WORKFLOW_MODE);
@@ -3691,6 +3832,7 @@ const SS_BROWSER_PROJECTS = 'pw_studio_browser_projects';
 const SS_EDITOR_TAB = 'pw_studio_editor_tab';
 const SS_RUN_HISTORY = 'pw_studio_run_history';
 const SS_STUDIO_COMPACT_ADV = 'pw_studio_compact_advanced';
+const SS_STUDIO_MODE = 'pw_studio_mode';
 const STUDIO_COMPACT_HIDDEN_TABS = new Set(['intent-run', 'ego-audit', 'jobs']);
 const RUN_HISTORY_MAX = 10;
 let workflowMode = 'new';
@@ -3704,6 +3846,10 @@ function isStudioCompact() {
 function toggleStudioCompactAdvanced() {
   const app = document.querySelector('.app');
   if (!app) return;
+  if (isStudioConfigMode()) {
+    showToast('配置模式请使用流程区「更多工具」', 'err');
+    return;
+  }
   app.classList.toggle('studio-compact-off');
   const on = app.classList.contains('studio-compact-off');
   try {
@@ -3726,9 +3872,17 @@ function toggleStudioCompactAdvanced() {
     restoreApprovalFlowSubTab();
     ensureReportHubCompactDefault();
   } else {
-    const compareTab = document.querySelector('.report-hub-tab[data-report-hub="compare"]');
-    switchReportHub('compare', compareTab);
+    const jobsTab = Array.from(document.querySelectorAll('.tab')).find((t) =>
+      t.textContent.includes('定时任务'),
+    );
+    if (jobsTab) switchTab('jobs', jobsTab);
+    else {
+      const compareTab = document.querySelector('.report-hub-tab[data-report-hub="compare"]');
+      switchReportHub('compare', compareTab);
+    }
   }
+  syncEditorRunBarVisibility();
+  syncSidebarAccountLoginVisibility();
 }
 
 function restoreStudioCompactAdvanced() {
@@ -3743,6 +3897,431 @@ function restoreStudioCompactAdvanced() {
   } catch {
     /* ignore */
   }
+}
+
+const flowConfigState = { flows: [], selectedId: '', busy: false, setupStep: '', replayUrl: '', lastRunId: '' };
+
+function isStudioConfigMode() {
+  return Boolean(document.querySelector('.app')?.classList.contains('studio-mode-config'));
+}
+
+function setStudioMode(mode) {
+  const app = document.querySelector('.app');
+  if (!app) return;
+  const next = mode === 'config' ? 'config' : 'detect';
+  app.classList.remove('studio-mode-detect', 'studio-mode-config', 'config-more-tools');
+  app.classList.add(next === 'config' ? 'studio-mode-config' : 'studio-mode-detect');
+  const btnDetect = document.getElementById('btnStudioModeDetect');
+  const btnConfig = document.getElementById('btnStudioModeConfig');
+  if (btnDetect) btnDetect.classList.toggle('active', next === 'detect');
+  if (btnConfig) btnConfig.classList.toggle('active', next === 'config');
+  try {
+    sessionStorage.setItem(SS_STUDIO_MODE, next);
+  } catch {
+    /* ignore */
+  }
+  const moreBtn = document.getElementById('btnStudioConfigMoreTools');
+  if (moreBtn) moreBtn.textContent = '更多工具';
+  if (next === 'config') {
+    app.classList.remove('studio-compact-off');
+    const advBtn = document.getElementById('btnStudioCompactAdvanced');
+    if (advBtn) advBtn.textContent = '展开高级功能';
+    document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
+    document.querySelectorAll('.editor-pane').forEach((p) => p.classList.remove('active'));
+    document.getElementById('pane-flow-config')?.classList.add('active');
+    refreshFlowConfigList();
+    refreshRequestFlowStatus(true);
+    if (!flowConfigState.selectedId) showFlowConfigEmpty();
+  } else {
+    document.getElementById('pane-flow-config')?.classList.remove('active');
+    app.classList.remove('config-more-tools');
+    restoreStudioCompactAdvanced();
+    restoreEditorTab();
+  }
+  syncEditorRunBarVisibility();
+  syncSidebarAccountLoginVisibility();
+}
+
+function restoreStudioMode() {
+  try {
+    const saved = sessionStorage.getItem(SS_STUDIO_MODE);
+    if (saved === 'config') setStudioMode('config');
+    else setStudioMode('detect');
+  } catch {
+    setStudioMode('detect');
+  }
+}
+
+function toggleStudioConfigMoreTools() {
+  const app = document.querySelector('.app');
+  if (!app || !isStudioConfigMode()) return;
+  const on = !app.classList.contains('config-more-tools');
+  app.classList.toggle('config-more-tools', on);
+  const btn = document.getElementById('btnStudioConfigMoreTools');
+  if (btn) btn.textContent = on ? '收起工具' : '更多工具';
+  if (on) {
+    openAccordion('accordionDateCategories');
+    openAccordion('accordionWorkflowNew');
+    const scroll = document.querySelector('.sidebar-scroll');
+    const target = document.getElementById('accordionDateCategories');
+    if (scroll && target) {
+      requestAnimationFrame(() => {
+        scroll.scrollTo({ top: Math.max(0, target.offsetTop - 12), behavior: 'smooth' });
+      });
+    }
+    showToast('已在左侧展开：迭代、录制用例', 'ok');
+  }
+}
+
+function refreshFlowConfigList() {
+  const el = document.getElementById('flowConfigList');
+  if (el) el.textContent = '加载中…';
+  send('flow:config:list', {});
+}
+
+function renderFlowConfigList() {
+  const el = document.getElementById('flowConfigList');
+  if (!el) return;
+  const flows = flowConfigState.flows;
+  if (!flows.length) {
+    el.innerHTML = '<span class="sidebar-hint">暂无流程，点 + 新建</span>';
+    return;
+  }
+  el.innerHTML = flows
+    .map((f) => {
+      const active = f.id === flowConfigState.selectedId ? ' active' : '';
+      const id = escHtml(f.id);
+      return `<button type="button" class="flow-config-item${active}" data-flow-id="${id}" onclick="selectFlowConfig(this.dataset.flowId)">
+        <div class="flow-config-item-title">${escHtml(f.label || f.id)}</div>
+        <div class="flow-config-item-sub">${escHtml(f.entry || f.id)}</div>
+      </button>`;
+    })
+    .join('');
+}
+
+function showFlowConfigEmpty() {
+  flowConfigState.selectedId = '';
+  document.getElementById('flowConfigEmpty')?.classList.remove('studio-hidden');
+  const empty = document.getElementById('flowConfigEmpty');
+  if (empty) empty.style.display = '';
+  const np = document.getElementById('flowConfigNewPanel');
+  if (np) {
+    np.classList.add('studio-hidden');
+    np.style.display = 'none';
+  }
+  const detail = document.getElementById('flowConfigDetail');
+  if (detail) {
+    detail.classList.add('studio-hidden');
+    detail.style.display = 'none';
+  }
+  renderFlowConfigList();
+}
+
+function showFlowConfigNewForm() {
+  flowConfigState.selectedId = '';
+  const empty = document.getElementById('flowConfigEmpty');
+  if (empty) {
+    empty.classList.add('studio-hidden');
+    empty.style.display = 'none';
+  }
+  const detail = document.getElementById('flowConfigDetail');
+  if (detail) {
+    detail.classList.add('studio-hidden');
+    detail.style.display = 'none';
+  }
+  const np = document.getElementById('flowConfigNewPanel');
+  if (np) {
+    np.classList.remove('studio-hidden');
+    np.style.display = '';
+  }
+  renderFlowConfigList();
+}
+
+function showFlowConfigDetail() {
+  const empty = document.getElementById('flowConfigEmpty');
+  if (empty) {
+    empty.classList.add('studio-hidden');
+    empty.style.display = 'none';
+  }
+  const np = document.getElementById('flowConfigNewPanel');
+  if (np) {
+    np.classList.add('studio-hidden');
+    np.style.display = 'none';
+  }
+  const detail = document.getElementById('flowConfigDetail');
+  if (detail) {
+    detail.classList.remove('studio-hidden');
+    detail.style.display = 'flex';
+  }
+}
+
+function selectFlowConfig(flowId, requestStatus = true) {
+  const id = String(flowId || '').trim();
+  if (!id) return;
+  flowConfigState.selectedId = id;
+  const flow = flowConfigState.flows.find((f) => f.id === id);
+  const title = document.getElementById('flowConfigDetailTitle');
+  const entryEl = document.getElementById('flowConfigDetailEntry');
+  if (title) title.textContent = flow?.label || id;
+  if (entryEl) entryEl.textContent = flow?.entry || id;
+  showFlowConfigDetail();
+  renderFlowConfigList();
+  updateFlowConfigProgress('');
+  if (requestStatus) send('flow:config:status', { flowId: id });
+}
+
+function updateFlowConfigProgress(text) {
+  const el = document.getElementById('flowConfigProgress');
+  if (el) el.textContent = text || '';
+}
+
+function renderFlowConfigTryResult(msg) {
+  const el = document.getElementById('flowConfigTryResult');
+  if (!el) return;
+  if (!msg) {
+    el.classList.add('studio-hidden');
+    el.style.display = 'none';
+    el.innerHTML = '';
+    return;
+  }
+  const lines = [];
+  if (msg.runner || msg.spec) {
+    lines.push(
+      `<div class="try-line dim">命令：${escHtml(msg.runner || '')} --env=${escHtml(msg.env || '')} --grep=${escHtml(msg.grep || '')}</div>`,
+    );
+    lines.push(`<div class="try-line dim">用例：${escHtml(msg.spec || '')}</div>`);
+  }
+  if (msg.total > 0) {
+    lines.push(
+      `<div class="try-head">${msg.ok ? '通过' : '未通过'} · ${escHtml(String(msg.passed ?? 0))}/${escHtml(String(msg.total))} · ${escHtml(msg.duration || '?')}s</div>`,
+    );
+    for (const test of msg.tests || []) {
+      lines.push(
+        `<div class="try-line ${test.ok ? 'ok' : 'fail'}">${test.ok ? '✓' : '✗'} ${escHtml(test.title || '未命名用例')}</div>`,
+      );
+    }
+  } else if (msg.message) {
+    lines.push(`<div class="try-head">${escHtml(msg.message)}</div>`);
+  }
+  for (const fail of msg.failures || []) {
+    const tail = fail.message ? ` — ${escHtml(fail.message.split('\n')[0])}` : '';
+    lines.push(`<div class="try-line fail">✗ ${escHtml(fail.title || '失败')}${tail}</div>`);
+  }
+  if (msg.reportDir && !msg.ok) {
+    lines.push(`<div class="try-line dim">报告目录：${escHtml(msg.reportDir)}</div>`);
+  }
+  const replayUrl = msg.replayReportOpenPath || msg.videoReportOpenPath || '';
+  if (replayUrl) {
+    lines.push(
+      `<div class="try-line ok" style="margin-top:6px"><button type="button" class="btn btn-run" style="font-size:var(--fs-xs);padding:4px 10px" data-flow-url="${escHtml(replayUrl)}" onclick="openFlowReplay(this.dataset.flowUrl)">查看流程回放</button></div>`,
+    );
+  }
+  el.innerHTML = lines.join('');
+  el.classList.remove('studio-hidden');
+  el.style.display = '';
+}
+
+function showFlowConfigCatalogForm(catalogForm) {
+  const wrap = document.getElementById('flowConfigFormWrap');
+  if (!wrap) return;
+  wrap.classList.remove('studio-hidden');
+  wrap.style.display = '';
+  const form = catalogForm || {};
+  const sp = document.getElementById('flowConfigSearchPlaceholder');
+  const doc = document.getElementById('flowConfigDocNoColumn');
+  const tabs = document.getElementById('flowConfigTabs');
+  if (sp) sp.value = form.searchPlaceholder || '';
+  if (doc) doc.value = form.docNoColumn || '';
+  if (tabs) tabs.value = Array.isArray(form.tabs) ? form.tabs.join(', ') : '';
+  const hint = document.getElementById('flowConfigReviewHint');
+  if (hint) {
+    const n = form.reviewCount ?? 0;
+    hint.textContent = n > 0 ? `还有 ${n} 处待确认（TODO(review)），请核对后保存。` : '请核对搜索框、单号列名与页签是否正确。';
+  }
+}
+
+function applyFlowConfigStatus(msg) {
+  if (!msg?.flowId || msg.flowId !== flowConfigState.selectedId) return;
+  const title = document.getElementById('flowConfigDetailTitle');
+  const entryEl = document.getElementById('flowConfigDetailEntry');
+  if (title && msg.label) title.textContent = msg.label;
+  if (entryEl && msg.entry) entryEl.textContent = msg.entry;
+  if (msg.catalogForm) showFlowConfigCatalogForm(msg.catalogForm);
+  else {
+    const wrap = document.getElementById('flowConfigFormWrap');
+    if (wrap) {
+      wrap.classList.add('studio-hidden');
+      wrap.style.display = 'none';
+    }
+  }
+}
+
+function setFlowConfigBusy(busy) {
+  flowConfigState.busy = busy;
+  busyState.flowConfig = busy;
+  const cancelBtn = document.getElementById('btnFlowConfigCancel');
+  const setupBtn = document.getElementById('btnFlowConfigSetup');
+  const setupNewBtn = document.getElementById('btnFlowConfigSetupNew');
+  const tryBtn = document.getElementById('btnFlowConfigTryRun');
+  const aiBtn = document.getElementById('btnFlowConfigAiDebug');
+  if (cancelBtn) cancelBtn.style.display = busy ? '' : 'none';
+  [setupBtn, setupNewBtn, tryBtn, aiBtn].forEach((b) => {
+    if (b) b.disabled = busy;
+  });
+  updateGlobalTaskBar();
+}
+
+function getFlowConfigAccountProfile() {
+  const sel = document.getElementById('flowConfigGoldenRoleSelect');
+  const id = sel?.value?.trim() || '';
+  if (id && requestFlowProfileState[id]?.hasStorage) return id;
+  const p = getSelectedGoldenProfile();
+  if (p?.hasStorage) return p.id;
+  const ready = Object.values(requestFlowProfileState).find((x) => isGoldenProfileId(x.id) && x.hasStorage);
+  return ready?.id || id || '';
+}
+
+function runFlowConfigSetupFromNew() {
+  const label = document.getElementById('flowConfigNewLabel')?.value?.trim();
+  const entry = document.getElementById('flowConfigNewEntry')?.value?.trim();
+  if (!label) {
+    showToast('请填写流程名称', 'err');
+    return;
+  }
+  const accountProfile = getFlowConfigAccountProfile();
+  if (!accountProfile) {
+    showToast('请先选择已就绪的 Golden 账号', 'err');
+    return;
+  }
+  updateFlowConfigProgress('准备一键配置…');
+  setFlowConfigBusy(true);
+  if (!send('flow:config:setup', { label, entry, accountProfile })) setFlowConfigBusy(false);
+}
+
+function runFlowConfigSetupSelected() {
+  const flowId = flowConfigState.selectedId;
+  if (!flowId) {
+    showToast('请先选择流程', 'err');
+    return;
+  }
+  const accountProfile = getFlowConfigAccountProfile();
+  if (!accountProfile) {
+    showToast('请先选择已就绪的 Golden 账号', 'err');
+    return;
+  }
+  const flow = flowConfigState.flows.find((f) => f.id === flowId);
+  updateFlowConfigProgress('准备一键配置…');
+  setFlowConfigBusy(true);
+  if (!send('flow:config:setup', { flowId, label: flow?.label, entry: flow?.entry, accountProfile })) setFlowConfigBusy(false);
+}
+
+function syncFlowConfigReplayBtn(url) {
+  flowConfigState.replayUrl = String(url || '').trim();
+  const btn = document.getElementById('btnFlowConfigOpenReplay');
+  if (btn) btn.style.display = flowConfigState.replayUrl ? '' : 'none';
+}
+
+function syncFlowConfigAiDebugBtn(runId) {
+  flowConfigState.lastRunId = String(runId || '').trim();
+  syncFlowRunAiDebugBtn('flow-config', { runId: flowConfigState.lastRunId }, 'btnFlowConfigAiDebug', {
+    runId: flowConfigState.lastRunId,
+  });
+}
+
+function syncFlowRunAiDebugBtn(flowId, msg, btnId, fallbackRun) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  const runId = String(msg?.runId || msg?.manifest?.runId || fallbackRun?.runId || '').trim();
+  btn.style.display = runId ? '' : 'none';
+  btn.disabled = !runId;
+}
+
+async function copyFlowRunAiDebug(flowId, runId, btnId, logTag) {
+  const id = String(runId || '').trim();
+  const btn = document.getElementById(btnId);
+  if (!flowId || !id) {
+    showToast('请先完成一次运行', 'err');
+    return;
+  }
+  const label = btn?.textContent || 'AI 排查';
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '…';
+  }
+  try {
+    const res = await fetch(
+      `/api/flow-run/ai-debug?flowId=${encodeURIComponent(flowId)}&runId=${encodeURIComponent(id)}`,
+    );
+    const data = await res.json();
+    if (!res.ok || !data.ok || !data.markdown) {
+      throw new Error((data && data.error) || `HTTP ${res.status}`);
+    }
+    await copyTextToClipboard(data.markdown);
+    showToast('已复制 AI 排查包，可粘贴给 Cursor', 'ok');
+    log('ok', `[${logTag || flowId}] 已复制 AI 排查包 · ${id}`);
+  } catch (e) {
+    showToast(`复制失败: ${e?.message || e}`, 'err');
+    log('err', `[${logTag || flowId}] AI 排查复制失败: ${e?.message || e}`);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = label;
+    }
+  }
+}
+
+async function copyFlowConfigAiDebug() {
+  const flowId = flowConfigState.selectedId;
+  await copyFlowRunAiDebug(flowId, flowConfigState.lastRunId, 'btnFlowConfigAiDebug', 'flow-config');
+}
+
+function copyRequestFlowAiDebug() {
+  return copyFlowRunAiDebug('request-flow', lastRequestFlowRun?.runId, 'btnRequestTocAiDebug', 'request-flow');
+}
+
+function copyApprovalFlowAiDebug() {
+  return copyFlowRunAiDebug('approval-flow', lastApprovalFlowRun?.runId, 'btnApprovalTocAiDebug', 'approval-flow');
+}
+
+function openFlowConfigReplay() {
+  openFlowReplay(flowConfigState.replayUrl);
+}
+
+function runFlowConfigTryRun() {
+  const flowId = flowConfigState.selectedId;
+  if (!flowId) {
+    showToast('请先选择流程', 'err');
+    return;
+  }
+  const accountProfile = getFlowConfigAccountProfile();
+  if (!accountProfile) {
+    showToast('请先选择已就绪的 Golden 账号', 'err');
+    return;
+  }
+  syncFlowConfigReplayBtn('');
+  syncFlowConfigAiDebugBtn('');
+  renderFlowConfigTryResult(null);
+  updateFlowConfigProgress('准备试跑…');
+  setFlowConfigBusy(true);
+  if (!send('flow:config:try-run', { flowId, accountProfile })) setFlowConfigBusy(false);
+}
+
+function cancelFlowConfigRun() {
+  send('cancel:flow-config', {});
+}
+
+function saveFlowConfigCatalog() {
+  const flowId = flowConfigState.selectedId;
+  if (!flowId) {
+    showToast('请先选择流程', 'err');
+    return;
+  }
+  send('flow:config:catalog-save', {
+    flowId,
+    searchPlaceholder: document.getElementById('flowConfigSearchPlaceholder')?.value ?? '',
+    docNoColumn: document.getElementById('flowConfigDocNoColumn')?.value ?? '',
+    tabs: document.getElementById('flowConfigTabs')?.value ?? '',
+  });
 }
 
 let currentRunPipelineStep = 1;
@@ -5544,6 +6123,7 @@ function connectWS() {
     setEgoAuditBusy(false);
     setApprovalFlowBusy(false);
     setRequestFlowBusy(false);
+    setFlowConfigBusy(false);
     dateCategoryState.loaded = false;
     dateCategoryState.loading = false;
     resetPipelineRunning();
@@ -5565,6 +6145,7 @@ function connectWS() {
     setTimeout(refreshCompareReportStatus, 300);
     setTimeout(refreshIntentList, 400);
     setTimeout(refreshReplayList, 450);
+    if (isStudioConfigMode()) refreshFlowConfigList();
   };
   ws.onmessage = (e) => handleMessage(JSON.parse(e.data));
   ws.onclose = () => {
@@ -5574,6 +6155,7 @@ function connectWS() {
     setEgoAuditBusy(false);
     setApprovalFlowBusy(false);
     setRequestFlowBusy(false);
+    setFlowConfigBusy(false);
     updateGlobalTaskBar();
     resetPipelineRunning();
     setBusy('optimize', false);
@@ -6943,6 +7525,96 @@ function handleMessage(msg) {
       }
       if (msg.runMarker) fillFlowRunSearchQuery(msg.runMarker, false);
       break;
+    case 'flow:config:list:done':
+      if (msg.ok) {
+        flowConfigState.flows = msg.flows || [];
+        renderFlowConfigList();
+      } else {
+        const el = document.getElementById('flowConfigList');
+        if (el) el.textContent = msg.message || '加载失败';
+        log('err', `[flow-config] ${msg.message || '加载流程列表失败'}`);
+      }
+      break;
+    case 'flow:config:status:done':
+      if (msg.ok) applyFlowConfigStatus(msg);
+      else if (msg.flowId === flowConfigState.selectedId) {
+        log('err', `[flow-config] ${msg.message || '读取状态失败'}`);
+      }
+      break;
+    case 'flow:config:setup:start':
+      setFlowConfigBusy(true);
+      flowConfigState.setupStep = '';
+      updateFlowConfigProgress('开始配置…');
+      if (msg.flowId) selectFlowConfig(msg.flowId, false);
+      log('info', `[flow-config] 一键配置开始 · ${msg.label || msg.flowId || ''}`);
+      break;
+    case 'flow:config:setup:step':
+      flowConfigState.setupStep = msg.step || '';
+      updateFlowConfigProgress(msg.text || '');
+      break;
+    case 'flow:config:setup:done':
+      setFlowConfigBusy(false);
+      updateFlowConfigProgress(msg.ok ? (msg.message || '配置完成') : (msg.message || '配置失败'));
+      if (msg.flowId) {
+        refreshFlowConfigList();
+        selectFlowConfig(msg.flowId, false);
+        if (msg.catalogForm) showFlowConfigCatalogForm(msg.catalogForm);
+        else if (msg.ok) send('flow:config:status', { flowId: msg.flowId });
+      }
+      if (msg.ok) {
+        showToast(msg.message || '配置完成', 'ok');
+        log('ok', `[flow-config] ${msg.message || '配置完成'}`);
+      } else if (!msg.cancelled) {
+        showToast(msg.message || '配置失败', 'err');
+        log('err', `[flow-config] ${msg.message || '配置失败'}`);
+      } else {
+        log('warn', '[flow-config] 配置已取消');
+      }
+      break;
+    case 'flow:config:catalog-save:done':
+      if (msg.ok) {
+        if (msg.catalogForm) showFlowConfigCatalogForm(msg.catalogForm);
+        showToast('页面描述已保存', 'ok');
+        log('ok', `[flow-config] 已保存 · ${msg.catalogRel || ''}`);
+      } else {
+        showToast(msg.message || '保存失败', 'err');
+        log('err', `[flow-config] ${msg.message || '保存失败'}`);
+      }
+      break;
+    case 'flow:config:try-run:start':
+      setFlowConfigBusy(true);
+      renderFlowConfigTryResult(null);
+      updateFlowConfigProgress(
+        `试跑中 · ${msg.label || msg.flowId || ''} · grep「${msg.grep || '列表'}」 · ${msg.spec || ''}`,
+      );
+      log(
+        'info',
+        `[flow-config] 试跑开始 · ${msg.label || msg.flowId} · env=${msg.env || ''} · grep=${msg.grep || '列表'} · ${msg.spec || ''}`,
+      );
+      break;
+    case 'flow:config:try-run:done':
+      setFlowConfigBusy(false);
+      updateFlowConfigProgress(msg.message || (msg.ok ? '试跑完成' : '试跑失败'));
+      const replayUrl = msg.replayReportOpenPath || msg.videoReportOpenPath || '';
+      syncFlowConfigReplayBtn(replayUrl);
+      syncFlowConfigAiDebugBtn(msg.runId);
+      renderFlowConfigTryResult(msg);
+      if (msg.ok) {
+        showToast(replayUrl ? `${msg.message || '试跑完成'}，可查看回放` : (msg.message || '试跑完成'), 'ok');
+        log('ok', `[flow-config] ${msg.message || '试跑完成'}`);
+        if (replayUrl) openFlowReplay(replayUrl);
+      } else if (!msg.cancelled) {
+        showToast(replayUrl ? `${msg.message || '试跑未通过'}，可查看回放` : (msg.message || '试跑未通过'), 'err');
+        log('err', `[flow-config] ${msg.message || '试跑未通过'}`);
+        if (replayUrl) openFlowReplay(replayUrl);
+      } else {
+        renderFlowConfigTryResult(null);
+        log('warn', '[flow-config] 试跑已取消');
+      }
+      break;
+    case 'flow:config:cancel:ack':
+      log('warn', '[flow-config] 取消指令已送达，正在终止进程…');
+      break;
     case 'ego:explore:start':
       if (msg.seq) exploreSeq = msg.seq;
       setExploreBusy(true);
@@ -7422,14 +8094,14 @@ function setEditorRunStatus(text, status) {
 
 function syncEditorRunBarVisibility() {
   const bar = document.getElementById('editorRunBar');
-  const noRun = ['diff','figma','intent-run','ego-audit','request-flow','approval-flow','jobs'].some((n) => document.getElementById('pane-' + n)?.classList.contains('active'));
-  if (bar) bar.style.display = noRun ? 'none' : 'block';
+  const noRun = ['diff','figma','intent-run','ego-audit','request-flow','approval-flow','jobs','flow-config'].some((n) => document.getElementById('pane-' + n)?.classList.contains('active'));
+  if (bar) bar.style.display = noRun || isStudioConfigMode() ? 'none' : 'block';
 }
 
 function syncSidebarAccountLoginVisibility() {
   const block = document.getElementById('sidebarAccountLoginBlock');
   const storagePill = document.getElementById('statusStorage');
-  const hideSidebarAccount = ['request-flow', 'approval-flow', 'jobs'].some((n) =>
+  const hideSidebarAccount = !isStudioConfigMode() && ['request-flow', 'approval-flow', 'jobs'].some((n) =>
     document.getElementById(`pane-${n}`)?.classList.contains('active'),
   );
   if (block) block.classList.toggle('studio-hidden', hideSidebarAccount);
@@ -7439,6 +8111,7 @@ function syncSidebarAccountLoginVisibility() {
 function switchTab(name, el) {
   const pane = document.getElementById(`pane-${name}`);
   if (!pane || pane.classList.contains('studio-hidden')) return;
+  if (isStudioConfigMode()) return;
   if (isStudioCompact() && STUDIO_COMPACT_HIDDEN_TABS.has(name)) return;
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.editor-pane').forEach(p => p.classList.remove('active'));
@@ -7823,7 +8496,7 @@ function refreshUiAuditStatus() {
 }
 
 function setRequestFlowBusy(busy) {
-  ['btnRequestProbe', 'btnRequestPresetPreview', 'btnRequestPresetReadOnly', 'btnRequestPresetWrite', 'btnRequestPresetSubmitApprove', 'btnRequestRunSelected', 'btnRequestGoldenRun', 'btnRequestGoldenRunAll', 'btnRequestTravelProbe', 'btnRequestProbeFlow', 'btnRequestTravelProbeChain', 'btnRequestProbeChain', 'btnRequestProbeRunUiAudit', 'btnRequestPromoteBaseline', 'btnRequestClearBaseline', 'btnAddGoldenProfile', 'btnAddWriteProfile', 'btnRequestTocRun', 'btnRequestTocRunAll', 'btnRequestTocReport'].forEach((id) => {
+  ['btnRequestProbe', 'btnRequestPresetPreview', 'btnRequestPresetReadOnly', 'btnRequestPresetWrite', 'btnRequestPresetSubmitApprove', 'btnRequestRunSelected', 'btnRequestGoldenRun', 'btnRequestGoldenRunAll', 'btnRequestTravelProbe', 'btnRequestProbeFlow', 'btnRequestTravelProbeChain', 'btnRequestProbeChain', 'btnRequestProbeRunUiAudit', 'btnRequestPromoteBaseline', 'btnRequestClearBaseline', 'btnAddGoldenProfile', 'btnAddWriteProfile', 'btnRequestTocRun', 'btnRequestTocRunAll', 'btnRequestTocReport', 'btnRequestTocAiDebug'].forEach((id) => {
     const btn = document.getElementById(id);
     if (!btn) return;
     btn.disabled = busy;
@@ -7892,6 +8565,17 @@ function bindFlowProfileControls() {
     loadRequestDocNoFromStorage();
     refreshRequestFlowStatus(true);
     updateStudioStatusBar();
+    syncFlowConfigGoldenRoleSelectFromRequest();
+  });
+  document.getElementById('flowConfigGoldenRoleSelect')?.addEventListener('change', () => {
+    const src = document.getElementById('flowConfigGoldenRoleSelect');
+    const dst = document.getElementById('requestGoldenRoleSelect');
+    if (src && dst && [...dst.options].some((o) => o.value === src.value && !o.disabled)) {
+      dst.value = src.value;
+      loadRequestDocNoFromStorage();
+      refreshRequestFlowStatus(true);
+      updateStudioStatusBar();
+    }
   });
   document.getElementById('approvalGoldenRoleSelect')?.addEventListener('change', () => {
     refreshApprovalFlowStatus(true);
@@ -7956,6 +8640,14 @@ function renderRequestFlowProfileStorage(list) {
     }
     goldenEl.innerHTML = goldenHtml;
   }
+  const flowConfigGoldenEl = document.getElementById('flowConfigGoldenProfileStorage');
+  if (flowConfigGoldenEl) {
+    if (goldenItems.length) {
+      flowConfigGoldenEl.innerHTML = goldenItems.map((p) => row(p, 'var(--green)', { hideProfileId: true, allowDelete: true })).join('');
+    } else {
+      flowConfigGoldenEl.innerHTML = `<div style="color:var(--amber)">未配置 golden* 档案，点「新增账号」登录</div>`;
+    }
+  }
   if (approvalGoldenEl) {
     if (goldenItems.length) {
       approvalGoldenEl.innerHTML = goldenItems.map((p) => row(p, 'var(--green)', { hideProfileId: true, allowDelete: true })).join('');
@@ -7982,6 +8674,25 @@ function renderRequestFlowProfileStorage(list) {
       if (firstReady) roleSel.value = firstReady.id;
     }
     loadRequestDocNoFromStorage();
+  }
+  const flowConfigRoleSel = document.getElementById('flowConfigGoldenRoleSelect');
+  if (flowConfigRoleSel) {
+    const prevFlowConfig = flowConfigRoleSel.value;
+    const flowConfigOpts = goldenItems.map((p) => {
+      const hasRemark = p.label && p.loginAccount && p.label !== p.loginAccount;
+      const label = hasRemark ? `${p.label} · ${p.loginAccount}` : (p.roleLabel || p.label || p.id);
+      const suffix = p.hasStorage ? '' : ' · 未登录';
+      return `<option value="${escHtml(p.id)}"${p.hasStorage ? '' : ' disabled'}>${escHtml(label)}${suffix}</option>`;
+    });
+    flowConfigRoleSel.innerHTML = flowConfigOpts.length ? flowConfigOpts.join('') : '<option value="">无 golden* 档案</option>';
+    if ([...flowConfigRoleSel.options].some((o) => o.value === prevFlowConfig && !o.disabled)) {
+      flowConfigRoleSel.value = prevFlowConfig;
+    } else if (roleSel && [...flowConfigRoleSel.options].some((o) => o.value === roleSel.value && !o.disabled)) {
+      flowConfigRoleSel.value = roleSel.value;
+    } else {
+      const firstReady = goldenItems.find((p) => p.hasStorage);
+      if (firstReady) flowConfigRoleSel.value = firstReady.id;
+    }
   }
   const approvalRoleSel = document.getElementById('approvalGoldenRoleSelect');
   if (approvalRoleSel) {
@@ -8066,6 +8777,13 @@ function switchToApprovalFlowSubTab(mode) {
   setApprovalFlowSubTab(mode === 'probe' ? 'probe' : 'golden', tabEl);
 }
 
+function syncFlowConfigGoldenRoleSelectFromRequest() {
+  const src = document.getElementById('requestGoldenRoleSelect');
+  const dst = document.getElementById('flowConfigGoldenRoleSelect');
+  if (!src || !dst) return;
+  if ([...dst.options].some((o) => o.value === src.value && !o.disabled)) dst.value = src.value;
+}
+
 function getSelectedGoldenProfile() {
   const sel = document.getElementById('requestGoldenRoleSelect');
   const id = sel?.value?.trim() || '';
@@ -8096,7 +8814,7 @@ function requestFlowLoginHint() {
 }
 
 function addGoldenProfileEntry() {
-  switchToRequestFlowSubTab('golden');
+  if (!isStudioConfigMode()) switchToRequestFlowSubTab('golden');
   if (!ws || ws.readyState !== 1) {
     showToast('未连接服务器', 'err');
     return;
@@ -8701,7 +9419,7 @@ function cancelRequestFlowRun() {
 }
 
 function setApprovalFlowBusy(busy) {
-  ['btnApprovalProbe', 'btnApprovalPresetPreview', 'btnApprovalPresetReadOnly', 'btnApprovalPresetFilter', 'btnApprovalRunSelected', 'btnApprovalGoldenRun', 'btnApprovalGoldenRunAll', 'btnApprovalPromoteBaseline', 'btnApprovalClearBaseline', 'btnApprovalTocRun', 'btnApprovalTocRunAll', 'btnApprovalTocReport'].forEach((id) => {
+  ['btnApprovalProbe', 'btnApprovalPresetPreview', 'btnApprovalPresetReadOnly', 'btnApprovalPresetFilter', 'btnApprovalRunSelected', 'btnApprovalGoldenRun', 'btnApprovalGoldenRunAll', 'btnApprovalPromoteBaseline', 'btnApprovalClearBaseline', 'btnApprovalTocRun', 'btnApprovalTocRunAll', 'btnApprovalTocReport', 'btnApprovalTocAiDebug'].forEach((id) => {
     const btn = document.getElementById(id);
     if (!btn) return;
     btn.disabled = busy;
@@ -10564,8 +11282,8 @@ document.getElementById('optCode').addEventListener('paste', () => queueMicrotas
 restoreWorkflowMode();
 restoreBrowserProjects();
 bindBrowserProjectControls();
-restoreStudioCompactAdvanced();
-restoreEditorTab();
+restoreStudioMode();
+if (!isStudioConfigMode()) restoreStudioCompactAdvanced();
 restoreRequestFlowSubTab();
 restoreApprovalFlowSubTab();
 ensureReportHubCompactDefault();

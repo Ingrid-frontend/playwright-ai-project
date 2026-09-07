@@ -243,8 +243,9 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
   let uiAuditGateFailed = false;
 
   const fastDebug = process.env.FLOW_DEBUG_FAST === '1';
+  const configTryRun = process.env.FLOW_CONFIG_TRY_RUN === '1';
 
-  if (!payload.cancelled && !fastDebug) {
+  if (!payload.cancelled && (!fastDebug || configTryRun)) {
     const runShotDir = flowScreenshotRunAbs(repoRoot, flowId, payload, runId);
     const altRunShotDir =
       payload.runId && payload.runId !== runId

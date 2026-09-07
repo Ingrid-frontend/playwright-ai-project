@@ -269,13 +269,17 @@ function registerHttpRoutes(app, deps) {
   app.get('/api/flow-run/ai-debug', (req, res) => {
     const flowId = String(req.query.flowId || '').trim();
     const runId = String(req.query.runId || '').trim();
-    if (flowId !== 'request-flow' && flowId !== 'approval-flow') {
-      return res.status(400).json({ ok: false, error: 'flowId 须为 request-flow 或 approval-flow' });
+    if (!flowId || !/^[\w-]+$/.test(flowId)) {
+      return res.status(400).json({ ok: false, error: '需要有效的 flowId' });
     }
     if (!runId) {
       return res.status(400).json({ ok: false, error: '需要 runId' });
     }
     const repoRoot = resolveRepoRoot();
+    const runDir = path.join(repoRoot, 'results', 'flow-runs', flowId);
+    if (!fs.existsSync(runDir)) {
+      return res.status(404).json({ ok: false, error: `未找到流程运行记录：${flowId}` });
+    }
     try {
       const result = getFlowRunAiDebugBuilder()(repoRoot, flowId, runId);
       if (!result) {
