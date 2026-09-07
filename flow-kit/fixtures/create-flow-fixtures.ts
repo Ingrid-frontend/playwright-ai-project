@@ -56,7 +56,11 @@ export type CreateFlowFixturesOptions<Extra extends Record<string, unknown>> = {
   pages: { [K in keyof Extra]: (page: Page) => Extra[K] };
 };
 
-const VIEWPORT = { width: 1440, height: 900 };
+const VIEWPORT = { width: 1280, height: 720 };
+
+function useWindowViewport(): boolean {
+  return process.env.FLOW_RUN_MODE === 'headed';
+}
 
 function makeStorageStateResolver(env: FlowFixtureEnv, flowDirName: string) {
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -79,7 +83,8 @@ export function createFlowFixtures<Extra extends Record<string, unknown>>(
   // flow-kit/fixtures/ -> ../../<flowDirName>；这里只知道 flowId，用其作为目录名
   const resolveStorageState = makeStorageStateResolver(env, flowId);
   const videoDisabled =
-    process.env.FLOW_DISABLE_VIDEO === '1' || process.env.FLOW_DEBUG_FAST === '1';
+    process.env.FLOW_DISABLE_VIDEO === '1' ||
+    (process.env.FLOW_DEBUG_FAST === '1' && process.env.FLOW_CONFIG_TRY_RUN !== '1');
 
   let workerRun: ReturnType<typeof initWorkerRun> | null = null;
 
@@ -99,20 +104,23 @@ export function createFlowFixtures<Extra extends Record<string, unknown>>(
     ],
 
     sharedContext: [
-      async ({ browser }: { browser: Browser }, use: (r: BrowserContext) => Promise<void>) => {
+      async (
+        { browser }: { browser: Browser; _flowWorkerRun: void },
+        use: (r: BrowserContext) => Promise<void>,
+      ) => {
         const storageState = resolveStorageState();
         const context = await browser.newContext({
           baseURL: env.baseURL,
           locale: 'zh-CN',
           timezoneId: 'Asia/Shanghai',
-          viewport: VIEWPORT,
+          viewport: useWindowViewport() ? null : VIEWPORT,
           storageState,
           ...(videoDisabled
             ? {}
             : {
                 recordVideo: {
                   dir: path.join(process.cwd(), 'test-results', 'videos'),
-                  size: VIEWPORT,
+                  ...(useWindowViewport() ? {} : { size: VIEWPORT }),
                 },
               }),
         });

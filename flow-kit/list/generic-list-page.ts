@@ -36,6 +36,8 @@ export type ListCatalog = {
   emptyTextRe: RegExp;
   /** 页面已加载的文案特征 */
   loadedTextRe: RegExp;
+  /** 页面已加载的容器（优先于 loadedTextRe，避免侧栏同名隐藏文案误匹配） */
+  loadedSelector?: string;
   /** expectLoaded 是否要求必须有数据行（待审批页=true，申请单页允许空=false） */
   requireRowsOnLoad: boolean;
   /** 「搜索」按钮 */
@@ -50,6 +52,12 @@ export type ListCatalog = {
   clearLabels?: string[];
   /** 单元格取值为 '-' 时是否视为空（申请单列表需要） */
   dashIsEmpty?: boolean;
+  /** 进入后需点「搜索」才查列表（advanced-table 常见，如报销单） */
+  clickSearchOnLoad?: boolean;
+  /** expectLoaded 前先「重置」并清外露筛选 */
+  resetFiltersOnLoad?: boolean;
+  /** 列表为空时自动清筛选并重搜 */
+  recoverEmptyOnLoad?: boolean;
 };
 
 export type Scope = FrameLocator | Page;
@@ -88,6 +96,20 @@ export class GenericListPage {
     this.root = await waitForAppRoot(this.page);
   }
 
+  /** 关掉顶部用户菜单、快捷键提示等遮挡层，避免 click 被 intercept */
+  protected async dismissChrome(): Promise<void> {
+    await this.page.keyboard.press('Escape').catch(() => undefined);
+    await this.page.waitForTimeout(150);
+    await this.page.keyboard.press('Escape').catch(() => undefined);
+    const openMenu = this.scope()
+      .locator('.ant-dropdown-menu:visible, .ant-select-dropdown:visible')
+      .first();
+    if (await openMenu.isVisible({ timeout: 300 }).catch(() => false)) {
+      await this.page.keyboard.press('Escape').catch(() => undefined);
+      await this.page.waitForTimeout(150);
+    }
+  }
+
   /** 已在目标列表时复用当前页，避免重复整页导航 */
   async ensureOnList(): Promise<void> {
     if (!this.catalog.urlPattern.test(this.page.url())) {
@@ -104,16 +126,71 @@ export class GenericListPage {
 
   async expectLoaded(): Promise<void> {
     const c = this.catalog;
+    const clickSearch = c.clickSearchOnLoad === true;
+    const resetOnLoad = c.resetFiltersOnLoad === true;
+    const recoverEmpty = c.recoverEmptyOnLoad === true;
+
     await expect(this.page).toHaveURL(c.urlPattern, { timeout: 60_000 });
-    await this.waitListApi();
-    await expect(this.scope().getByText(c.loadedTextRe).first()).toBeVisible({ timeout: 60_000 });
+    if (!clickSearch) {
+      await this.waitListApi();
+    }
+    if (c.loadedSelector) {
+      await expect(this.scope().locator(c.loadedSelector).first()).toBeVisible({ timeout: 60_000 });
+    } else {
+      await expect(this.scope().getByText(c.loadedTextRe).filter({ visible: true }).first()).toBeVisible({
+        timeout: 60_000,
+      });
+    }
     await expect(this.scope().locator(c.table).first()).toBeVisible({ timeout: 60_000 });
-    await this.waitListSettled();
+    if (resetOnLoad) {
+      await this.resetFilters().catch(() => undefined);
+      await this.clearAllExposedComboFilters().catch(() => undefined);
+    }
+    if (clickSearch) {
+      await this.clickFilterSearch();
+    } else {
+      await this.waitListSettled();
+    }
     if (c.requireRowsOnLoad) {
       await this.expectRowsGreaterThan(0);
     } else {
       await this.expectListReady();
     }
+    if (recoverEmpty) {
+      await this.recoverIfEmptyList();
+    }
+  }
+
+  /** 清掉顶栏单号与外露筛选，避免 Golden 串行用例读到空列表 */
+  async clearListQuery(): Promise<void> {
+    await this.dismissChrome();
+    await this.clearDocNoSearch().catch(() => undefined);
+    await this.clearExposedFilters().catch(() => undefined);
+    await this.clearAllExposedComboFilters().catch(() => undefined);
+    await this.resetFilters().catch(() => undefined);
+    await this.clickFilterSearch();
+    await this.waitListSettled();
+  }
+
+  /** 列表因残留筛选为空时，尝试去掉条件并重新搜索 */
+  async recoverIfEmptyList(): Promise<boolean> {
+    if (await this.hasDataRows()) return true;
+    await this.dismissChrome();
+    await this.clearDocNoSearch().catch(() => undefined);
+    await this.clearExposedFilters().catch(() => undefined);
+    await this.clearAllExposedComboFilters().catch(() => undefined);
+    await this.clickFilterSearch();
+    if (await this.hasDataRows()) return true;
+    await this.resetFilters().catch(() => undefined);
+    await this.clearAllExposedComboFilters().catch(() => undefined);
+    await this.clickFilterSearch();
+    return this.hasDataRows();
+  }
+
+  /** 回到默认列表状态：清关键字 + 清外露筛选 + 重置 */
+  async restoreDefaultList(): Promise<void> {
+    await this.clearListQuery();
+    await this.expectListReady();
   }
 
   /** 等列表查询接口 POST 200；超时返回 null（接口可能已在 goto 前返回） */
@@ -369,9 +446,8 @@ export class GenericListPage {
       .first();
     const respP = this.waitListApi();
     if (await clearBtn.isVisible({ timeout: 500 }).catch(() => false)) {
-      await clearBtn.click();
+      await clearBtn.click({ force: true });
     } else {
-      await input.click();
       await input.fill('');
       await input.press('Enter').catch(() => undefined);
     }
@@ -382,6 +458,7 @@ export class GenericListPage {
 
   /** 点「搜索」 */
   async clickFilterSearch(): Promise<void> {
+    await this.dismissChrome();
     const btn = this.scope()
       .locator(this.catalog.searchActionSearch)
       .or(this.scope().getByRole('button', { name: /搜\s*索|查\s*询/ }))
@@ -389,7 +466,7 @@ export class GenericListPage {
       .first();
     if (!(await btn.isVisible({ timeout: 1_000 }).catch(() => false))) return;
     const respP = this.waitListApi();
-    await btn.click();
+    await btn.click({ force: true });
     await respP;
     await this.waitListSettled();
   }
@@ -399,7 +476,7 @@ export class GenericListPage {
     const btn = this.scope().getByRole('button', { name: /重\s*置/ }).first();
     if (!(await btn.isVisible({ timeout: 2_000 }).catch(() => false))) return;
     const respP = this.waitListApi();
-    await btn.click();
+    await btn.click({ force: true });
     await respP;
     await this.waitListSettled();
   }
@@ -425,9 +502,8 @@ export class GenericListPage {
     for (const clear of clears) {
       const btn = clear.filter({ visible: true }).first();
       if (!(await btn.isVisible({ timeout: 300 }).catch(() => false))) continue;
-      const respP = this.waitListApi();
       await btn.click({ force: true });
-      await respP.catch(() => null);
+      await this.waitListApi(3_000).catch(() => null);
       await this.waitListSettled();
       return true;
     }
@@ -473,9 +549,9 @@ export class GenericListPage {
           .filter({ visible: true })
           .first();
         if (!(await clear.isVisible({ timeout: 300 }).catch(() => false))) break;
-        const respP = this.waitListApi();
-        await clear.click({ force: true });
-        await respP.catch(() => null);
+      const respP = this.waitListApi(3_000);
+      await clear.click({ force: true });
+      await respP.catch(() => null);
         await this.waitListSettled();
         await this.page.waitForTimeout(350);
       }
@@ -494,7 +570,7 @@ export class GenericListPage {
     const btn = this.scope().locator(this.catalog.searchActionClear).first();
     if (!(await btn.isVisible({ timeout: 1_000 }).catch(() => false))) return;
     const respP = this.waitListApi();
-    await btn.click();
+    await btn.click({ force: true });
     await respP;
     await this.waitListSettled();
   }
