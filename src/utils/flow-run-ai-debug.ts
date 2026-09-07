@@ -53,7 +53,8 @@ export function resolveFlowRunManifest(
 }
 
 function specAbsPath(repoRoot: string, flowId: FlowId, spec: string): string {
-  const rel = spec.includes('/') ? spec : `tests/${spec}`;
+  const normalized = String(spec || '').replace(/^\//, '');
+  const rel = normalized.startsWith('tests/') ? normalized : `tests/${normalized}`;
   return path.join(repoRoot, flowId, rel);
 }
 
@@ -127,8 +128,10 @@ function formatProgress(repoRoot: string, flowId: FlowId, runId: string, manifes
   const progress = readFlowRunProgress(runDir, flowId, runId);
   if (!progress) return '';
 
-  const lines = ['### 步骤进度（卡住排查）', ''];
-  if (progress.currentStep) {
+  const lines = ['### 步骤进度', ''];
+  if (manifest.ok !== false && !progress.error) {
+    lines.push(`- 状态: 已完成（${progress.completedSteps?.length || 0} 步）`);
+  } else if (progress.currentStep) {
     lines.push(
       `- 当前/卡住步骤: #${progress.currentStep.num} ${progress.currentStep.name}`,
       `- 开始于: ${progress.currentStep.startedAt}`,
@@ -179,10 +182,7 @@ export function buildFlowRunAiMarkdown(
   const shots = listScreenshotSteps(repoRoot, manifest);
   const specExcerpt = readSpecExcerpt(repoRoot, flowId, manifest.spec || '');
   const resultText = fmtResult(manifest);
-  const askLine =
-    flowId === 'approval-flow'
-      ? '请根据以下审批流程执行数据排查脚本问题（选择器、等待、测试数据或断言），并给出修改建议：'
-      : '请根据以下申请单流程执行数据排查脚本问题（选择器、等待、测试数据或断言），并给出修改建议：';
+  const askLine = `请根据以下${flowLabel(flowId)}执行数据排查脚本问题（选择器、等待、测试数据或断言），并给出修改建议：`;
 
   const lines = [
     `## 业务流程执行排查包（给 AI）`,

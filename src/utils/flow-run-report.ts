@@ -71,6 +71,7 @@ export type ApiFailureLogEntry = {
 const FLOW_LABELS: Record<string, string> = {
   'request-flow': '申请单流程',
   'approval-flow': '审批流程',
+  'expense-flow': '报销流程',
 };
 
 const RUN_SEGMENT = 'run-chromium-flow';
@@ -181,7 +182,7 @@ export function writeFlowRunProgress(
     runId: patch.runId,
     flowId: patch.flowId ?? cur?.flowId,
     status: patch.status ?? cur?.status ?? 'running',
-    currentStep: patch.currentStep !== undefined ? patch.currentStep : cur?.currentStep,
+    currentStep: 'currentStep' in patch ? patch.currentStep : cur?.currentStep,
     completedSteps: patch.completedSteps ?? cur?.completedSteps ?? [],
     updatedAt: patch.updatedAt || new Date().toISOString(),
     pageUrl: patch.pageUrl ?? cur?.pageUrl,
