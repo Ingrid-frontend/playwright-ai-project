@@ -1,5 +1,6 @@
 {
-  "revision": 2,
-  "promotedAt": "2026-08-31T12:26:58.968Z",
-  "sourceRun": "2026-08-31T12-24-48-919Z"
+  "revision": 3,
+  "promotedAt": "2026-09-07T08:54:55.746Z",
+  "promotedBy": "uncovered-seed-2026-09-07",
+  "sourceRun": "2026-09-03T09-00-23-526Z"
 }

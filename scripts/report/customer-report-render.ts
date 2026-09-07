@@ -883,6 +883,7 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
   <style>${customerReportCss()}</style>
 </head>
 <body>
+  <div class="internal-ribbon">内部产物 · 仅用于内部回归核对，<b>禁止外发客户</b>；客户交付请走飞书文档 + 多维表</div>
   <div class="header">
     <h1>UI 验收检测报告</h1>
     <div class="sub">${ctxLine}生成时间 ${esc(model.generatedAt)} · ${esc(scopeLine)} · 与验收基线逐项对比</div>

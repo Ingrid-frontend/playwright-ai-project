@@ -23,6 +23,17 @@ body {
   color: #fff;
   padding: 28px 32px 22px;
 }
+.internal-ribbon {
+  background: #fff3bf;
+  color: #664d03;
+  border-bottom: 1px solid #f0c24b;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  padding: 5px 12px;
+  text-align: center;
+}
+.internal-ribbon b { color: #9a6700; }
+@media print { .internal-ribbon { display: none; } }
 .header h1 { font-size: 24px; font-weight: 650; }
 .header .sub { margin-top: 6px; opacity: 0.85; font-size: 13px; }
 .wrap { max-width: 1180px; margin: 0 auto; padding: 20px 20px 48px; }

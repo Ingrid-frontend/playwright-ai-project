@@ -404,6 +404,12 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
 
   if (!fastDebug) runNpmScript(repoRoot, 'report:flow-summary');
 
+  // 录像保留策略：通过且生成了录像的 run 结束后自动按「成功保留最近 N 份 / 失败超期回收」清理，
+  // 防止 results/flow-runs 与 results/intent-runs 的 flow.webm 无限累积（P2-⑨）。
+  if (!fastDebug && fullPass && videoReportRel) {
+    runNpmScript(repoRoot, 'prune:flow-videos', ['--apply']);
+  }
+
   return {
     ...payload,
     ok: runOk,

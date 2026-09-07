@@ -146,7 +146,8 @@
     "docs:check": "tsx scripts/verify/check-docs-index.ts",
     "hooks:install": "git config core.hooksPath .githooks",
     "expense-flow:golden": "tsx scripts/flow/run-expense-flow-golden.ts",
-    "expense-flow:debug-fast": "tsx scripts/flow/flow-debug-fast.ts --flow=expense-flow"
+    "expense-flow:debug-fast": "tsx scripts/flow/flow-debug-fast.ts --flow=expense-flow",
+    "prune:flow-videos": "tsx scripts/report/prune-flow-videos.ts"
   },
   "keywords": [
     "playwright",

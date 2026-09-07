@@ -1,0 +1,128 @@
+{
+  "capturedAt": "2026-09-03T08:49:34.000Z",
+  "viewport": {
+    "name": "desktop",
+    "width": 1280,
+    "height": 720,
+    "deviceScaleFactor": 1
+  },
+  "imageWidth": 1280,
+  "imageHeight": 720,
+  "layout": {
+    "horizontalOverflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280
+  },
+  "domHash": "BODY|1|",
+  "sections": [
+    {
+      "key": "intent-approve-tabs",
+      "structureHash": "2f5ed29efbe33c41",
+      "textHash": "83f3a7de57e8c9d8",
+      "nodeCount": 45,
+      "childTags": "DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "intent-approve-toolbar",
+      "structureHash": "76afb338c6e0590a",
+      "textHash": "e3b0c44298fc1c14",
+      "nodeCount": 8,
+      "childTags": "SPAN,INPUT,SPAN"
+    },
+    {
+      "key": "intent-approve-table",
+      "structureHash": "04931f0142f9c262",
+      "textHash": "1372b8e9ef9ce44b",
+      "nodeCount": 569,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "golden-approve-tabs",
+      "structureHash": "2f5ed29efbe33c41",
+      "textHash": "83f3a7de57e8c9d8",
+      "nodeCount": 45,
+      "childTags": "DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "golden-approve-table",
+      "structureHash": "04931f0142f9c262",
+      "textHash": "1372b8e9ef9ce44b",
+      "nodeCount": 569,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "request-list-root",
+      "structureHash": "7c3ee7f5ba5b14fc",
+      "textHash": "330dabc9cc715922",
+      "nodeCount": 106,
+      "childTags": "DIV"
+    },
+    {
+      "key": "request-list-table",
+      "structureHash": "04931f0142f9c262",
+      "textHash": "1372b8e9ef9ce44b",
+      "nodeCount": 569,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "request-search-table",
+      "structureHash": "04931f0142f9c262",
+      "textHash": "1372b8e9ef9ce44b",
+      "nodeCount": 569,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV"
+    }
+  ],
+  "textSections": [
+    {
+      "key": "intent-approve-tabs",
+      "text": "工作台 商旅平台财务管理 数据分析AI能力中心系统管理",
+      "textHash": "261bf384ac8036bd",
+      "charCount": 27
+    },
+    {
+      "key": "intent-approve-table",
+      "text": "+ 序号 创建日期 申请人 单据名称 事由 单号 币种 金额 本币金额 当前处理人 状态 提交日期 <NUM> <NUM>-<NUM>-<NUM> 鲍文晗 出差申请单 <NUM> CCSQ<NUM> CNY <NUM>.<NUM> <NUM>.<NUM> 施敏丽 <NUM> 审批中 <NUM>-<NUM>-<NUM> <NUM> <NUM>-<NUM>-<NUM> 鲍文晗 出差申请单 <NUM> CCSQ<NUM> CNY <NUM>.<NUM> <NUM>.<NUM> - 编辑中 - <NUM> <NUM>-<NUM>-<NUM> 鲍文晗 出差申请单 <NUM> CCSQ<NUM> CNY <NUM>.<NUM> <NUM>.<NUM> - 已通过 <NUM>-<NUM>-<NUM> <NUM> <NUM>-<NUM>-<NUM> 鲍文晗 出差申请单 <NUM> CCSQ<NUM> CNY <NUM>.<NUM> <NUM>.<NUM> - 已通过 <NUM>-<NUM>-<NUM> <NUM> <NUM>-<NUM>-<NUM> 鲍文晗 出差申请单 <NUM> CCSQ<NUM> CNY <NUM>.<NUM> <NUM>.<NUM> - 编辑中 - <NUM> <NUM>-<NUM>-<NUM> 鲍文晗 出差申请单 <NUM> CCSQ<NUM> CNY <NUM>.<NUM> <NUM>",
+      "textHash": "e4dd97075ce2e39b",
+      "charCount": 607
+    },
+    {
+      "key": "golden-approve-tabs",
+      "text": "工作台 商旅平台财务管理 数据分析AI能力中心系统管理",
+      "textHash": "261bf384ac8036bd",
+      "charCount": 27
+    },
+    {
+      "key": "golden-approve-table",
+      "text": "+ 序号 创建日期 申请人 单据名称 事由 单号 币种 金额 本币金额 当前处理人 状态 提交日期 <NUM> <NUM>-<NUM>-<NUM> 鲍文晗 出差申请单 <NUM> CCSQ<NUM> CNY <NUM>.<NUM> <NUM>.<NUM> 施敏丽 <NUM> 审批中 <NUM>-<NUM>-<NUM> <NUM> <NUM>-<NUM>-<NUM> 鲍文晗 出差申请单 <NUM> CCSQ<NUM> CNY <NUM>.<NUM> <NUM>.<NUM> - 编辑中 - <NUM> <NUM>-<NUM>-<NUM> 鲍文晗 出差申请单 <NUM> CCSQ<NUM> CNY <NUM>.<NUM> <NUM>.<NUM> - 已通过 <NUM>-<NUM>-<NUM> <NUM> <NUM>-<NUM>-<NUM> 鲍文晗 出差申请单 <NUM> CCSQ<NUM> CNY <NUM>.<NUM> <NUM>.<NUM> - 已通过 <NUM>-<NUM>-<NUM> <NUM> <NUM>-<NUM>-<NUM> 鲍文晗 出差申请单 <NUM> CCSQ<NUM> CNY <NUM>.<NUM> <NUM>.<NUM> - 编辑中 - <NUM> <NUM>-<NUM>-<NUM> 鲍文晗 出差申请单 <NUM> CCSQ<NUM> CNY <NUM>.<NUM> <NUM>",
+      "textHash": "e4dd97075ce2e39b",
+      "charCount": 607
+    },
+    {
+      "key": "request-list-root",
+      "text": "单据名称 请选择 创建日期 申请人 请选择 单据公司 请选择 事由 参与人 请选择 项目任务 请选择 币种 请选择 金额范围 提交日期 状态 全部 编辑中 已撤回 已驳回 审批中 已通过 已关闭 已报废 创建日期 : <NUM>-<NUM>-<NUM> ~ <NUM>-<NUM>-<NUM> 状态 : 全部 重 置 搜 索 新建申请单 代理申请单 + 序号 创建日期 申请人 单据名称 事由 单号 币种 金额 本币金额 当前处理人 状态 提交日期 <NUM> <NUM>-<NUM>-<NUM> 鲍文晗 出差申请单 <NUM> CCSQ<NUM> CNY <NUM>.<NUM> <NUM>.<NUM> 施敏丽 <NUM> 审批中 <NUM>-<NUM>-<NUM> <NUM> <NUM>-<NUM>-<NUM> 鲍文晗 出差申请单 <NUM> CCSQ<NUM> CNY <NUM>.<NUM> <NUM>.<NUM> - 编辑中 - <NUM> <NUM>-<NUM>-<NUM> 鲍文晗 出差申请单 <NUM> CCSQ<NUM> CNY <NUM>.<NUM> <NUM>.<NUM> - 已通过 <NUM>-<NUM>-<NUM> <NUM> <NUM>-<NUM>-<NUM> 鲍文晗 出差申请单 <NUM> CCSQ<NUM>",
+      "textHash": "37f620096c4732d9",
+      "charCount": 572
+    },
+    {
+      "key": "request-list-table",
+      "text": "+ 序号 创建日期 申请人 单据名称 事由 单号 币种 金额 本币金额 当前处理人 状态 提交日期 <NUM> <NUM>-<NUM>-<NUM> 鲍文晗 出差申请单 <NUM> CCSQ<NUM> CNY <NUM>.<NUM> <NUM>.<NUM> 施敏丽 <NUM> 审批中 <NUM>-<NUM>-<NUM> <NUM> <NUM>-<NUM>-<NUM> 鲍文晗 出差申请单 <NUM> CCSQ<NUM> CNY <NUM>.<NUM> <NUM>.<NUM> - 编辑中 - <NUM> <NUM>-<NUM>-<NUM> 鲍文晗 出差申请单 <NUM> CCSQ<NUM> CNY <NUM>.<NUM> <NUM>.<NUM> - 已通过 <NUM>-<NUM>-<NUM> <NUM> <NUM>-<NUM>-<NUM> 鲍文晗 出差申请单 <NUM> CCSQ<NUM> CNY <NUM>.<NUM> <NUM>.<NUM> - 已通过 <NUM>-<NUM>-<NUM> <NUM> <NUM>-<NUM>-<NUM> 鲍文晗 出差申请单 <NUM> CCSQ<NUM> CNY <NUM>.<NUM> <NUM>.<NUM> - 编辑中 - <NUM> <NUM>-<NUM>-<NUM> 鲍文晗 出差申请单 <NUM> CCSQ<NUM> CNY <NUM>.<NUM> <NUM>",
+      "textHash": "e4dd97075ce2e39b",
+      "charCount": 607
+    },
+    {
+      "key": "request-search-table",
+      "text": "+ 序号 创建日期 申请人 单据名称 事由 单号 币种 金额 本币金额 当前处理人 状态 提交日期 <NUM> <NUM>-<NUM>-<NUM> 鲍文晗 出差申请单 <NUM> CCSQ<NUM> CNY <NUM>.<NUM> <NUM>.<NUM> 施敏丽 <NUM> 审批中 <NUM>-<NUM>-<NUM> <NUM> <NUM>-<NUM>-<NUM> 鲍文晗 出差申请单 <NUM> CCSQ<NUM> CNY <NUM>.<NUM> <NUM>.<NUM> - 编辑中 - <NUM> <NUM>-<NUM>-<NUM> 鲍文晗 出差申请单 <NUM> CCSQ<NUM> CNY <NUM>.<NUM> <NUM>.<NUM> - 已通过 <NUM>-<NUM>-<NUM> <NUM> <NUM>-<NUM>-<NUM> 鲍文晗 出差申请单 <NUM> CCSQ<NUM> CNY <NUM>.<NUM> <NUM>.<NUM> - 已通过 <NUM>-<NUM>-<NUM> <NUM> <NUM>-<NUM>-<NUM> 鲍文晗 出差申请单 <NUM> CCSQ<NUM> CNY <NUM>.<NUM> <NUM>.<NUM> - 编辑中 - <NUM> <NUM>-<NUM>-<NUM> 鲍文晗 出差申请单 <NUM> CCSQ<NUM> CNY <NUM>.<NUM> <NUM>",
+      "textHash": "e4dd97075ce2e39b",
+      "charCount": 607
+    }
+  ],
+  "selectors": {
+    "request-filter-panel": {
+      "exists": false
+    }
+  },
+  "consoleErrors": [],
+  "pageErrors": [],
+  "snapshotName": "request-filter",
+  "state": "normal"
+}
