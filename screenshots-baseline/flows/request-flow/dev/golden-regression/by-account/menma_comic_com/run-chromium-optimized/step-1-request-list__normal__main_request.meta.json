@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-08-28T04:55:31.449Z",
+  "capturedAt": "2026-09-03T09:02:05.625Z",
   "viewport": {
     "name": "desktop",
     "width": 1280,
@@ -13,70 +13,81 @@
     "scrollWidth": 1280,
     "innerWidth": 1280
   },
-  "domHash": "BODY|1|",
+  "domHash": "SEC|5ef98138ea50b0b0",
   "sections": [
     {
-      "key": "intent-approve-tabs",
-      "structureHash": "0baf4d93744717ec",
-      "textHash": "a1ca0a2df1ba04ae",
-      "nodeCount": 46,
-      "childTags": "DIV,DIV,DIV,DIV"
+      "key": "request-list-root",
+      "structureHash": "5ef98138ea50b0b0",
+      "textHash": "9c6071d162920080",
+      "nodeCount": 110,
+      "childTags": "DIV"
     },
     {
-      "key": "intent-approve-toolbar",
-      "structureHash": "76afb338c6e0590a",
-      "textHash": "e3b0c44298fc1c14",
-      "nodeCount": 8,
-      "childTags": "SPAN,INPUT,SPAN"
-    },
-    {
-      "key": "intent-approve-table",
-      "structureHash": "1014f4a0b2c4b0ac",
-      "textHash": "14027d41216396c4",
-      "nodeCount": 295,
-      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV"
-    },
-    {
-      "key": "golden-approve-tabs",
-      "structureHash": "0baf4d93744717ec",
-      "textHash": "a1ca0a2df1ba04ae",
-      "nodeCount": 46,
-      "childTags": "DIV,DIV,DIV,DIV"
-    },
-    {
-      "key": "golden-approve-table",
+      "key": "request-list-table",
       "structureHash": "1014f4a0b2c4b0ac",
       "textHash": "14027d41216396c4",
       "nodeCount": 295,
       "childTags": "DIV,DIV,DIV,DIV,DIV,DIV"
     }
   ],
-  "textSections": [
-    {
-      "key": "intent-approve-tabs",
-      "text": "工作台 消费平台财务管理数据分析AI能力中心e档案系统管理",
-      "textHash": "ef0266769073e345",
-      "charCount": 29
+  "selectors": {
+    "request-list-root": {
+      "exists": true,
+      "bbox": {
+        "x": 180,
+        "y": 100,
+        "width": 1420,
+        "height": 800
+      },
+      "domHash": "5ef98138ea50b0b0",
+      "structureHash": "5ef98138ea50b0b0",
+      "textHash": "9c6071d162920080",
+      "resolvedBy": "selector",
+      "fingerprint": {
+        "tag": "DIV",
+        "stableAttributes": {},
+        "textHint": "初始\n视图2\n状态\n: 全部\n重置1\n搜 索\n新建申请单\n代理申请单\n序号\n\t\n",
+        "xpath": "/html[1]/body[1]/div[1]/div[1]/div[1]/main[1]/span[1]/div[1]",
+        "fallbackSelectors": [],
+        "baselineRect": {
+          "x": 180,
+          "y": 100,
+          "width": 1420,
+          "height": 800
+        },
+        "baselinePageWidth": 1600,
+        "baselinePageHeight": 900
+      }
     },
-    {
-      "key": "intent-approve-table",
-      "text": "序号 创建日期 申请人 单据名称 事由 单号 币种 金额 本币金额 当前处理人 状态 提交日期 <NUM> <NUM>-<NUM>-<NUM> <NUM>worker <NUM>差旅一屏式-单段 单段测试 comic<NUM> - - - - 编辑中 - <NUM> <NUM>-<NUM>-<NUM> <NUM>worker <NUM>差旅一屏式-多段 多段测试 comic<NUM> - - - - 编辑中 - 操作 删除 复制 删除 复制",
-      "textHash": "fa3c679cdcf70fe6",
-      "charCount": 222
-    },
-    {
-      "key": "golden-approve-tabs",
-      "text": "工作台 消费平台财务管理数据分析AI能力中心e档案系统管理",
-      "textHash": "ef0266769073e345",
-      "charCount": 29
-    },
-    {
-      "key": "golden-approve-table",
-      "text": "序号 创建日期 申请人 单据名称 事由 单号 币种 金额 本币金额 当前处理人 状态 提交日期 <NUM> <NUM>-<NUM>-<NUM> <NUM>worker <NUM>差旅一屏式-单段 单段测试 comic<NUM> - - - - 编辑中 - <NUM> <NUM>-<NUM>-<NUM> <NUM>worker <NUM>差旅一屏式-多段 多段测试 comic<NUM> - - - - 编辑中 - 操作 删除 复制 删除 复制",
-      "textHash": "fa3c679cdcf70fe6",
-      "charCount": 222
+    "request-list-table": {
+      "exists": true,
+      "bbox": {
+        "x": 200,
+        "y": 248,
+        "width": 1380,
+        "height": 124
+      },
+      "domHash": "1014f4a0b2c4b0ac",
+      "structureHash": "1014f4a0b2c4b0ac",
+      "textHash": "14027d41216396c4",
+      "resolvedBy": "selector",
+      "fingerprint": {
+        "tag": "DIV",
+        "stableAttributes": {},
+        "textHint": "序号\n\t\n创建日期\n\t\n申请人\n\t\n单据名称\n\t\n事由\n\t\n单号\n\t\n币种\n\t\n",
+        "xpath": "/html[1]/body[1]/div[1]/div[1]/div[1]/main[1]/span[1]/div[1]/div[1]/div[1]/div[1]/div[2]/div[1]/div[1]/div[1]/div[1]/div[1]",
+        "fallbackSelectors": [],
+        "baselineRect": {
+          "x": 200,
+          "y": 248,
+          "width": 1380,
+          "height": 124
+        },
+        "baselinePageWidth": 1600,
+        "baselinePageHeight": 900
+      }
     }
-  ],
+  },
   "consoleErrors": [],
   "pageErrors": [],
   "snapshotName": "request-list",

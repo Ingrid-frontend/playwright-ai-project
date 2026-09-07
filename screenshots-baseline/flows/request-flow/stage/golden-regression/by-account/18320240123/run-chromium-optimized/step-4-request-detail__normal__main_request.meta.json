@@ -1,0 +1,60 @@
+{
+  "capturedAt": "2026-09-03T06:47:34.027Z",
+  "viewport": {
+    "name": "desktop",
+    "width": 1280,
+    "height": 720,
+    "deviceScaleFactor": 1
+  },
+  "imageWidth": 1280,
+  "imageHeight": 720,
+  "layout": {
+    "horizontalOverflow": false,
+    "scrollWidth": 1440,
+    "innerWidth": 1440
+  },
+  "domHash": "SEC|4951f41876b02e2e",
+  "sections": [
+    {
+      "key": "request-detail-slide",
+      "structureHash": "4951f41876b02e2e",
+      "textHash": "4264ff68174c7caa",
+      "nodeCount": 34,
+      "childTags": "DIV"
+    }
+  ],
+  "selectors": {
+    "request-detail-slide": {
+      "exists": true,
+      "bbox": {
+        "x": 180,
+        "y": 84,
+        "width": 1620,
+        "height": 1041
+      },
+      "domHash": "4951f41876b02e2e",
+      "structureHash": "4951f41876b02e2e",
+      "textHash": "4264ff68174c7caa",
+      "resolvedBy": "selector",
+      "fingerprint": {
+        "tag": "DIV",
+        "stableAttributes": {},
+        "textHint": "差旅申请单\n创建日期：2025-07-22\n制单人：管理员\n单号：CB00425",
+        "xpath": "/html[1]/body[1]/div[16]/div[1]/div[2]",
+        "fallbackSelectors": [],
+        "baselineRect": {
+          "x": 180,
+          "y": 84,
+          "width": 1620,
+          "height": 1041
+        },
+        "baselinePageWidth": 1800,
+        "baselinePageHeight": 1125
+      }
+    }
+  },
+  "consoleErrors": [],
+  "pageErrors": [],
+  "snapshotName": "request-detail",
+  "state": "normal"
+}

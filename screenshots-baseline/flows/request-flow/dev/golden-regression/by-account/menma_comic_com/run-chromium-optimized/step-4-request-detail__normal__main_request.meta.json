@@ -1,0 +1,60 @@
+{
+  "capturedAt": "2026-09-03T09:02:19.826Z",
+  "viewport": {
+    "name": "desktop",
+    "width": 1280,
+    "height": 720,
+    "deviceScaleFactor": 1
+  },
+  "imageWidth": 1280,
+  "imageHeight": 720,
+  "layout": {
+    "horizontalOverflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280
+  },
+  "domHash": "SEC|3ece1a7fa50e09a4",
+  "sections": [
+    {
+      "key": "request-detail-slide",
+      "structureHash": "3ece1a7fa50e09a4",
+      "textHash": "6497bc37532ef71c",
+      "nodeCount": 22,
+      "childTags": "DIV"
+    }
+  ],
+  "selectors": {
+    "request-detail-slide": {
+      "exists": true,
+      "bbox": {
+        "x": 180,
+        "y": 84,
+        "width": 1420,
+        "height": 816
+      },
+      "domHash": "3ece1a7fa50e09a4",
+      "structureHash": "3ece1a7fa50e09a4",
+      "textHash": "6497bc37532ef71c",
+      "resolvedBy": "selector",
+      "fingerprint": {
+        "tag": "DIV",
+        "stableAttributes": {},
+        "textHint": "97差旅一屏式-单段\n创建日期：2025-11-26\n制单人：97worker\n",
+        "xpath": "/html[1]/body[1]/div[14]/div[1]/div[2]",
+        "fallbackSelectors": [],
+        "baselineRect": {
+          "x": 180,
+          "y": 84,
+          "width": 1420,
+          "height": 816
+        },
+        "baselinePageWidth": 1600,
+        "baselinePageHeight": 900
+      }
+    }
+  },
+  "consoleErrors": [],
+  "pageErrors": [],
+  "snapshotName": "request-detail",
+  "state": "normal"
+}
