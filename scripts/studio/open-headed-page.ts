@@ -26,7 +26,7 @@ async function main(): Promise<void> {
   const contextOpts: Parameters<typeof browser.newContext>[0] = {
     baseURL,
     locale: 'zh-CN',
-    viewport: { width: 1440, height: 900 },
+    viewport: null,
   };
   if (storageState && fs.existsSync(storageState)) {
     contextOpts.storageState = storageState;
