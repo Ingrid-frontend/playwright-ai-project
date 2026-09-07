@@ -22,8 +22,9 @@ test.describe('报销流程 golden 回归', () => {
     }, { snapshot: 'expense-list', step: 1 });
 
     await flowStep('校验表格结构', async () => {
-      await expect(page).toHaveURL(/main\/expense/);
+      await expect(page).toHaveURL(/expense-parent-report\/expense-report/);
       await list.expectListReady();
+      await list.restoreDefaultList();
     }, { capture: false });
   });
 

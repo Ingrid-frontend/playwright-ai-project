@@ -22,6 +22,15 @@ function resolvePositiveMs(envName: string, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
+/** viewport:null 时不能带 devices 预设里的 deviceScaleFactor */
+const VIEWPORT = { width: 1280, height: 720 };
+
+function useChromeDevice(device: Record<string, unknown>) {
+  const { viewport: _vp, deviceScaleFactor: _dsf, ...rest } = device;
+  const headed = process.env.FLOW_RUN_MODE === 'headed';
+  return headed ? { ...rest, viewport: null } : { ...rest, viewport: VIEWPORT };
+}
+
 export default defineConfig({
   testDir: './tests',
   fullyParallel: false,
@@ -56,7 +65,7 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: useChromeDevice(devices['Desktop Chrome'] as Record<string, unknown>),
     },
   ],
 });
