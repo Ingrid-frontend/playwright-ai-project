@@ -90,7 +90,15 @@ export function buildCustomerDocBlocks(
     .join('　|　');
   blocks.push(text(metaLine));
 
-  blocks.push(heading(2, '一、结论'));
+  const issues = payload.items.filter((i) => i.kind === 'regress' || i.kind === 'minor');
+  const samples = payload.items.filter((i) => i.kind === 'pass');
+  const uncovered = payload.uncoveredList ?? [];
+
+  const CN = ['一', '二', '三', '四', '五', '六'];
+  let chapter = 0;
+  const h2 = (title: string): DocBlock => heading(2, `${CN[chapter++] ?? chapter}、${title}`);
+
+  blocks.push(h2('结论'));
   blocks.push(text(payload.headline, { bold: true }));
   blocks.push(text(`发版建议：${payload.shipAdviceLabel}`));
   const coverageLine =
@@ -99,15 +107,21 @@ export function buildCustomerDocBlocks(
   blocks.push(text(coverageLine));
   blocks.push(
     text(
-      `需要修复 ${s.regressSteps} 步　·　无需处理 ${s.minorSteps} 步　·　完全一致 ${s.passSteps} 步　·　通过率 ${(s.passRate * 100).toFixed(1)}%`,
+      `已检测项判定：需要修复 ${s.regressSteps} 步　·　无需处理 ${s.minorSteps} 步　·　完全一致 ${s.passSteps} 步`,
     ),
   );
+  // 覆盖率不足时不输出独立通过率：24/24=100% 与「覆盖 65%」并排，客户会误读成整体验收通过
+  if (s.uncoveredSteps === 0) {
+    blocks.push(
+      text(`本轮通过率 ${(s.passRate * 100).toFixed(1)}%（${s.comparedSteps} / ${s.expectedSteps} 步均已比对）`),
+    );
+  }
 
-  blocks.push(heading(2, '二、问题与证据'));
-  if (payload.items.length === 0) {
-    blocks.push(text('本次未发现需要展示的差异项。'));
+  blocks.push(h2('问题与证据'));
+  if (issues.length === 0) {
+    blocks.push(text('本次未发现需要修复的 UI 衰退，已检测步骤与验收基线一致。'));
   } else {
-    for (const [i, item] of payload.items.entries()) {
+    for (const [i, item] of issues.entries()) {
       blocks.push(spacer());
       blocks.push(
         heading(
@@ -122,15 +136,42 @@ export function buildCustomerDocBlocks(
     }
   }
 
+  // 抽样只在无问题项时生成，作为「本次确实验过」的凭证，不冒充问题
+  if (samples.length > 0) {
+    blocks.push(h2('已验证抽样'));
+    blocks.push(
+      text(
+        `本次无衰退项，以下为已比对且确认一致的代表性页面（共 ${s.passSteps} 步完全一致），用于说明本次检测确实覆盖并核验过：`,
+      ),
+    );
+    for (const item of samples) {
+      blocks.push(
+        bullet(`${item.title}　·　${item.scriptLabel}　·　${item.stepLabel}　·　差异 ${item.differenceLabel}`),
+      );
+    }
+  }
+
+  if (uncovered.length > 0) {
+    blocks.push(h2('待补基线'));
+    blocks.push(
+      text(
+        `以下 ${uncovered.length} 个步骤尚无验收基线，未参与本次判定。确认页面样式正确后固化基线，下次即可纳入比对：`,
+      ),
+    );
+    for (const u of uncovered) {
+      blocks.push(bullet(`${u.title}　·　${u.scriptLabel}　·　${u.stepLabel}`));
+    }
+  }
+
   blocks.push(spacer());
-  blocks.push(heading(2, '三、建议操作'));
+  blocks.push(h2('建议操作'));
   if (payload.actionItems.length === 0) {
     blocks.push(text('无额外操作建议。'));
   } else {
     for (const item of payload.actionItems) blocks.push(bullet(item));
   }
 
-  blocks.push(heading(2, '四、检测范围'));
+  blocks.push(h2('检测范围'));
   blocks.push(
     text(
       `本次共 ${s.expectedSteps} 个检测步骤，其中 ${s.comparedSteps} 步与验收基线做了比对，${s.uncoveredSteps} 步尚无验收基线。`,

@@ -61,9 +61,11 @@ function main() {
   );
   assert.strictEqual(sanitizeScriptLabel('申请单流程'), '申请单流程');
 
-  const payload = readCustomerDeliveryPayload();
+  const env = process.argv.find((a) => a.startsWith('--env='))?.slice('--env='.length) || '';
+  const payloadFile = env ? `results/customer-delivery-${env}.json` : 'results/customer-delivery.json';
+  const payload = readCustomerDeliveryPayload(payloadFile);
   if (!payload) {
-    console.log('⚠️  未找到 results/customer-delivery.json，跳过集成断言（先跑 npm run report:customer）');
+    console.log(`⚠️  未找到 ${payloadFile}，跳过集成断言（先跑 npm run report:customer${env ? ` -- --env=${env}` : ''}）`);
     console.log('✅ 客户交付链路校验通过（仅单元断言）');
     return;
   }
@@ -141,9 +143,27 @@ function main() {
 
   // 6. 本地预览
   const html = renderDeliveryPreview(payload, title);
-  assert.ok(html.includes(payload.headline), '预览缺少结论');
-  assert.ok(html.includes('一、结论'), '预览缺少结论章节');
-  assert.ok(html.includes('四、检测范围'), '预览缺少检测范围章节');
+  // 章节编号会随「已验证抽样 / 待补基线」的出现而变，只断言章节名不断言序号
+  assert.ok(html.includes('结论'), '预览缺少结论章节');
+  assert.ok(html.includes('问题与证据'), '预览缺少问题与证据章节');
+  assert.ok(html.includes('检测范围'), '预览缺少检测范围章节');
+
+  // 6.1 口径：覆盖率不足时不得输出独立通过率格
+  // （24/24=100% 与「覆盖 65%」并排，客户会误读成整体验收通过）
+  if ((payload.stats.uncoveredSteps ?? 0) > 0) {
+    assert.ok(!/>通过率</.test(html), '覆盖率不足时不应输出独立通过率格');
+    assert.ok(html.includes('待建基线'), '覆盖率不足时应给出待建基线统计');
+  }
+  if ((payload.uncoveredList || []).length > 0) {
+    assert.ok(html.includes('待补基线'), '有待建基线时应给出待补基线章节');
+  }
+
+  // 6.2 契约：问题项与抽样项互斥——有问题时不拿零差异项凑数
+  const itemKinds = new Set(payload.items.map((i) => i.kind));
+  assert.ok(
+    !((itemKinds.has('regress') || itemKinds.has('minor')) && itemKinds.has('pass')),
+    '问题项与「已验证抽样」项不应混在同一份交付里',
+  );
 
   console.log(`✅ 客户交付链路校验通过（${payload.items.length} 个交付条目）`);
 }

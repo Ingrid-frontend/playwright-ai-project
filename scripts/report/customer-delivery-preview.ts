@@ -19,26 +19,50 @@ export function renderDeliveryPreview(payload: DeliveryPayload, title?: string):
     return path.relative(path.resolve('results'), abs) || p;
   };
 
-  const items = payload.items
-    .map((item, i) => {
-      const images = item.images
-        .map(
-          (img) => `
+  // 与飞书文档正文保持同一套分章逻辑：问题、抽样、待补基线分开呈现
+  const issues = payload.items.filter((i) => i.kind === 'regress' || i.kind === 'minor');
+  const samples = payload.items.filter((i) => i.kind === 'pass');
+  const uncovered = payload.uncoveredList ?? [];
+
+  const CN = ['一', '二', '三', '四', '五', '六'];
+  let ch = 0;
+  const h2 = (t: string): string => `<h2>${CN[ch++] ?? ch}、${esc(t)}</h2>`;
+
+  const renderItem = (item: (typeof payload.items)[number], i: number): string => {
+    const images = item.images
+      .map(
+        (img) => `
       <figure class="shot">
         <figcaption>${esc(img.label)}</figcaption>
         <img src="${esc(rel(img.relPath))}" alt="${esc(img.label)}" loading="lazy">
       </figure>`,
-        )
-        .join('');
-      return `
+      )
+      .join('');
+    return `
     <section class="item">
       <h3>${i + 1}. [${esc(item.verdictLabel)}] ${esc(item.title)}<span class="diff">${esc(item.differenceLabel)}${item.affectedSteps > 1 ? ` · 影响 ${item.affectedSteps} 步` : ''}</span></h3>
       <p class="meta">流程 ${esc(item.scriptLabel)} · 步骤 ${esc(item.stepLabel)} · ${esc(item.browserLabel)}</p>
       <p class="reason">${esc(item.plainText || item.reason)}</p>
       <div class="shots">${images || '<p class="empty">无证据图</p>'}</div>
     </section>`;
-    })
-    .join('');
+  };
+
+  const issueHtml =
+    issues.map((item, i) => renderItem(item, i)).join('') ||
+    '<div class="card"><p class="empty">本次未发现需要修复的 UI 衰退，已检测步骤与验收基线一致。</p></div>';
+
+  // 章节标题留到主体模板里调用，保证编号按渲染顺序递增
+  const sampleBody = samples.length
+    ? `<p class="meta">本次无衰退项，以下为已比对且确认一致的代表性页面（共 ${s.passSteps} 步完全一致），用于说明本次检测确实覆盖并核验过：</p>
+  ${samples.map((item, i) => renderItem(item, i)).join('')}`
+    : '';
+
+  const uncoveredBody = uncovered.length
+    ? `<div class="card">
+    <p class="meta">以下 ${uncovered.length} 个步骤尚无验收基线，未参与本次判定。确认页面样式正确后固化基线，下次即可纳入比对：</p>
+    <ul>${uncovered.map((u) => `<li>${esc(u.title)}　·　${esc(u.scriptLabel)}　·　${esc(u.stepLabel)}</li>`).join('')}</ul>
+  </div>`
+    : '';
 
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -66,7 +90,8 @@ export function renderDeliveryPreview(payload: DeliveryPayload, title?: string):
   .shot figcaption { font-size: 12px; color: #646a73; margin-bottom: 4px; }
   .shot img { width: 100%; border: 1px solid #e5e6eb; border-radius: 6px; display: block; }
   .empty { color: #868e96; font-size: 13px; }
-  ol { padding-left: 22px; }
+  ol, ul { padding-left: 22px; }
+  ul li { margin: 2px 0; }
   .mode { display: inline-block; background: #fff4e6; color: #a35b00; border-radius: 4px; padding: 2px 8px; font-size: 12px; }
 </style>
 </head>
@@ -75,28 +100,35 @@ export function renderDeliveryPreview(payload: DeliveryPayload, title?: string):
   <h1>${esc(title || 'UI 验收检测报告')}</h1>
   <p class="meta">生成时间 ${esc(payload.generatedAt)}${payload.envLabel ? ` · 环境 ${esc(payload.envLabel)}` : ''}${payload.releaseTag ? ` · 版本 v${esc(payload.releaseTag)}` : ''} <span class="mode">本地预览</span></p>
 
-  <h2>一、结论</h2>
+  ${h2('结论')}
   <div class="card">
     <div class="headline">${esc(payload.headline)}</div>
     <p>发版建议：${esc(payload.shipAdviceLabel)}</p>
-    <p class="meta">检测覆盖 ${s.coveragePct}%（已对比 ${s.comparedSteps} / ${s.expectedSteps} 步）${s.uncoveredSteps > 0 ? `，另有 ${s.uncoveredSteps} 步待建基线` : ''}</p>
+    <p class="meta">检测覆盖 ${s.coveragePct}%（已对比 ${s.comparedSteps} / ${s.expectedSteps} 步）${s.uncoveredSteps > 0 ? `，另有 ${s.uncoveredSteps} 步待建基线未参与判定` : ''}</p>
     <div class="stats">
       <div class="stat"><div class="n" style="color:#e03131">${s.regressSteps}</div><div class="l">需要修复</div></div>
       <div class="stat"><div class="n" style="color:#f08c00">${s.minorSteps}</div><div class="l">无需处理</div></div>
       <div class="stat"><div class="n" style="color:#2f9e44">${s.passSteps}</div><div class="l">完全一致</div></div>
-      <div class="stat"><div class="n">${(s.passRate * 100).toFixed(1)}%</div><div class="l">通过率</div></div>
+      ${s.uncoveredSteps > 0
+        ? `<div class="stat"><div class="n" style="color:#868e96">${s.uncoveredSteps}</div><div class="l">待建基线</div></div>`
+        : `<div class="stat"><div class="n">${(s.passRate * 100).toFixed(1)}%</div><div class="l">通过率</div></div>`}
     </div>
+    ${s.uncoveredSteps > 0
+      ? '<p class="meta">覆盖率不足时暂不给出整体通过率：未建基线的步骤未参与判定，当前结果不足以支撑整体验收结论。</p>'
+      : ''}
   </div>
 
-  <h2>二、问题与证据</h2>
-  ${items || '<div class="card"><p class="empty">本次未发现需要展示的差异项。</p></div>'}
+  ${h2('问题与证据')}
+  ${issueHtml}
+  ${sampleBody ? h2('已验证抽样') + sampleBody : ''}
+  ${uncoveredBody ? h2('待补基线') + uncoveredBody : ''}
 
-  <h2>三、建议操作</h2>
+  ${h2('建议操作')}
   <div class="card">
     ${payload.actionItems.length ? `<ol>${payload.actionItems.map((a) => `<li>${esc(a)}</li>`).join('')}</ol>` : '<p class="empty">无额外操作建议。</p>'}
   </div>
 
-  <h2>四、检测范围</h2>
+  ${h2('检测范围')}
   <div class="card">
     <p>本次共 ${s.expectedSteps} 个检测步骤，其中 ${s.comparedSteps} 步与验收基线做了比对，${s.uncoveredSteps} 步尚无验收基线。</p>
   </div>

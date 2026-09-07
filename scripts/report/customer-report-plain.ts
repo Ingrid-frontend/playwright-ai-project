@@ -25,6 +25,17 @@ function natureToPlain(label: string): string {
   return map[label] || label;
 }
 
+/** 差异区坐标缺失时不报错，退回笼统方位描述 */
+function safeZone(
+  r: { x?: number; y?: number; w?: number; h?: number },
+  width?: number,
+  height?: number,
+): string {
+  const { x, y, w, h } = r;
+  if (x === undefined || y === undefined || w === undefined || h === undefined) return '页面局部';
+  return regionZoneLabel({ x, y, w, h }, width, height);
+}
+
 function stripTechnicalNoise(text: string): string {
   return text
     .replace(/（整页差异 [\d.]+%）/g, '')
@@ -57,7 +68,7 @@ export function buildFeedbackRegisterDescription(
     }
     const top = actionable[0];
     if (top) {
-      const zone = regionZoneLabel(top, card.imageWidth || 0, card.imageHeight || 0);
+      const zone = safeZone(top, card.imageWidth || 0, card.imageHeight || 0);
       const what = natureToPlain(top.natureLabel);
       if (actionable.length === 1) {
         return `${head}${zone}${what}，变化较小，内容与上次验收一致，无需处理`;
@@ -71,12 +82,12 @@ export function buildFeedbackRegisterDescription(
   if (card.verdict === 'regress') {
     if (actionable.length === 1) {
       const r = actionable[0];
-      const zone = regionZoneLabel(r, card.imageWidth || 0, card.imageHeight || 0);
+      const zone = safeZone(r, card.imageWidth || 0, card.imageHeight || 0);
       return `${head}${zone}${natureToPlain(r.natureLabel)}，与上次验收标准不一致，需要修复`;
     }
     if (actionable.length > 1) {
       const bits = actionable.slice(0, 2).map((r) => {
-        const zone = regionZoneLabel(r, card.imageWidth || 0, card.imageHeight || 0);
+        const zone = safeZone(r, card.imageWidth || 0, card.imageHeight || 0);
         return `${zone}${natureToPlain(r.natureLabel)}`;
       });
       const more = actionable.length > 2 ? `等 ${actionable.length} 处` : '';

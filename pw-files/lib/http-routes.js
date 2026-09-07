@@ -212,6 +212,28 @@ function registerHttpRoutes(app, deps) {
     }
     const repoRoot = resolveRepoRoot();
     const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    // 客户报告 HTML 已将脚本标识脱敏为 k0..kn（映射在 results/<slug>.report-keys.json）。
+    // 截图也指向上报目录 results/<slug>-assets/，据此定位同一份报告的 sidecar 后回解真实 scriptKey。
+    if (body.scriptKey && /^k\d+$/.test(String(body.scriptKey))) {
+      try {
+        const keyDir = path.join(repoRoot, 'results');
+        if (fs.existsSync(keyDir)) {
+          const sidecars = fs.readdirSync(keyDir).filter((f) => f.endsWith('.report-keys.json'));
+          const shot = String(body.screenshotPath || '');
+          const byShot = sidecars.find((f) => shot.includes(`/${f.replace(/\.report-keys\.json$/, '')}-assets/`));
+          const ordered = byShot ? [byShot, ...sidecars.filter((f) => f !== byShot)] : sidecars;
+          for (const f of ordered) {
+            const parsed = JSON.parse(fs.readFileSync(path.join(keyDir, f), 'utf8'));
+            if (parsed && parsed.keys && parsed.keys[body.scriptKey]) {
+              body.scriptKey = parsed.keys[body.scriptKey];
+              break;
+            }
+          }
+        }
+      } catch {
+        /* 回解失败保留令牌，不阻断登记 */
+      }
+    }
     const payload = {
       reporter,
       description,

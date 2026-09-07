@@ -101,8 +101,12 @@ export function formatCustomerSummaryMarkdown(s: CustomerReportSummary): string 
     ...(ctx ? [`环境：${ctx}`] : []),
     `发版建议：${s.shipAdviceLabel}`,
     `检测覆盖：${s.coveragePct}%（已对比 ${s.comparedSteps}/${s.expectedSteps} 步）`,
-    `需要修复 ${s.regressSteps} 步 · 无需处理 ${s.minorSteps} 步 · 通过率 ${(s.passRate * 100).toFixed(1)}%`,
+    `需要修复 ${s.regressSteps} 步 · 无需处理 ${s.minorSteps} 步 · 完全一致 ${s.passSteps} 步`,
   ];
+  // 覆盖率不足时不输出通过率结论：已测项 100% 与「35% 未测」并排，会把客户带偏
+  if (s.uncoveredSteps === 0) {
+    lines.push(`本轮通过率 ${(s.passRate * 100).toFixed(1)}%（${s.comparedSteps} / ${s.expectedSteps} 步均已比对）`);
+  }
   if (s.uncoveredSteps > 0) {
     lines.push(`待建基线 ${s.uncoveredSteps} 步（未参与判定）`);
   }
@@ -192,8 +196,17 @@ export function renderCustomerSummaryPrintHtml(s: CustomerReportSummary): string
     <div class="stat"><div class="n" style="color:#e03131">${s.regressSteps}</div><div class="l">需要修复</div></div>
     <div class="stat"><div class="n" style="color:#f08c00">${s.minorSteps}</div><div class="l">无需处理</div></div>
     <div class="stat"><div class="n" style="color:#2f9e44">${s.passSteps}</div><div class="l">完全一致</div></div>
-    <div class="stat"><div class="n">${(s.passRate * 100).toFixed(1)}%</div><div class="l">通过率</div></div>
+    ${
+      s.uncoveredSteps > 0
+        ? `<div class="stat"><div class="n" style="color:#868e96">${s.uncoveredSteps}</div><div class="l">待建基线</div></div>`
+        : `<div class="stat"><div class="n">${(s.passRate * 100).toFixed(1)}%</div><div class="l">通过率</div></div>`
+    }
   </div>
+  ${
+    s.uncoveredSteps > 0
+      ? '<p style="color:#868e96;font-size:12px">覆盖率不足时暂不给出整体通过率：未建基线的步骤未参与判定，当前结果不足以支撑整体验收结论。</p>'
+      : ''
+  }
   <h2>问题清单</h2>
   <table>
     <thead><tr><th>#</th><th>优先级</th><th>页面</th><th>说明</th><th>差异</th><th>影响步数</th></tr></thead>

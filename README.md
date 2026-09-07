@@ -14,11 +14,19 @@ npm run login
 # 2. 跑通 Golden（~15 min）
 npm run request-flow:golden
 
-# 3. 看报告（~5 min）
-open results/flow-customer-report.html
+# 3. 生成报告（~5 min）
+npm run report:customer -- --list-envs     # 先看有哪些环境
+npm run report:customer -- --env=uat       # 一次只出一个环境的报告
+
+# 4. 交付给客户（飞书）
+npm run deliver:preview -- --env=uat       # 本地预览，确认口径与内容
+npm run deliver:feishu -- --env=uat        # 写入飞书文档 + 多维表明细
 ```
 
 Studio 可视化控制台：`npm run studio` → http://localhost:3001（详见 [pw-files/README.md](pw-files/README.md)）
+
+> 客户交付走飞书（文档正文 + 多维表证据图），详见 [docs/feishu-customer-delivery.md](docs/feishu-customer-delivery.md)。
+> `report:customer` 产出的本地 HTML 是**内部产物，不要直接发给客户**。
 
 ## 测试放哪？决策树
 
@@ -81,7 +89,7 @@ npm run flow:list    # 查看已注册流程
 
 | 受众 | 产出 | 路径 |
 |------|------|------|
-| 产品 / 业务 | 客户版 UI 衰退报告 | `results/flow-customer-report.html` |
+| 产品 / 业务 | 客户版 UI 衰退报告（飞书交付） | `npm run deliver:feishu`（正文入飞书文档、证据图入多维表） |
 | 测试负责人 | 飞书多维表看板 | `npm run feishu:bitable-setup` 后自动写入 |
 | 前端 | 截图 diff | `results/flow-screenshot-comparison.html` |
 | 管理层 | 周报 | `npm run feishu:flow-weekly-doc` |

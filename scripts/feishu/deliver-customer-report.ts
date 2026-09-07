@@ -29,6 +29,8 @@ const PLAN_FILE = 'results/feishu-delivery-plan.json';
 export type CliOptions = {
   apply: boolean;
   payloadPath: string;
+  /** --env 指定的环境，用于选择对应环境的交付载荷 */
+  env?: string;
   withBitable: boolean;
   withDoc: boolean;
   notify: boolean;
@@ -42,9 +44,16 @@ export function parseArgs(argv: string[]): CliOptions {
     const hit = argv.find((a) => a.startsWith(`--${name}=`));
     return hit ? hit.slice(name.length + 3) : fallback;
   };
+  // --env=uat 等价于 --payload=results/customer-delivery-uat.json，
+  // 与 report:customer --env=uat 产出的文件对应，避免把别的环境的报告发错
+  const env = argv.find((a) => a.startsWith('--env='))?.slice('--env='.length).trim().toLowerCase();
   return {
     apply: flags.has('--apply'),
-    payloadPath: value('payload', 'results/customer-delivery.json'),
+    payloadPath: value(
+      'payload',
+      env ? `results/customer-delivery-${env}.json` : 'results/customer-delivery.json',
+    ),
+    env,
     withBitable: !flags.has('--no-bitable'),
     withDoc: !flags.has('--no-doc'),
     notify: flags.has('--notify'),

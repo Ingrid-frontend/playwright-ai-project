@@ -8,8 +8,7 @@ import {
 import { customerReportCss, customerReportClientJs } from './customer-report-assets.js';
 import { buildFeedbackRegisterDescription, buildHeadline, COVERAGE_GAP_RATIO } from './customer-report-plain.js';
 import { friendlyScriptLabel, friendlyStepLabel, regionZoneLabel, extractEnvId, envIdSortKey, envLabelFromId } from './customer-report-naming.js';
-import { formatDurationSec, formatScriptStartedAt, summarizeScriptRuns } from './customer-report-run-meta.js';
-import { totalRunCount } from './customer-report-run-history.js';
+import { formatDurationSec, formatScriptStartedAt } from './customer-report-run-meta.js';
 import type { ScriptRunHistoryEntry } from './customer-report-run-meta.js';
 
 function esc(s: string): string {
@@ -20,27 +19,9 @@ function esc(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function runIdForScript(model: CustomerReportModel, scriptKey: string): string {
-  return model.scriptRuns.get(scriptKey)?.runId || '';
-}
-
-function renderRunIdCopy(runId: string): string {
-  if (!runId) return '—';
-  return `<button type="button" class="run-marker run-id-copy" data-copy="${esc(runId)}" title="点击复制 runId · 删除: npm run flow:delete-runs -- --search=${esc(runId)} --delete">${esc(runId)}</button>`;
-}
-
 function renderRunIndexCell(r: ScriptRunHistoryEntry): string {
   const latest = r.isLatest ? '<span class="tag-latest">最新</span>' : '';
-  const label = `第 ${r.runIndex} 次${latest}`;
-  if (!r.runId) return label;
-  return `<button type="button" class="run-index-copy run-id-copy" data-copy="${esc(r.runId)}" title="点击复制 runId · 删除: npm run flow:delete-runs -- --search=${esc(r.runId)} --delete">${label}</button>`;
-}
-
-function renderRunIdMeta(model: CustomerReportModel, scriptKeys: string[]): string {
-  const ids = [...new Set(scriptKeys.map((k) => runIdForScript(model, k)).filter(Boolean))];
-  if (!ids.length) return '';
-  const chips = ids.map((id) => renderRunIdCopy(id)).join(' ');
-  return `<span class="ig-run-id">runId ${chips}</span>`;
+  return `第 ${r.runIndex} 次${latest}`;
 }
 
 function badgeClass(v: CustomerBrowserCard['verdict']): string {
@@ -276,7 +257,6 @@ function renderIssueGroup(group: CustomerIssueGroup, index: number, model: Custo
           <span>最大差异 ${esc(group.maxDifferenceLabel)}</span>
           <span>影响 ${group.affectedSteps} 个步骤</span>
           <span>${esc(group.scriptLabels.join('、'))}</span>
-          ${renderRunIdMeta(model, group.scriptKeys)}
         </div>
         ${regionList}
       </div>
@@ -453,14 +433,12 @@ function renderScopeRow(s: CustomerReportModel['coverage']['slots'][0], model: C
   const kind =
     s.compareKind === 'golden' ? '验收基线' : s.compareKind === 'last-green' ? '最近通过' : '—';
   const runStart = formatScriptStartedAt(model.scriptRuns.get(s.scriptKey)?.startedAt) || '—';
-  const runId = renderRunIdCopy(runIdForScript(model, s.scriptKey));
   return `<tr data-status="${esc(s.status)}">
     <td>${esc(friendlyStepLabel(s.pageTitle))}</td>
     <td>${esc(friendlyStepLabel(s.stepName))}${s.processOnly ? '<span class="tag-process">过程</span>' : ''}</td>
     <td>${s.difference != null ? `${(s.difference * 100).toFixed(2)}%` : '—'}</td>
     <td>${esc(kind)}</td>
     <td>${esc(runStart)}</td>
-    <td>${runId}</td>
     <td class="st-${esc(s.status)}">${esc(status)}</td>
   </tr>`;
 }
@@ -498,7 +476,6 @@ function renderScopeTable(model: CustomerReportModel): string {
             <th>差异</th>
             <th>基线来源</th>
             <th>开始时间</th>
-            <th>runId</th>
             <th>状态</th>
           </tr>
         </thead>
@@ -696,23 +673,6 @@ function renderRunHistoryTable(rows: ScriptRunHistoryEntry[], opts?: { showShots
       </table>`;
 }
 
-function renderRunHistoryPanel(model: CustomerReportModel): string {
-  const entries = [...model.runHistory.entries()];
-  if (!entries.length) {
-    return `<div class="empty">尚无 run 截图目录，请先执行 Golden 回归。</div>`;
-  }
-
-  return renderRunHistoryEnvLayout(groupRunHistoryByEnv(entries), (scriptKey, rows) => {
-    const label = friendlyScriptLabel(scriptKey);
-    return `
-    <section class="run-history-block">
-      <h3 class="run-history-title">${esc(label)}</h3>
-      <p class="run-history-meta">共 ${rows.length} 次 run · 与验收基线逐步对比；「最新」一轮用于上方结论与检测覆盖；截图已清理的 run 仅保留历史判定</p>
-      ${renderRunHistoryTable(rows)}
-    </section>`;
-  });
-}
-
 function renderMinorRunHistoryPanel(model: CustomerReportModel): string {
   const entries: RunHistoryScriptEntry[] = [...model.runHistory.entries()]
     .map(([scriptKey, rows]): RunHistoryScriptEntry => [scriptKey, rows.filter((r) => r.verdict === 'minor')])
@@ -782,7 +742,7 @@ function renderUncoveredSummary(model: CustomerReportModel): string {
     .join('');
   return `
   <div class="uncovered-summary">
-    <div class="uncovered-summary-title">另有 ${n} 步未建验收基线（未计入通过率）</div>
+    <div class="uncovered-summary-title">另有 ${n} 步未建验收基线（未参与本次判定）</div>
     <p class="uncovered-summary-meta">涉及 ${scripts.length} 个脚本${uniquePages > 0 ? ` · 去重后 ${uniquePages} 个不同页面` : ''}${noise > 0 ? ` · 其中 ${noise} 步为 before/skipped 过程截图` : ''}。详情见「检测覆盖」，建立验收基线后才会出现在上方对比中。</p>
     ${preview.length > 0 ? `<ul class="uncovered-preview">${rows}${more > 0 ? `<li class="uc-more">… 还有 ${more} 项</li>` : ''}</ul>` : ''}
     <button type="button" class="link-btn" onclick="switchCustomerTab('scope')">查看检测覆盖</button>
@@ -798,7 +758,7 @@ function renderIncompleteNotice(model: CustomerReportModel): string {
   return `<div class="incomplete-notice">
     <div class="incomplete-notice-title">部分脚本最新 run 未完成</div>
     <ul>${rows}</ul>
-    <p class="incomplete-notice-meta">上方结论与检测覆盖已基于最近一次<strong>完整</strong> run；未完成 run 见「技术附录」。</p>
+    <p class="incomplete-notice-meta">上方结论与检测覆盖已基于最近一次<strong>完整</strong> run；未完成 run 不参与结论，如需排查可在本地按截图目录时间定位。</p>
   </div>`;
 }
 
@@ -873,7 +833,6 @@ function renderConclusionBody(model: CustomerReportModel): string {
 
 export function renderCustomerReportHtml(model: CustomerReportModel): string {
   const c = model.coverage;
-  const passPct = (c.passRate * 100).toFixed(1);
   const regressList =
     model.regressionGroups.length > 0
       ? `<h3 class="sec-title sec-regress">需要修复 · ${model.regressionGroups.length} 个问题</h3>
@@ -905,21 +864,12 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
           ? model.shipAdviceLabel
           : `已对比 ${c.comparedSteps} 个步骤，与验收基线一致 · ${model.shipAdviceLabel}`;
 
-  const runSummary = summarizeScriptRuns([...model.scriptRuns.values()]);
-  const runTotal = totalRunCount(model.runHistory);
-  const runMetaLine = runSummary ? ` · 最新一轮 ${esc(runSummary)}` : '';
-  const runCountLine = runTotal > 1 ? ` · 共 ${runTotal} 次 run` : '';
-  const stepsHint =
-    runTotal > 1
-      ? `最新一轮 ${c.expectedSteps} 步 · 共 ${runTotal} 次 run`
-      : `共 ${c.expectedSteps} 步/轮`;
-  const showRunsTab = runTotal > 1;
-  const runsTabLabel = showRunsTab ? `技术附录 (${runTotal})` : '';
   const minorRunCount = countMinorRuns(model);
   const minorEvidenceCount = model.minorGroups.length;
   const minorTabCount = minorRunCount + minorEvidenceCount;
   const showMinorTab = minorTabCount > 0;
   const minorTabLabelText = showMinorTab ? minorTabLabel(minorEvidenceCount, minorRunCount) : '';
+  const stepsHint = `最新一轮共 ${c.expectedSteps} 步`;
   const scopeLine = model.reportScope === 'all' ? '全部脚本截图' : 'Golden 回归';
   const ctxParts = [model.envLabel, model.releaseTag ? `v${model.releaseTag}` : ''].filter(Boolean);
   const ctxLine = ctxParts.length > 0 ? `${esc(ctxParts.join(' · '))} · ` : '';
@@ -935,7 +885,7 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
 <body>
   <div class="header">
     <h1>UI 验收检测报告</h1>
-    <div class="sub">${ctxLine}生成时间 ${esc(model.generatedAt)}${runCountLine}${runMetaLine} · ${esc(scopeLine)} · 与验收基线逐项对比</div>
+    <div class="sub">${ctxLine}生成时间 ${esc(model.generatedAt)} · ${esc(scopeLine)} · 与验收基线逐项对比</div>
   </div>
   <div class="wrap">
     <div class="verdict ${verdictClass}">
@@ -951,7 +901,9 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
       </div>
       <div class="verdict-foot">${c.uncoveredSteps > 0
         ? `已检测 ${c.comparedSteps} 步全部通过 · ${c.uncoveredSteps} 步待建基线未参与判定（检测覆盖 ${Math.round((c.comparedSteps / Math.max(1, c.expectedSteps)) * 100)}%）`
-        : `通过率 ${passPct}% · 已对比 ${c.comparedSteps} 步，全部无需修复`}</div>
+        : c.minorSteps > 0
+          ? `已对比 ${c.comparedSteps} 步，无需修复（其中 ${c.minorSteps} 步为轻微变化，内容与基线一致）`
+          : `已对比 ${c.comparedSteps} 步，与验收基线一致`}</div>
     </div>
 
     <div class="tabs">
@@ -959,7 +911,6 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
       <button class="tab" data-tab="regress" onclick="switchCustomerTab('regress')">问题证据${model.regressionGroups.length > 0 ? ` (${model.regressionGroups.length})` : ''}</button>
       ${showMinorTab ? `<button class="tab" data-tab="minor" onclick="switchCustomerTab('minor')">${minorTabLabelText}</button>` : ''}
       <button class="tab" data-tab="scope" onclick="switchCustomerTab('scope')">检测覆盖</button>
-      ${showRunsTab ? `<button class="tab" data-tab="runs" onclick="switchCustomerTab('runs')">${runsTabLabel}</button>` : ''}
     </div>
 
     <div id="panel-conclusion" class="panel active">
@@ -972,13 +923,9 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
       ${renderMinorTabBody(model, minorList, minorRunCount)}
     </div>` : ''}
     <div id="panel-scope" class="panel">
-      <p class="sec-lead">下表为<strong>最新一轮</strong> run 的全部检测项。「待建基线」表示该步骤有截图但尚无可配对的验收基线；标记「过程」的是操作中间态截图，不作为验收结论。${showRunsTab ? '历次 run 见「技术附录」。' : ''}${showMinorTab && minorRunCount > 0 ? '历史轻微变化见「历史留档」。' : showMinorTab ? '轻微变化见对应 Tab。' : ''}</p>
+      <p class="sec-lead">下表为<strong>最新一轮</strong> run 的全部检测项。「待建基线」表示该步骤有截图但尚无可配对的验收基线；标记「过程」的是操作中间态截图，不作为验收结论。${showMinorTab && minorRunCount > 0 ? '历史轻微变化见「历史留档」。' : showMinorTab ? '轻微变化见对应 Tab。' : ''}</p>
       ${renderScopeTable(model)}
     </div>
-    ${showRunsTab ? `<div id="panel-runs" class="panel">
-      <p class="sec-lead">按环境分组展示历次 Golden 回归（stage → stage9084 → uat → dev）。点击「次序」复制 runId；右侧索引可跳转环境区块。</p>
-      ${renderRunHistoryPanel(model)}
-    </div>` : ''}
   </div>
   <script>window.STUDIO_API_BASE = ${JSON.stringify(process.env.STUDIO_API_BASE || 'http://localhost:3001')};</script>
   <script>${customerReportClientJs()}</script>

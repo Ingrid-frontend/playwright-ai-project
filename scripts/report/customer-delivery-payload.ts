@@ -43,6 +43,14 @@ export type DeliveryItem = {
   images: DeliveryImage[];
 };
 
+/** 待建基线步骤：客户需要知道「这次没验到什么」 */
+export type DeliveryUncoveredStep = {
+  title: string;
+  scriptLabel: string;
+  stepLabel: string;
+  stepNumber: number;
+};
+
 export type DeliveryPayload = {
   version: 1;
   generatedAt: string;
@@ -63,6 +71,8 @@ export type DeliveryPayload = {
   };
   actionItems: string[];
   items: DeliveryItem[];
+  /** 未建基线、未参与判定的步骤（覆盖率不足时客户最该知道的部分） */
+  uncoveredList: DeliveryUncoveredStep[];
 };
 
 export const CUSTOMER_DELIVERY_FILE = 'results/customer-delivery.json';
@@ -114,23 +124,37 @@ export function sanitizeScriptLabel(label: string): string {
   return kept.length > 0 ? kept.join(' · ') : label.trim();
 }
 
+/** 无问题项时，最多补充几条「已验证一致」的抽样作为凭证 */
+const SAMPLE_LIMIT = 5;
+
+export type DeliveryPageSet = {
+  /** 需要客户处理的问题：衰退 + 轻微变化 */
+  issues: CustomerPageCard[];
+  /** 无问题项时，用于证明「本次验过什么」的抽样（差异最大的已通过项） */
+  samples: CustomerPageCard[];
+};
+
 /**
- * 挑选需要交付证据图的条目：
- * 优先「需要修复」分组，其次「无需处理」分组；
- * 两者都为空（本次无差异）时，退回已对比的页面作为「验过什么」的凭证，
- * 避免客户收到一份没有任何证据图的空报告。
+ * 挑选交付条目，按性质分为「问题」与「抽样」两类。
+ *
+ * 关键约定：**有问题时绝不用零差异的「已通过」项凑数**。
+ * 此前无衰退时会把所有 pass 页塞进「问题与证据」——客户看到 20 条
+ * 「差异 0.00%·可忽略」的伪问题，结论可信度反而被稀释。
  */
-export function collectDeliveryPages(model: CustomerReportModel, maxItems: number): CustomerPageCard[] {
-  const fromGroups = [
+export function collectDeliveryPages(model: CustomerReportModel, maxItems: number): DeliveryPageSet {
+  const issues = [
     ...model.regressionGroups.map((g) => g.representative),
     ...model.minorGroups.map((g) => g.representative),
-  ];
-  if (fromGroups.length > 0) return fromGroups.slice(0, maxItems);
+  ].slice(0, maxItems);
 
-  const fallback = model.pages
-    .filter((p) => !p.processOnly && p.worstStatus !== 'uncovered')
-    .sort((a, b) => b.maxDifference - a.maxDifference);
-  return fallback.slice(0, maxItems);
+  if (issues.length > 0) return { issues, samples: [] };
+
+  const samples = model.pages
+    .filter((p) => !p.processOnly && p.worstStatus === 'pass')
+    .sort((a, b) => b.maxDifference - a.maxDifference)
+    .slice(0, Math.min(maxItems, SAMPLE_LIMIT));
+
+  return { issues: [], samples };
 }
 
 export function buildCustomerDeliveryPayload(
@@ -142,7 +166,8 @@ export function buildCustomerDeliveryPayload(
   const c = model.coverage;
   const coveragePct = c.expectedSteps > 0 ? Math.round((c.comparedSteps / c.expectedSteps) * 100) : 0;
 
-  const pages = collectDeliveryPages(model, maxItems);
+  const { issues, samples } = collectDeliveryPages(model, maxItems);
+  const pages = [...issues, ...samples];
   const items: DeliveryItem[] = pages.map((page) => {
     const card = pickCard(page);
     const kind = kindOf(page);
@@ -190,6 +215,14 @@ export function buildCustomerDeliveryPayload(
     },
     actionItems: model.actionItems,
     items,
+    uncoveredList: model.uncovered
+      .filter((p) => !p.processOnly)
+      .map((p) => ({
+        title: p.pageTitle,
+        scriptLabel: sanitizeScriptLabel(p.scriptLabel),
+        stepLabel: p.stepLabel,
+        stepNumber: p.stepNumber,
+      })),
   };
 }
 

@@ -360,8 +360,8 @@ export function resolveScriptRunMeta(
     }
 
     const hit = manifests.find((m) => scriptKeysMatch(manifestScriptKey(m), scriptKey));
-    const hitDuration = durationFromManifest(hit);
-    if (hitDuration && hitDuration > 0) {
+    const hitDuration = hit ? durationFromManifest(hit) : undefined;
+    if (hit && hitDuration && hitDuration > 0) {
       out.set(scriptKey, {
         scriptKey,
         runId: runId || hit.runId,
