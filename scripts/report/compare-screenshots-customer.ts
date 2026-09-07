@@ -16,6 +16,7 @@ import { buildCoverageStats } from './coverage-stats.js';
 import { buildCustomerReportModel } from './customer-report-model.js';
 import { renderCustomerReportHtml } from './customer-report-render.js';
 import { writeCustomerReportSummary } from './customer-report-summary.js';
+import { buildCustomerDeliveryPayload, writeCustomerDeliveryPayload } from './customer-delivery-payload.js';
 import { resolveScriptRunMeta, resolveScriptRunHistory } from './customer-report-run-meta.js';
 import { enrichRunHistoryComparisons, screenshotsForMainReport } from './customer-report-run-history.js';
 
@@ -98,7 +99,10 @@ async function main() {
     releaseTag: process.env.RELEASE_TAG || process.env.npm_package_version,
     reportScope: allScripts ? 'all' : 'golden',
   }, usedRunIds);
-  writeCustomerReportSummary(model);
+  const summary = writeCustomerReportSummary(model);
+  // 交付载荷供飞书多维表 / 飞书文档链路消费，避免它们为了拿数据再跑一遍像素比对
+  const maxItems = Number(process.env.DELIVERY_MAX_ITEMS || 20);
+  writeCustomerDeliveryPayload(buildCustomerDeliveryPayload(model, { summary, maxItems }));
   const html = renderCustomerReportHtml(model);
 
   const outAbs = path.resolve(outputPath);

@@ -1,7 +1,18 @@
 import type { BitableRuntimeConfig } from './bitable-schema.js';
 import { fetchWithRetry } from './feishu-utils.js';
 
-export type BitableFieldValue = string | number | boolean | { link: string; text?: string };
+/** 多维表附件字段值：上传图片后拿到的 file_token 列表 */
+export type BitableAttachment = {
+  file_token: string;
+  name?: string;
+};
+
+export type BitableFieldValue =
+  | string
+  | number
+  | boolean
+  | { link: string; text?: string }
+  | BitableAttachment[];
 
 export type BitableRecordFields = Record<string, BitableFieldValue | null | undefined>;
 

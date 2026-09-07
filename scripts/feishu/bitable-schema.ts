@@ -7,6 +7,8 @@ export type BitableTableConfig = {
   dailySummaryTableId?: string;
   /** 中控 UI 采集反馈表（手动登记） */
   feedbackTableId?: string;
+  /** 客户验收交付明细表（含证据图附件） */
+  deliveryTableId?: string;
   dashboardUrl?: string;
 };
 
@@ -98,6 +100,68 @@ export const FEEDBACK_FIELDS = {
   createdAt: 'created_at',
 } as const;
 
+/** 多维表字段类型（飞书官方枚举） */
+export const BITABLE_FIELD_TYPE = {
+  text: 1,
+  number: 2,
+  singleSelect: 3,
+  multiSelect: 4,
+  dateTime: 5,
+  checkbox: 7,
+  url: 15,
+  attachment: 17,
+} as const;
+
+/** 客户验收交付明细表：一行一个检测项，含证据图附件 */
+export const DELIVERY_FIELDS = {
+  itemKey: 'item_key',
+  generatedAt: 'generated_at',
+  env: 'env',
+  releaseTag: 'release_tag',
+  verdict: 'verdict',
+  page: 'page',
+  flow: 'flow',
+  step: 'step',
+  stepNumber: 'step_number',
+  browser: 'browser',
+  difference: 'difference',
+  affectedSteps: 'affected_steps',
+  actionable: 'actionable',
+  reason: 'reason',
+  baselineImage: 'baseline_image',
+  currentImage: 'current_image',
+  diffImage: 'diff_image',
+  docUrl: 'doc_url',
+} as const;
+
+export const DELIVERY_TABLE_NAME = 'UI 验收明细';
+
+/** 建表字段定义，首字段必须是索引列 */
+export const DELIVERY_FIELD_SPECS: Array<{
+  name: string;
+  type: number;
+  property?: Record<string, unknown>;
+}> = [
+  { name: '页面', type: BITABLE_FIELD_TYPE.text },
+  { name: DELIVERY_FIELDS.itemKey, type: BITABLE_FIELD_TYPE.text },
+  { name: DELIVERY_FIELDS.generatedAt, type: BITABLE_FIELD_TYPE.text },
+  { name: DELIVERY_FIELDS.env, type: BITABLE_FIELD_TYPE.text },
+  { name: DELIVERY_FIELDS.releaseTag, type: BITABLE_FIELD_TYPE.text },
+  { name: DELIVERY_FIELDS.verdict, type: BITABLE_FIELD_TYPE.text },
+  { name: DELIVERY_FIELDS.flow, type: BITABLE_FIELD_TYPE.text },
+  { name: DELIVERY_FIELDS.step, type: BITABLE_FIELD_TYPE.text },
+  { name: DELIVERY_FIELDS.stepNumber, type: BITABLE_FIELD_TYPE.number },
+  { name: DELIVERY_FIELDS.browser, type: BITABLE_FIELD_TYPE.text },
+  { name: DELIVERY_FIELDS.difference, type: BITABLE_FIELD_TYPE.text },
+  { name: DELIVERY_FIELDS.affectedSteps, type: BITABLE_FIELD_TYPE.number },
+  { name: DELIVERY_FIELDS.actionable, type: BITABLE_FIELD_TYPE.text },
+  { name: DELIVERY_FIELDS.reason, type: BITABLE_FIELD_TYPE.text },
+  { name: DELIVERY_FIELDS.baselineImage, type: BITABLE_FIELD_TYPE.attachment },
+  { name: DELIVERY_FIELDS.currentImage, type: BITABLE_FIELD_TYPE.attachment },
+  { name: DELIVERY_FIELDS.diffImage, type: BITABLE_FIELD_TYPE.attachment },
+  { name: DELIVERY_FIELDS.docUrl, type: BITABLE_FIELD_TYPE.url },
+];
+
 export const DAILY_FIELDS = {
   summaryKey: 'summary_key',
   date: 'date',
@@ -139,6 +203,7 @@ export function loadBitableRuntimeConfig(): BitableRuntimeConfig | null {
     issueTableId: process.env.FEISHU_BITABLE_ISSUE_TABLE_ID || bitable.issueTableId || '',
     dailySummaryTableId: process.env.FEISHU_BITABLE_DAILY_SUMMARY_TABLE_ID || bitable.dailySummaryTableId || '',
     feedbackTableId: process.env.FEISHU_BITABLE_FEEDBACK_TABLE_ID || bitable.feedbackTableId || '',
+    deliveryTableId: process.env.FEISHU_BITABLE_DELIVERY_TABLE_ID || bitable.deliveryTableId || '',
     dashboardUrl: process.env.FEISHU_BITABLE_DASHBOARD_URL || bitable.dashboardUrl || '',
   };
 

@@ -69,6 +69,11 @@ export type CustomerPageCard = {
   maxDifference: number;
 };
 
+/** 与报告展示一致：四舍五入到 0.00% 的差异不展示对比图 */
+export function hasVisibleDifference(difference: number): boolean {
+  return difference > 0 && (difference * 100).toFixed(2) !== '0.00';
+}
+
 /** 有像素差异、值得展示对比图的步骤（排除零差异 pass 与未建基线） */
 export function isDiffPage(page: CustomerPageCard): boolean {
   return !page.processOnly && page.worstStatus !== 'uncovered' && page.maxDifference > 0;

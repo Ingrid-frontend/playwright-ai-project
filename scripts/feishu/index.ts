@@ -11,13 +11,37 @@ export {
 } from './feishu-app.js';
 export type { FeishuAppConfig, FeishuNotifyPayload } from './feishu-app.js';
 export { BitableClient } from './bitable-client.js';
-export type { BitableFieldValue, BitableRecordFields, BitableUpsertResult } from './bitable-client.js';
+export type { BitableFieldValue, BitableRecordFields, BitableUpsertResult, BitableAttachment } from './bitable-client.js';
+export {
+  FEISHU_MEDIA_CACHE_FILE,
+  fileSignature,
+  loadMediaCache,
+  saveMediaCache,
+  uploadImageToDrive,
+  uploadImages,
+} from './feishu-media.js';
+export type { UploadBatchResult, UploaderOptions } from './feishu-media.js';
+export { ensureDeliveryTable, writeDeliveryRecords, buildDeliveryRecord } from './bitable-delivery.js';
+export type { DeliveryRecordContext, WriteDeliveryResult } from './bitable-delivery.js';
+export {
+  DOC_BLOCK_TYPE,
+  buildCustomerDocBlocks,
+  buildCustomerDocTitle,
+  createDocxDocument,
+  addBlocksBatched,
+  shareDocxDocument,
+} from './doc-delivery.js';
+export type { DocBlock, DocElement } from './doc-delivery.js';
 export {
   BITABLE_RESULT_FILE,
   RUN_FIELDS,
   ISSUE_FIELDS,
   FEEDBACK_FIELDS,
   DAILY_FIELDS,
+  BITABLE_FIELD_TYPE,
+  DELIVERY_FIELDS,
+  DELIVERY_FIELD_SPECS,
+  DELIVERY_TABLE_NAME,
   loadBitableRuntimeConfig,
   explainMissingBitableConfig,
 } from './bitable-schema.js';

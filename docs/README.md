@@ -1,6 +1,6 @@
 # 文档索引
 
-26 篇文档按**你要做什么**分组，不按文件名排。每篇标了「什么时候看」，
+27 篇文档按**你要做什么**分组，不按文件名排。每篇标了「什么时候看」，
 先扫这一列找到自己的场景，再点进去。
 
 - 想快速上手 → 从「一、新人上路」的三篇开始
@@ -108,6 +108,7 @@ npm run trust:report         # Intent 可信度
 | [test-jobs.md](./test-jobs.md) | 要后台跑、失败即停、跑完发通知时。配置在 `config/test-jobs.json` |
 | [github-actions-quickstart.md](./github-actions-quickstart.md) | 配 CI 时。Secrets、启用工作流、常见排错 |
 | [feishu-bitable-dashboard.md](./feishu-bitable-dashboard.md) | 搭飞书多维表仪表盘时。**三层权限 / 两类操作不要混** |
+| [feishu-customer-delivery.md](./feishu-customer-delivery.md) | 要把验收报告发给客户时。图片进多维表、正文进飞书文档，客户拿到的是链接 |
 | [feishu-permissions-guide.md](./feishu-permissions-guide.md) | 飞书报权限错时。最小必要权限集合 |
 | [feishu-webhook-setup.md](./feishu-webhook-setup.md) | 只想配通知（不用多维表）时 |
 
@@ -127,7 +128,7 @@ npm run trust:report         # Intent 可信度
 | 调试跑太慢 | [flow-debug-acceleration.md](./flow-debug-acceleration.md) |
 | 选择器老是挂 | [ui-contract-from-source.md](./ui-contract-from-source.md) |
 | catalog 里的 TODO(review) 怎么填 | [flow-kit-and-flow-new.md](./flow-kit-and-flow-new.md#todoreview唯一需要人工介入的环节) |
-| 把报告发给客户 | [ui-regression-report-for-customer.md](./ui-regression-report-for-customer.md) |
+| 把报告发给客户 | [feishu-customer-delivery.md](./feishu-customer-delivery.md) · [ui-regression-report-for-customer.md](./ui-regression-report-for-customer.md) |
 | 报告分级口径 / 为什么 1.23% 不用管 | [ui-regression-report-for-customer.md](./ui-regression-report-for-customer.md) |
 | 改报告代码 | [customer-report-implementation.md](./customer-report-implementation.md) |
 | 截图基线要不要更新 | [visual-review-lite.md](./visual-review-lite.md) |
