@@ -129,7 +129,12 @@ function runOne(
   spawnEnv.REQUEST_FILTER_KEYWORD = filterKeyword || profileDefaults.requestFilterKeyword || goldenSeed.requestFilterKeyword || "测试";
   const docNo = String(process.env.REQUEST_DOC_NO || profileDefaults.requestDocNo || goldenSeed.requestDocNo || "").trim();
   if (docNo) spawnEnv.REQUEST_DOC_NO = docNo;
-  else delete spawnEnv.REQUEST_DOC_NO;
+  else {
+    delete spawnEnv.REQUEST_DOC_NO;
+    console.warn(
+      `[request-flow:golden] 未配置 requestDocNo（REQUEST_DOC_NO / accounts.json / request-flow/datasource/golden-seeds.json），将尝试从列表现场读取`,
+    );
+  }
   if (roleSlug) spawnEnv.FLOW_ACCOUNT_SLUG = roleSlug;
   else delete spawnEnv.FLOW_ACCOUNT_SLUG;
   spawnEnv.PLAYWRIGHT_RETRIES = "0";

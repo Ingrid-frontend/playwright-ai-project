@@ -15,6 +15,8 @@ test.describe.configure({ mode: 'serial' });
 
 const goldenCtx = { docNo: '', keyword: '' };
 const keepFilters = { keepListFilters: true } as const;
+const GOLDEN_SKIP_MSG =
+  '列表无可用单号，跳过后续 Golden 步骤（Studio「指定单号」/ accounts.json requestDocNo / golden-seeds.json）';
 
 async function trySeedGoldenContext(list: RequestListPage) {
   if (!goldenCtx.docNo) goldenCtx.docNo = env.requestDocNo.trim();
@@ -77,12 +79,13 @@ async function ensureGoldenList(list: RequestListPage) {
     await trySeedGoldenContext(list);
   }
   if (!goldenCtx.docNo) {
-    test.skip(true, '列表无可用单号，跳过后续 Golden 步骤（Studio「指定单号」/ accounts.json requestDocNo / golden-seeds.json）');
+    test.skip(true, GOLDEN_SKIP_MSG);
   }
   if (await list.hasDataRows()) return;
-  if (!(await list.recoverIfEmptyList())) {
-    throw new Error('Golden 步骤前列表无数据');
-  }
+  if (await list.recoverIfEmptyList()) return;
+  await list.search(goldenCtx.docNo, keepFilters).catch(() => undefined);
+  if (await list.hasDataRows()) return;
+  throw new Error('Golden 步骤前列表无数据');
 }
 
 test.describe('申请单 · Golden 回归', () => {
@@ -99,6 +102,9 @@ test.describe('申请单 · Golden 回归', () => {
       await list.expectLoaded();
       await list.recoverIfEmptyList();
       await trySeedGoldenContext(list);
+      if (!goldenCtx.docNo && !(await list.hasDataRows())) {
+        test.skip(true, GOLDEN_SKIP_MSG);
+      }
     }, { snapshot: 'request-list', step: 1 });
   });
 
