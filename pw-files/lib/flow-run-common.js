@@ -410,6 +410,12 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     runNpmScript(repoRoot, 'prune:flow-videos', ['--apply']);
   }
 
+  // history 保留策略：每次 run 都会在 history/{day}.json 追加一份完整 manifest，
+  // 只保留最近 N 天，防止逐日累积导致体积/单文件行数无限增长（P1：真相源收敛）。
+  if (!fastDebug) {
+    runNpmScript(repoRoot, 'prune:flow-history', ['--apply']);
+  }
+
   return {
     ...payload,
     ok: runOk,

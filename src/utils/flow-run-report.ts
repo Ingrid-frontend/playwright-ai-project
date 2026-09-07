@@ -238,14 +238,6 @@ export function initWorkerRun(opts: {
   return { runId, startedAt, screenshotDir: root, runDir };
 }
 
-export function writeManifest(manifest: FlowRunManifest): void {
-  const dir = path.dirname(manifestPath(manifest.flowId, manifest.runId));
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(manifestPath(manifest.flowId, manifest.runId), JSON.stringify(manifest, null, 2), 'utf-8');
-  fs.writeFileSync(lastRunPath(manifest.flowId), JSON.stringify(manifest, null, 2), 'utf-8');
-  appendHistory(manifest);
-}
-
 export function readLastRun(flowId: FlowId): FlowRunManifest | null {
   const p = lastRunPath(flowId);
   if (!fs.existsSync(p)) return null;
@@ -254,26 +246,6 @@ export function readLastRun(flowId: FlowId): FlowRunManifest | null {
   } catch {
     return null;
   }
-}
-
-function historyPath(flowId: FlowId): string {
-  const d = new Date().toISOString().slice(0, 10);
-  return path.join(flowRunsDir(flowId), 'history', `${d}.json`);
-}
-
-function appendHistory(manifest: FlowRunManifest): void {
-  const p = historyPath(manifest.flowId);
-  fs.mkdirSync(path.dirname(p), { recursive: true });
-  let rows: FlowRunManifest[] = [];
-  if (fs.existsSync(p)) {
-    try {
-      rows = JSON.parse(fs.readFileSync(p, 'utf-8')) as FlowRunManifest[];
-    } catch {
-      rows = [];
-    }
-  }
-  rows.push(manifest);
-  fs.writeFileSync(p, JSON.stringify(rows, null, 2), 'utf-8');
 }
 
 export function appendApiFailures(

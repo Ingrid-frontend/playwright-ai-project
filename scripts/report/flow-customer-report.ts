@@ -17,7 +17,6 @@ import { buildCoverageStats } from './coverage-stats.js';
 import { buildCustomerReportModel } from './customer-report-model.js';
 import { renderCustomerReportHtml } from './customer-report-render.js';
 import { sanitizeCustomerReportHtml } from './customer-report-sanitize.js';
-import { FLOW_CUSTOMER_SUMMARY_FILE, writeCustomerReportSummary } from './customer-report-summary.js';
 import { resolveScriptRunMeta, resolveScriptRunHistory } from './customer-report-run-meta.js';
 import { enrichRunHistoryComparisons, screenshotsForMainReport } from './customer-report-run-history.js';
 
@@ -95,7 +94,6 @@ async function main() {
     releaseTag: process.env.RELEASE_TAG || process.env.npm_package_version,
     reportScope: 'golden',
   }, usedRunIds);
-  writeCustomerReportSummary(model, FLOW_CUSTOMER_SUMMARY_FILE);
   const html = sanitizeCustomerReportHtml(renderCustomerReportHtml(model), outputPath).html;
 
   const outAbs = path.resolve(outputPath);
