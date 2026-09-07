@@ -1,6 +1,16 @@
+import { createHash } from 'node:crypto';
 import type { BitableClient, BitableAttachment, BitableRecordFields } from './bitable-client.js';
 import { DELIVERY_FIELDS, DELIVERY_FIELD_SPECS, DELIVERY_TABLE_NAME } from './bitable-schema.js';
 import type { DeliveryPayload, DeliveryItem } from '../report/customer-delivery-payload.js';
+
+/**
+ * 内部键 → 外发键：item_key 落多维表前先哈希。
+ * 原始 key 含本地目录路径 / by-account 测试账号 / 时间戳，直接外发会把内部信息泄漏给客户。
+ * sha256 前 16 位 hex：稳定（同 key 同值，upsert 幂等保持）、不可逆、不含任何内部串。
+ */
+export function hashItemKey(raw: string): string {
+  return createHash('sha256').update(raw).digest('hex').slice(0, 16);
+}
 
 /** 找到交付明细表，没有就新建；随后补齐缺失字段（已存在的字段不会重复创建） */
 export async function ensureDeliveryTable(client: BitableClient): Promise<{
@@ -61,7 +71,7 @@ export function buildDeliveryRecord(
 ): BitableRecordFields {
   const fields: BitableRecordFields = {
     页面: item.title,
-    [DELIVERY_FIELDS.itemKey]: item.key,
+    [DELIVERY_FIELDS.itemKey]: hashItemKey(item.key),
     [DELIVERY_FIELDS.generatedAt]: payload.generatedAt,
     [DELIVERY_FIELDS.env]: payload.envLabel || '',
     [DELIVERY_FIELDS.releaseTag]: payload.releaseTag || '',
@@ -106,8 +116,9 @@ export async function writeDeliveryRecords(
 
   for (const item of payload.items) {
     const fields = buildDeliveryRecord(item, payload, ctx, resolvePath);
-    // 去重模式下 item_key 存不含时间的 key，保证下次能命中同一条记录
-    const uniqueValue = opts?.dedupe ? item.dedupeKey : item.key;
+    // 去重模式下 item_key 存不含时间的 key 哈希，保证下次能命中同一条记录；
+    // 非去重用含时间 key 的哈希，每次生成新行。
+    const uniqueValue = hashItemKey(opts?.dedupe ? item.dedupeKey : item.key);
     fields[DELIVERY_FIELDS.itemKey] = uniqueValue;
     const res = await client.upsertRecord(tableId, DELIVERY_FIELDS.itemKey, uniqueValue, fields);
     result.records.push({ recordId: res.recordId, key: item.key, created: res.created });

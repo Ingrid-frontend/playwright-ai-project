@@ -24,13 +24,31 @@ const bitableMod = tsxRequire(path.join(__dirname, '../feishu/bitable-delivery.t
 const { sanitizeScriptLabel, readCustomerDeliveryPayload, resolveDeliveryImagePath } = payloadMod;
 const { renderDeliveryPreview } = previewMod;
 const { buildCustomerDocBlocks, buildCustomerDocTitle } = docMod;
-const { buildDeliveryRecord } = bitableMod;
+const { buildDeliveryRecord, hashItemKey } = bitableMod;
 
 const ACCOUNT_LIKE = /(?:^|\s)(?:[\w.+-]+@[\w.-]+|\d{6,}|[a-z0-9]+(?:[_-][a-z0-9]+)+)(?=\s|$)/i;
+const HASH_ITEM_KEY = /^[0-9a-f]{16}$/;
 
 function assertNoAccountLeak(label, where) {
   const hit = String(label).split('·').map((s) => s.trim()).filter((s) => ACCOUNT_LIKE.test(s));
   assert.deepStrictEqual(hit, [], `${where} 泄漏内部账号: ${label}`);
+}
+
+/** 多维表一条记录的全部外发文本（字符串字段 + 链接字段），供脱敏断言 */
+function collectOutgoingTexts(fields) {
+  const out = [];
+  for (const [k, v] of Object.entries(fields)) {
+    if (typeof v === 'string') out.push(v);
+    else if (v && typeof v === 'object' && typeof v.link === 'string') {
+      out.push(v.link, v.text || '');
+    } else if (Array.isArray(v)) {
+      for (const e of v) {
+        if (typeof e === 'string') out.push(e);
+        else if (e && typeof e.file_token === 'string') out.push(e.name || '');
+      }
+    }
+  }
+  return out;
 }
 
 function main() {
@@ -101,6 +119,25 @@ function main() {
   assert.strictEqual(fields['页面'], sample.title);
   assert.strictEqual(fields['verdict'], sample.verdictLabel);
   assert.ok(fields['doc_url'], '缺少报告链接字段');
+  // 5.1 item_key 必须是哈希（原始 key 含内部路径/账号，不可外发）
+  assert.ok(HASH_ITEM_KEY.test(fields['item_key']), `item_key 应为 16 位哈希: ${fields['item_key']}`);
+  assert.strictEqual(fields['item_key'], hashItemKey(sample.key), 'item_key 应为 key 的哈希');
+  // 5.2 多维表全部外发文本不得含内部账号/目录串
+  for (const text of collectOutgoingTexts(fields)) {
+    assertNoAccountLeak(text, `多维表字段 item ${sample.title}`);
+    assert.ok(!text.includes('by-account') && !text.includes('golden-regression'), `多维表外发内部路径: ${text}`);
+  }
+
+  // 5.3 dry-run 执行计划若已生成，同样不得含原始 key / 图片路径
+  const planPath = path.join(process.cwd(), 'results', 'feishu-delivery-plan.json');
+  if (fs.existsSync(planPath)) {
+    const plan = JSON.parse(fs.readFileSync(planPath, 'utf-8'));
+    for (const p of plan.items || []) {
+      assert.ok(HASH_ITEM_KEY.test(p.key), `计划 key 应为哈希: ${p.key}`);
+      assertNoAccountLeak(p.flow || '', `计划 ${p.title}`);
+      assert.ok(!p.images || p.images.every((s) => typeof s === 'string' && !s.includes('/')), '计划不得含图片路径');
+    }
+  }
 
   // 6. 本地预览
   const html = renderDeliveryPreview(payload, title);

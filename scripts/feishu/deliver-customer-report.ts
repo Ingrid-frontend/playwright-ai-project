@@ -11,7 +11,7 @@ import { loadFeishuAppConfig, getFeishuAccessToken, sendFeishuNotify } from './f
 import { uploadImages } from './feishu-media.js';
 import { BitableClient } from './bitable-client.js';
 import { loadBitableRuntimeConfig, explainMissingBitableConfig } from './bitable-schema.js';
-import { ensureDeliveryTable, writeDeliveryRecords } from './bitable-delivery.js';
+import { ensureDeliveryTable, hashItemKey, writeDeliveryRecords } from './bitable-delivery.js';
 import {
   buildCustomerDocBlocks,
   buildCustomerDocTitle,
@@ -91,11 +91,12 @@ async function main() {
           table: 'UI 验收明细',
           images: existingImages.length,
           items: payload.items.map((i) => ({
-            key: opts.dedupe ? i.dedupeKey : i.key,
+            key: hashItemKey(opts.dedupe ? i.dedupeKey : i.key),
+            flow: i.scriptLabel,
             verdict: i.verdictLabel,
             title: i.title,
             difference: i.differenceLabel,
-            images: i.images.map((img) => img.relPath),
+            images: i.images.map((img) => img.label),
           })),
         },
         null,
