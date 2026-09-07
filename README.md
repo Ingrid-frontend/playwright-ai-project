@@ -49,10 +49,10 @@ Studio 可视化控制台：`npm run studio` → http://localhost:3001（详见 
 
 ```bash
 # 0. 生成骨架
-npm run flow:new -- --id=expense-flow --label=报销流程 --entry=/main/expense
+npm run flow:new -- --id=expense-flow --label=报销流程 --entry=/main/expense-parent-report/expense-report
 
 # 1. 探活 + catalog
-npx tsx scripts/index-frontend/probe-live-page.ts --env=dev --entry=/main/expense \
+npx tsx scripts/index-frontend/probe-live-page.ts --env=dev --entry=/main/expense-parent-report/expense-report \
   --out=expense-flow/datasource/live-snapshot.json
 npm run flow:gen-catalog -- --flow=expense-flow --force
 
