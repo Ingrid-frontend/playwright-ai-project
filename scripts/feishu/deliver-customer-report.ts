@@ -150,7 +150,9 @@ async function main() {
       console.log(`  ⚠️  ${explainMissingBitableConfig()}`);
     } else {
       const client = new BitableClient(bitableConfig);
-      const { tableId, created, addedFields } = await ensureDeliveryTable(client);
+      const { tableId, created, addedFields } = await ensureDeliveryTable(client, {
+        tableId: bitableConfig.deliveryTableId || undefined,
+      });
       console.log(
         `  明细表 ${created ? '已创建' : '已存在'}${addedFields.length ? `，补建字段 ${addedFields.length} 个` : ''}`,
       );

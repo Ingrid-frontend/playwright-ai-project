@@ -10,6 +10,7 @@ import {
   sendJobFeishuNotification,
 } from "./job-notify.js";
 import { writeBitableReport } from "../feishu/write-bitable-report.js";
+import { writeQualityDashboard } from "../report/generate-quality-dashboard.js";
 import { formatRunId, type AccountProfileFilter } from "./job-utils.js";
 import { listJobRunEnvs, resolveJobRunEnv, type NotifyOn, type ResolvedTestJob } from "./test-jobs-config.js";
 import {
@@ -359,6 +360,18 @@ export async function runFlowJob(
     } catch (error) {
       console.log(
         "⚠️  飞书多维表写入失败（不影响任务流程）:",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
+  if (job.steps.compare && !compareSkipped) {
+    try {
+      const dash = writeQualityDashboard();
+      console.log(`📈 质量看板: ${dash}`);
+    } catch (error) {
+      console.log(
+        "⚠️  质量看板生成失败（不影响任务流程）:",
         error instanceof Error ? error.message : String(error),
       );
     }

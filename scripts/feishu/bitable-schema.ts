@@ -59,6 +59,8 @@ export const RUN_FIELDS = {
 export const ISSUE_FIELDS = {
   issueRecordId: 'issue_record_id',
   executionId: 'execution_id',
+  runRecordLink: 'run_record',
+  runRecordUrl: 'run_record_url',
   issueId: 'issue_id',
   scriptKey: 'script_key',
   stepNumber: 'step_number',
@@ -81,6 +83,15 @@ export const ISSUE_FIELDS = {
   aiDocPath: 'ai_doc_path',
   aiDocUrl: 'ai_doc_url',
 } as const;
+
+/** 已不再写入，可用 maintain-bitable 脚本删除 */
+export const ISSUE_DEPRECATED_FIELDS = [
+  ISSUE_FIELDS.baselinePath,
+  ISSUE_FIELDS.currentPath,
+  ISSUE_FIELDS.diffImagePath,
+  ISSUE_FIELDS.difference,
+  ISSUE_FIELDS.aiDocPath,
+] as const;
 
 /** 中控 UI 采集反馈表字段（手动登记，与自动化 issue 表可分开） */
 export const FEEDBACK_FIELDS = {
@@ -110,7 +121,21 @@ export const BITABLE_FIELD_TYPE = {
   checkbox: 7,
   url: 15,
   attachment: 17,
+  singleLink: 18,
+  duplexLink: 21,
 } as const;
+
+export function buildIssueLinkFieldSpec(runTableId: string): {
+  name: string;
+  type: number;
+  property: Record<string, unknown>;
+} {
+  return {
+    name: ISSUE_FIELDS.runRecordLink,
+    type: BITABLE_FIELD_TYPE.singleLink,
+    property: { table_id: runTableId, multiple: false },
+  };
+}
 
 /** 客户验收交付明细表：一行一个检测项，含证据图附件 */
 export const DELIVERY_FIELDS = {
@@ -160,6 +185,46 @@ export const DELIVERY_FIELD_SPECS: Array<{
   { name: DELIVERY_FIELDS.currentImage, type: BITABLE_FIELD_TYPE.attachment },
   { name: DELIVERY_FIELDS.diffImage, type: BITABLE_FIELD_TYPE.attachment },
   { name: DELIVERY_FIELDS.docUrl, type: BITABLE_FIELD_TYPE.url },
+];
+
+export const BITABLE_ENV_OPTIONS = [
+  { name: 'dev' },
+  { name: 'uat' },
+  { name: 'stage' },
+  { name: 'stage9084' },
+];
+
+export const FEEDBACK_FIELD_SPECS: Array<{
+  name: string;
+  type: number;
+  property?: Record<string, unknown>;
+}> = [
+  { name: FEEDBACK_FIELDS.feedbackId, type: BITABLE_FIELD_TYPE.text },
+  { name: FEEDBACK_FIELDS.reporter, type: BITABLE_FIELD_TYPE.text },
+  { name: FEEDBACK_FIELDS.description, type: BITABLE_FIELD_TYPE.text },
+  {
+    name: FEEDBACK_FIELDS.env,
+    type: BITABLE_FIELD_TYPE.singleSelect,
+    property: { options: BITABLE_ENV_OPTIONS },
+  },
+  { name: FEEDBACK_FIELDS.pageUrl, type: BITABLE_FIELD_TYPE.url },
+  { name: FEEDBACK_FIELDS.route, type: BITABLE_FIELD_TYPE.text },
+  { name: FEEDBACK_FIELDS.selector, type: BITABLE_FIELD_TYPE.text },
+  { name: FEEDBACK_FIELDS.xpath, type: BITABLE_FIELD_TYPE.text },
+  { name: FEEDBACK_FIELDS.bbox, type: BITABLE_FIELD_TYPE.text },
+  { name: FEEDBACK_FIELDS.screenshotUrl, type: BITABLE_FIELD_TYPE.url },
+  { name: FEEDBACK_FIELDS.aiDocUrl, type: BITABLE_FIELD_TYPE.url },
+  { name: FEEDBACK_FIELDS.assignees, type: BITABLE_FIELD_TYPE.text },
+  {
+    name: FEEDBACK_FIELDS.status,
+    type: BITABLE_FIELD_TYPE.singleSelect,
+    property: { options: [{ name: '待处理' }, { name: '处理中' }, { name: '已修复' }, { name: '忽略' }] },
+  },
+  {
+    name: FEEDBACK_FIELDS.createdAt,
+    type: BITABLE_FIELD_TYPE.dateTime,
+    property: { date_formatter: 'yyyy/MM/dd HH:mm', auto_fill: false },
+  },
 ];
 
 export const DAILY_FIELDS = {

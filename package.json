@@ -99,6 +99,7 @@
     "create-feishu-doc": "tsx scripts/feishu/create-feishu-doc.ts",
     "feishu:bitable": "tsx scripts/feishu/write-bitable-report.ts",
     "feishu:bitable-setup": "tsx scripts/feishu/setup-bitable-dashboard.ts",
+    "feishu:bitable-maintain": "tsx scripts/feishu/maintain-bitable.ts",
     "feishu:feedback-write": "tsx scripts/feishu/write-feedback-bitable.ts",
     "feishu:feedback-table-setup": "tsx scripts/feishu/create-feedback-table.ts",
     "feishu:grant-bitable-editor": "tsx scripts/feishu/grant-bitable-editor.ts",

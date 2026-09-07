@@ -21,6 +21,7 @@ import {
 } from './ui-issues-index.js';
 import { applyTriageToReport } from './issue-triage.js';
 import { appendHistorySnapshot } from './ui-regression-history.js';
+import { writeQualityDashboard } from './generate-quality-dashboard.js';
 import {
   generateOverviewPanel,
   generateSummaryTableHtml,
@@ -41,6 +42,7 @@ import {
 } from './compare-screenshots-report.js';
 import { discoverScriptScanTargets } from './compare-screenshots-scan.js';
 import { extractStepNameFromPath } from './compare-screenshots-utils.js';
+import { writeUiCompareCache } from './ui-compare-cache.js';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
@@ -214,6 +216,8 @@ async function main() {
     console.log(`   ⚠️  AI 分析文档生成跳过: ${e instanceof Error ? e.message : String(e)}`);
   }
 
+  writeUiCompareCache({ generatedAt: issuesReport.generatedAt, testDirs: testDirComparisons });
+
   const analysisMdPath = path.join(path.dirname(issuesOut), 'ui-issues-analysis.md');
   fs.writeFileSync(analysisMdPath, issuesReport.plainLanguageAnalysis.markdown, 'utf-8');
 
@@ -255,6 +259,15 @@ async function main() {
 
   const comparePassed = !gateShouldFail(issuesReport);
   await maybeNotifyCompareResult(comparePassed);
+
+  if (process.env.AUTO_QUALITY_DASHBOARD !== '0') {
+    try {
+      const dash = writeQualityDashboard();
+      console.log(`   质量看板: ${dash}`);
+    } catch (err) {
+      console.warn(`   质量看板生成跳过: ${(err as Error).message}`);
+    }
+  }
 
   if (gateMode && !comparePassed) {
     console.error(`\n❌ --gate：存在 blocker 级 UI 问题，退出码 1`);

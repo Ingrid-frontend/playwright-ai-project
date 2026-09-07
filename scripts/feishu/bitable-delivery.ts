@@ -13,13 +13,17 @@ export function hashItemKey(raw: string): string {
 }
 
 /** 找到交付明细表，没有就新建；随后补齐缺失字段（已存在的字段不会重复创建） */
-export async function ensureDeliveryTable(client: BitableClient): Promise<{
+export async function ensureDeliveryTable(
+  client: BitableClient,
+  opts?: { tableId?: string },
+): Promise<{
   tableId: string;
   created: boolean;
   addedFields: string[];
 }> {
   const tables = await client.listTables();
-  let table = tables.find((t) => t.name === DELIVERY_TABLE_NAME);
+  let table = opts?.tableId ? tables.find((t) => t.table_id === opts.tableId) : undefined;
+  if (!table) table = tables.find((t) => t.name === DELIVERY_TABLE_NAME);
   let created = false;
 
   if (!table) {

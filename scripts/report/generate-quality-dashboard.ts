@@ -2,20 +2,24 @@
 import fs from 'fs';
 import path from 'path';
 import type { HistorySnapshot } from './ui-regression-history.js';
+import { buildScriptSummaryFromIssues, loadHistorySnapshots } from './ui-regression-history.js';
 import type { UiIssuesReport } from './ui-issues-index.js';
 import { formatIssuePassRate } from './compare-report-viz.js';
 import { loadFlakeHistory, type FlakeDashboard } from './flake-history.js';
+import { isFlowIssuesSource, readIssuesReport, resolveIssuesSource } from './issues-source.js';
 
-const HISTORY_DIR = path.join('results', 'history');
-const ISSUES_FILE = 'results/ui-issues.json';
 const BITABLE_FILE = 'results/feishu-bitable-record.json';
 const DEFAULT_OUT = 'results/quality-dashboard.html';
+const TREND_DAYS = 7;
 
 type TrendPoint = { date: string; blocker: number; warning: number; total: number };
 
 type DashboardPayload = {
   generatedAt: string;
   env: string;
+  issuesSource: string | null;
+  compareReportHref: string;
+  newRegressionCount: number;
   current: HistorySnapshot | null;
   trend: TrendPoint[];
   previous: TrendPoint | null;
@@ -44,26 +48,30 @@ function readJson<T>(file: string): T | null {
 }
 
 function loadHistory(): HistorySnapshot[] {
-  if (!fs.existsSync(HISTORY_DIR)) return [];
-  return fs
-    .readdirSync(HISTORY_DIR)
-    .filter((name) => /^\d{4}-\d{2}-\d{2}\.json$/.test(name))
-    .sort()
-    .map((name) => readJson<HistorySnapshot>(path.join(HISTORY_DIR, name)))
-    .filter((item): item is HistorySnapshot => Boolean(item?.date && item.summary));
+  return loadHistorySnapshots();
 }
 
-function buildPayload(): DashboardPayload {
-  const issues = readJson<UiIssuesReport>(ISSUES_FILE);
+function resolveCompareReportLink(outFile: string, issuesSource: string | null): string {
+  if (outFile.includes('public-reports/dashboard')) return '../ui-regression/index.html';
+  if (isFlowIssuesSource(issuesSource) && fs.existsSync('results/flow-screenshot-comparison.html')) {
+    return 'flow-screenshot-comparison.html';
+  }
+  return 'screenshot-comparison.html';
+}
+
+function buildPayload(outFile = DEFAULT_OUT): DashboardPayload {
+  const issuesSource = resolveIssuesSource();
+  const issues = readIssuesReport();
   const history = loadHistory();
-  const trend = history.map((item) => ({
+  const trendAll = history.map((item) => ({
     date: item.date,
     blocker: item.summary.blocker,
     warning: item.summary.warning,
     total: item.summary.total,
   }));
+  const trend = trendAll.slice(-TREND_DAYS);
   const latest = history[history.length - 1] ?? null;
-  const previous = trend.length > 1 ? trend[trend.length - 2]! : null;
+  const previous = trendAll.length > 1 ? trendAll[trendAll.length - 2]! : null;
   const bitable = readJson<{ runRecordUrl?: string; dashboardUrl?: string }>(BITABLE_FILE) ?? {};
 
   const currentFromIssues: HistorySnapshot | null = issues
@@ -71,18 +79,22 @@ function buildPayload(): DashboardPayload {
         date: issues.generatedAt.slice(0, 10),
         generatedAt: issues.generatedAt,
         summary: issues.summary,
-        byScript: buildScriptMap(issues),
+        byScript: buildScriptSummaryFromIssues(issues.issues),
       }
     : null;
 
   const current = currentFromIssues ?? latest;
   const byRoute = current?.summary.byRoute ?? issues?.summary.byRoute ?? {};
   const byCompareKind = current?.summary.byCompareKind ?? issues?.summary.byCompareKind ?? {};
-  const byScript = current?.byScript ?? currentFromIssues?.byScript ?? {};
+  const byScript = currentFromIssues?.byScript ?? latest?.byScript ?? {};
+  const newRegressionCount = issues?.issues.filter((item) => item.isNewRegression).length ?? 0;
 
   return {
     generatedAt: issues?.generatedAt || latest?.generatedAt || new Date().toISOString(),
     env: process.env.PLAYWRIGHT_ENV || 'stage',
+    issuesSource,
+    compareReportHref: resolveCompareReportLink(outFile, issuesSource),
+    newRegressionCount,
     current,
     trend,
     previous,
@@ -98,22 +110,7 @@ function buildPayload(): DashboardPayload {
 }
 
 function buildScriptMap(report: UiIssuesReport): HistorySnapshot['byScript'] {
-  const buckets = new Map<string, { blocker: number; warning: number; diffs: number[] }>();
-  for (const issue of report.issues) {
-    const bucket = buckets.get(issue.scriptKey) ?? { blocker: 0, warning: 0, diffs: [] };
-    if (issue.severity === 'blocker') bucket.blocker++;
-    if (issue.severity === 'warning') bucket.warning++;
-    bucket.diffs.push(issue.difference);
-    buckets.set(issue.scriptKey, bucket);
-  }
-  const result: HistorySnapshot['byScript'] = {};
-  for (const [scriptKey, bucket] of buckets) {
-    const avgDifference = bucket.diffs.length
-      ? bucket.diffs.reduce((sum, item) => sum + item, 0) / bucket.diffs.length
-      : 0;
-    result[scriptKey] = { blocker: bucket.blocker, warning: bucket.warning, avgDifference };
-  }
-  return result;
+  return buildScriptSummaryFromIssues(report.issues);
 }
 
 function deltaText(current: number, previous: number | undefined): string {
@@ -280,9 +277,14 @@ export function generateQualityDashboardHtml(payload: DashboardPayload): string 
     noise: passCount,
   }).passPct;
   const prev = payload.previous;
+  const releasable = blocker === 0;
+  const flakeRatePct = payload.flake.latest
+    ? (payload.flake.latest.flakeRate * 100).toFixed(0)
+    : '0';
+  const sourceLabel = isFlowIssuesSource(payload.issuesSource) ? 'flow' : 'optimized';
 
   const links = [
-    { href: './ui-regression/index.html', label: 'UI 截图对比报告' },
+    { href: payload.compareReportHref, label: 'UI 截图对比报告' },
     { href: './playwright-report/index.html', label: 'Playwright HTML 报告' },
   ];
   if (payload.bitable.runRecordUrl) {
@@ -318,6 +320,16 @@ export function generateQualityDashboardHtml(payload: DashboardPayload): string 
     .delta-bad { color: #dc2626; }
     .delta-good { color: #16a34a; }
     .delta-neutral { color: #86909c; }
+    .verdict { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 20px; border-radius: 10px; margin-bottom: 16px; border: 1px solid #e5e7eb; }
+    .verdict.ok { background: #f0fdf4; border-color: #86efac; }
+    .verdict.bad { background: #fef2f2; border-color: #fca5a5; }
+    .verdict-title { font-size: 20px; font-weight: 700; }
+    .verdict-meta { font-size: 13px; color: #4e5969; margin-top: 6px; }
+    .verdict-side { text-align: right; font-size: 13px; color: #86909c; }
+    .diag-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .diag { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px; }
+    .diag-num { font-size: 22px; font-weight: 700; }
+    .diag-label { font-size: 12px; color: #86909c; margin-top: 4px; }
     .panel-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; }
     .panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
     .panel h2 { margin: 0 0 12px; font-size: 15px; }
@@ -344,6 +356,7 @@ export function generateQualityDashboardHtml(payload: DashboardPayload): string 
     .empty { color: #86909c; font-size: 13px; margin: 0; }
     @media (max-width: 860px) {
       .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .diag-grid { grid-template-columns: 1fr; }
       .panel-grid { grid-template-columns: 1fr; }
       .bar-label { width: 96px; }
     }
@@ -352,36 +365,58 @@ export function generateQualityDashboardHtml(payload: DashboardPayload): string 
 <body>
   <div class="page">
     <h1>UI 质量仪表盘</h1>
-    <p class="sub">环境 ${esc(payload.env)} · 数据时间 ${esc(payload.generatedAt)} · 历史 ${payload.trend.length} 天</p>
+    <p class="sub">环境 ${esc(payload.env)} · 数据源 ${esc(sourceLabel)} · 数据时间 ${esc(payload.generatedAt)} · 趋势近 ${payload.trend.length} 天</p>
     <div class="links">
       ${links.map((item) => `<a href="${esc(item.href)}"${item.href.startsWith('http') ? ' target="_blank" rel="noopener"' : ''}>${esc(item.label)}</a>`).join('')}
     </div>
 
+    <div class="verdict ${releasable ? 'ok' : 'bad'}">
+      <div>
+        <div class="verdict-title ${releasable ? 'green' : 'red'}">${releasable ? '可发布' : '需修复'}</div>
+        <div class="verdict-meta">${releasable ? '无 Blocker 级 UI 回归' : `存在 ${blocker} 个 Blocker，需处理后再发版`}</div>
+      </div>
+      <div class="verdict-side">
+        <div>Blocker ${blocker} · Warning ${warning}</div>
+        <div>对比项 ${total} · 新增回归 ${payload.newRegressionCount}</div>
+      </div>
+    </div>
+
     <div class="kpi-grid">
+      <div class="kpi">
+        <div class="kpi-num green">${passPct}%</div>
+        <div class="kpi-label">通过率</div>
+        <div class="kpi-delta delta-neutral">${passCount} 条通过 / ${total} 对比项</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-num ${payload.newRegressionCount > 0 ? 'red' : ''}">${payload.newRegressionCount}</div>
+        <div class="kpi-label">新增回归</div>
+        <div class="kpi-delta delta-neutral">golden / last-green 新差异</div>
+      </div>
       <div class="kpi">
         <div class="kpi-num red">${blocker}</div>
         <div class="kpi-label">Blocker</div>
         <div class="kpi-delta ${deltaClass(blocker, prev?.blocker)}">较上日 ${deltaText(blocker, prev?.blocker)}</div>
       </div>
       <div class="kpi">
-        <div class="kpi-num yellow">${warning}</div>
-        <div class="kpi-label">Warning</div>
-        <div class="kpi-delta ${deltaClass(warning, prev?.warning)}">较上日 ${deltaText(warning, prev?.warning)}</div>
+        <div class="kpi-num">${flakeRatePct}%</div>
+        <div class="kpi-label">Flake 占比</div>
+        <div class="kpi-delta delta-neutral">${payload.flake.latest?.flakeFailed ?? 0} flake / ${payload.flake.latest?.failed ?? 0} 失败</div>
       </div>
-      <div class="kpi">
-        <div class="kpi-num">${total}</div>
-        <div class="kpi-label">问题条目</div>
-        <div class="kpi-delta ${deltaClass(total, prev?.total)}">较上日 ${deltaText(total, prev?.total)}</div>
+    </div>
+
+    <div class="diag-grid">
+      <div class="diag">
+        <div class="diag-num yellow">${warning}</div>
+        <div class="diag-label">Warning · 较上日 ${deltaText(warning, prev?.warning)}</div>
       </div>
-      <div class="kpi">
-        <div class="kpi-num green">${passPct}%</div>
-        <div class="kpi-label">通过率</div>
-        <div class="kpi-delta delta-neutral">${passCount} 条 noise</div>
+      <div class="diag">
+        <div class="diag-num">${total}</div>
+        <div class="diag-label">对比项总数 · 较上日 ${deltaText(total, prev?.total)}</div>
       </div>
     </div>
 
     <div class="panel">
-      <h2>历史趋势</h2>
+      <h2>历史趋势（近 ${TREND_DAYS} 天）</h2>
       ${renderTrendChart(payload.trend)}
     </div>
 
@@ -398,7 +433,9 @@ export function generateQualityDashboardHtml(payload: DashboardPayload): string 
       <div class="panel">
         <h2>路由分布</h2>
         ${renderBarList(payload.byRoute)}
-        <h2 style="margin-top:20px">对比类型</h2>
+      </div>
+      <div class="panel">
+        <h2>对比类型</h2>
         ${renderBarList(payload.byCompareKind, 6)}
       </div>
     </div>
@@ -408,7 +445,7 @@ export function generateQualityDashboardHtml(payload: DashboardPayload): string 
 }
 
 export function writeQualityDashboard(outFile = DEFAULT_OUT): string {
-  const payload = buildPayload();
+  const payload = buildPayload(outFile);
   const html = generateQualityDashboardHtml(payload);
   fs.mkdirSync(path.dirname(outFile), { recursive: true });
   fs.writeFileSync(outFile, html, 'utf-8');

@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { readIssuesReport } from '../report/issues-source.js';
 import type { FeishuMode } from './test-jobs-config.js';
 import { canSendFeishuNotify, sendFeishuNotify } from '../feishu/index.js';
 import {
@@ -136,27 +137,18 @@ export function readUiIssuesSummaryCounts():
       review?: { uiBug: number; needsHuman: number; unstable: number; likelyNoise: number; reviewed: number };
     }
   | undefined {
-  const p = path.join(process.cwd(), 'results/ui-issues.json');
-  if (!fs.existsSync(p)) return undefined;
-  try {
-    const report = JSON.parse(fs.readFileSync(p, 'utf-8')) as {
-      summary?: {
-        blocker: number;
-        warning: number;
-        total: number;
-        review?: { uiBug: number; needsHuman: number; unstable: number; likelyNoise: number; reviewed: number };
-      };
-    };
-    if (!report.summary) return undefined;
-    return {
-      blocker: report.summary.blocker ?? 0,
-      warning: report.summary.warning ?? 0,
-      total: report.summary.total ?? 0,
-      review: report.summary.review,
-    };
-  } catch {
-    return undefined;
-  }
+  const report = readIssuesReport();
+  if (!report?.summary) return undefined;
+  const summary = report.summary;
+  const blocker = summary.comparisonBlocker ?? summary.blocker ?? 0;
+  const warning = summary.comparisonWarning ?? summary.warning ?? 0;
+  const total = summary.comparisonTotal ?? summary.total ?? 0;
+  return {
+    blocker,
+    warning,
+    total,
+    review: summary.review,
+  };
 }
 
 export function buildJobFailReasons(input: {

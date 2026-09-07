@@ -15,6 +15,7 @@ import {
 import { readUiIssuesSummaryLine, sendJobFeishuNotification, readUiIssuesSummaryCounts, buildJobFailReasons } from './job-notify.js';
 import { getAnalyzeErrorsSummary, runAnalyzeErrorsOnFailure } from '../flow/flow-shared.js';
 import { writeBitableReport } from '../feishu/write-bitable-report.js';
+import { writeQualityDashboard } from '../report/generate-quality-dashboard.js';
 import {
   formatRunId,
   isProcessAlive,
@@ -304,7 +305,7 @@ export async function runDirect(opts: DirectRunOptions, ctx: JobRunContext): Pro
   }
 
   if (opts.steps.compare && !skipCompare) {
-    runCommandBool('npm run report:customer', '生成客户版验收报告');
+    runCommandBool('npm run report:customer -- --reuse-compare', '生成客户版验收报告');
     runCommandBool('npm run feishu:customer-notify', '客户版飞书通知（周报/提醒）');
   }
 
@@ -368,6 +369,15 @@ export async function runDirect(opts: DirectRunOptions, ctx: JobRunContext): Pro
       await writeBitableReport({ summary, env: runtimeEnv, status: finalStatus });
     } catch (error) {
       console.log('⚠️  飞书多维表写入失败（不影响任务流程）:', error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  if (opts.steps.compare && !compareSkipped) {
+    try {
+      const dash = writeQualityDashboard();
+      console.log(`📈 质量看板: ${dash}`);
+    } catch (error) {
+      console.log('⚠️  质量看板生成失败（不影响任务流程）:', error instanceof Error ? error.message : String(error));
     }
   }
 

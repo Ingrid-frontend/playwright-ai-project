@@ -21,6 +21,12 @@ import { buildCustomerDeliveryPayload, writeCustomerDeliveryPayload } from './cu
 import { resolveScriptRunMeta, resolveScriptRunHistory } from './customer-report-run-meta.js';
 import { enrichRunHistoryComparisons, screenshotsForMainReport } from './customer-report-run-history.js';
 import { extractEnvId, envLabelFromId, envIdSortKey } from './customer-report-naming.js';
+import { readIssuesReport } from './issues-source.js';
+import {
+  normDir,
+  readUiCompareCache,
+  shouldReuseCompareCache,
+} from './ui-compare-cache.js';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
@@ -100,6 +106,15 @@ async function main() {
     scanTargets,
   );
 
+  const reuseCompare = shouldReuseCompareCache({ issuesGeneratedAt: readIssuesReport()?.generatedAt });
+  const cached = reuseCompare ? readUiCompareCache() : null;
+  const cacheByDir = new Map(
+    (cached?.testDirs ?? []).map((item) => [normDir(item.testDir), item]),
+  );
+  if (cacheByDir.size) {
+    console.log(`  ♻️  对比缓存可用（${cacheByDir.size} 个脚本）`);
+  }
+
   for (let i = 0; i < scanTargets.length; i++) {
     const { testDir, scriptPath } = scanTargets[i]!;
     console.log(`\n[${i + 1}/${scanTargets.length}] ${testDir}`);
@@ -108,6 +123,17 @@ async function main() {
     const rows = runHistory.get(testDir) || [];
     const { filtered, runId } = screenshotsForMainReport(screenshots, rows);
     if (runId) usedRunIds.set(testDir, runId);
+
+    const cachedHit = cacheByDir.get(normDir(testDir));
+    if (cachedHit) {
+      testDirComparisons.push({
+        testDir: testDir.replace(/\\/g, '/'),
+        comparisons: cachedHit.comparisons,
+      });
+      hasCurrentPng = true;
+      continue;
+    }
+
     if (filtered.size === 0) continue;
     hasCurrentPng = true;
     const comparisons = await generateTestComparisons(testDir, filtered, outputPath);

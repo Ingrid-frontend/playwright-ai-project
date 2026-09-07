@@ -11,6 +11,7 @@ export type BitableFieldValue =
   | string
   | number
   | boolean
+  | string[]
   | { link: string; text?: string }
   | BitableAttachment[];
 
@@ -119,6 +120,19 @@ export class BitableClient {
     await this.request<unknown>(this.tableUrl(tableId, '/fields'), {
       method: 'POST',
       body: JSON.stringify(body),
+    });
+  }
+
+  async deleteField(tableId: string, fieldId: string): Promise<void> {
+    await this.request<unknown>(this.tableUrl(tableId, `/fields/${fieldId}`), {
+      method: 'DELETE',
+    });
+  }
+
+  async updateRecord(tableId: string, recordId: string, fields: BitableRecordFields): Promise<void> {
+    await this.request<unknown>(this.tableUrl(tableId, `/records/${recordId}`), {
+      method: 'PUT',
+      body: JSON.stringify({ fields: cleanFields(fields) }),
     });
   }
 
@@ -236,13 +250,6 @@ export class BitableClient {
     const recordId = data.record?.record_id;
     if (!recordId) throw new Error('飞书多维表创建记录成功但未返回 record_id');
     return recordId;
-  }
-
-  private async updateRecord(tableId: string, recordId: string, fields: BitableRecordFields): Promise<void> {
-    await this.request<unknown>(this.tableUrl(tableId, `/records/${recordId}`), {
-      method: 'PUT',
-      body: JSON.stringify({ fields: cleanFields(fields) }),
-    });
   }
 }
 

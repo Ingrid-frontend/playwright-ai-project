@@ -37,6 +37,9 @@ import {
 import { gateShouldFail } from './ui-issues.js';
 import { applyTriageToReport } from './issue-triage.js';
 import { isCompareCrossBrowserEnabled } from './compare-screenshots-engine.js';
+import { appendHistorySnapshot } from './ui-regression-history.js';
+import { writeUiCompareCache, FLOW_UI_COMPARE_CACHE_FILE } from './ui-compare-cache.js';
+import { writeQualityDashboard } from './generate-quality-dashboard.js';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
@@ -113,6 +116,12 @@ async function main() {
     }
   }
 
+  const counts = countComparisonSeverities(testDirComparisons);
+  issuesReport.summary.comparisonTotal = counts.total;
+  issuesReport.summary.comparisonBlocker = counts.blocker;
+  issuesReport.summary.comparisonWarning = counts.warning;
+  issuesReport.summary.comparisonNoise = counts.noise;
+
   writeUiIssuesReport(issuesReport, issuesOut);
 
   try {
@@ -143,6 +152,10 @@ async function main() {
     }
   }
 
+  const historyPath = appendHistorySnapshot(issuesReport, { source: 'flow' });
+  console.log(`   日快照: ${historyPath}`);
+  writeUiCompareCache({ generatedAt: issuesReport.generatedAt, testDirs: testDirComparisons }, FLOW_UI_COMPARE_CACHE_FILE);
+
   const allComparisons = testDirComparisons.flatMap((t) => t.comparisons);
   const overviewData = buildOverviewData(testDirComparisons, {
     totalSteps: allComparisons.length,
@@ -168,13 +181,21 @@ async function main() {
   fs.mkdirSync(path.dirname(outAbs), { recursive: true });
   fs.writeFileSync(outAbs, html, 'utf-8');
 
-  const counts = countComparisonSeverities(testDirComparisons);
   console.log(`\n✅ 流程对比报告: ${outputPath}`);
   console.log(`   对比项 ${counts.total} · blocker ${counts.blocker} · warning ${counts.warning}`);
   if (typeof issuesReport.baselineRevision === 'number') {
     console.log(`   基线 revision: ${issuesReport.baselineRevision}`);
   }
   console.log(`   并行 ${COMPARE_CONCURRENCY} · 增量 ${COMPARE_INCREMENTAL ? '开' : '关'}`);
+
+  if (process.env.AUTO_QUALITY_DASHBOARD !== '0') {
+    try {
+      const dash = writeQualityDashboard();
+      console.log(`   质量看板: ${dash}`);
+    } catch (err) {
+      console.warn(`   质量看板生成跳过: ${(err as Error).message}`);
+    }
+  }
 
   if (gateMode && gateShouldFail(issuesReport)) {
     console.error(`\n❌ --gate：流程 UI 存在 blocker 级问题，退出码 1`);

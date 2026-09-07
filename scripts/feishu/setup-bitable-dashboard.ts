@@ -10,9 +10,14 @@ import dotenv from 'dotenv';
 import {
   BitableClient,
   DAILY_FIELDS,
-  FEEDBACK_FIELDS,
+  FEEDBACK_FIELD_SPECS,
   ISSUE_FIELDS,
   RUN_FIELDS,
+  BITABLE_ENV_OPTIONS,
+  BITABLE_FIELD_TYPE,
+  buildIssueLinkFieldSpec,
+  DELIVERY_FIELD_SPECS,
+  DELIVERY_TABLE_NAME,
   explainMissingBitableConfig,
   loadBitableRuntimeConfig,
 } from './index.js';
@@ -27,19 +32,12 @@ type FieldSpec = {
 
 type FieldItem = { field_id: string; field_name: string; type: number };
 
-const FIELD_TYPE: Record<string, number> = {
-  text: 1,
-  number: 2,
-  singleSelect: 3,
-  dateTime: 5,
-  checkbox: 7,
-  url: 15,
-};
+const FIELD_TYPE = BITABLE_FIELD_TYPE;
 
 const RUN_SPECS: FieldSpec[] = [
   { name: RUN_FIELDS.executionId, type: FIELD_TYPE.text },
   { name: RUN_FIELDS.jobId, type: FIELD_TYPE.text },
-  { name: RUN_FIELDS.env, type: FIELD_TYPE.singleSelect, property: { options: [{ name: 'stage' }, { name: 'uat' }, { name: 'dev' }] } },
+  { name: RUN_FIELDS.env, type: FIELD_TYPE.singleSelect, property: { options: BITABLE_ENV_OPTIONS } },
   { name: RUN_FIELDS.trigger, type: FIELD_TYPE.text },
   { name: RUN_FIELDS.executedAt, type: FIELD_TYPE.dateTime, property: { date_formatter: 'yyyy/MM/dd HH:mm', auto_fill: false } },
   { name: RUN_FIELDS.status, type: FIELD_TYPE.singleSelect, property: { options: [{ name: 'success' }, { name: 'failed' }, { name: 'aborted' }, { name: 'skipped' }] } },
@@ -65,58 +63,45 @@ const RUN_SPECS: FieldSpec[] = [
   { name: RUN_FIELDS.failureReasons, type: FIELD_TYPE.text },
 ];
 
-const ISSUE_SPECS: FieldSpec[] = [
-  { name: ISSUE_FIELDS.issueRecordId, type: FIELD_TYPE.text },
-  { name: ISSUE_FIELDS.executionId, type: FIELD_TYPE.text },
-  { name: ISSUE_FIELDS.issueId, type: FIELD_TYPE.text },
-  { name: ISSUE_FIELDS.scriptKey, type: FIELD_TYPE.text },
-  { name: ISSUE_FIELDS.stepNumber, type: FIELD_TYPE.number, property: { formatter: '0' } },
-  { name: ISSUE_FIELDS.stepName, type: FIELD_TYPE.text },
-  { name: ISSUE_FIELDS.browser, type: FIELD_TYPE.singleSelect, property: { options: [{ name: 'chrome' }, { name: 'webkit' }, { name: 'firefox' }] } },
-  { name: ISSUE_FIELDS.compareKind, type: FIELD_TYPE.singleSelect, property: { options: [{ name: 'golden' }, { name: 'last-green' }, { name: 'cross-browser' }, { name: 'run-drift' }] } },
-  { name: ISSUE_FIELDS.severity, type: FIELD_TYPE.singleSelect, property: { options: [{ name: 'blocker' }, { name: 'warning' }, { name: 'noise' }] } },
-  { name: ISSUE_FIELDS.difference, type: FIELD_TYPE.number, property: { formatter: '0.0000' } },
-  { name: ISSUE_FIELDS.differencePercent, type: FIELD_TYPE.number, property: { formatter: '0.00' } },
-  { name: ISSUE_FIELDS.route, type: FIELD_TYPE.text },
-  { name: ISSUE_FIELDS.isNewRegression, type: FIELD_TYPE.checkbox },
-  { name: ISSUE_FIELDS.baselinePath, type: FIELD_TYPE.text },
-  { name: ISSUE_FIELDS.currentPath, type: FIELD_TYPE.text },
-  { name: ISSUE_FIELDS.diffImagePath, type: FIELD_TYPE.text },
-  { name: ISSUE_FIELDS.source, type: FIELD_TYPE.singleSelect, property: { options: [{ name: 'automated' }, { name: 'manual' }] } },
-  { name: ISSUE_FIELDS.reporter, type: FIELD_TYPE.text },
-  { name: ISSUE_FIELDS.description, type: FIELD_TYPE.text },
-  { name: ISSUE_FIELDS.elementXpath, type: FIELD_TYPE.text },
-  { name: ISSUE_FIELDS.elementSelector, type: FIELD_TYPE.text },
-  { name: ISSUE_FIELDS.aiDocPath, type: FIELD_TYPE.text },
-  { name: ISSUE_FIELDS.aiDocUrl, type: FIELD_TYPE.url },
-];
+function buildIssueSpecs(runTableId?: string): FieldSpec[] {
+  const specs: FieldSpec[] = [
+    { name: ISSUE_FIELDS.issueRecordId, type: FIELD_TYPE.text },
+    { name: ISSUE_FIELDS.executionId, type: FIELD_TYPE.text },
+    { name: ISSUE_FIELDS.runRecordUrl, type: FIELD_TYPE.url },
+    { name: ISSUE_FIELDS.issueId, type: FIELD_TYPE.text },
+    { name: ISSUE_FIELDS.scriptKey, type: FIELD_TYPE.text },
+    { name: ISSUE_FIELDS.stepNumber, type: FIELD_TYPE.number, property: { formatter: '0' } },
+    { name: ISSUE_FIELDS.stepName, type: FIELD_TYPE.text },
+    { name: ISSUE_FIELDS.browser, type: FIELD_TYPE.singleSelect, property: { options: [{ name: 'chrome' }, { name: 'webkit' }, { name: 'firefox' }] } },
+    { name: ISSUE_FIELDS.compareKind, type: FIELD_TYPE.singleSelect, property: { options: [{ name: 'golden' }, { name: 'last-green' }, { name: 'cross-browser' }, { name: 'run-drift' }] } },
+    { name: ISSUE_FIELDS.severity, type: FIELD_TYPE.singleSelect, property: { options: [{ name: 'blocker' }, { name: 'warning' }, { name: 'noise' }] } },
+    { name: ISSUE_FIELDS.differencePercent, type: FIELD_TYPE.number, property: { formatter: '0.00' } },
+    { name: ISSUE_FIELDS.route, type: FIELD_TYPE.text },
+    { name: ISSUE_FIELDS.isNewRegression, type: FIELD_TYPE.checkbox },
+    { name: ISSUE_FIELDS.source, type: FIELD_TYPE.singleSelect, property: { options: [{ name: 'automated' }, { name: 'manual' }] } },
+    { name: ISSUE_FIELDS.reporter, type: FIELD_TYPE.text },
+    { name: ISSUE_FIELDS.description, type: FIELD_TYPE.text },
+    { name: ISSUE_FIELDS.elementXpath, type: FIELD_TYPE.text },
+    { name: ISSUE_FIELDS.elementSelector, type: FIELD_TYPE.text },
+    { name: ISSUE_FIELDS.aiDocUrl, type: FIELD_TYPE.url },
+  ];
+  if (runTableId) {
+    specs.splice(2, 0, buildIssueLinkFieldSpec(runTableId));
+  }
+  return specs;
+}
 
-const FEEDBACK_SPECS: FieldSpec[] = [
-  { name: FEEDBACK_FIELDS.feedbackId, type: FIELD_TYPE.text },
-  { name: FEEDBACK_FIELDS.reporter, type: FIELD_TYPE.text },
-  { name: FEEDBACK_FIELDS.description, type: FIELD_TYPE.text },
-  { name: FEEDBACK_FIELDS.env, type: FIELD_TYPE.singleSelect, property: { options: [{ name: 'dev' }, { name: 'uat' }, { name: 'stage9084' }, { name: 'stage' }] } },
-  { name: FEEDBACK_FIELDS.pageUrl, type: FIELD_TYPE.url },
-  { name: FEEDBACK_FIELDS.route, type: FIELD_TYPE.text },
-  { name: FEEDBACK_FIELDS.selector, type: FIELD_TYPE.text },
-  { name: FEEDBACK_FIELDS.xpath, type: FIELD_TYPE.text },
-  { name: FEEDBACK_FIELDS.bbox, type: FIELD_TYPE.text },
-  { name: FEEDBACK_FIELDS.screenshotUrl, type: FIELD_TYPE.url },
-  { name: FEEDBACK_FIELDS.aiDocUrl, type: FIELD_TYPE.url },
-  { name: FEEDBACK_FIELDS.assignees, type: FIELD_TYPE.text },
-  { name: FEEDBACK_FIELDS.status, type: FIELD_TYPE.singleSelect, property: { options: [{ name: '待处理' }, { name: '处理中' }, { name: '已修复' }, { name: '忽略' }] } },
-  { name: FEEDBACK_FIELDS.createdAt, type: FIELD_TYPE.dateTime, property: { date_formatter: 'yyyy/MM/dd HH:mm', auto_fill: false } },
-];
+const FEEDBACK_SPECS: FieldSpec[] = FEEDBACK_FIELD_SPECS;
 
 const DAILY_SPECS: FieldSpec[] = [
   { name: DAILY_FIELDS.summaryKey, type: FIELD_TYPE.text },
   { name: DAILY_FIELDS.date, type: FIELD_TYPE.dateTime, property: { date_formatter: 'yyyy/MM/dd', auto_fill: false } },
-  { name: DAILY_FIELDS.env, type: FIELD_TYPE.singleSelect, property: { options: [{ name: 'stage' }, { name: 'uat' }, { name: 'dev' }] } },
+  { name: DAILY_FIELDS.env, type: FIELD_TYPE.singleSelect, property: { options: BITABLE_ENV_OPTIONS } },
   { name: DAILY_FIELDS.jobId, type: FIELD_TYPE.text },
   { name: DAILY_FIELDS.runCount, type: FIELD_TYPE.number, property: { formatter: '0' } },
   { name: DAILY_FIELDS.successCount, type: FIELD_TYPE.number, property: { formatter: '0' } },
   { name: DAILY_FIELDS.failedCount, type: FIELD_TYPE.number, property: { formatter: '0' } },
-  { name: DAILY_FIELDS.passRate, type: FIELD_TYPE.number, property: { formatter: '0.00' } },
+  { name: DAILY_FIELDS.passRate, type: FIELD_TYPE.number, property: { formatter: '0.0' } },
   { name: DAILY_FIELDS.blockerCount, type: FIELD_TYPE.number, property: { formatter: '0' } },
   { name: DAILY_FIELDS.warningCount, type: FIELD_TYPE.number, property: { formatter: '0' } },
   { name: DAILY_FIELDS.totalIssues, type: FIELD_TYPE.number, property: { formatter: '0' } },
@@ -138,7 +123,7 @@ const DASHBOARD_CHARTS = [
     filter: 'env = stage',
   },
   {
-    title: '② 日汇总 · 通过率',
+    title: '② 日汇总 · UI 通过率（%）',
     table: '日汇总',
     type: '折线图',
     x: 'date',
@@ -170,18 +155,19 @@ const DASHBOARD_CHARTS = [
     limit: 10,
   },
   {
-    title: '⑥ 问题明细 · 对比类型',
+    title: '⑥ 问题明细 · 跳转执行记录',
+    table: '问题明细',
+    type: '表格',
+    cols: ['severity', 'script_key', 'run_record', 'run_record_url', 'ai_doc_url'],
+    sort: 'severity 降序',
+    limit: 20,
+  },
+  {
+    title: '⑦ 问题明细 · 对比类型',
     table: '问题明细',
     type: '柱状图',
     dim: 'compare_kind',
     metric: '记录数',
-  },
-  {
-    title: '⑦ 执行记录 · 对比类型计数',
-    table: '执行记录',
-    type: '堆叠柱状图',
-    x: 'executed_at（按天）',
-    y: ['golden_count', 'cross_browser_count', 'run_drift_count'],
   },
   {
     title: '⑧ KPI · 最新 Blocker 数',
@@ -205,9 +191,10 @@ async function main(): Promise<void> {
 
   const tables = [
     { label: '执行记录', id: config.runTableId, specs: RUN_SPECS },
-    { label: '问题明细', id: config.issueTableId, specs: ISSUE_SPECS },
+    { label: '问题明细', id: config.issueTableId, specs: buildIssueSpecs(config.runTableId) },
     { label: '日汇总', id: config.dailySummaryTableId, specs: DAILY_SPECS },
     { label: 'UI采集反馈', id: config.feedbackTableId, specs: FEEDBACK_SPECS },
+    { label: DELIVERY_TABLE_NAME, id: config.deliveryTableId, specs: DELIVERY_FIELD_SPECS },
   ];
 
   for (const table of tables) {
@@ -267,7 +254,9 @@ async function main(): Promise<void> {
   }
 
   console.log('3. 保存后复制仪表盘 URL（含 blk 开头 block_id）到 FEISHU_BITABLE_DASHBOARD_URL');
-  console.log('4. 重新 npm run feishu:bitable 写入数据，卡片/报告链接会指向该看板\n');
+  console.log('4. pass_rate 旧 0/1 数据可执行: npm run feishu:bitable-maintain -- --apply');
+  console.log('5. issue 废弃列（baseline_path 等）同上脚本自动删除');
+  console.log('6. 重新 npm run feishu:bitable 写入数据，卡片/报告链接会指向该看板\n');
 }
 
 function buildDashboardUrl(appToken: string, blockId: string): string {

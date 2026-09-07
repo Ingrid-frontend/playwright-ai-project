@@ -67,9 +67,12 @@ export function loadStepTrends(): StepTrendsFile['steps'] {
   }
 }
 
+export type HistorySource = 'optimized' | 'flow';
+
 export interface HistorySnapshot {
   date: string;
   generatedAt: string;
+  source?: HistorySource;
   summary: UiIssuesReport['summary'];
   byScript: Record<
     string,
@@ -81,38 +84,82 @@ export interface HistorySnapshot {
   >;
 }
 
-export function appendHistorySnapshot(report: UiIssuesReport): string {
-  const date = new Date().toISOString().slice(0, 10);
-  const filePath = path.join(HISTORY_DIR, `${date}.json`);
+const HISTORY_FILE_RE = /^\d{4}-\d{2}-\d{2}(-flow)?\.json$/;
 
+export function buildScriptSummaryFromIssues(issues: UiIssuesReport['issues']): HistorySnapshot['byScript'] {
   const byScript: HistorySnapshot['byScript'] = {};
-
   const scriptBuckets = new Map<string, { diffs: number[]; blocker: number; warning: number }>();
-  for (const issue of report.issues) {
-    if (!scriptBuckets.has(issue.scriptKey)) {
-      scriptBuckets.set(issue.scriptKey, { diffs: [], blocker: 0, warning: 0 });
-    }
-    const b = scriptBuckets.get(issue.scriptKey)!;
-    b.diffs.push(issue.difference);
-    if (issue.severity === 'blocker') b.blocker++;
-    else if (issue.severity === 'warning') b.warning++;
+  for (const issue of issues) {
+    const bucket = scriptBuckets.get(issue.scriptKey) ?? { diffs: [], blocker: 0, warning: 0 };
+    bucket.diffs.push(issue.difference);
+    if (issue.severity === 'blocker') bucket.blocker++;
+    else if (issue.severity === 'warning') bucket.warning++;
+    scriptBuckets.set(issue.scriptKey, bucket);
   }
-
   for (const [scriptKey, bucket] of scriptBuckets) {
     const avg =
       bucket.diffs.length > 0 ? bucket.diffs.reduce((a, c) => a + c, 0) / bucket.diffs.length : 0;
-    byScript[scriptKey] = {
-      blocker: bucket.blocker,
-      warning: bucket.warning,
-      avgDifference: avg,
-    };
+    byScript[scriptKey] = { blocker: bucket.blocker, warning: bucket.warning, avgDifference: avg };
   }
+  return byScript;
+}
 
+function historyFileName(date: string, source: HistorySource = 'optimized'): string {
+  return source === 'flow' ? `${date}-flow.json` : `${date}.json`;
+}
+
+function readHistoryFile(fileName: string): HistorySnapshot | null {
+  const filePath = path.join(HISTORY_DIR, fileName);
+  if (!fs.existsSync(filePath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf-8')) as HistorySnapshot;
+  } catch {
+    return null;
+  }
+}
+
+/** 按日合并 optimized / flow 快照，同日取 generatedAt 最新 */
+export function loadHistorySnapshots(): HistorySnapshot[] {
+  if (!fs.existsSync(HISTORY_DIR)) return [];
+  const byDate = new Map<string, HistorySnapshot>();
+  for (const name of fs.readdirSync(HISTORY_DIR)) {
+    if (!HISTORY_FILE_RE.test(name)) continue;
+    const item = readHistoryFile(name);
+    if (!item?.date || !item.summary) continue;
+    const prev = byDate.get(item.date);
+    if (!prev || item.generatedAt > prev.generatedAt) byDate.set(item.date, item);
+  }
+  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export function readHistorySnapshotForDate(date: string): HistorySnapshot | null {
+  const flow = readHistoryFile(historyFileName(date, 'flow'));
+  const optimized = readHistoryFile(historyFileName(date, 'optimized'));
+  if (flow && optimized) return flow.generatedAt >= optimized.generatedAt ? flow : optimized;
+  return flow ?? optimized;
+}
+
+export function readPreviousHistorySnapshot(currentDate: string): HistorySnapshot | null {
+  const dates = loadHistorySnapshots()
+    .map((item) => item.date)
+    .filter((date) => date < currentDate);
+  const prevDate = dates.sort().pop();
+  return prevDate ? readHistorySnapshotForDate(prevDate) : null;
+}
+
+export function appendHistorySnapshot(
+  report: UiIssuesReport,
+  opts: { source?: HistorySource } = {},
+): string {
+  const source = opts.source ?? 'optimized';
+  const date = new Date().toISOString().slice(0, 10);
+  const filePath = path.join(HISTORY_DIR, historyFileName(date, source));
   const snapshot: HistorySnapshot = {
     date,
     generatedAt: report.generatedAt,
+    source,
     summary: report.summary,
-    byScript,
+    byScript: buildScriptSummaryFromIssues(report.issues),
   };
 
   if (!fs.existsSync(HISTORY_DIR)) fs.mkdirSync(HISTORY_DIR, { recursive: true });
@@ -132,9 +179,8 @@ function cleanupOldSnapshots(): void {
     const files = fs.readdirSync(HISTORY_DIR);
     let removed = 0;
     for (const file of files) {
-      // 只处理日期快照文件（YYYY-MM-DD.json）
-      if (!/^\d{4}-\d{2}-\d{2}\.json$/.test(file)) continue;
-      const fileDate = file.replace('.json', '');
+      if (!HISTORY_FILE_RE.test(file)) continue;
+      const fileDate = file.replace(/-flow\.json$/, '').replace(/\.json$/, '');
       if (fileDate < cutoffStr) {
         try {
           fs.unlinkSync(path.join(HISTORY_DIR, file));

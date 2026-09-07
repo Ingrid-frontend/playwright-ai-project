@@ -11,42 +11,13 @@ import dotenv from 'dotenv';
 import {
   BitableClient,
   FEEDBACK_FIELDS,
+  FEEDBACK_FIELD_SPECS,
+  BITABLE_FIELD_TYPE,
   explainMissingBitableConfig,
   loadBitableRuntimeConfig,
 } from './index.js';
 
 dotenv.config();
-
-const FIELD_TYPE = { text: 1, number: 2, singleSelect: 3, dateTime: 5, url: 15 } as const;
-
-const FEEDBACK_SPECS = [
-  { name: FEEDBACK_FIELDS.feedbackId, type: FIELD_TYPE.text },
-  { name: FEEDBACK_FIELDS.reporter, type: FIELD_TYPE.text },
-  { name: FEEDBACK_FIELDS.description, type: FIELD_TYPE.text },
-  {
-    name: FEEDBACK_FIELDS.env,
-    type: FIELD_TYPE.singleSelect,
-    property: { options: [{ name: 'dev' }, { name: 'uat' }, { name: 'stage9084' }, { name: 'stage' }] },
-  },
-  { name: FEEDBACK_FIELDS.pageUrl, type: FIELD_TYPE.url },
-  { name: FEEDBACK_FIELDS.route, type: FIELD_TYPE.text },
-  { name: FEEDBACK_FIELDS.selector, type: FIELD_TYPE.text },
-  { name: FEEDBACK_FIELDS.xpath, type: FIELD_TYPE.text },
-  { name: FEEDBACK_FIELDS.bbox, type: FIELD_TYPE.text },
-  { name: FEEDBACK_FIELDS.screenshotUrl, type: FIELD_TYPE.url },
-  { name: FEEDBACK_FIELDS.aiDocUrl, type: FIELD_TYPE.url },
-  { name: FEEDBACK_FIELDS.assignees, type: FIELD_TYPE.text },
-  {
-    name: FEEDBACK_FIELDS.status,
-    type: FIELD_TYPE.singleSelect,
-    property: { options: [{ name: '待处理' }, { name: '处理中' }, { name: '已修复' }, { name: '忽略' }] },
-  },
-  {
-    name: FEEDBACK_FIELDS.createdAt,
-    type: FIELD_TYPE.dateTime,
-    property: { date_formatter: 'yyyy/MM/dd HH:mm', auto_fill: false },
-  },
-];
 
 function getArg(name: string): string | undefined {
   const withEq = process.argv.find((a) => a.startsWith(`--${name}=`));
@@ -69,7 +40,7 @@ function upsertEnvLine(envPath: string, key: string, value: string): void {
 async function ensureFields(client: BitableClient, tableId: string): Promise<void> {
   const fields = await client.listFields(tableId);
   const names = new Set(fields.map((f) => f.field_name));
-  for (const spec of FEEDBACK_SPECS) {
+  for (const spec of FEEDBACK_FIELD_SPECS) {
     if (names.has(spec.name)) continue;
     await client.createField(tableId, spec);
     console.log(`   ➕ 字段: ${spec.name}`);
@@ -102,7 +73,7 @@ async function main() {
   } else {
     const created = await client.createTable(tableName, {
       defaultViewName: '全部反馈',
-      initialFields: [{ field_name: FEEDBACK_FIELDS.feedbackId, type: FIELD_TYPE.text }],
+      initialFields: [{ field_name: FEEDBACK_FIELDS.feedbackId, type: BITABLE_FIELD_TYPE.text }],
     });
     tableId = created.table_id;
     console.log(`\n✅ 已新建数据表: ${tableName} → ${tableId}`);
