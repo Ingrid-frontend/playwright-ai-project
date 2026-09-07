@@ -17,10 +17,13 @@
 
 | 环节 | 产物 | 客户看到什么 |
 |---|---|---|
-| 图片上传 | `drive/v1/medias/upload_all` → `file_token` | 多维表里的附件列、文档里的内嵌图 |
+| 图片上传 | `drive/v1/medias/upload_all`（`parent_type=bitable_image`）→ `file_token` | 多维表三列附件（基线/本次/差异） |
 | 多维表 | 「UI 验收明细」表，一行一个检测项 | 可筛选、可排序的明细清单（含三张证据图） |
 | 飞书文档 | 结论 → 问题与证据 → 建议操作 → 检测范围 | 一份可以直接读、可以评论的验收报告 |
 | 通知 | 群里的文字消息 + 报告链接 | 结论摘要 + 一键直达 |
+
+> 图片只进多维表附件，**不内嵌进文档**：docx 批量创建块接口（descendant）不支持
+> `image`/`divider` 块（错误 1770029 / 1770001），文档正文用文字列出结论，证据图指向明细表对应行。
 
 ---
 
@@ -58,18 +61,19 @@ report:customer
           └─ results/customer-delivery.json           ★ 交付载荷（飞书链路用）
                                                           │
 deliver:preview / deliver:feishu ─────────────────────────┘
-   ├─ 上传图片 → file_token（带本地缓存，重复跑不会重复传）
-   ├─ 写多维表「UI 验收明细」
-   └─ 建飞书文档 → 分享链接
+   ├─ 建飞书文档 → 写入正文块 → 分享链接
+   └─ 写多维表「UI 验收明细」
+        └─ 先并发上传证据图（file_token 带本地缓存）再写行
 ```
 
 交付载荷 `customer-delivery.json` 是**唯一数据源**。飞书链路只读它，不重新跑像素比对，
 所以 `report:customer` 之外不用再等一次扫描。
 
-载荷里已做两件脱敏：
+载荷里已做三件脱敏：
 
 - **流程标签去掉测试账号**：`UAT环境 · 申请单流程 · 199702_comic_com` → `UAT环境 · 申请单流程`
 - **不输出内部 run 时间戳**、脚本路径等工程信息（与 `ui-regression-report-for-customer.md` §4 一致）
+- **多维表唯一键哈希化**：`item_key` 存原始键（含本地目录/账号）的 sha256 前 16 位，upsert 幂等保持、不外泄内部路径
 
 ---
 
@@ -95,7 +99,7 @@ DELIVERY_MAX_ITEMS=6 npm run report:customer   # 载荷里最多 6 条（默认 
 
 ## 5. 需要的配置
 
-### 图片与文档（必需）
+### 应用凭证（必需）
 
 ```bash
 FEISHU_APP_ID=cli_xxx
@@ -103,15 +107,24 @@ FEISHU_APP_SECRET=xxx
 FEISHU_DOC_FOLDER_TOKEN=     # 可选，文档落到指定文件夹
 ```
 
-权限：`drive:drive`（上传素材）、`docs:doc`（创建/编辑文档）、`drive:file`（分享）。
-报权限错先看 [feishu-permissions-guide.md](./feishu-permissions-guide.md)。
+权限：
+- **建文档/写块**：`docs:doc` 或 `docx:document`（实测已有即可）
+- **上传素材**：`drive/v1/medias/upload_all`（实测可用）
+- **拿公开分享链接**：至少 `drive:drive` / `drive:file` / `docs:doc` 之一。
+  **当前应用未开通时**分享降级：文档照建照写，但 `doc_url` 返回 `https://feishu.cn/docx/{id}`，
+  需在飞书内手动「分享」后才可给客户访问。
+- 报权限错先看 [feishu-permissions-guide.md](./feishu-permissions-guide.md)。
 
-### 多维表（可选，缺了会跳过）
+### 多维表（图片上传 + 明细表必需，缺了会跳过）
 
 ```bash
 FEISHU_BITABLE_APP_TOKEN=xxx
 # deliveryTableId 可不配：表不存在时会自动建「UI 验收明细」并补齐字段
 ```
+
+> 图片按 `parent_type=bitable_image` + `parent_node=<BITABLE_APP_TOKEN>` 上传，
+> 因此**只要链路要传图，就必须配置此 token**（文档正文已不嵌图）。
+> `--no-bitable` 只建文档时则不需要。
 
 已有表想指定：`FEISHU_BITABLE_DELIVERY_TABLE_ID=tbl_xxx`。
 配法详见 [feishu-bitable-dashboard.md](./feishu-bitable-dashboard.md)。
@@ -132,7 +145,7 @@ FEISHU_BITABLE_APP_TOKEN=xxx
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | 页面 | 文本 | 索引列，客户可读的页面名 |
-| `item_key` | 文本 | 唯一键，upsert 依据 |
+| `item_key` | 文本 | 唯一键（原始键哈希，upsert 依据，不外泄路径/账号） |
 | `generated_at` / `env` / `release_tag` | 文本 | 生成时间、环境、版本 |
 | `verdict` | 文本 | 需要修复 / 无需处理 / 完全一致 / 待建基线 |
 | `flow` / `step` / `step_number` / `browser` | 文本/数字 | 定位信息 |
@@ -149,6 +162,12 @@ FEISHU_BITABLE_APP_TOKEN=xxx
 
 ## 7. 已知边界
 
+- **网络参数**：deliver 三个 npm script 内置 `NODE_OPTIONS=--dns-result-order=ipv4first`。
+  本机 IPv6 不通时直连飞书会卡死（fetch 无响应），勿去掉此前缀。
+- **分享链接权限**：拿「公开可访问」链接需要应用开通 `drive:drive` / `drive:file` / `docs:doc`。
+  未开通时交付正常结束，但 `doc_url` 是基础地址，需人工在飞书内分享后再发客户。
+- **文档正文不嵌图**：descendant 不支持 `image`（1770029）与 `divider`（1770001）块，
+  分隔用空行文本；证据图全部以附件形式在多维表行内。
 - **图片缓存**：`results/feishu-media-cache.json` 按「大小 + 修改时间」判断同一张图是否已传过。
   换飞书租户（换 appId）后 token 不通用，需要删掉这个缓存文件重传。
 - **首次上传量**：20 个条目 × 3 张图 = 60 张。第一次慢，之后再跑基本全命中缓存。

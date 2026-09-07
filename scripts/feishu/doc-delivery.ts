@@ -1,6 +1,5 @@
 import { fetchWithRetry } from './feishu-utils.js';
 import type { DeliveryPayload, DeliveryItem } from '../report/customer-delivery-payload.js';
-import { resolveDeliveryImagePath } from '../report/customer-delivery-payload.js';
 
 /** 飞书 docx block_type 枚举（仅列本项目用到的） */
 export const DOC_BLOCK_TYPE = {
@@ -50,12 +49,9 @@ function bullet(content: string): DocBlock {
   return { block_type: DOC_BLOCK_TYPE.bullet, bullet: { elements: [run(content)] } };
 }
 
-function image(token: string): DocBlock {
-  return { block_type: DOC_BLOCK_TYPE.image, image: { token } };
-}
-
-function divider(): DocBlock {
-  return { block_type: DOC_BLOCK_TYPE.divider, divider: {} };
+/** 空行占位，替代 descendant 不支持的 divider 做视觉分隔 */
+function spacer(): DocBlock {
+  return { block_type: DOC_BLOCK_TYPE.text, text: { elements: [run('')] } };
 }
 
 const KIND_PREFIX: Record<DeliveryItem['kind'], string> = {
@@ -73,12 +69,13 @@ export function buildCustomerDocTitle(payload: DeliveryPayload): string {
 
 /**
  * 构建客户验收文档的正文块。
- * 顺序：结论 → 问题清单（含证据图）→ 建议操作 → 检测范围。
- * 图片缺失时降级为一行文字说明，不留下空白块。
+ * 顺序：结论 → 问题清单（文字结论）→ 建议操作 → 检测范围。
+ * 证据截图不上传文档：docx descendant 不支持 image/divider 块（1770029/1770001），
+ * 图片以附件形式存放在「UI 验收明细」多维表对应记录中，正文用文字指向明细。
  */
 export function buildCustomerDocBlocks(
   payload: DeliveryPayload,
-  tokens: Map<string, string>,
+  _tokens?: Map<string, string>,
 ): DocBlock[] {
   const s = payload.stats;
   const blocks: DocBlock[] = [];
@@ -111,7 +108,7 @@ export function buildCustomerDocBlocks(
     blocks.push(text('本次未发现需要展示的差异项。'));
   } else {
     for (const [i, item] of payload.items.entries()) {
-      blocks.push(divider());
+      blocks.push(spacer());
       blocks.push(
         heading(
           3,
@@ -121,21 +118,11 @@ export function buildCustomerDocBlocks(
       blocks.push(text(`流程：${item.scriptLabel}　·　步骤：${item.stepLabel}　·　浏览器：${item.browserLabel}`));
       if (item.plainText) blocks.push(text(item.plainText));
       else if (item.reason) blocks.push(text(item.reason));
-
-      for (const img of item.images) {
-        const abs = resolveDeliveryImagePath(img.relPath);
-        const token = tokens.get(abs);
-        if (!token) {
-          blocks.push(text(`（${img.label}图未上传成功，详见本地报告）`));
-          continue;
-        }
-        blocks.push(text(`${img.label}：`, { bold: true }));
-        blocks.push(image(token));
-      }
+      blocks.push(text(`（基线 / 本次 / 差异证据截图见「UI 验收明细」表该页对应记录）`));
     }
   }
 
-  blocks.push(divider());
+  blocks.push(spacer());
   blocks.push(heading(2, '三、建议操作'));
   if (payload.actionItems.length === 0) {
     blocks.push(text('无额外操作建议。'));
@@ -234,25 +221,58 @@ export async function addBlocksBatched(
   return written;
 }
 
+type PublicPerm = { permission_public?: { link?: string; url?: string } };
+
+/** 带 JSON 解析但不抛错（把失败留给调用方决策） */
+async function tryRequest<T>(url: string, token: string, init: RequestInit = {}): Promise<T | null> {
+  try {
+    const res = await fetchWithRetry(url, {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(init.headers ?? {}),
+      },
+    });
+    const raw = (await res.text()).replace(/^\uFEFF/, '');
+    const data = JSON.parse(raw) as { code: number; msg?: string; data?: T };
+    return data.code === 0 ? (data.data as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 生成文档分享链接（多路 best-effort）：
+ *  1. 老 drive/v1/files/{id}/share 已下线（404），不再使用。
+ *  2. 先读 permissions/{id}/public（文档已公开时直接拿 link）。
+ *  3. 未公开则尝试 PUT 设为「组织内可阅读」，再读一次。
+ *  4. 应用未开通 drive:drive / docs:doc 等权限时全部失败 → 返回基础 URL 并在结果中标注需手动授权。
+ */
 export async function shareDocxDocument(token: string, documentId: string): Promise<string> {
-  const data = await jsonRequest<{ share_url?: string }>(
-    `https://open.feishu.cn/open-apis/drive/v1/files/${documentId}/share`,
-    token,
-    {
-      method: 'POST',
-      body: JSON.stringify({
-        share_entity_type: 'docx',
-        share_to_client: {
-          share_client_type: 'link',
-          link_share_setting: {
-            share_link_allow_copy: true,
-            share_link_allow_comment: true,
-            share_link_allow_view: true,
-            share_link_public: true,
-          },
-        },
-      }),
-    },
-  );
-  return data.share_url || `https://feishu.cn/docx/${documentId}`;
+  const base = `https://open.feishu.cn/open-apis/drive/v1/permissions/${documentId}/public?type=docx`;
+  const fallback = `https://feishu.cn/docx/${documentId}`;
+
+  const existing = await tryRequest<PublicPerm>(base, token, { method: 'GET' });
+  const link = existing?.permission_public?.link || existing?.permission_public?.url;
+  if (link) return link;
+
+  await tryRequest(base, token, {
+    method: 'PUT',
+    body: JSON.stringify({
+      external_access_entity: 'open',
+      security_entity: 'anyone_can_view',
+      comment_entity: 'anyone_can_view',
+      link_share_entity: 'anyone_readable',
+      invite_external: true,
+    }),
+  });
+
+  const after = await tryRequest<PublicPerm>(base, token, { method: 'GET' });
+  const afterLink = after?.permission_public?.link || after?.permission_public?.url;
+  if (afterLink) return afterLink;
+
+  console.warn(`  ⚠️  文档未取得公开分享链接（应用需开通 drive:drive / drive:file / docs:doc 之一）。`);
+  console.warn(`     document_id=${documentId}，请在飞书内手动「分享」后使用 fallback 链接。`);
+  return fallback;
 }

@@ -47,6 +47,9 @@ type UploadAllResponse = {
 
 /**
  * 上传单张图片到飞书云空间，返回 file_token。
+ * 官方 upload_all 必填：multipart 内 file/file_name/size/parent_type（parent_node 视类型）。
+ * 本项目图片一律作为多维表附件上传：parent_type=bitable_image + parent_node=多维表 app_token。
+ * （ccm_img/ccm_import_open 在本应用不可用：params error / forbidden。）
  * 兼容新旧两种响应结构（file_token 与 file.token）。
  */
 export async function uploadImageToDrive(
@@ -60,19 +63,23 @@ export async function uploadImageToDrive(
   const mimeType =
     ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : ext === '.gif' ? 'image/gif' : 'image/png';
 
+  const parentNode = process.env.FEISHU_BITABLE_APP_TOKEN?.trim();
+  if (!parentNode) {
+    throw new Error('上传图片需要 FEISHU_BITABLE_APP_TOKEN（图片作为多维表附件上传）');
+  }
+
   const form = new FormData();
   form.append('file', new Blob([new Uint8Array(buffer)], { type: mimeType }), name);
-  form.append('file_type', 'image');
   form.append('file_name', name);
+  form.append('parent_type', 'bitable_image');
+  form.append('parent_node', parentNode);
+  form.append('size', String(buffer.length));
 
-  const res = await fetchWithRetry(
-    `https://open.feishu.cn/open-apis/drive/v1/medias/upload_all?size=${buffer.length}`,
-    {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-      body: form,
-    },
-  );
+  const res = await fetchWithRetry('https://open.feishu.cn/open-apis/drive/v1/medias/upload_all', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
   const data = (await res.json()) as UploadAllResponse;
   const fileToken = data.data?.file_token ?? data.data?.file?.token;
   if (data.code !== 0 || !fileToken) {

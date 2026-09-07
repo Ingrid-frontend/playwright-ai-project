@@ -119,26 +119,23 @@ async function main() {
   }
   const token = await getFeishuAccessToken(app);
 
-  console.log('\n[1/4] 上传证据图...');
-  const upload = await uploadImages(token, existingImages, { concurrency: opts.concurrency });
-  console.log(`  新传 ${upload.uploaded} 张 · 复用缓存 ${upload.reused} 张 · 失败 ${upload.failed.length} 张`);
-  for (const f of upload.failed) console.log(`  ⚠️  ${path.basename(f.absPath)}: ${f.error}`);
-
   let docUrl: string | undefined;
   if (opts.withDoc) {
-    console.log('[2/4] 创建飞书文档...');
+    console.log('\n[1/3] 创建飞书文档...');
     const documentId = await createDocxDocument(token, title);
-    const blocks = buildCustomerDocBlocks(payload, upload.tokens);
+    console.log(`  document_id: ${documentId}`);
+    const blocks = buildCustomerDocBlocks(payload);
     const written = await addBlocksBatched(token, documentId, blocks);
     docUrl = await shareDocxDocument(token, documentId);
     console.log(`  文档已生成（${written} 个内容块）：${docUrl}`);
   } else {
-    console.log('[2/4] 跳过文档（--no-doc）');
+    console.log('\n[1/3] 跳过文档（--no-doc）');
   }
 
   let bitableInfo: unknown = null;
+  let uploadSummary = { uploaded: 0, reused: 0, failed: 0 };
   if (opts.withBitable) {
-    console.log('[3/4] 写入多维表...');
+    console.log('[2/3] 写入多维表明细...');
     const bitableConfig = loadBitableRuntimeConfig();
     if (!bitableConfig) {
       console.log(`  ⚠️  ${explainMissingBitableConfig()}`);
@@ -148,6 +145,11 @@ async function main() {
       console.log(
         `  明细表 ${created ? '已创建' : '已存在'}${addedFields.length ? `，补建字段 ${addedFields.length} 个` : ''}`,
       );
+      console.log('  上传证据图（作为多维表附件）...');
+      const upload = await uploadImages(token, existingImages, { concurrency: opts.concurrency });
+      console.log(`  新传 ${upload.uploaded} 张 · 复用缓存 ${upload.reused} 张 · 失败 ${upload.failed.length} 张`);
+      for (const f of upload.failed) console.log(`  ⚠️  ${path.basename(f.absPath)}: ${f.error}`);
+      uploadSummary = { uploaded: upload.uploaded, reused: upload.reused, failed: upload.failed.length };
       const written = await writeDeliveryRecords(
         client,
         tableId,
@@ -159,16 +161,16 @@ async function main() {
       bitableInfo = { tableId, ...written };
     }
   } else {
-    console.log('[3/4] 跳过多维表（--no-bitable）');
+    console.log('[2/3] 跳过多维表（--no-bitable）');
   }
 
   if (opts.notify) {
-    console.log('[4/4] 发送飞书通知...');
+    console.log('[3/3] 发送飞书通知...');
     const lines = [payload.headline, `发版建议：${payload.shipAdviceLabel}`, `检测覆盖 ${payload.stats.coveragePct}%`];
     if (docUrl) lines.push(`验收报告：${docUrl}`);
     await sendFeishuNotify({ msg_type: 'text', content: { text: lines.join('\n') } });
   } else {
-    console.log('[4/4] 跳过通知（加 --notify 开启）');
+    console.log('[3/3] 跳过通知（加 --notify 开启）');
   }
 
   fs.writeFileSync(
@@ -179,7 +181,7 @@ async function main() {
         title,
         docUrl,
         bitable: bitableInfo,
-        upload: { uploaded: upload.uploaded, reused: upload.reused, failed: upload.failed.length },
+        upload: uploadSummary,
       },
       null,
       2,
