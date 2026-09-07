@@ -117,7 +117,12 @@ function runOne(repoRoot: string, envId: string, profileId: string, grep: string
   );
   const docNo = String(process.env.APPROVAL_DOC_NO || profileDefaults.approvalDocNo || goldenSeed.approvalDocNo || "").trim();
   if (docNo) spawnEnv.APPROVAL_DOC_NO = docNo;
-  else delete spawnEnv.APPROVAL_DOC_NO;
+  else {
+    delete spawnEnv.APPROVAL_DOC_NO;
+    console.warn(
+      `[approval-flow:golden] 未配置 approvalDocNo（APPROVAL_DOC_NO / accounts.json / approval-flow/datasource/golden-seeds.json），将尝试从待审批列表现场读取`,
+    );
+  }
   if (roleSlug) spawnEnv.FLOW_ACCOUNT_SLUG = roleSlug;
   else delete spawnEnv.FLOW_ACCOUNT_SLUG;
   spawnEnv.PLAYWRIGHT_RETRIES = "0";

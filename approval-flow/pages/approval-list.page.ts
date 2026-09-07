@@ -12,6 +12,7 @@ import {
   FILTER_TRIGGER,
   LIST_API,
   LIST_API_RE,
+  PENDING_LIST_API_RE,
   LIST_PATH,
   ROW,
   SEARCH_ACTION_CLEAR,
@@ -45,6 +46,7 @@ export const APPROVAL_LIST_CATALOG: ListCatalog = {
   listPath: LIST_PATH,
   urlPattern: /approve/,
   listApiRe: LIST_API_RE,
+  docNoListApiRe: PENDING_LIST_API_RE,
   table: TABLE,
   row: ROW,
   searchPlaceholder: SEARCH_PLACEHOLDER,
@@ -69,7 +71,21 @@ export class ApprovalListPage extends GenericListPage {
 
   /** 等待「待审批」主数据接口返回（可能在 goto 前已返回，故 catch 兜底） */
   async waitPendingApi() {
-    await this.waitListApi();
+    await this.page
+      .waitForResponse(
+        (r) =>
+          PENDING_LIST_API_RE.test(r.url()) &&
+          r.request().method() === 'POST' &&
+          r.status() === 200,
+        { timeout: 20_000 },
+      )
+      .catch(() => null);
+  }
+
+  /** 取单号时限定待审批接口，避免页签切换后误抓已办/抄送响应 */
+  override async readDocNoFromListApi(opts: { refresh?: boolean } = {}): Promise<string> {
+    await this.switchToPending().catch(() => undefined);
+    return super.readDocNoFromListApi(opts);
   }
 
   /** 已在审批列表时还原筛选：先面板「清除筛选值」，再清外露（与申请单 reset 不同） */

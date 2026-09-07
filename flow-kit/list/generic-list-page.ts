@@ -18,6 +18,8 @@ export type ListCatalog = {
   urlPattern: RegExp;
   /** 列表查询接口正则 */
   listApiRe: RegExp;
+  /** 从接口解析单号时使用的接口正则（默认 listApiRe；审批待办需限定 pending） */
+  docNoListApiRe?: RegExp;
   /** 表格容器选择器 */
   table: string;
   /** 数据行选择器 */
@@ -613,18 +615,24 @@ export class GenericListPage {
 
   /** 列表 UI 无行时，从最近一次列表接口响应里解析单号 */
   async readDocNoFromListApi(opts: { refresh?: boolean } = {}): Promise<string> {
+    const apiRe = this.catalog.docNoListApiRe || this.catalog.listApiRe;
+    let resp = null;
     if (opts.refresh) {
-      await this.clickFilterSearch();
-    }
-    const resp = await this.page
-      .waitForResponse(
-        (r) =>
-          this.catalog.listApiRe.test(r.url()) &&
-          r.request().method() === 'POST' &&
-          r.status() === 200,
+      const respP = this.page.waitForResponse(
+        (r) => apiRe.test(r.url()) && r.request().method() === 'POST' && r.status() === 200,
         { timeout: 20_000 },
-      )
-      .catch(() => null);
+      );
+      await this.clickFilterSearch();
+      resp = await respP.catch(() => null);
+    }
+    if (!resp) {
+      resp = await this.page
+        .waitForResponse(
+          (r) => apiRe.test(r.url()) && r.request().method() === 'POST' && r.status() === 200,
+          { timeout: opts.refresh ? 5_000 : 20_000 },
+        )
+        .catch(() => null);
+    }
     if (!resp) return '';
     const body = await resp.json().catch(() => null);
     for (const row of this.listRowsFromBody(body)) {

@@ -46,6 +46,7 @@ export const EXPOSED_FILTER_FIELDS = [
 ] as const;
 
 export const LIST_API_RE = /\/api\/approvals\/(pendingApproval|approved|copiedToMe)(?:\?|$)/;
+export const PENDING_LIST_API_RE = /\/api\/approvals\/pendingApproval(?:\?|$)/;
 
 export const TABS = {
   pending: '待审批-全部',
