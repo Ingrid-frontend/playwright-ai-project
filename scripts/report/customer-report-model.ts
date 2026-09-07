@@ -48,6 +48,8 @@ export type CustomerBrowserCard = {
   shiftLabel?: string;
   imageWidth?: number;
   imageHeight?: number;
+  /** 页面状态漂移说明，用于并排对比黄条提示 */
+  stateDriftReason?: string;
 };
 
 export type CustomerPageCard = {
@@ -76,7 +78,7 @@ export function hasVisibleDifference(difference: number): boolean {
 
 /** 有像素差异、值得展示对比图的步骤（排除零差异 pass 与未建基线） */
 export function isDiffPage(page: CustomerPageCard): boolean {
-  return !page.processOnly && page.worstStatus !== 'uncovered' && page.maxDifference > 0;
+  return !page.processOnly && page.worstStatus !== 'uncovered' && hasVisibleDifference(page.maxDifference);
 }
 
 /** 同一根因在多个步骤重复出现时聚成一组，首屏只显示代表页 */
@@ -221,6 +223,7 @@ function toBrowserCard(slot: CoverageSlot): CustomerBrowserCard {
     shiftLabel: slot.evidence?.shiftLabel,
     imageWidth: slot.regionsWidth,
     imageHeight: slot.regionsHeight,
+    stateDriftReason: slot.evidence?.stateDrift ? slot.evidence.reason : undefined,
   };
 }
 
@@ -228,12 +231,14 @@ function toBrowserCard(slot: CoverageSlot): CustomerBrowserCard {
  * 同源变化指纹：同一个全局改动（如头部高度、字体）会在多个步骤产生几乎相同的
  * 差异量与差异区位置。按「脚本 + 差异量档位 + 主变化区网格位置」聚合，
  * 让报告呈现「1 处根因影响 4 个步骤」而不是 4 张重复卡片。
+ * 注意：不要混入 stepName——一旦 stepName 参与聚合键，跨步骤归并就永远失效，
+ * 每个步骤都会变成「影响 1 个步骤」的独立问题。
  */
 function clusterKeyFor(slot: CoverageSlot): string {
   const bucket = Math.round((slot.difference ?? 0) * 2000); // 0.05% 一档
   const top = significantRegions(slot.regions, slot.regionsWidth, slot.regionsHeight)[0];
   const zone = top ? `${Math.round(top.x / 64)}-${Math.round(top.y / 64)}-${Math.round(top.w / 64)}x${Math.round(top.h / 64)}` : 'none';
-  return `${slot.scriptKey}::${slot.stepName}::${bucket}::${zone}`;
+  return `${slot.scriptKey}::${bucket}::${zone}`;
 }
 
 function groupIssues(pages: CustomerPageCard[], anchorPrefix: string): CustomerIssueGroup[] {
@@ -373,7 +378,7 @@ export function buildCustomerReportModel(
   const pages = buildPageCardsFromCoverage(coverage);
 
   const regressions = pages.filter((p) => p.worstStatus === 'regress');
-  const minors = pages.filter((p) => p.worstStatus === 'minor');
+  const minors = pages.filter((p) => p.worstStatus === 'minor' && hasVisibleDifference(p.maxDifference));
   const passes = pages.filter((p) => p.worstStatus === 'pass');
   const uncovered = pages.filter((p) => p.worstStatus === 'uncovered');
   const regressionGroups = groupIssues(regressions, 'issue');

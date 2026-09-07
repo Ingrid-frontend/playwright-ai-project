@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { PNG } from 'pngjs';
 import {
   loadUiRegressionConfig,
+  resolveLockViewportForSnapshot,
   resolveMaskSelectors,
   resolveSnapshotViewports,
   resolveScreenshotFullPage,
@@ -43,6 +44,7 @@ function withViewportSuffix(filePath: string, vpName: string, isDefault: boolean
 }
 
 export async function lockViewportForSnapshot(page: Page, viewport: SnapshotViewport): Promise<void> {
+  if (!resolveLockViewportForSnapshot()) return;
   await page.setViewportSize({ width: viewport.width, height: viewport.height });
 }
 
@@ -444,16 +446,18 @@ export async function captureScreenshotAtViewports(
   opts: { fullPage?: boolean; scriptKey?: string; snapshotName?: string; state?: string },
 ): Promise<string> {
   const viewports = resolveSnapshotViewports();
+  const lockVp = resolveLockViewportForSnapshot();
   const fullPage = opts.fullPage ?? useFullPageByDefault();
   const defaultVp = viewports.find((v) => v.default) || viewports[0]!;
+  const shotViewports = lockVp ? viewports : [defaultVp];
   let primaryPath = filePath;
 
-  for (const vp of viewports) {
+  for (const vp of shotViewports) {
     const isDefault = !!vp.default || viewports.length === 1;
     const outPath = withViewportSuffix(filePath, vp.name, isDefault);
     resetPageDiag(page);
-    await lockViewportForSnapshot(page, vp);
     await applyMaskSelectors(page, opts.scriptKey);
+    await lockViewportForSnapshot(page, vp);
     await page.screenshot({ path: outPath, fullPage, scale: SCREENSHOT_SCALE });
     const imageSize = normalizeScreenshotToCssViewport(outPath, vp, fullPage);
     if (imageSize.cropped) {
@@ -475,7 +479,7 @@ export async function captureScreenshotAtViewports(
     if (isDefault) primaryPath = outPath;
   }
 
-  if (viewports.length > 1) {
+  if (lockVp && viewports.length > 1) {
     await lockViewportForSnapshot(page, defaultVp);
   }
 

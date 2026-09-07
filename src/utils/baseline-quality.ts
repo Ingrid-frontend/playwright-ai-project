@@ -14,6 +14,7 @@ export type ScreenshotMeta = {
   viewport?: { width?: number; height?: number; deviceScaleFactor?: number };
   imageWidth?: number;
   imageHeight?: number;
+  layout?: { innerWidth?: number; scrollWidth?: number; horizontalOverflow?: boolean };
 };
 
 export type BaselineQualityIssue = {
@@ -108,6 +109,15 @@ export function evaluateViewportConsistency(
       reason: `截图尺寸 ${actualW}x${actualH} 与约定视口 ${wantW}x${wantH} 不匹配，基线会导致整页假阳性`,
     };
   }
+
+  const innerW = Number(meta.layout?.innerWidth);
+  if (Number.isFinite(innerW) && innerW > 0 && innerW !== expectedW) {
+    return {
+      file: fileLabel,
+      reason: `页面 innerWidth=${innerW} 与约定视口 ${expectedW} 不一致（截图已裁成 ${actualW}px 宽），晋升后易产生整页假阳性`,
+    };
+  }
+
   return null;
 }
 

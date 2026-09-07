@@ -2,7 +2,7 @@ import type { ScreenshotInfo } from './compare-screenshots-utils.js';
 import { generateTestComparisons } from './compare-screenshots-engine.js';
 import { buildCoverageStats } from './coverage-stats.js';
 import type { CustomerPageCard } from './customer-report-model.js';
-import { buildPageCardsFromCoverage, isDiffPage } from './customer-report-model.js';
+import { buildPageCardsFromCoverage, hasVisibleDifference, isDiffPage } from './customer-report-model.js';
 import type { ScriptRunHistoryEntry, ScriptRunHistoryPreview } from './customer-report-run-meta.js';
 import { friendlyStepLabel } from './customer-report-naming.js';
 import { readGoldenMatchVerdictForScriptRun, type GoldenMatchVerdict } from './prune-flow-golden-runs.js';
@@ -48,7 +48,7 @@ function verdictFromCoverage(c: ReturnType<typeof buildCoverageStats>): {
 
 function previewsFromCoverage(coverage: ReturnType<typeof buildCoverageStats>): ScriptRunHistoryPreview[] {
   return coverage.slots
-    .filter((s) => s.currentPath && !s.processOnly && (s.difference ?? 0) > 0)
+    .filter((s) => s.currentPath && !s.processOnly && hasVisibleDifference(s.difference ?? 0))
     .map((s) => ({
       stepLabel: s.pageTitle,
       currentPath: s.currentPath,

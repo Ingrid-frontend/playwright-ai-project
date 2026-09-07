@@ -8,7 +8,7 @@
 
 /** 环境代号 -> 客户可读环境名 */
 const ENV_LABELS: Record<string, string> = {
-  dev: '开发环境',
+  dev: 'DEV环境',
   uat: 'UAT环境',
   stage9084: 'Stage9084环境',
   stage: '预发布环境',
@@ -76,6 +76,10 @@ const STEP_SLUG_LABELS: Record<string, string> = {
   'golden-regression': 'Golden 回归',
   'my-approval': '我的审批',
   'approval-history': '审批历史',
+  'expense-list': '报销列表',
+  'expense-detail': '报销详情',
+  'expense-filter': '报销筛选',
+  'expense-submit': '报销提交',
   'admin': '管理员页面',
 };
 
@@ -87,9 +91,15 @@ function stripRunTimestamp(seg: string): string {
     .replace(/[-_]\d{13}$/, '');
 }
 
+const FLOW_SLUG_LABELS: Record<string, string> = {
+  'request-flow': '申请单流程',
+  'approval-flow': '审批流程',
+  'expense-flow': '报销流程',
+};
+
 /**
  * 把脚本路径转成客户可读的业务流程名。
- * `flows/request-flow/dev/golden-regression/by-account/menma_comic_com` -> `dev · 申请单流程 · menma_comic_com`
+ * `flows/request-flow/dev/golden-regression/by-account/menma_comic_com` -> `DEV环境 · 申请单流程 · menma_comic_com`
  */
 export function friendlyScriptLabel(scriptKey: string): string {
   const segs = String(scriptKey || '')
@@ -97,8 +107,13 @@ export function friendlyScriptLabel(scriptKey: string): string {
     .map((s) => s.trim())
     .filter(Boolean);
 
-  const flowName =
-    segs.includes('request-flow') ? '申请单流程' : segs.includes('approval-flow') ? '审批流程' : '';
+  let flowName = '';
+  for (const seg of segs) {
+    if (FLOW_SLUG_LABELS[seg]) {
+      flowName = FLOW_SLUG_LABELS[seg];
+      break;
+    }
+  }
 
   let envId = '';
   const rest: string[] = [];
@@ -108,12 +123,13 @@ export function friendlyScriptLabel(scriptKey: string): string {
       continue;
     }
     if (isDateSegment(seg) || isInternalSegment(seg)) continue;
-    if (seg === 'request-flow' || seg === 'approval-flow') continue;
+    if (FLOW_SLUG_LABELS[seg]) continue;
     rest.push(stripRunTimestamp(seg));
   }
 
   const identity = [...new Set(rest)].filter(Boolean).pop() || '';
-  const parts = [envId, flowName, identity].filter(Boolean);
+  const envLabel = envId ? envLabelForSegment(envId) || envId : '';
+  const parts = [envLabel, flowName, identity].filter(Boolean);
   if (parts.length) return parts.join(' · ');
   return scriptKey;
 }
@@ -139,7 +155,6 @@ export function envIdSortKey(envId: string): number {
 
 export function envLabelFromId(envId: string): string {
   if (!envId) return '';
-  if (envId.toLowerCase() === 'dev') return 'dev';
   return envLabelForSegment(envId) || envId;
 }
 

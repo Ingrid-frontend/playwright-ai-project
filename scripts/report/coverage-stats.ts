@@ -1,10 +1,11 @@
 import path from 'path';
 import type { DiffRegion, ImageComparison } from './image-diff.js';
-import { isActionableNature, natureLabel, type ChangeNature } from './change-nature.js';
+import { isActionableNature, type ChangeNature } from './change-nature.js';
 import type { ScreenshotInfo } from './compare-screenshots-utils.js';
 import { sortScreenshotsByRunTime } from './compare-screenshots-utils.js';
 import { resolveCustomerReportConfig } from './ui-regression-config.js';
 import { regionZoneLabel } from './customer-report-naming.js';
+import { detectPageStateDrift, readStepMeta, type PageStateDriftResult } from './page-state-drift.js';
 
 /**
  * 客户口径的四档判定：
@@ -29,6 +30,8 @@ export interface DiffEvidence {
   dominantNature?: ChangeNature;
   /** 位移量描述，如 `6px`，仅当主导性质为位移时有值 */
   shiftLabel?: string;
+  /** 页面状态漂移（侧栏/列表数据变化），已降级为无需处理 */
+  stateDrift?: boolean;
 }
 
 export interface CoverageSlot {
@@ -147,6 +150,24 @@ function isActionableRegion(r: DiffRegion): boolean {
   return !r.nature || isActionableNature(r.nature);
 }
 
+/** 客户可读的变化动词短语，替代内部「内容变化/位置偏移」等名词，避免「一块区域内容变化」这种拗口表达 */
+function natureVerb(nature?: ChangeNature): string {
+  switch (nature) {
+    case 'appeared':
+      return '新增了内容';
+    case 'vanished':
+      return '缺少了内容';
+    case 'content':
+      return '内容发生了变化';
+    case 'shifted':
+      return '位置发生偏移';
+    case 'rendering':
+      return '显示效果有差别';
+    default:
+      return '内容发生了变化';
+  }
+}
+
 function shiftLabelOf(regions: DiffRegion[]): string | undefined {
   const shifts = regions
     .filter((r) => r.nature === 'shifted')
@@ -169,6 +190,7 @@ export function classifyDifference(
   regions: ImageComparison['regions'],
   cfg = resolveCustomerReportConfig(),
   size?: { width?: number; height?: number },
+  pageStateDrift?: PageStateDriftResult,
 ): { status: Exclude<CoverageStatus, 'uncovered'>; evidence: DiffEvidence } {
   const significant = significantRegions(regions, size?.width, size?.height, cfg);
   const actionable = significant.filter(isActionableRegion);
@@ -191,20 +213,20 @@ export function classifyDifference(
   // 宁可标红也不要把真实衰退悄悄降级。
   if (!regions) {
     if (difference >= cfg.majorRatio) {
-      evidence.reason = `整页差异 ${(difference * 100).toFixed(2)}%（无区域明细）`;
+      evidence.reason = `页面整体有明显差异（约 ${(difference * 100).toFixed(2)}%）`;
       return { status: 'regress', evidence };
     }
     evidence.reason =
       difference < cfg.identicalRatio
-        ? '仅有可忽略的渲染抖动'
-        : `整页差异 ${(difference * 100).toFixed(2)}%，范围很小`;
+        ? '仅有极细微的显示差别，可忽略'
+        : `页面整体有轻微差异（约 ${(difference * 100).toFixed(2)}%）`;
     return { status: difference < cfg.identicalRatio ? 'pass' : 'minor', evidence };
   }
   if (significant.length === 0) {
     evidence.reason =
       difference < cfg.identicalRatio
-        ? '仅有可忽略的渲染抖动'
-        : `差异 ${(difference * 100).toFixed(2)}% 全部分散在文字边缘或滚动条，未发现成块变化`;
+        ? '仅有极细微的显示差别，可忽略'
+        : '差异很小，未发现明显的内容变化';
     return { status: difference < cfg.identicalRatio ? 'pass' : 'minor', evidence };
   }
 
@@ -214,30 +236,40 @@ export function classifyDifference(
     evidence.shiftLabel = shift;
     const where = regionZoneLabel(significant[0]!, size?.width, size?.height);
     evidence.reason = shift
-      ? `${where}内容整体平移 ${shift}，逐像素比对后内容完全一致，不是功能问题`
-      : `${where}仅有字体渲染/抗锯齿级别的差异，内容未发生变化`;
+      ? `${where}的内容没变，只是整体挪了约 ${shift}，无需处理`
+      : `${where}的显示效果有细微差别，内容没变，无需处理`;
     return { status: 'minor', evidence };
   }
 
   const bigBlock = top.pixels >= cfg.majorRegionPixels;
   const wideBlock = top.w >= cfg.majorRegionMinWidth && top.h >= cfg.majorRegionMinHeight;
   const where = regionZoneLabel(top, size?.width, size?.height);
-  const what = top.nature ? natureLabel(top.nature) : '内容变化';
+
+  const downgradeDrift = (reason: string): { status: 'minor'; evidence: DiffEvidence } => {
+    evidence.reason = reason;
+    evidence.stateDrift = true;
+    return { status: 'minor', evidence };
+  };
+
+  if (pageStateDrift?.drift) {
+    return downgradeDrift(pageStateDrift.reason || '页面状态与基线不一致，差异多为环境数据漂移');
+  }
+
   if (bigBlock) {
-    evidence.reason = `${where}有一块 ${top.w}x${top.h} 的区域${what}`;
+    evidence.reason = `${where}有一大块区域${natureVerb(top.nature)}`;
     return { status: 'regress', evidence };
   }
   if (wideBlock) {
-    evidence.reason = `${where}整块区域（${top.w}x${top.h}）${what}`;
+    evidence.reason = `${where}整块区域${natureVerb(top.nature)}`;
     return { status: 'regress', evidence };
   }
   const multiSpotMin = cfg.multiSpotRegressRatio ?? 0.01;
   if (difference >= cfg.majorRatio && actionable.length >= 3 && difference >= multiSpotMin) {
-    evidence.reason = `页面有 ${actionable.length} 处内容变化，最大一处在${where}（整页差异 ${(difference * 100).toFixed(2)}%）`;
+    evidence.reason = `页面有 ${actionable.length} 处内容变化，最大在${where}`;
     return { status: 'regress', evidence };
   }
 
-  evidence.reason = `仅 ${actionable.length} 处小范围${what}，最大一处在${where}（${top.w}x${top.h}），不影响整体布局`;
+  evidence.reason = `页面有 ${actionable.length} 处小范围内容变化，最大在${where}，不影响整体布局`;
   return { status: 'minor', evidence };
 }
 
@@ -317,10 +349,14 @@ export function buildCoverageStats(
           continue;
         }
         const difference = hit.difference ?? 0;
-        const { status, evidence } = classifyDifference(difference, hit.regions, cfg, {
-          width: hit.width,
-          height: hit.height,
+        const size = { width: hit.width, height: hit.height };
+        const pageStateDrift = detectPageStateDrift({
+          baselineMeta: readStepMeta(hit.image1Path),
+          currentMeta: readStepMeta(hit.image2Path),
+          regions: hit.regions,
+          ...size,
         });
+        const { status, evidence } = classifyDifference(difference, hit.regions, cfg, size, pageStateDrift);
         slots.push({
           scriptKey: tdc.testDir,
           stepNumber: comp.stepNumber,

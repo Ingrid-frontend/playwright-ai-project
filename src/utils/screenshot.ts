@@ -4,13 +4,11 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { assertNotLoginLikePage } from './login-detection.js';
 import {
-  resolveSnapshotViewports,
   scriptKeyFromScreenshotPath,
 } from '../../scripts/report/ui-regression-config.js';
 import {
   applyScreenshotStabilityStyles,
   captureScreenshotAtViewports,
-  lockViewportForSnapshot,
   useFullPageByDefault,
 } from './screenshot-capture.js';
 import {
@@ -61,10 +59,6 @@ export async function screenshotWhenStable(
   options: ScreenshotCaptureOpts = {},
 ): Promise<{ path: string; route: string }> {
   const fullPage = options.fullPage ?? useFullPageByDefault();
-  const viewports = resolveSnapshotViewports();
-  const primaryVp = viewports.find((v) => v.default) || viewports[0]!;
-
-  await lockViewportForSnapshot(page, primaryVp);
   await applyScreenshotStabilityStyles(page);
 
   await waitForRouteStable(page, 2000);

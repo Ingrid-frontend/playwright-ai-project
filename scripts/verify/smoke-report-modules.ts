@@ -25,12 +25,15 @@ import { isLoginLikeText, isLoginLikeUrl } from '../../src/utils/login-detection
 import { parseSnapshotIdentity } from '../report/compare-screenshots-utils.js';
 import { clusterDiffRegions } from '../report/image-diff.js';
 import { classifyDifference, isProcessOnlyStep } from '../report/coverage-stats.js';
+import { detectPageStateDrift } from '../report/page-state-drift.js';
+import { scriptKeyMatches } from '../report/ui-regression-config.js';
 import { classifyRegionNature, isActionableNature } from '../report/change-nature.js';
 import {
   friendlyScriptLabel,
   friendlyStepLabel,
   regionZoneLabel,
 } from '../report/customer-report-naming.js';
+import { resolveScriptRunHistory } from '../report/customer-report-run-meta.js';
 import { PNG } from 'pngjs';
 import * as uiIssuesMod from '../report/ui-issues-index.js';
 import * as feishuMod from '../feishu/index.js';
@@ -288,7 +291,7 @@ pass('classifyDifference 三档分级');
 // 缺少区域明细时（旧缓存）不得把真实衰退悄悄降级
 const noRegions = classifyDifference(0.02, undefined);
 assert.equal(noRegions.status, 'regress');
-assert.match(noRegions.evidence.reason, /无区域明细/);
+assert.match(noRegions.evidence.reason, /页面整体有明显差异/);
 pass('classifyDifference 缺区域时按占比兜底');
 
 // 贴右边缘的窄长条是滚动条，不算 UI 衰退
@@ -306,21 +309,32 @@ assert.equal(friendlyStepLabel('DEV管理员-after'), 'DEV管理员');
 assert.equal(friendlyStepLabel('返-回-after'), '返回');
 assert.equal(friendlyStepLabel('action-before'), '操作（操作前）');
 assert.equal(friendlyStepLabel('导航到页面'), '导航到页面');
-assert.equal(friendlyScriptLabel('dev/260911/工作台_2026-08-20_19-29-59'), 'dev · 工作台');
-assert.equal(friendlyScriptLabel('intent/dev/审批列表页可见'), 'dev · 审批列表页可见');
+assert.equal(friendlyScriptLabel('dev/260911/工作台_2026-08-20_19-29-59'), 'DEV环境 · 工作台');
+assert.equal(friendlyScriptLabel('intent/dev/审批列表页可见'), 'DEV环境 · 审批列表页可见');
 assert.equal(
   friendlyScriptLabel('flows/request-flow/dev/golden-regression/by-account/menma_comic_com'),
-  'dev · 申请单流程 · menma_comic_com',
+  'DEV环境 · 申请单流程 · menma_comic_com',
 );
 assert.equal(
   friendlyScriptLabel('flows/request-flow/uat/golden-regression/by-account/199702_comic_com'),
-  'uat · 申请单流程 · 199702_comic_com',
+  'UAT环境 · 申请单流程 · 199702_comic_com',
 );
 assert.equal(
   friendlyScriptLabel('flows/request-flow/stage9084/golden-regression/by-account/18600582279'),
-  'stage9084 · 申请单流程 · 18600582279',
+  'Stage9084环境 · 申请单流程 · 18600582279',
+);
+assert.equal(
+  friendlyScriptLabel('expense-flow/dev/golden-regression/by-account/menma_comic_com'),
+  'DEV环境 · 报销流程 · menma_comic_com',
 );
 assert.equal(regionZoneLabel({ x: 0, y: 0, w: 40, h: 20 }, 1280, 720), '页面上部左侧');
+const stage9084Target = discoverGoldenScriptScanTargets('screenshots/flows').find((t) =>
+  t.testDir.includes('stage9084') && t.testDir.includes('13312349876'),
+);
+if (stage9084Target) {
+  const rows = resolveScriptRunHistory([stage9084Target.testDir], [stage9084Target]).get(stage9084Target.testDir) || [];
+  assert.ok(rows.some((r) => (r.durationSec || 0) > 0), 'run 历史应能关联 manifest 耗时');
+}
 pass('客户报告展示名清洗');
 
 // ---- 变化性质识别：这是「差异不大却标红」的治理核心 ----
@@ -399,7 +413,7 @@ const bigButShifted = classifyDifference(
 );
 assert.equal(bigButShifted.status, 'minor');
 assert.equal(bigButShifted.evidence.actionableRegions, 0);
-assert.match(bigButShifted.evidence.reason, /平移 9px|内容完全一致/);
+assert.match(bigButShifted.evidence.reason, /挪了约 9px|内容没变/);
 pass('大面积位移不判为衰退');
 
 // 同样大小的区域，性质是新增内容时必须标红
@@ -433,5 +447,42 @@ const unknownNature = classifyDifference(
 );
 assert.equal(unknownNature.status, 'regress');
 pass('性质未知时保守判为衰退');
+
+// 侧栏状态漂移：domHash 变 + 差异全在左侧 appeared → 降级为无需处理
+const sidebarDrift = detectPageStateDrift({
+  baselineMeta: {
+    domHash: 'SEC|aaa',
+    sections: [{ key: 'approval-detail-entrance', structureHash: 'aaa', textHash: 't1', nodeCount: 97, childTags: 'DIV' }],
+  },
+  currentMeta: {
+    domHash: 'SEC|bbb',
+    sections: [{ key: 'approval-detail-entrance', structureHash: 'bbb', textHash: 't2', nodeCount: 267, childTags: 'DIV' }],
+    imageWidth: 1280,
+  },
+  regions: [
+    { x: 20, y: 288, w: 186, h: 94, pixels: 3000, ratio: 0.003, severity: 'high', nature: 'appeared' },
+    { x: 20, y: 419, w: 168, h: 96, pixels: 2400, ratio: 0.002, severity: 'high', nature: 'appeared' },
+  ],
+  width: 1280,
+  height: 720,
+});
+assert.equal(sidebarDrift.drift, true);
+const driftClassified = classifyDifference(
+  0.014,
+  [
+    { x: 20, y: 288, w: 186, h: 94, pixels: 3000, ratio: 0.003, severity: 'high', nature: 'appeared' },
+    { x: 20, y: 419, w: 168, h: 96, pixels: 2400, ratio: 0.002, severity: 'high', nature: 'appeared' },
+  ],
+  undefined,
+  { width: 1280, height: 720 },
+  sidebarDrift,
+);
+assert.equal(driftClassified.status, 'minor');
+assert.equal(driftClassified.evidence.stateDrift, true);
+pass('侧栏页面状态漂移降级为无需处理');
+
+assert.ok(scriptKeyMatches('flows/approval-flow', 'approval-flow/dev/golden-regression/by-account/menma_comic_com'));
+assert.ok(!scriptKeyMatches('flows/request-flow', 'approval-flow/dev/golden-regression/by-account/menma_comic_com'));
+pass('scriptKeyMatches 支持 flows/ 前缀与 flow 扫描路径');
 
 console.log('\n✅ smoke-report-modules 通过');

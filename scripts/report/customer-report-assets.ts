@@ -907,6 +907,101 @@ body {
 .fb-annotate-btn:disabled { cursor: not-allowed; }
 .bc-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .fb-shot-wrap { position: relative; }
+.fb-shot-wrap img,
+.brief-thumb img,
+.run-history-shot-img img,
+.overlay-img {
+  cursor: zoom-in;
+}
+.shot-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(0, 0, 0, 0.86);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 72px;
+}
+.shot-lightbox.open { display: flex; }
+.shot-lb-inner {
+  position: relative;
+  max-width: 96vw;
+  max-height: 88vh;
+  line-height: 0;
+}
+.shot-lb-inner img {
+  max-width: 96vw;
+  max-height: 88vh;
+  display: block;
+  border-radius: 6px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+}
+.shot-lb-inner .shot-lb-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.shot-lb-inner .shot-lb-overlay .mark-box { pointer-events: none; }
+.shot-lb-close,
+.shot-lb-prev,
+.shot-lb-next {
+  position: fixed;
+  border: none;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  cursor: pointer;
+  line-height: 1;
+  transition: background 0.15s;
+}
+.shot-lb-close:hover,
+.shot-lb-prev:hover,
+.shot-lb-next:hover { background: rgba(255, 255, 255, 0.28); }
+.shot-lb-close {
+  top: 16px;
+  right: 20px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-size: 22px;
+}
+.shot-lb-prev,
+.shot-lb-next {
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 64px;
+  border-radius: 8px;
+  font-size: 28px;
+}
+.shot-lb-prev { left: 16px; }
+.shot-lb-next { right: 16px; }
+.shot-lb-prev:disabled,
+.shot-lb-next:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.shot-lb-cap {
+  position: fixed;
+  bottom: 44px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 13px;
+  max-width: 80vw;
+  text-align: center;
+  word-break: break-word;
+  line-height: 1.45;
+}
+.shot-lb-counter {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
 @media (max-width: 720px) {
   .stats { grid-template-columns: repeat(2, 1fr); }
   .brief {
@@ -916,6 +1011,9 @@ body {
   .brief-thumb { width: 72px; height: 42px; }
   .brief-meta { grid-column: 3; align-items: flex-start; }
   .brief-link { grid-column: 3; justify-self: start; }
+  .shot-lightbox { padding: 40px 12px; }
+  .shot-lb-prev { left: 4px; width: 36px; }
+  .shot-lb-next { right: 4px; width: 36px; }
 }
 `;
 }
@@ -934,6 +1032,7 @@ function switchCustomerTab(name) {
     if (panel) {
       initRunHistoryAnchor(panel);
       initRunIdCopy(panel);
+      initShotPreview(panel);
     }
   }
 }
@@ -996,6 +1095,7 @@ function openCustomerIssue(anchorId) {
   var target = document.getElementById(anchorId);
   if (!target) return;
   initSliders(target);
+  initShotPreview(target);
   target.scrollIntoView({ behavior: 'smooth', block: 'start' });
   target.classList.add('ig-flash');
   setTimeout(function () { target.classList.remove('ig-flash'); }, 1600);
@@ -1072,9 +1172,13 @@ document.addEventListener('DOMContentLoaded', function () {
   initRunIdCopy(document);
   initRunHistoryAnchor(document);
   initFeedbackAnnotate();
+  initShotPreview(document);
   document.querySelectorAll('details').forEach(function (d) {
     d.addEventListener('toggle', function () {
-      if (d.open) initSliders(d);
+      if (d.open) {
+        initSliders(d);
+        initShotPreview(d);
+      }
     });
   });
 });
@@ -1154,6 +1258,162 @@ function initFeedbackAnnotate() {
       var card = btn.closest('.browser-card');
       if (!card || fbSubmitting) return;
       submitFeedback(card);
+    });
+  });
+}
+
+var shotPreviewState = { shots: [], index: -1, inited: false };
+
+function buildShotCaption(img) {
+  var parts = [];
+  var seen = {};
+  function push(text) {
+    var t = String(text || '').replace(/\\s+/g, ' ').trim();
+    if (!t || seen[t]) return;
+    seen[t] = 1;
+    parts.push(t);
+  }
+  var issue = img.closest('.issue-group');
+  if (issue) push((issue.querySelector('.ig-title') || {}).textContent);
+  var page = img.closest('.page-card');
+  if (page) push(((page.querySelector('.page-title') || {}).textContent || '').replace(/过程截图/g, ''));
+  var bc = img.closest('.browser-card');
+  if (bc) push((bc.querySelector('.bc-head strong') || {}).textContent);
+  var brief = img.closest('.brief');
+  if (brief) push((brief.querySelector('.brief-title') || {}).textContent);
+  var fig = img.closest('.run-history-shot');
+  if (fig) push((fig.querySelector('figcaption') || {}).textContent);
+  var sideCol = img.closest('.side-col');
+  if (sideCol) push((sideCol.querySelector('.side-label') || {}).textContent);
+  push(img.getAttribute('alt'));
+  return parts.join(' · ');
+}
+
+function collectPreviewShots() {
+  var shots = [];
+  document.querySelectorAll('.brief-thumb img, .fb-shot-wrap img, .run-history-shot-img img').forEach(function (img) {
+    var src = img.currentSrc || img.src;
+    if (!src) return;
+    shots.push({
+      img: img,
+      src: src,
+      caption: buildShotCaption(img),
+      markWrap: img.closest('.mark-wrap, .brief-thumb')
+    });
+  });
+  return shots;
+}
+
+function ensureShotLightbox() {
+  if (document.getElementById('shot-lightbox')) return;
+  var lb = document.createElement('div');
+  lb.id = 'shot-lightbox';
+  lb.className = 'shot-lightbox';
+  lb.setAttribute('aria-hidden', 'true');
+  lb.innerHTML = ''
+    + '<button type="button" class="shot-lb-close" aria-label="关闭">×</button>'
+    + '<button type="button" class="shot-lb-prev" aria-label="上一张">‹</button>'
+    + '<button type="button" class="shot-lb-next" aria-label="下一张">›</button>'
+    + '<div class="shot-lb-inner">'
+    + '  <img id="shot-lb-img" alt="" />'
+    + '  <div id="shot-lb-overlay" class="shot-lb-overlay"></div>'
+    + '</div>'
+    + '<div id="shot-lb-cap" class="shot-lb-cap"></div>'
+    + '<div id="shot-lb-counter" class="shot-lb-counter"></div>';
+  document.body.appendChild(lb);
+
+  lb.querySelector('.shot-lb-close').addEventListener('click', closeShotPreview);
+  lb.querySelector('.shot-lb-prev').addEventListener('click', function () { stepShotPreview(-1); });
+  lb.querySelector('.shot-lb-next').addEventListener('click', function () { stepShotPreview(1); });
+  lb.addEventListener('click', function (e) {
+    if (e.target === lb) closeShotPreview();
+  });
+  document.addEventListener('keydown', onShotPreviewKeydown);
+}
+
+function onShotPreviewKeydown(e) {
+  var lb = document.getElementById('shot-lightbox');
+  if (!lb || !lb.classList.contains('open')) return;
+  if (e.key === 'Escape') closeShotPreview();
+  else if (e.key === 'ArrowLeft') stepShotPreview(-1);
+  else if (e.key === 'ArrowRight') stepShotPreview(1);
+}
+
+function renderShotPreviewAt(index) {
+  var shots = shotPreviewState.shots;
+  if (!shots.length || index < 0 || index >= shots.length) return;
+  shotPreviewState.index = index;
+  var shot = shots[index];
+  var lb = document.getElementById('shot-lightbox');
+  var lbImg = document.getElementById('shot-lb-img');
+  var lbOverlay = document.getElementById('shot-lb-overlay');
+  var lbCap = document.getElementById('shot-lb-cap');
+  var lbCounter = document.getElementById('shot-lb-counter');
+  if (!lb || !lbImg || !lbOverlay) return;
+
+  lbImg.src = shot.src;
+  lbImg.alt = shot.caption || '';
+  lbOverlay.innerHTML = '';
+  if (shot.markWrap) {
+    shot.markWrap.querySelectorAll('.mark-box').forEach(function (box) {
+      lbOverlay.appendChild(box.cloneNode(true));
+    });
+  }
+  if (lbCap) lbCap.textContent = shot.caption || '';
+  if (lbCounter) lbCounter.textContent = (index + 1) + ' / ' + shots.length;
+
+  var prevBtn = lb.querySelector('.shot-lb-prev');
+  var nextBtn = lb.querySelector('.shot-lb-next');
+  if (prevBtn) prevBtn.disabled = index <= 0;
+  if (nextBtn) nextBtn.disabled = index >= shots.length - 1;
+
+  lb.classList.add('open');
+  lb.setAttribute('aria-hidden', 'false');
+}
+
+function openShotPreview(img) {
+  ensureShotLightbox();
+  shotPreviewState.shots = collectPreviewShots();
+  var idx = -1;
+  for (var i = 0; i < shotPreviewState.shots.length; i++) {
+    if (shotPreviewState.shots[i].img === img) { idx = i; break; }
+  }
+  if (idx < 0) return;
+  renderShotPreviewAt(idx);
+}
+
+function stepShotPreview(delta) {
+  var next = shotPreviewState.index + delta;
+  if (next < 0 || next >= shotPreviewState.shots.length) return;
+  renderShotPreviewAt(next);
+}
+
+function closeShotPreview() {
+  var lb = document.getElementById('shot-lightbox');
+  if (!lb) return;
+  lb.classList.remove('open');
+  lb.setAttribute('aria-hidden', 'true');
+  var lbImg = document.getElementById('shot-lb-img');
+  var lbOverlay = document.getElementById('shot-lb-overlay');
+  var lbCap = document.getElementById('shot-lb-cap');
+  var lbCounter = document.getElementById('shot-lb-counter');
+  if (lbImg) lbImg.removeAttribute('src');
+  if (lbOverlay) lbOverlay.innerHTML = '';
+  if (lbCap) lbCap.textContent = '';
+  if (lbCounter) lbCounter.textContent = '';
+  shotPreviewState.index = -1;
+}
+
+function initShotPreview(root) {
+  ensureShotLightbox();
+  var scope = root || document;
+  scope.querySelectorAll('.brief-thumb img, .fb-shot-wrap img, .run-history-shot-img img').forEach(function (img) {
+    if (img.dataset.previewInit === '1') return;
+    img.dataset.previewInit = '1';
+    img.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      openShotPreview(img);
     });
   });
 }

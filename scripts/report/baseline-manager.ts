@@ -261,9 +261,7 @@ export function goldenDirForScript(scriptKey: string, runSegment: string): strin
 export function flowBaselineScriptKey(testDir: string): string {
   const n = testDir.replace(/\\/g, '/').replace(/^\/+/, '');
   if (n.startsWith('flows/')) return n;
-  if (n.startsWith('request-flow/') || n.startsWith('approval-flow/')) {
-    return `flows/${n}`;
-  }
+  if (/-flow\//.test(n)) return `flows/${n}`;
   return n;
 }
 

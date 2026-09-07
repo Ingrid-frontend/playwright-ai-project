@@ -111,6 +111,8 @@ export interface UiRegressionConfig {
     freezeAnimations: boolean;
     deviceScaleFactor: number;
     fullPage: boolean;
+    /** 截图前是否 setViewportSize 锁视口；默认 false，避免有头运行时页面突然缩小 */
+    lockViewport?: boolean;
   };
   crossBrowser: {
     blockerRatio: number;
@@ -243,6 +245,7 @@ const DEFAULT_CONFIG: UiRegressionConfig = {
     freezeAnimations: true,
     deviceScaleFactor: 1,
     fullPage: false,
+    lockViewport: false,
   },
   crossBrowser: {
     blockerRatio: 0.03,
@@ -425,7 +428,12 @@ export function scriptKeyMatches(regionScript: string | undefined, scriptKey: st
   if (!scriptKey) return false;
   if (scriptKey === regionScript) return true;
   if (scriptKey.endsWith(`/${regionScript}`)) return true;
-  return scriptKey.includes(regionScript);
+  if (scriptKey.includes(regionScript)) return true;
+  const norm = (s: string) => s.replace(/^flows\//, '');
+  const rs = norm(regionScript);
+  const sk = norm(scriptKey);
+  if (sk === rs || sk.startsWith(`${rs}/`)) return true;
+  return sk.includes(`/${rs}/`);
 }
 
 export function resolveDefaultBrowsers(): string[] {
@@ -558,6 +566,15 @@ export function scriptKeyHitsStructureGate(scriptKey: string | undefined): boole
 
 export function resolveScreenshotFullPage(): boolean {
   return loadUiRegressionConfig().screenshot?.fullPage === true;
+}
+
+/** 截图前是否锁定视口。headless golden 默认锁到 config 视口以匹配基线；headed 调试不锁，避免页面突然缩小。 */
+export function resolveLockViewportForSnapshot(): boolean {
+  const env = process.env.SCREENSHOT_LOCK_VIEWPORT?.trim().toLowerCase();
+  if (env === '1' || env === 'true' || env === 'yes') return true;
+  if (env === '0' || env === 'false' || env === 'no') return false;
+  if (process.env.FLOW_RUN_MODE !== 'headed') return true;
+  return loadUiRegressionConfig().screenshot?.lockViewport === true;
 }
 
 /**

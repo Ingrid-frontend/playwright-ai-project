@@ -10,6 +10,7 @@ import {
   type FlowRunManifest,
 } from '../../src/utils/flow-run-report.js';
 import { RUN_SEGMENT_DIR } from './compare-screenshots-scan.js';
+import { flowBaselineScriptKey } from './baseline-manager.js';
 import { readGoldenMatchVerdictForScriptRun } from './prune-flow-golden-runs.js';
 
 const require = createRequire(import.meta.url);
@@ -223,8 +224,25 @@ function countRunPngsOnDisk(scriptPath: string, runId: string): number {
   return n;
 }
 
+function scriptKeysMatch(a: string, b: string): boolean {
+  const na = flowBaselineScriptKey(a);
+  const nb = flowBaselineScriptKey(b);
+  return na === nb;
+}
+
+function durationFromManifest(m?: FlowRunManifest): number | undefined {
+  if (!m) return undefined;
+  if (m.durationSec && m.durationSec > 0) return m.durationSec;
+  if (m.startedAt && m.finishedAt) {
+    const sec = (Date.parse(m.finishedAt) - Date.parse(m.startedAt)) / 1000;
+    if (Number.isFinite(sec) && sec > 0) return Math.round(sec * 10) / 10;
+  }
+  return undefined;
+}
+
 function metaForRun(manifests: FlowRunManifest[], scriptKey: string, runId: string): FlowRunManifest | undefined {
-  return manifests.find((m) => m.runId === runId && manifestScriptKey(m) === scriptKey);
+  const normalized = flowBaselineScriptKey(scriptKey);
+  return manifests.find((m) => m.runId === runId && scriptKeysMatch(manifestScriptKey(m), normalized));
 }
 
 export function resolveScriptRunHistory(
@@ -245,7 +263,7 @@ export function resolveScriptRunHistory(
       const manifest = metaForRun(manifests, scriptKey, runId);
       const startedAt = manifest?.startedAt || parseRunDirStartedAt(runId);
       const finishedAt = manifest?.finishedAt;
-      const durationSec = manifest?.durationSec;
+      const durationSec = durationFromManifest(manifest);
       const runDir = path.join(scriptPath, ...findRunRootSegments(scriptPath), runId);
       const runMarker = manifest?.runMarker || readRunMarkerFile(runDir) || undefined;
       const shotMeta = resolveRunScreenshotMeta(scriptPath, runId);
@@ -313,10 +331,6 @@ function findRunRootSegments(scriptPath: string): string[] {
   return [];
 }
 
-function manifestForRunId(manifests: FlowRunManifest[], runId: string): FlowRunManifest | undefined {
-  if (!runId) return undefined;
-  return manifests.find((m) => m.runId === runId);
-}
 
 export function resolveScriptRunMeta(
   scriptKeys: string[],
@@ -330,26 +344,30 @@ export function resolveScriptRunMeta(
   for (const scriptKey of unique) {
     const scriptPath = pathByKey.get(scriptKey) || '';
     const runId = scriptPath ? latestRunIdFromScreenshots(scriptPath) : '';
-    const byRunId = manifestForRunId(manifests, runId);
-    if (byRunId?.durationSec && byRunId.durationSec > 0) {
+    const byRunId = manifests.find(
+      (m) => m.runId === runId && scriptKeysMatch(manifestScriptKey(m), scriptKey),
+    );
+    const byRunDuration = durationFromManifest(byRunId);
+    if (byRunDuration && byRunDuration > 0) {
       out.set(scriptKey, {
         scriptKey,
-        runId: runId || byRunId.runId,
-        startedAt: byRunId.startedAt,
-        finishedAt: byRunId.finishedAt,
-        durationSec: byRunId.durationSec,
+        runId: runId || byRunId!.runId,
+        startedAt: byRunId!.startedAt,
+        finishedAt: byRunId!.finishedAt,
+        durationSec: byRunDuration,
       });
       continue;
     }
 
-    const hit = manifests.find((m) => manifestScriptKey(m) === scriptKey);
-    if (hit?.durationSec && hit.durationSec > 0) {
+    const hit = manifests.find((m) => scriptKeysMatch(manifestScriptKey(m), scriptKey));
+    const hitDuration = durationFromManifest(hit);
+    if (hitDuration && hitDuration > 0) {
       out.set(scriptKey, {
         scriptKey,
         runId: runId || hit.runId,
         startedAt: hit.startedAt,
         finishedAt: hit.finishedAt,
-        durationSec: hit.durationSec,
+        durationSec: hitDuration,
       });
       continue;
     }

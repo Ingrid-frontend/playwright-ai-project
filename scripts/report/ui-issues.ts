@@ -3,6 +3,7 @@ import path from 'path';
 import type { DiffRegion, ImageComparison } from './image-diff.js';
 import { loadUiRegressionConfig, resolveAiReviewConfig, resolveGateMode, scriptKeyHitsPixelGate, scriptKeyHitsStructureGate } from './ui-regression-config.js';
 import { parseRunMetaFromScreenshotPath, parseSnapshotIdentity } from './compare-screenshots-utils.js';
+import { detectPageStateDrift, readStepMeta } from './page-state-drift.js';
 import type { PlainLanguageAnalysis } from './ui-issues-analysis.js';
 import type { UiIssueReview, ReviewSummary } from './ui-issue-review.js';
 
@@ -225,6 +226,17 @@ export function comparisonToUiIssue(
 
   const compareKind = mapCompareKind(comp.compareKind);
   const severity = severityForDifference(comp.difference, compareKind);
+  const pageStateDrift = detectPageStateDrift({
+    baselineMeta: readStepMeta(comp.image1Path),
+    currentMeta: readStepMeta(comp.image2Path),
+    regions: comp.regions,
+    width: comp.width,
+    height: comp.height,
+  });
+  let driftDetail: string | undefined;
+  if (pageStateDrift.drift) {
+    return null;
+  }
 
   const cfg = loadUiRegressionConfig();
   if (severity === 'noise' && comp.difference < cfg.diffOnlyTabMinRatio) {

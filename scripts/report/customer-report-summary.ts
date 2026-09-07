@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import type { CustomerReportModel } from './customer-report-model.js';
+import { buildHeadline } from './customer-report-plain.js';
 
 export type CustomerReportSummary = {
   generatedAt: string;
@@ -36,14 +37,7 @@ export function buildCustomerReportSummary(model: CustomerReportModel): Customer
   const c = model.coverage;
   const coveragePct =
     c.expectedSteps > 0 ? Math.round((c.comparedSteps / c.expectedSteps) * 100) : 0;
-  const headline =
-    c.regressSteps > 0
-      ? `发现 ${model.regressionGroups.length} 个问题需要修复`
-      : c.minorSteps > 0
-        ? `存在 ${c.minorSteps} 处轻微变化，建议人工确认`
-        : c.comparedSteps === 0
-          ? '本次无有效对比，无法给出结论'
-          : '本次未发现需要修复的问题';
+  const headline = buildHeadline(model.coverage, model.regressionGroups.length);
 
   return {
     generatedAt: model.generatedAt,
