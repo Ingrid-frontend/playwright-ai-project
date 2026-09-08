@@ -47,11 +47,15 @@ function summarizeGoldenBatch(batch) {
     );
   }
   for (const item of skipped) {
-    lines.push(`跳过 ${item.profileId}: ${item.reason || '无登录态'}`);
+    lines.push(
+      `跳过 ${item.profileId}${item.roleSlug ? ` (${item.roleSlug})` : ''}: ${item.reason || '无数据'}`,
+    );
   }
 
   const headline = batch.ok
-    ? `Golden 批次完成：${passed.length} 个角色通过${ignored.length ? `，${ignored.length} 个忽略` : ''}`
+    ? skipped.length && !passed.length
+      ? `Golden 批次完成：${skipped.length} 个角色跳过${ignored.length ? `，${ignored.length} 个忽略` : ''}`
+      : `Golden 批次完成：${passed.length} 个角色通过${ignored.length ? `，${ignored.length} 个忽略` : ''}${skipped.length ? `，${skipped.length} 个跳过` : ''}`
     : failed.length && passed.length
       ? `Golden 批次部分失败：${passed.length} 通过，${failed.length} 失败${ignored.length ? `，${ignored.length} 忽略` : ''}`
       : `Golden 批次失败：${failed.length || 1} 个角色未通过`;

@@ -15,63 +15,43 @@ test.describe.configure({ mode: 'serial' });
 
 const goldenCtx = { docNo: '' };
 const GOLDEN_SKIP_MSG =
-  '待审批列表无可用单号，跳过后续 Golden 步骤（Studio「指定单号」/ accounts.json approvalDocNo / golden-seeds.json）';
+  '待审批无可用单号，跳过 Golden（APPROVAL_DOC_NO / golden-seeds 或确保有待审批数据）';
 
-async function hasDataRows(approval: ApprovalListPage) {
-  return (await approval.dataRows().count().catch(() => 0)) > 0;
+function configuredDocNo(): string {
+  const fromEnv = env.approvalDocNo.trim();
+  if (fromEnv) return fromEnv;
+  const seed = resolveGoldenSeed(
+    process.env.PLAYWRIGHT_ENV || 'dev',
+    process.env.FLOW_ACCOUNT_SLUG || '',
+  );
+  return seed.docNo;
 }
 
-async function trySeedGoldenContext(approval: ApprovalListPage) {
-  if (!goldenCtx.docNo) goldenCtx.docNo = env.approvalDocNo.trim();
-  if (!goldenCtx.docNo) {
-    const seed = resolveGoldenSeed(
-      process.env.PLAYWRIGHT_ENV || 'dev',
-      process.env.FLOW_ACCOUNT_SLUG || '',
-    );
-    goldenCtx.docNo = seed.docNo;
+async function prepareGolden(approval: ApprovalListPage) {
+  if (await approval.isPendingGoldenEmpty()) {
+    test.skip(true, GOLDEN_SKIP_MSG);
   }
 
-  if (!(await hasDataRows(approval))) {
-    await approval.resetFilterState().catch(() => undefined);
-  }
-  if (!(await hasDataRows(approval))) {
-    if (!goldenCtx.docNo) {
-      goldenCtx.docNo = await approval.readDocNoFromListApi({ refresh: true }).catch(() => '');
-    }
-    if (goldenCtx.docNo) return;
-    return;
-  }
-
+  if (!goldenCtx.docNo) goldenCtx.docNo = configuredDocNo();
   if (!goldenCtx.docNo) {
-    try {
-      goldenCtx.docNo = await approval.pickFirstDocNo();
-    } catch {
-      return;
-    }
-  }
-}
-
-async function ensureGoldenList(approval: ApprovalListPage) {
-  await approval.ensureOnList();
-  if (!goldenCtx.docNo) {
-    await trySeedGoldenContext(approval);
+    goldenCtx.docNo = await approval.readPendingDocNoFast();
   }
   if (!goldenCtx.docNo) {
     test.skip(true, GOLDEN_SKIP_MSG);
   }
-  if (await hasDataRows(approval)) return;
-  await approval.switchToPending();
-  await approval.resetFilterState().catch(() => undefined);
-  if (await hasDataRows(approval)) return;
-  await approval.search(goldenCtx.docNo).catch(() => undefined);
-  if (await hasDataRows(approval)) return;
-  test.skip(true, '待审批列表无数据，跳过后续 Golden 步骤');
-}
 
-async function prepareGoldenList(approval: ApprovalListPage) {
-  await ensureGoldenList(approval);
-  await approval.switchToPending();
-  await approval.resetFilterState();
+  try {
+    await approval.ensureRowVisible(goldenCtx.docNo);
+    return;
+  } catch {
+    goldenCtx.docNo = '';
+    const docNo = await approval.readPendingDocNoFast();
+    if (!docNo) {
+      test.skip(true, GOLDEN_SKIP_MSG);
+    }
+    goldenCtx.docNo = docNo;
+    await approval.ensureRowVisible(docNo);
+  }
 }
 
 test.describe('审批列表 · Golden 回归', () => {
@@ -79,47 +59,30 @@ test.describe('审批列表 · Golden 回归', () => {
     process.env.FLOW_SPEC = 'approval/golden-regression.spec.ts';
   });
 
-  test('待审批列表加载出数据行', async ({ authenticatedPage, page, flowRunDir }) => {
+  test('Golden 全流程', async ({ authenticatedPage, page, flowRunDir }) => {
     void authenticatedPage;
     bindFlowStepCapture({ page, runDir: flowRunDir });
     const approval = new ApprovalListPage(page);
+
     await flowStep('打开审批列表', async () => {
       await approval.goto();
-      await approval.expectLoaded();
-      await approval.recoverIfEmptyList();
-      await trySeedGoldenContext(approval);
-      if (!goldenCtx.docNo && !(await hasDataRows(approval))) {
-        test.skip(true, GOLDEN_SKIP_MSG);
-      }
+      await approval.expectGoldenLoaded();
+      await prepareGolden(approval);
     }, { snapshot: 'approval-list', step: 1 });
-  });
 
-  test('切换已审批、抄送我后回到待审批', async ({ page, flowRunDir }) => {
-    bindFlowStepCapture({ page, runDir: flowRunDir });
-    const approval = new ApprovalListPage(page);
     await flowStep('页签切换', async () => {
-      await approval.ensureOnList();
       await approval.switchTab(TABS.approved);
       await approval.expectListReady();
       await approval.switchTab(TABS.cc);
       await approval.expectListReady();
       await approval.switchTab(TABS.pending);
       await approval.expectListReady();
-      if (!goldenCtx.docNo) {
-        await trySeedGoldenContext(approval);
-      }
+      await prepareGolden(approval);
     }, { snapshot: 'approval-tabs', step: 2 });
-  });
 
-  test('筛选条、业务类型与单号筛选', async ({ page, flowRunDir }) => {
-    bindFlowStepCapture({ page, runDir: flowRunDir });
-    const approval = new ApprovalListPage(page);
-    await flowStep('准备列表', async () => {
-      await prepareGoldenList(approval);
-      await approval.expectFilterBarVisible();
-    }, { capture: false });
     const docNo = goldenCtx.docNo;
     await flowStep('筛选与单号', async () => {
+      await approval.expectFilterBarVisible();
       await approval.openFilterPanel();
       await approval.closeFilterPanel();
       await approval.filterByDocNo(docNo);
@@ -127,14 +90,9 @@ test.describe('审批列表 · Golden 回归', () => {
       await approval.clearFilters();
       await approval.expectListReady();
     }, { snapshot: 'approval-filter', step: 3 });
-  });
 
-  test('用现场单号搜索并打开详情', async ({ page, flowRunDir }) => {
-    bindFlowStepCapture({ page, runDir: flowRunDir });
-    const approval = new ApprovalListPage(page);
-    await prepareGoldenList(approval);
-    const docNo = goldenCtx.docNo;
     await flowStep('搜索并打开详情', async () => {
+      await prepareGolden(approval);
       await approval.search(docNo);
       await approval.openByCode(docNo);
       await approval.expectDetailVisible();

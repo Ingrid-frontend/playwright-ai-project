@@ -59,6 +59,15 @@ export const TABS = {
   history: '操作历史',
 } as const;
 
+/** UAT 等环境待审批拆分子页签；优先有数据的「员工业务」，跳过角标 (0) 的「对公业务」 */
+export const PENDING_TABS = [
+  '员工业务',
+  '待审批-员工业务',
+  TABS.pending,
+  '对公业务',
+  '待审批-对公业务',
+] as const;
+
 export const COLUMNS = [
   '申请人',
   '单号',

@@ -1,5 +1,6 @@
 import { type Locator, type Page, expect } from '@playwright/test';
 import { GenericListPage, type ListCatalog } from '../../flow-kit/list/generic-list-page';
+import { waitForAppRoot } from '../../flow-kit/utils/app-frame';
 import {
   BUSINESS_TYPE_SELECT,
   COMBO_TRIGGER,
@@ -23,6 +24,7 @@ import {
   TAB,
   TABLE,
   TABS,
+  PENDING_TABS,
 } from '../utils/approval-catalog';
 
 /** 审批中心页签（dev 实机：待审批-全部 / 我的已办 / 抄送我 / 操作历史） */
@@ -68,8 +70,77 @@ export const APPROVAL_LIST_CATALOG: ListCatalog = {
 };
 
 export class ApprovalListPage extends GenericListPage {
+  private pendingBodies: unknown[] = [];
+  private pendingHooked = false;
+
   constructor(page: Page) {
     super(page, APPROVAL_LIST_CATALOG);
+    this.hookPendingResponses();
+  }
+
+  private hookPendingResponses(): void {
+    if (this.pendingHooked) return;
+    this.pendingHooked = true;
+    this.page.on('response', (res) => {
+      if (!PENDING_LIST_API_RE.test(res.url()) || res.request().method() !== 'POST' || res.status() !== 200) {
+        return;
+      }
+      void res
+        .json()
+        .then((body) => {
+          this.pendingBodies.unshift(body);
+          if (this.pendingBodies.length > 12) this.pendingBodies.length = 12;
+        })
+        .catch(() => undefined);
+    });
+  }
+
+  /** Golden 用轻量加载：不走 recoverEmptyOnLoad，避免无数据账号长时间轮询页签 */
+  async expectGoldenLoaded(): Promise<void> {
+    const c = this.catalog;
+    await expect(this.page).toHaveURL(c.urlPattern, { timeout: 60_000 });
+    if (!this.root) {
+      this.root = await waitForAppRoot(this.page);
+    }
+    await this.waitListSettled();
+    await expect(this.scope().locator(c.table).first()).toBeVisible({ timeout: 60_000 });
+    await this.expectListReady();
+  }
+
+  /** Golden 快速判空：页签角标全 0 或空状态，无待审批数据 */
+  async isPendingGoldenEmpty(): Promise<boolean> {
+    await this.switchToPending().catch(() => undefined);
+    if (await this.hasDataRows()) return false;
+
+    const cached = this.docNoFromCachedBodies();
+    if (cached) return false;
+
+    const candidates = await this.collectPendingTabs();
+    const hasPositive = candidates.some((c) => (c.badge ?? 0) > 0);
+    if (hasPositive) return false;
+    if (candidates.length > 0 && candidates.every((c) => c.badge === 0)) return true;
+
+    const empty = await this.scope()
+      .getByText(this.catalog.emptyTextRe!)
+      .first()
+      .isVisible({ timeout: 2_000 })
+      .catch(() => false);
+    return empty;
+  }
+
+  /** Golden 取单号：不轮询全部待审批子页签 */
+  async readPendingDocNoFast(): Promise<string> {
+    const cached = this.docNoFromCachedBodies();
+    if (cached) return cached;
+    if (await this.hasDataRows()) {
+      return await this.pickFirstDocNo().catch(() => '');
+    }
+    return '';
+  }
+
+  override async goto(): Promise<void> {
+    await super.goto();
+    await this.waitPendingApi();
   }
 
   /** 等待「待审批」主数据接口返回（可能在 goto 前已返回，故 catch 兜底） */
@@ -85,13 +156,122 @@ export class ApprovalListPage extends GenericListPage {
       .catch(() => null);
   }
 
+  protected override docNoFromRow(row: Record<string, unknown>): string {
+    const keys = [
+      'businessCode',
+      'documentNumber',
+      'formCode',
+      'applicationCode',
+      'approvalNumber',
+      'billCode',
+      'originDocumentNumber',
+      'code',
+    ];
+    for (const key of keys) {
+      const text = String(row[key] || '').replace(/\s+/g, '').trim();
+      if (text && text !== '-' && (DOC_NO_RE.test(text) || text.length >= 8)) return text;
+    }
+    return super.docNoFromRow(row);
+  }
+
+  private docNoFromCachedBodies(): string {
+    for (const body of this.pendingBodies) {
+      const docNo = this.extractDocNoFromBody(body);
+      if (docNo) return docNo;
+    }
+    return '';
+  }
+
+  private async fetchPendingListBody(timeout = 10_000): Promise<unknown> {
+    const respP = this.page.waitForResponse(
+      (r) =>
+        PENDING_LIST_API_RE.test(r.url()) &&
+        r.request().method() === 'POST' &&
+        r.status() === 200,
+      { timeout },
+    );
+    const candidates = await this.collectPendingTabs();
+    const hasPositive = candidates.some((c) => (c.badge ?? 0) > 0);
+    const pick = candidates.find((c) => !this.shouldSkipPendingTab(c, hasPositive)) || candidates[0];
+    if (pick) {
+      await this.clickPendingSubTab(pick).catch(() => undefined);
+    } else {
+      await this.lightClearFilters();
+    }
+    const resp = await respP.catch(() => null);
+    if (!resp) return null;
+    const body = await resp.json().catch(() => null);
+    if (body) {
+      this.pendingBodies.unshift(body);
+      if (this.pendingBodies.length > 12) this.pendingBodies.length = 12;
+    }
+    return body;
+  }
+
   /** 取单号时限定待审批接口，避免页签切换后误抓已办/抄送响应 */
   override async readDocNoFromListApi(opts: { refresh?: boolean } = {}): Promise<string> {
-    await this.switchToPending().catch(() => undefined);
-    if (opts.refresh || !(await this.hasDataRows())) {
-      await this.resetFilterState().catch(() => undefined);
+    await this.ensurePendingReady();
+    if (!opts.refresh) {
+      const cached = this.docNoFromCachedBodies();
+      if (cached) return cached;
     }
-    return super.readDocNoFromListApi(opts);
+    if (opts.refresh) {
+      await this.lightClearFilters();
+      const body = await this.fetchPendingListBody(12_000);
+      if (body) {
+        const docNo = this.extractDocNoFromBody(body);
+        if (docNo) return docNo;
+      }
+    }
+    const body = await this.fetchPendingListBody(8_000);
+    return body ? this.extractDocNoFromBody(body) : '';
+  }
+
+  override async pickFirstDocNo(): Promise<string> {
+    try {
+      return await super.pickFirstDocNo();
+    } catch {
+      const tbody = this.scope().locator('.ant-table-tbody').first();
+      const text = ((await tbody.innerText({ timeout: 5_000 }).catch(() => '')) || '').replace(/\s+/g, ' ');
+      const match = text.match(DOC_NO_RE) || text.match(/\b[A-Z]{2}\d{8,}\b/);
+      if (match?.[0]) return match[0];
+      const cached = this.docNoFromCachedBodies();
+      if (cached) return cached;
+      throw new Error('列表行中未解析到单号');
+    }
+  }
+
+  /** Golden / 现场取单号：选对页签后依次从行、缓存接口、刷新接口解析 */
+  async resolvePendingDocNo(): Promise<string> {
+    await this.ensurePendingReady();
+
+    const cached = this.docNoFromCachedBodies();
+    if (cached) return cached;
+
+    if (await this.hasDataRows()) {
+      const fromRow = await this.pickFirstDocNo().catch(() => '');
+      if (fromRow) return fromRow;
+    }
+
+    let docNo = await this.readDocNoFromListApi().catch(() => '');
+    if (docNo) return docNo;
+
+    const candidates = await this.collectPendingTabs();
+    const hasPositive = candidates.some((c) => (c.badge ?? 0) > 0);
+    for (const entry of candidates) {
+      if (this.shouldSkipPendingTab(entry, hasPositive)) continue;
+      await this.clickPendingSubTab(entry).catch(() => undefined);
+      await this.lightClearFilters();
+      docNo = this.docNoFromCachedBodies();
+      if (docNo) return docNo;
+      if (await this.hasDataRows()) {
+        docNo = await this.pickFirstDocNo().catch(() => '');
+        if (docNo) return docNo;
+      }
+      docNo = await this.readDocNoFromListApi({ refresh: true }).catch(() => '');
+      if (docNo) return docNo;
+    }
+    return '';
   }
 
   /** 筛选按钮是否带有已生效条件（如「筛选/2」） */
@@ -125,8 +305,12 @@ export class ApprovalListPage extends GenericListPage {
   /** 已在审批列表时还原筛选：先清筛选徽章 ×，再面板「清除筛选值」，最后清外露 */
   async resetFilterState(): Promise<void> {
     await this.closeFilterPanel().catch(() => undefined);
+    if (!(await this.hasDataRows()) && (await this.isOnSkippableEmptyPendingTab())) {
+      if (await this.ensurePendingReady()) return;
+    }
     await this.clearFilterTriggerBadge().catch(() => undefined);
     await this.resetBusinessType().catch(() => undefined);
+    if (await this.isOnSkippableEmptyPendingTab()) return;
     await this.clearFilterPanel().catch(() => undefined);
     if (await this.hasExposedClear()) {
       await this.clearExposedFilters().catch(() => undefined);
@@ -134,12 +318,134 @@ export class ApprovalListPage extends GenericListPage {
     await this.expectListReady();
   }
 
-  /** 列表因筛选为空时，走审批专用重置（不用通用 clearListQuery） */
-  override async recoverIfEmptyList(): Promise<boolean> {
+  private parseTabBadge(text: string): number | null {
+    const m = String(text || '').match(/\((\d+)\)\s*$/);
+    return m ? Number(m[1]) : null;
+  }
+
+  private pendingTabPriority(label: string): number {
+    if (/员工业务/.test(label)) return 4;
+    if (/待审批-全部/.test(label) || label === '全部') return 3;
+    if (/待审批-员工/.test(label)) return 3;
+    if (/对公业务/.test(label)) return 0;
+    return 1;
+  }
+
+  /** 待审批子页签（全部 / 员工 / 对公），排除顶层「待审批」主页签 */
+  private isPendingSubTab(normalized: string): boolean {
+    if (normalized === '待审批') return false;
+    if (/^待审批[-·]/.test(normalized)) return true;
+    return /^(员工业务|对公业务|全部)$/.test(normalized);
+  }
+
+  private shouldSkipPendingTab(
+    entry: { label: string; badge: number | null },
+    hasPositive: boolean,
+  ): boolean {
+    if (entry.badge === 0) return true;
+    if (hasPositive && /对公业务/.test(entry.label)) return true;
+    return false;
+  }
+
+  private async pendingSubTabBar(): Promise<Locator> {
+    const bars = this.scope().locator('.ant-tabs');
+    const n = await bars.count();
+    for (let i = 0; i < n; i += 1) {
+      const bar = bars.nth(i);
+      const text = ((await bar.innerText().catch(() => '')) || '').replace(/\s+/g, ' ');
+      if (/员工业务|对公业务|待审批-全部/.test(text)) return bar;
+    }
+    return this.scope().locator('.ant-tabs').last();
+  }
+
+  private async activePendingSubTab(): Promise<{ label: string; badge: number | null } | null> {
+    const bar = await this.pendingSubTabBar();
+    const active = bar.locator(`${TAB}.ant-tabs-tab-active`).first();
+    if (!(await active.isVisible({ timeout: 1_000 }).catch(() => false))) return null;
+    const raw = ((await active.innerText().catch(() => '')) || '').replace(/\s+/g, ' ');
+    const label = this.normalizeTabLabel(raw);
+    if (!this.isPendingSubTab(label)) return null;
+    return { label, badge: this.parseTabBadge(raw) };
+  }
+
+  private async isOnSkippableEmptyPendingTab(): Promise<boolean> {
+    const active = await this.activePendingSubTab();
+    if (!active) return false;
+    const candidates = await this.collectPendingTabs();
+    const hasPositive = candidates.some((c) => (c.badge ?? 0) > 0);
+    return this.shouldSkipPendingTab(active, hasPositive);
+  }
+
+  /** 轻量清筛选：徽章 × + 外露，不打开筛选面板 */
+  async lightClearFilters(): Promise<void> {
+    await this.clearFilterTriggerBadge().catch(() => undefined);
+    if (await this.hasExposedClear()) {
+      await this.clearExposedFilters().catch(() => undefined);
+    }
+    await this.waitListSettled();
+  }
+
+  private async collectPendingTabs(): Promise<{ tab: Locator; label: string; badge: number | null }[]> {
+    const bar = await this.pendingSubTabBar();
+    const tabs = bar.locator(TAB);
+    const n = await tabs.count();
+    const hits: { tab: Locator; label: string; badge: number | null }[] = [];
+    for (let i = 0; i < n; i += 1) {
+      const tab = tabs.nth(i);
+      const raw = ((await tab.innerText().catch(() => '')) || '').replace(/\s+/g, ' ');
+      const normalized = this.normalizeTabLabel(raw);
+      if (!this.isPendingSubTab(normalized)) continue;
+      hits.push({ tab, label: normalized, badge: this.parseTabBadge(raw) });
+    }
+    hits.sort((a, b) => {
+      const badgeDiff = (b.badge ?? -1) - (a.badge ?? -1);
+      if (badgeDiff !== 0) return badgeDiff;
+      return this.pendingTabPriority(b.label) - this.pendingTabPriority(a.label);
+    });
+    return hits;
+  }
+
+  private async clickPendingSubTab(entry: { tab: Locator; label: string }): Promise<void> {
+    await this.clickTab(entry.tab, LIST_API);
+    const active = await this.activePendingSubTab();
+    if (active && !this.tabLabelMatches(active.label, entry.label)) {
+      await entry.tab.click({ force: true });
+      await this.waitListSettled();
+    }
+  }
+
+  /**
+   * 待审批列表就绪：选对页签 + 清残留筛选 + 确认有数据行。
+   * Golden / 读单号 / 空列表恢复统一入口。
+   */
+  async ensurePendingReady(): Promise<boolean> {
     if (await this.hasDataRows()) return true;
-    await this.switchToPending().catch(() => undefined);
-    await this.resetFilterState().catch(() => undefined);
-    return this.hasDataRows();
+    await this.lightClearFilters();
+    if (await this.hasDataRows()) return true;
+
+    const candidates = await this.collectPendingTabs();
+    const hasPositive = candidates.some((c) => (c.badge ?? 0) > 0);
+
+    for (const entry of candidates) {
+      if (this.shouldSkipPendingTab(entry, hasPositive)) continue;
+      await this.clickPendingSubTab(entry).catch(() => undefined);
+      if (await this.hasDataRows()) return true;
+      await this.lightClearFilters();
+      if (await this.hasDataRows()) return true;
+
+      const needReset =
+        (await this.hasActiveFilterTrigger().catch(() => false)) || (await this.hasExposedClear());
+      if (needReset) {
+        await this.resetFilterState().catch(() => undefined);
+      }
+      if (await this.hasDataRows()) return true;
+    }
+    return false;
+  }
+
+  /** 列表因筛选为空时，走 ensurePendingReady */
+  override async recoverIfEmptyList(): Promise<boolean> {
+    return this.ensurePendingReady();
   }
 
   async switchToPending(): Promise<void> {
@@ -149,28 +455,103 @@ export class ApprovalListPage extends GenericListPage {
 
   // ---------- 页签切换 ----------
 
-  /** 切换到指定页签（待审批 / 已审批 / 抄送我 / 操作历史），支持子串匹配 */
-  async switchTab(tab: ApprovalTab | string): Promise<void> {
-    const tabEl = this.scope().locator(TAB).filter({ hasText: tab }).first();
-    await expect(tabEl, `未找到页签「${tab}」`).toBeVisible({ timeout: 20_000 });
+  private normalizeTabLabel(text: string): string {
+    return (text || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/\s*\(\d+\)\s*$/, '')
+      .replace(/\s*-\s*/g, '-')
+      .trim();
+  }
 
-    const apiHint = /已办|已审批/.test(String(tab))
-      ? '/api/approvals/approved'
-      : /抄送/.test(String(tab))
-        ? '/api/approvals/copiedToMe'
-        : LIST_API;
+  private compactTabLabel(text: string): string {
+    return this.normalizeTabLabel(text).replace(/[\s-]/g, '');
+  }
 
-    for (let i = 0; i < 4; i += 1) {
-      const respP = this.page.waitForResponse(
-        (r) => r.url().includes(apiHint) && r.request().method() === 'POST',
-        { timeout: 20_000 },
-      );
+  private tabLabelMatches(normalized: string, want: string): boolean {
+    if (normalized === want) return true;
+    if (this.compactTabLabel(normalized) === this.compactTabLabel(want)) return true;
+    if (want === TABS.pending && /^待审批[-·]*/.test(normalized) && /全部/.test(normalized)) {
+      return true;
+    }
+    if (want === TABS.pending && normalized === '全部') return true;
+    return false;
+  }
+
+  private isPendingTabLabel(label: string): boolean {
+    return String(label).trim() === TABS.pending;
+  }
+
+  private async findTab(label: string): Promise<Locator> {
+    const want = String(label).trim();
+    const wantNorm = this.normalizeTabLabel(want);
+    const sources: Locator[] = [];
+    if (this.isPendingSubTab(wantNorm) || (PENDING_TABS as readonly string[]).includes(want)) {
+      sources.push((await this.pendingSubTabBar()).locator(TAB));
+    }
+    sources.push(this.scope().locator(TAB));
+    for (const tabs of sources) {
+      const n = await tabs.count();
+      for (let i = 0; i < n; i += 1) {
+        const tab = tabs.nth(i);
+        const text = ((await tab.innerText().catch(() => '')) || '').replace(/\s+/g, ' ');
+        if (this.tabLabelMatches(this.normalizeTabLabel(text), want)) return tab;
+      }
+    }
+    throw new Error(`未找到页签「${want}」`);
+  }
+
+  /** 回到待审批区：优先角标 > 0 且非对公业务的子页签 */
+  private async findPendingTab(): Promise<Locator> {
+    const candidates = await this.collectPendingTabs();
+    const hasPositive = candidates.some((c) => (c.badge ?? 0) > 0);
+    const preferred = candidates.filter((c) => !this.shouldSkipPendingTab(c, hasPositive));
+    if (preferred.length) return preferred[0].tab;
+
+    let lastErr: unknown;
+    for (const name of PENDING_TABS) {
+      if (/对公业务/.test(name) && hasPositive) continue;
+      try {
+        return await this.findTab(name);
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    throw lastErr instanceof Error
+      ? lastErr
+      : new Error(`未找到待审批页签（尝试过 ${PENDING_TABS.join(' / ')}）`);
+  }
+
+  private async clickTab(tabEl: Locator, apiHint: string): Promise<void> {
+    await expect(tabEl).toBeVisible({ timeout: 15_000 });
+    for (let i = 0; i < 2; i += 1) {
+      const respP = this.waitListApi(8_000);
       await tabEl.click();
       const resp = await respP.catch(() => null);
-      if (resp && resp.status() === 200) break;
-      await this.page.waitForTimeout(3_000);
+      if (resp?.status() === 200) break;
+      if (i < 1) await this.page.waitForTimeout(800);
     }
     await this.waitListSettled();
+  }
+
+  private tabApiHint(tab: string): string {
+    if (/已办|已审批/.test(tab)) return '/api/approvals/approved';
+    if (/抄送/.test(tab)) return '/api/approvals/copiedToMe';
+    return LIST_API;
+  }
+
+  /** 切换到指定页签（待审批 / 已审批 / 抄送我 / 操作历史） */
+  async switchTab(tab: ApprovalTab | string): Promise<void> {
+    const label = String(tab);
+    const tabEl = this.isPendingTabLabel(label) ? await this.findPendingTab() : await this.findTab(label);
+    if (this.isPendingTabLabel(label)) {
+      await this.clickPendingSubTab({ tab: tabEl, label });
+    } else {
+      await this.clickTab(tabEl, this.tabApiHint(label));
+    }
+    if (this.isPendingTabLabel(label) && !(await this.hasDataRows())) {
+      await this.ensurePendingReady().catch(() => undefined);
+    }
   }
 
   // ---------- 搜索 ----------
@@ -207,6 +588,14 @@ export class ApprovalListPage extends GenericListPage {
     });
   }
 
+  /** Golden / 准备步骤：确保指定单号在待审批列表可见 */
+  async ensureRowVisible(code: string): Promise<void> {
+    await this.ensurePendingReady();
+    const row = this.rowByCode(code);
+    if (await row.isVisible({ timeout: 2_000 }).catch(() => false)) return;
+    await this.searchUntilRow(code);
+  }
+
   /** 新建提交后审批列表偶发索引延迟：多次搜索直到行出现 */
   async searchUntilRow(code: string, attempts = 4): Promise<void> {
     let lastErr: unknown;
@@ -217,6 +606,7 @@ export class ApprovalListPage extends GenericListPage {
           await this.goto();
           await this.expectLoaded();
         }
+        await this.ensurePendingReady();
         await this.search(code);
         await this.expectRowContains(code);
         return;

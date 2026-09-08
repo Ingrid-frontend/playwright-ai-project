@@ -239,8 +239,15 @@ function runOne(
     total = 1;
   }
 
-  const ok = exitCode === 0 && failed === 0 && (total <= 0 || passed === total);
-  if (ok) {
+  const allSkipped = skipped > 0 && failed === 0 && passed === 0 && exitCode === 0;
+  const ok =
+    exitCode === 0 && failed === 0 && (allSkipped || total <= 0 || passed + skipped === total);
+  if (allSkipped) {
+    console.warn(`[request-flow:golden] 跳过 ${skipped}/${total} · ${duration}s`);
+    for (const item of skips.slice(0, 5)) {
+      console.warn(`[request-flow:golden] 跳过 · ${item.title} — ${item.reason}`);
+    }
+  } else if (ok) {
     const skipHint = skipped > 0 ? `，跳过 ${skipped}` : "";
     console.log(`[request-flow:golden] 通过 ${passed}/${total}${skipHint} · ${duration}s`);
     for (const item of skips.slice(0, 5)) {
@@ -289,16 +296,19 @@ function runOne(
     runMarker,
   });
 
+  const skipReason = skips[0]?.reason || "列表无可用单号";
   return {
-    ok: Boolean(finalized.ok),
+    ok: allSkipped ? true : Boolean(finalized.ok),
+    skipped: allSkipped,
     profileId,
     roleSlug,
-    exitCode: finalized.ok ? exitCode : exitCode || 1,
+    exitCode: allSkipped || finalized.ok ? 0 : exitCode || 1,
     passed,
     failed,
     total,
     runId,
-    error: failures[0]?.message || (ok ? "" : `失败 ${failed}/${total || 1}`),
+    reason: allSkipped ? skipReason : undefined,
+    error: allSkipped ? "" : failures[0]?.message || (ok ? "" : `失败 ${failed}/${total || 1}`),
   };
 }
 

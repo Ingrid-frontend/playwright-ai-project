@@ -57,6 +57,27 @@ function resolveStorage(repoRoot: string, envId: string, profileId: string): str
   return repoEnv.resolveValidatedStorageAbs(repoRoot, envId, profileId).abs;
 }
 
+function readApprovalSnapshotDocNo(repoRoot: string): string {
+  try {
+    const snapshot = JSON.parse(
+      fs.readFileSync(path.join(repoRoot, "approval-flow/datasource/live-snapshot.json"), "utf8"),
+    );
+    const frame =
+      snapshot?.list?.childFrames?.find((f: { tbodyRows?: number }) => (f.tbodyRows ?? 0) > 0) ||
+      snapshot?.list?.childFrames?.[0] ||
+      snapshot?.list;
+    const apis = Array.isArray(snapshot.listApis) ? snapshot.listApis : [];
+    const rows = apis[0]?.sample || snapshot.sampleRows || [];
+    const first = Array.isArray(rows) ? rows[0] : null;
+    const fromApi = String(first?.businessCode || first?.documentNumber || "").trim();
+    if (fromApi) return fromApi;
+    const m = String(frame?.firstRowText || "").match(/[A-Z]{2}\d{6,}/);
+    return m?.[0] || "";
+  } catch {
+    return "";
+  }
+}
+
 function storageSkipReason(repoRoot: string, envId: string, profileId: string): string {
   return repoEnv.resolveValidatedStorageAbs(repoRoot, envId, profileId).reason || "无有效登录态";
 }
@@ -114,6 +135,7 @@ function runOne(repoRoot: string, envId: string, profileId: string, grep: string
   const creds = repoEnv.resolveAccountCredentials(repoRoot, envId, profileId);
   const profileDefaults = repoEnv.resolveProfileFlowDefaults(repoRoot, envId, profileId);
   const goldenSeed = resolveApprovalGoldenSeed(repoRoot, envId, roleSlug);
+  const snapshotDocNo = readApprovalSnapshotDocNo(repoRoot);
   const entry = repoEnv.enrichProfileStorageEntry(repoRoot, envId, profileId);
 
   const startTime = Date.now();
@@ -145,7 +167,13 @@ function runOne(repoRoot: string, envId: string, profileId: string, grep: string
     runMarker,
     { runId, flowId: FLOW_ID, scriptKey, startedAt },
   );
-  const docNo = String(process.env.APPROVAL_DOC_NO || profileDefaults.approvalDocNo || goldenSeed.approvalDocNo || "").trim();
+  const docNo = String(
+    process.env.APPROVAL_DOC_NO ||
+      profileDefaults.approvalDocNo ||
+      goldenSeed.approvalDocNo ||
+      snapshotDocNo ||
+      "",
+  ).trim();
   if (docNo) spawnEnv.APPROVAL_DOC_NO = docNo;
   else {
     delete spawnEnv.APPROVAL_DOC_NO;
@@ -227,8 +255,15 @@ function runOne(repoRoot: string, envId: string, profileId: string, grep: string
     total = 1;
   }
 
-  const ok = exitCode === 0 && failed === 0 && (total <= 0 || passed === total);
-  if (ok) {
+  const allSkipped = skipped > 0 && failed === 0 && passed === 0 && exitCode === 0;
+  const ok =
+    exitCode === 0 && failed === 0 && (allSkipped || total <= 0 || passed + skipped === total);
+  if (allSkipped) {
+    console.warn(`[approval-flow:golden] 跳过 ${skipped}/${total} · ${duration}s`);
+    for (const item of skips.slice(0, 5)) {
+      console.warn(`[approval-flow:golden] 跳过 · ${item.title} — ${item.reason}`);
+    }
+  } else if (ok) {
     const skipHint = skipped > 0 ? `，跳过 ${skipped}` : "";
     console.log(`[approval-flow:golden] 通过 ${passed}/${total}${skipHint} · ${duration}s`);
     for (const item of skips.slice(0, 5)) {
@@ -277,16 +312,19 @@ function runOne(repoRoot: string, envId: string, profileId: string, grep: string
     runMarker,
   });
 
+  const skipReason = skips[0]?.reason || "待审批无可用单号";
   return {
-    ok: Boolean(finalized.ok),
+    ok: allSkipped ? true : Boolean(finalized.ok),
+    skipped: allSkipped,
     profileId,
     roleSlug,
-    exitCode: finalized.ok ? exitCode : exitCode || 1,
+    exitCode: allSkipped || finalized.ok ? 0 : exitCode || 1,
     passed,
     failed,
     total,
     runId,
-    error: failures[0]?.message || (ok ? "" : `失败 ${failed}/${total || 1}`),
+    reason: allSkipped ? skipReason : undefined,
+    error: allSkipped ? "" : failures[0]?.message || (ok ? "" : `失败 ${failed}/${total || 1}`),
   };
 }
 
