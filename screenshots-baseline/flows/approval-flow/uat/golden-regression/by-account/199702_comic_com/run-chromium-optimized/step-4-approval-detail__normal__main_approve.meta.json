@@ -1,0 +1,64 @@
+{
+  "capturedAt": "2026-09-08T06:31:33.330Z",
+  "viewport": {
+    "name": "desktop",
+    "width": 1280,
+    "height": 720,
+    "deviceScaleFactor": 1
+  },
+  "imageWidth": 1280,
+  "imageHeight": 720,
+  "layout": {
+    "horizontalOverflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280
+  },
+  "domHash": "SEC|f623633e7f5fbcaa",
+  "sections": [
+    {
+      "key": "approval-detail-entrance",
+      "structureHash": "f623633e7f5fbcaa",
+      "textHash": "780efb292fe7abb7",
+      "nodeCount": 46,
+      "childTags": "DIV"
+    }
+  ],
+  "selectors": {
+    "approval-detail-entrance": {
+      "exists": true,
+      "bbox": {
+        "x": 0,
+        "y": 0,
+        "width": 1600,
+        "height": 900
+      },
+      "domHash": "f623633e7f5fbcaa",
+      "structureHash": "f623633e7f5fbcaa",
+      "textHash": "780efb292fe7abb7",
+      "resolvedBy": "selector",
+      "fingerprint": {
+        "tag": "DIV",
+        "stableAttributes": {
+          "id": "full-screen-id"
+        },
+        "textHint": "返回\n多个单据时，键盘↑↓键可以切换单据\n懿测试宏+01\n测试二级部门\n测试知会",
+        "xpath": "/html[1]/body[1]/div[14]/div[1]",
+        "fallbackSelectors": [
+          "#full-screen-id"
+        ],
+        "baselineRect": {
+          "x": 0,
+          "y": 0,
+          "width": 1600,
+          "height": 900
+        },
+        "baselinePageWidth": 1600,
+        "baselinePageHeight": 900
+      }
+    }
+  },
+  "consoleErrors": [],
+  "pageErrors": [],
+  "snapshotName": "approval-detail",
+  "state": "normal"
+}

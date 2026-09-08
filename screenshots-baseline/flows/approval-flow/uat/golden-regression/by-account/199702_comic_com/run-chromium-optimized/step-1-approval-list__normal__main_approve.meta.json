@@ -1,0 +1,95 @@
+{
+  "capturedAt": "2026-09-08T06:30:35.792Z",
+  "viewport": {
+    "name": "desktop",
+    "width": 1280,
+    "height": 720,
+    "deviceScaleFactor": 1
+  },
+  "imageWidth": 1280,
+  "imageHeight": 720,
+  "layout": {
+    "horizontalOverflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280
+  },
+  "domHash": "SEC|fce09f3f9051733b",
+  "sections": [
+    {
+      "key": "approval-list-root",
+      "structureHash": "fce09f3f9051733b",
+      "textHash": "9d13985a88fbacdc",
+      "nodeCount": 138,
+      "childTags": "DIV"
+    },
+    {
+      "key": "approval-list-table",
+      "structureHash": "6221b3a052d4e2f5",
+      "textHash": "a0a1af6ae4f1e018",
+      "nodeCount": 288,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV,DIV,DIV,DIV"
+    }
+  ],
+  "selectors": {
+    "approval-list-root": {
+      "exists": true,
+      "bbox": {
+        "x": 180,
+        "y": 84,
+        "width": 1420,
+        "height": 816
+      },
+      "domHash": "fce09f3f9051733b",
+      "structureHash": "fce09f3f9051733b",
+      "textHash": "9d13985a88fbacdc",
+      "resolvedBy": "selector",
+      "fingerprint": {
+        "tag": "DIV",
+        "stableAttributes": {},
+        "textHint": "待审批-全部 (2)\n对公业务 (0)\n员工业务 (2)\n已审批抄送我\n操作历史",
+        "xpath": "/html[1]/body[1]/div[1]/div[1]/div[1]/main[1]/span[1]/div[1]",
+        "fallbackSelectors": [],
+        "baselineRect": {
+          "x": 180,
+          "y": 84,
+          "width": 1420,
+          "height": 816
+        },
+        "baselinePageWidth": 1600,
+        "baselinePageHeight": 900
+      }
+    },
+    "approval-list-table": {
+      "exists": true,
+      "bbox": {
+        "x": 212,
+        "y": 246,
+        "width": 1356,
+        "height": 126
+      },
+      "domHash": "6221b3a052d4e2f5",
+      "structureHash": "6221b3a052d4e2f5",
+      "textHash": "a0a1af6ae4f1e018",
+      "resolvedBy": "selector",
+      "fingerprint": {
+        "tag": "DIV",
+        "stableAttributes": {},
+        "textHint": "+\t\n\t\n申请人\n\t\n单号\n\t\n提交日期\n\t\n单据名称\n\t\n单据公司\n\t\n事由\n",
+        "xpath": "/html[1]/body[1]/div[1]/div[1]/div[1]/main[1]/span[1]/div[1]/div[1]/div[2]/div[1]/div[1]/div[2]/div[1]/div[1]/div[1]/div[1]/div[1]",
+        "fallbackSelectors": [],
+        "baselineRect": {
+          "x": 212,
+          "y": 246,
+          "width": 1356,
+          "height": 126
+        },
+        "baselinePageWidth": 1600,
+        "baselinePageHeight": 900
+      }
+    }
+  },
+  "consoleErrors": [],
+  "pageErrors": [],
+  "snapshotName": "approval-list",
+  "state": "normal"
+}

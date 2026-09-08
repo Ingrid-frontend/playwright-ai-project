@@ -1,0 +1,64 @@
+{
+  "capturedAt": "2026-09-08T02:17:23.827Z",
+  "viewport": {
+    "name": "desktop",
+    "width": 1280,
+    "height": 720,
+    "deviceScaleFactor": 1
+  },
+  "imageWidth": 1280,
+  "imageHeight": 720,
+  "layout": {
+    "horizontalOverflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280
+  },
+  "domHash": "SEC|9ab6717ad08674c7",
+  "sections": [
+    {
+      "key": "approval-detail-entrance",
+      "structureHash": "9ab6717ad08674c7",
+      "textHash": "567b1eae971be4a1",
+      "nodeCount": 125,
+      "childTags": "DIV"
+    }
+  ],
+  "selectors": {
+    "approval-detail-entrance": {
+      "exists": true,
+      "bbox": {
+        "x": 0,
+        "y": 0,
+        "width": 1600,
+        "height": 900
+      },
+      "domHash": "9ab6717ad08674c7",
+      "structureHash": "9ab6717ad08674c7",
+      "textHash": "567b1eae971be4a1",
+      "resolvedBy": "selector",
+      "fingerprint": {
+        "tag": "DIV",
+        "stableAttributes": {
+          "id": "full-screen-id"
+        },
+        "textHint": "返回\n多个单据时，键盘↑↓键可以切换单据\n张曼曼\n董事会|管理本部|财务部|财务",
+        "xpath": "/html[1]/body[1]/div[12]/div[1]",
+        "fallbackSelectors": [
+          "#full-screen-id"
+        ],
+        "baselineRect": {
+          "x": 0,
+          "y": 0,
+          "width": 1600,
+          "height": 900
+        },
+        "baselinePageWidth": 1600,
+        "baselinePageHeight": 900
+      }
+    }
+  },
+  "consoleErrors": [],
+  "pageErrors": [],
+  "snapshotName": "approval-detail",
+  "state": "normal"
+}

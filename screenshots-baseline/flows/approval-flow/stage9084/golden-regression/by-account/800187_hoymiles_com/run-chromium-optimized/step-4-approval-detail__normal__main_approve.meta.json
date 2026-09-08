@@ -1,0 +1,64 @@
+{
+  "capturedAt": "2026-09-08T02:18:36.759Z",
+  "viewport": {
+    "name": "desktop",
+    "width": 1280,
+    "height": 720,
+    "deviceScaleFactor": 1
+  },
+  "imageWidth": 1280,
+  "imageHeight": 720,
+  "layout": {
+    "horizontalOverflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280
+  },
+  "domHash": "SEC|818cd52837960edf",
+  "sections": [
+    {
+      "key": "approval-detail-entrance",
+      "structureHash": "818cd52837960edf",
+      "textHash": "2f88bc233d5c84d3",
+      "nodeCount": 215,
+      "childTags": "DIV"
+    }
+  ],
+  "selectors": {
+    "approval-detail-entrance": {
+      "exists": true,
+      "bbox": {
+        "x": 0,
+        "y": 0,
+        "width": 1600,
+        "height": 900
+      },
+      "domHash": "818cd52837960edf",
+      "structureHash": "818cd52837960edf",
+      "textHash": "2f88bc233d5c84d3",
+      "resolvedBy": "selector",
+      "fingerprint": {
+        "tag": "DIV",
+        "stableAttributes": {
+          "id": "full-screen-id"
+        },
+        "textHint": "返回\n多个单据时，键盘↑↓键可以切换单据\n简诗怡\n杭州禾迈电力电子股份有限公司|",
+        "xpath": "/html[1]/body[1]/div[12]/div[1]",
+        "fallbackSelectors": [
+          "#full-screen-id"
+        ],
+        "baselineRect": {
+          "x": 0,
+          "y": 0,
+          "width": 1600,
+          "height": 900
+        },
+        "baselinePageWidth": 1600,
+        "baselinePageHeight": 900
+      }
+    }
+  },
+  "consoleErrors": [],
+  "pageErrors": [],
+  "snapshotName": "approval-detail",
+  "state": "normal"
+}

@@ -1,0 +1,64 @@
+{
+  "capturedAt": "2026-09-08T02:17:54.057Z",
+  "viewport": {
+    "name": "desktop",
+    "width": 1280,
+    "height": 720,
+    "deviceScaleFactor": 1
+  },
+  "imageWidth": 1280,
+  "imageHeight": 720,
+  "layout": {
+    "horizontalOverflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280
+  },
+  "domHash": "SEC|d8b8caab7cf12237",
+  "sections": [
+    {
+      "key": "approval-detail-entrance",
+      "structureHash": "d8b8caab7cf12237",
+      "textHash": "f459544f96297466",
+      "nodeCount": 52,
+      "childTags": "DIV"
+    }
+  ],
+  "selectors": {
+    "approval-detail-entrance": {
+      "exists": true,
+      "bbox": {
+        "x": 0,
+        "y": 0,
+        "width": 1600,
+        "height": 900
+      },
+      "domHash": "d8b8caab7cf12237",
+      "structureHash": "d8b8caab7cf12237",
+      "textHash": "f459544f96297466",
+      "resolvedBy": "selector",
+      "fingerprint": {
+        "tag": "DIV",
+        "stableAttributes": {
+          "id": "full-screen-id"
+        },
+        "textHint": "返回\n多个单据时，键盘↑↓键可以切换单据\n张艳华\n江苏省精创电气股份有限公司（手",
+        "xpath": "/html[1]/body[1]/div[11]/div[1]",
+        "fallbackSelectors": [
+          "#full-screen-id"
+        ],
+        "baselineRect": {
+          "x": 0,
+          "y": 0,
+          "width": 1600,
+          "height": 900
+        },
+        "baselinePageWidth": 1600,
+        "baselinePageHeight": 900
+      }
+    }
+  },
+  "consoleErrors": [],
+  "pageErrors": [],
+  "snapshotName": "approval-detail",
+  "state": "normal"
+}
