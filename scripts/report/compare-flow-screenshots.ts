@@ -40,6 +40,7 @@ import { isCompareCrossBrowserEnabled } from './compare-screenshots-engine.js';
 import { appendHistorySnapshot } from './ui-regression-history.js';
 import { writeUiCompareCache, FLOW_UI_COMPARE_CACHE_FILE } from './ui-compare-cache.js';
 import { writeQualityDashboard } from './generate-quality-dashboard.js';
+import { writeBitableIfAuto } from '../feishu/bitable-auto.js';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
@@ -195,6 +196,16 @@ async function main() {
     } catch (err) {
       console.warn(`   质量看板生成跳过: ${(err as Error).message}`);
     }
+  }
+
+  try {
+    const blocker = issuesReport.summary.comparisonBlocker ?? issuesReport.summary.blocker ?? 0;
+    await writeBitableIfAuto({
+      env: process.env.PLAYWRIGHT_ENV,
+      status: blocker > 0 ? 'failed' : 'success',
+    });
+  } catch (err) {
+    console.warn(`   飞书多维表同步跳过: ${(err as Error).message}`);
   }
 
   if (gateMode && gateShouldFail(issuesReport)) {

@@ -99,10 +99,12 @@ export class BitableClient {
     return `https://open.feishu.cn/open-apis/bitable/v1/apps/${this.config.appToken}${suffix}`;
   }
 
-  async listFields(tableId: string): Promise<Array<{ field_id: string; field_name: string; type: number }>> {
-    const data = await this.request<{ items?: Array<{ field_id: string; field_name: string; type: number }> }>(
-      this.tableUrl(tableId, '/fields?page_size=500'),
-    );
+  async listFields(
+    tableId: string,
+  ): Promise<Array<{ field_id: string; field_name: string; type: number; property?: Record<string, unknown> }>> {
+    const data = await this.request<{
+      items?: Array<{ field_id: string; field_name: string; type: number; property?: Record<string, unknown> }>;
+    }>(this.tableUrl(tableId, '/fields?page_size=500'));
     return data.items ?? [];
   }
 
@@ -126,6 +128,24 @@ export class BitableClient {
   async deleteField(tableId: string, fieldId: string): Promise<void> {
     await this.request<unknown>(this.tableUrl(tableId, `/fields/${fieldId}`), {
       method: 'DELETE',
+    });
+  }
+
+  async updateField(
+    tableId: string,
+    fieldId: string,
+    spec: { name: string; type: number; property?: Record<string, unknown> },
+  ): Promise<void> {
+    const body: Record<string, unknown> = {
+      field_name: spec.name,
+      type: spec.type,
+    };
+    if (spec.property && Object.keys(spec.property).length > 0) {
+      body.property = spec.property;
+    }
+    await this.request<unknown>(this.tableUrl(tableId, `/fields/${fieldId}`), {
+      method: 'PUT',
+      body: JSON.stringify(body),
     });
   }
 

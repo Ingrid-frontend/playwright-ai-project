@@ -14,7 +14,7 @@ import {
 } from './job-lock.js';
 import { readUiIssuesSummaryLine, sendJobFeishuNotification, readUiIssuesSummaryCounts, buildJobFailReasons } from './job-notify.js';
 import { getAnalyzeErrorsSummary, runAnalyzeErrorsOnFailure } from '../flow/flow-shared.js';
-import { writeBitableReport } from '../feishu/write-bitable-report.js';
+import { writeBitableIfAuto } from '../feishu/bitable-auto.js';
 import { writeQualityDashboard } from '../report/generate-quality-dashboard.js';
 import {
   formatRunId,
@@ -363,10 +363,10 @@ export async function runDirect(opts: DirectRunOptions, ctx: JobRunContext): Pro
     failReasons,
   };
 
-  if (opts.steps.writeFeishuBitable) {
+  if (opts.steps.writeFeishuBitable && compareSkipped) {
     try {
       const finalStatus: JobRunStatus = aborted ? 'aborted' : flowAllOk ? 'success' : 'failed';
-      await writeBitableReport({ summary, env: runtimeEnv, status: finalStatus });
+      await writeBitableIfAuto({ summary, env: runtimeEnv, status: finalStatus });
     } catch (error) {
       console.log('⚠️  飞书多维表写入失败（不影响任务流程）:', error instanceof Error ? error.message : String(error));
     }

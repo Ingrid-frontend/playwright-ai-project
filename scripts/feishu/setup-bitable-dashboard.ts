@@ -22,7 +22,11 @@ import {
   loadBitableRuntimeConfig,
 } from './index.js';
 
-dotenv.config();
+import {
+  BITABLE_COMPARE_KIND_OPTIONS,
+  BITABLE_SEVERITY_OPTIONS,
+  BITABLE_STATUS_OPTIONS,
+} from './bitable-display.js';
 
 type FieldSpec = {
   name: string;
@@ -40,7 +44,7 @@ const RUN_SPECS: FieldSpec[] = [
   { name: RUN_FIELDS.env, type: FIELD_TYPE.singleSelect, property: { options: BITABLE_ENV_OPTIONS } },
   { name: RUN_FIELDS.trigger, type: FIELD_TYPE.text },
   { name: RUN_FIELDS.executedAt, type: FIELD_TYPE.dateTime, property: { date_formatter: 'yyyy/MM/dd HH:mm', auto_fill: false } },
-  { name: RUN_FIELDS.status, type: FIELD_TYPE.singleSelect, property: { options: [{ name: 'success' }, { name: 'failed' }, { name: 'aborted' }, { name: 'skipped' }] } },
+  { name: RUN_FIELDS.status, type: FIELD_TYPE.singleSelect, property: { options: BITABLE_STATUS_OPTIONS } },
   { name: RUN_FIELDS.testPassed, type: FIELD_TYPE.checkbox },
   { name: RUN_FIELDS.comparePassed, type: FIELD_TYPE.checkbox },
   { name: RUN_FIELDS.compareSkipped, type: FIELD_TYPE.checkbox },
@@ -70,11 +74,12 @@ function buildIssueSpecs(runTableId?: string): FieldSpec[] {
     { name: ISSUE_FIELDS.runRecordUrl, type: FIELD_TYPE.url },
     { name: ISSUE_FIELDS.issueId, type: FIELD_TYPE.text },
     { name: ISSUE_FIELDS.scriptKey, type: FIELD_TYPE.text },
+    { name: ISSUE_FIELDS.scriptShort, type: FIELD_TYPE.text },
     { name: ISSUE_FIELDS.stepNumber, type: FIELD_TYPE.number, property: { formatter: '0' } },
     { name: ISSUE_FIELDS.stepName, type: FIELD_TYPE.text },
     { name: ISSUE_FIELDS.browser, type: FIELD_TYPE.singleSelect, property: { options: [{ name: 'chrome' }, { name: 'webkit' }, { name: 'firefox' }] } },
-    { name: ISSUE_FIELDS.compareKind, type: FIELD_TYPE.singleSelect, property: { options: [{ name: 'golden' }, { name: 'last-green' }, { name: 'cross-browser' }, { name: 'run-drift' }] } },
-    { name: ISSUE_FIELDS.severity, type: FIELD_TYPE.singleSelect, property: { options: [{ name: 'blocker' }, { name: 'warning' }, { name: 'noise' }] } },
+    { name: ISSUE_FIELDS.compareKind, type: FIELD_TYPE.singleSelect, property: { options: BITABLE_COMPARE_KIND_OPTIONS } },
+    { name: ISSUE_FIELDS.severity, type: FIELD_TYPE.singleSelect, property: { options: BITABLE_SEVERITY_OPTIONS } },
     { name: ISSUE_FIELDS.differencePercent, type: FIELD_TYPE.number, property: { formatter: '0.00' } },
     { name: ISSUE_FIELDS.route, type: FIELD_TYPE.text },
     { name: ISSUE_FIELDS.isNewRegression, type: FIELD_TYPE.checkbox },
@@ -96,6 +101,7 @@ const FEEDBACK_SPECS: FieldSpec[] = FEEDBACK_FIELD_SPECS;
 const DAILY_SPECS: FieldSpec[] = [
   { name: DAILY_FIELDS.summaryKey, type: FIELD_TYPE.text },
   { name: DAILY_FIELDS.date, type: FIELD_TYPE.dateTime, property: { date_formatter: 'yyyy/MM/dd', auto_fill: false } },
+  { name: DAILY_FIELDS.dateText, type: FIELD_TYPE.text },
   { name: DAILY_FIELDS.env, type: FIELD_TYPE.singleSelect, property: { options: BITABLE_ENV_OPTIONS } },
   { name: DAILY_FIELDS.jobId, type: FIELD_TYPE.text },
   { name: DAILY_FIELDS.runCount, type: FIELD_TYPE.number, property: { formatter: '0' } },
@@ -115,67 +121,65 @@ const DAILY_SPECS: FieldSpec[] = [
 
 const DASHBOARD_CHARTS = [
   {
-    title: '① 日汇总 · Blocker / Warning 趋势',
-    table: '日汇总',
-    type: '折线图',
-    x: 'date',
-    y: ['blocker_count', 'warning_count'],
-    filter: 'env = stage',
-  },
-  {
-    title: '② 日汇总 · UI 通过率（%）',
-    table: '日汇总',
-    type: '折线图',
-    x: 'date',
-    y: ['pass_rate'],
-    filter: 'env = stage',
-  },
-  {
-    title: '③ 执行记录 · 最近运行状态',
-    table: '执行记录',
-    type: '表格',
-    cols: ['executed_at', 'status', 'blocker_count', 'warning_count', 'report_url'],
-    sort: 'executed_at 降序',
-    limit: 10,
-  },
-  {
-    title: '④ 问题明细 · 严重度分布',
-    table: '问题明细',
-    type: '饼图',
-    dim: 'severity',
-    metric: '记录数',
-  },
-  {
-    title: '⑤ 问题明细 · 脚本 TOP10',
-    table: '问题明细',
-    type: '柱状图',
-    dim: 'script_key',
-    metric: '记录数',
-    filter: 'severity = blocker',
-    limit: 10,
-  },
-  {
-    title: '⑥ 问题明细 · 跳转执行记录',
-    table: '问题明细',
-    type: '表格',
-    cols: ['severity', 'script_key', 'run_record', 'run_record_url', 'ai_doc_url'],
-    sort: 'severity 降序',
-    limit: 20,
-  },
-  {
-    title: '⑦ 问题明细 · 对比类型',
-    table: '问题明细',
-    type: '柱状图',
-    dim: 'compare_kind',
-    metric: '记录数',
-  },
-  {
-    title: '⑧ KPI · 最新 Blocker 数',
+    title: '① KPI · 当前 UI 通过率',
     table: '日汇总',
     type: '数字卡',
-    metric: 'blocker_count',
+    metric: 'UI通过率',
     agg: '最新值',
+    filter: '环境 = uat',
+    note: '纵轴 0–100，表示对比项通过率',
   },
+  {
+    title: '② KPI · 当前阻断问题',
+    table: '日汇总',
+    type: '数字卡',
+    metric: '阻断问题',
+    agg: '最新值',
+    filter: '环境 = uat',
+  },
+  {
+    title: '③ 趋势 · 阻断 / 警告（按天）',
+    table: '日汇总',
+    type: '折线图',
+    x: '日期文本',
+    y: ['阻断问题', '警告问题'],
+    filter: '环境 = uat',
+    note: '横轴用「日期文本」，不要用「日期」时间字段（飞书折线图常不显示）',
+  },
+  {
+    title: '④ 趋势 · UI 通过率（按天）',
+    table: '日汇总',
+    type: '折线图',
+    x: '日期文本',
+    y: ['UI通过率'],
+    filter: '环境 = uat',
+    note: '横轴用「日期文本」；指标可用最大值或平均值',
+  },
+  {
+    title: '⑤ 最近执行',
+    table: '执行记录',
+    type: '表格',
+    cols: ['执行时间', '状态', '阻断问题', '警告问题', 'UI通过率', '报告链接'],
+    sort: '执行时间 降序',
+    limit: 8,
+    note: '「UI通过率」列若无可删，以日汇总为准',
+  },
+  {
+    title: '⑥ 待处理问题（明细）',
+    table: '问题明细',
+    type: '表格',
+    cols: ['严重度', '脚本简称', '步骤名', '对比类型', '差异%', '关联执行', 'AI分析'],
+    sort: '严重度 降序',
+    limit: 15,
+    filter: '严重度 = 阻断 或 严重度 = 警告',
+  },
+];
+
+const DASHBOARD_AVOID = [
+  '不要用「执行记录」的执行时间做趋势图（一次回填会挤在一个点，看不清）',
+  '不要同时放 3 个饼图/柱状图（严重度、对比类型、脚本 TOP 信息重复）',
+  'Blocker TOP 脚本请用维度「脚本简称」，不要用完整「脚本」路径',
+  '筛选环境要与 .env 的 PLAYWRIGHT_ENV 一致（当前多为 uat）',
 ];
 
 async function main(): Promise<void> {
@@ -250,13 +254,17 @@ async function main(): Promise<void> {
     if ('sort' in chart && chart.sort) console.log(`   排序：${chart.sort}`);
     if ('limit' in chart && chart.limit) console.log(`   条数：${chart.limit}`);
     if ('agg' in chart && chart.agg) console.log(`   聚合：${chart.agg}`);
+    if ('note' in chart && chart.note) console.log(`   说明：${chart.note}`);
     console.log('');
   }
 
+  console.log('── 建议删除或替换的图表 ──\n');
+  for (const item of DASHBOARD_AVOID) {
+    console.log(`   · ${item}`);
+  }
   console.log('3. 保存后复制仪表盘 URL（含 blk 开头 block_id）到 FEISHU_BITABLE_DASHBOARD_URL');
-  console.log('4. pass_rate 旧 0/1 数据可执行: npm run feishu:bitable-maintain -- --apply');
-  console.log('5. issue 废弃列（baseline_path 等）同上脚本自动删除');
-  console.log('6. 重新 npm run feishu:bitable 写入数据，卡片/报告链接会指向该看板\n');
+  console.log('4. 列名/字段: npm run feishu:bitable-setup -- --fix-fields && npm run feishu:bitable');
+  console.log('5. 历史趋势: npm run feishu:bitable-backfill -- --apply\n');
 }
 
 function buildDashboardUrl(appToken: string, blockId: string): string {

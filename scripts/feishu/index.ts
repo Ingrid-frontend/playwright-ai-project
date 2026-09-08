@@ -12,6 +12,18 @@ export {
 export type { FeishuAppConfig, FeishuNotifyPayload } from './feishu-app.js';
 export { BitableClient } from './bitable-client.js';
 export type { BitableFieldValue, BitableRecordFields, BitableUpsertResult, BitableAttachment } from './bitable-client.js';
+export { ensureBitableFields, isAutoBitableEnabled, writeBitableIfAuto } from './bitable-auto.js';
+export {
+  formatCompareKindLabel,
+  formatScriptLabel,
+  formatSeverityLabel,
+  formatStatusLabel,
+  BITABLE_COMPARE_KIND_OPTIONS,
+  BITABLE_SEVERITY_OPTIONS,
+  BITABLE_STATUS_OPTIONS,
+} from './bitable-display.js';
+export { writeBitableReport, calcUiPassRate, buildDailySummaryFromSnapshot, buildRunFieldsFromSnapshot } from './write-bitable-report.js';
+export type { BitableWriteInput, BitableWriteResult } from './write-bitable-report.js';
 export {
   FEISHU_MEDIA_CACHE_FILE,
   fileSignature,
@@ -37,6 +49,10 @@ export {
   RUN_FIELDS,
   ISSUE_FIELDS,
   ISSUE_DEPRECATED_FIELDS,
+  RUN_FIELD_RENAMES,
+  ISSUE_FIELD_RENAMES,
+  DAILY_FIELD_RENAMES,
+  FEEDBACK_FIELD_RENAMES,
   FEEDBACK_FIELDS,
   FEEDBACK_FIELD_SPECS,
   BITABLE_ENV_OPTIONS,

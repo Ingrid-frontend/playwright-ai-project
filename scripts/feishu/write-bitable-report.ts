@@ -3,6 +3,12 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
+import {
+  formatCompareKindLabel,
+  formatScriptLabel,
+  formatSeverityLabel,
+  formatStatusLabel,
+} from './bitable-display.js';
 import { BitableClient, type BitableFieldValue, type BitableRecordFields } from './bitable-client.js';
 import {
   BITABLE_RESULT_FILE,
@@ -18,6 +24,7 @@ import type { JobSummaryFile } from '../jobs/job-lock.js';
 import type { UiIssue, UiIssuesReport } from '../report/ui-issues-index.js';
 import { writeFeedbackDocsFromReport } from '../report/ui-feedback-doc.js';
 import { isFlowIssuesSource, readIssuesReport, resolveIssuesSource } from '../report/issues-source.js';
+import type { HistorySnapshot } from '../report/ui-regression-history.js';
 import {
   buildScriptSummaryFromIssues,
   readHistorySnapshotForDate,
@@ -26,13 +33,13 @@ import {
 
 dotenv.config();
 
-type BitableWriteInput = {
+export type BitableWriteInput = {
   summary?: JobSummaryFile;
   env?: string;
   status?: 'success' | 'failed' | 'aborted' | 'skipped';
 };
 
-type BitableWriteResult = {
+export type BitableWriteResult = {
   skipped: boolean;
   executionId?: string;
   runRecordId?: string;
@@ -126,7 +133,11 @@ export async function writeBitableReport(input: BitableWriteInput = {}): Promise
   return output;
 }
 
-function calcUiPassRate(summary?: UiIssuesReport['summary']): number {
+export function buildDailySummaryKey(date: string, env: string): string {
+  return `${date}|${env}`;
+}
+
+export function calcUiPassRate(summary?: UiIssuesReport['summary']): number {
   if (!summary) return 100;
   const cmpTotal = summary.comparisonTotal ?? summary.total ?? 0;
   const cmpBlocker = summary.comparisonBlocker ?? summary.blocker ?? 0;
@@ -190,7 +201,7 @@ function buildRunFields(input: {
     [RUN_FIELDS.env]: env,
     [RUN_FIELDS.trigger]: summary.trigger,
     [RUN_FIELDS.executedAt]: Date.parse(generatedAt),
-    [RUN_FIELDS.status]: status,
+    [RUN_FIELDS.status]: formatStatusLabel(status),
     [RUN_FIELDS.testPassed]: summary.testPassed,
     [RUN_FIELDS.comparePassed]: summary.comparePassed,
     [RUN_FIELDS.compareSkipped]: summary.compareSkipped,
@@ -232,11 +243,12 @@ function buildIssueFields(
     [ISSUE_FIELDS.runRecordUrl]: toUrlField(runRecordUrl),
     [ISSUE_FIELDS.issueId]: issue.issueId,
     [ISSUE_FIELDS.scriptKey]: issue.scriptKey,
+    [ISSUE_FIELDS.scriptShort]: formatScriptLabel(issue.scriptKey),
     [ISSUE_FIELDS.stepNumber]: issue.stepNumber,
     [ISSUE_FIELDS.stepName]: issue.stepName,
     [ISSUE_FIELDS.browser]: issue.browser,
-    [ISSUE_FIELDS.compareKind]: issue.compareKind,
-    [ISSUE_FIELDS.severity]: issue.severity,
+    [ISSUE_FIELDS.compareKind]: formatCompareKindLabel(issue.compareKind),
+    [ISSUE_FIELDS.severity]: formatSeverityLabel(issue.severity),
     [ISSUE_FIELDS.differencePercent]: Number((issue.difference * 100).toFixed(4)),
     [ISSUE_FIELDS.route]: issue.route,
     [ISSUE_FIELDS.isNewRegression]: Boolean(issue.isNewRegression),
@@ -277,12 +289,31 @@ function buildDailySummaryFields(input: {
   const history = readHistorySnapshotForDate(date);
   const previous = readPreviousHistorySnapshot(date);
   const currentSummary = issuesReport?.summary ?? history?.summary;
-  const previousSummary = previous?.summary;
-  const byScript = history?.byScript ?? buildScriptSummaryFromIssues(issuesReport?.issues ?? []);
+  return buildDailySummaryFromSnapshot({
+    date,
+    env,
+    jobId: summary.jobId,
+    status: resolveStatus(summary),
+    currentSummary,
+    previousSummary: previous?.summary,
+    byScript: history?.byScript ?? buildScriptSummaryFromIssues(issuesReport?.issues ?? []),
+  });
+}
+
+export function buildDailySummaryFromSnapshot(input: {
+  date: string;
+  env: string;
+  jobId: string;
+  status: 'success' | 'failed' | 'aborted' | 'skipped';
+  currentSummary?: UiIssuesReport['summary'];
+  previousSummary?: UiIssuesReport['summary'];
+  byScript?: HistorySnapshot['byScript'];
+}) {
+  const { date, env, jobId, status, currentSummary, previousSummary, byScript = {} } = input;
   const worstScript = Object.entries(byScript).sort((a, b) => b[1].avgDifference - a[1].avgDifference)[0];
   const worstRoute = topEntry(currentSummary?.byRoute);
-  const successCount = resolveStatus(summary) === 'success' ? 1 : 0;
-  const failedCount = resolveStatus(summary) === 'failed' || resolveStatus(summary) === 'aborted' ? 1 : 0;
+  const successCount = status === 'success' ? 1 : 0;
+  const failedCount = status === 'failed' || status === 'aborted' ? 1 : 0;
   const blockerCount = currentSummary?.comparisonBlocker ?? currentSummary?.blocker ?? 0;
   const warningCount = currentSummary?.comparisonWarning ?? currentSummary?.warning ?? 0;
   const totalIssues = currentSummary?.comparisonTotal ?? currentSummary?.total ?? 0;
@@ -290,10 +321,11 @@ function buildDailySummaryFields(input: {
   const prevWarning = previousSummary?.comparisonWarning ?? previousSummary?.warning ?? 0;
   const prevTotal = previousSummary?.comparisonTotal ?? previousSummary?.total ?? 0;
   return {
-    [DAILY_FIELDS.summaryKey]: `${date}|${env}|${summary.jobId}`,
+    [DAILY_FIELDS.summaryKey]: buildDailySummaryKey(date, env),
     [DAILY_FIELDS.date]: Date.parse(`${date}T00:00:00+08:00`),
+    [DAILY_FIELDS.dateText]: date,
     [DAILY_FIELDS.env]: env,
-    [DAILY_FIELDS.jobId]: summary.jobId,
+    [DAILY_FIELDS.jobId]: jobId,
     [DAILY_FIELDS.runCount]: 1,
     [DAILY_FIELDS.successCount]: successCount,
     [DAILY_FIELDS.failedCount]: failedCount,
@@ -310,6 +342,50 @@ function buildDailySummaryFields(input: {
   };
 }
 
+export function buildRunFieldsFromSnapshot(input: {
+  snapshot: HistorySnapshot;
+  env: string;
+  jobId: string;
+  executionId: string;
+  status: 'success' | 'failed' | 'aborted' | 'skipped';
+  issuesSource: string | null;
+}) {
+  const { snapshot, env, jobId, executionId, status, issuesSource } = input;
+  const summary = snapshot.summary;
+  const compareKind = summary.byCompareKind ?? {};
+  const blockerCount = summary.comparisonBlocker ?? summary.blocker ?? 0;
+  const warningCount = summary.comparisonWarning ?? summary.warning ?? 0;
+  const totalIssues = summary.comparisonTotal ?? summary.total ?? 0;
+  return {
+    [RUN_FIELDS.executionId]: executionId,
+    [RUN_FIELDS.jobId]: jobId,
+    [RUN_FIELDS.env]: env,
+    [RUN_FIELDS.trigger]: 'history-backfill',
+    [RUN_FIELDS.executedAt]: Date.parse(snapshot.generatedAt),
+    [RUN_FIELDS.status]: formatStatusLabel(status),
+    [RUN_FIELDS.testPassed]: status === 'success',
+    [RUN_FIELDS.comparePassed]: blockerCount === 0,
+    [RUN_FIELDS.compareSkipped]: false,
+    [RUN_FIELDS.totalSpecs]: 0,
+    [RUN_FIELDS.executedCount]: 0,
+    [RUN_FIELDS.successCount]: status === 'success' ? 1 : 0,
+    [RUN_FIELDS.failCount]: status === 'failed' ? 1 : 0,
+    [RUN_FIELDS.blockerCount]: blockerCount,
+    [RUN_FIELDS.warningCount]: warningCount,
+    [RUN_FIELDS.noiseCount]: summary.comparisonNoise ?? summary.noise ?? 0,
+    [RUN_FIELDS.totalIssues]: totalIssues,
+    [RUN_FIELDS.goldenCount]: compareKind.golden ?? 0,
+    [RUN_FIELDS.lastGreenCount]: compareKind['last-green'] ?? 0,
+    [RUN_FIELDS.crossBrowserCount]: compareKind['cross-browser'] ?? 0,
+    [RUN_FIELDS.runDriftCount]: compareKind['run-drift'] ?? 0,
+    [RUN_FIELDS.topRoutes]: formatTopEntries(summary.byRoute),
+    [RUN_FIELDS.topScripts]: '',
+    [RUN_FIELDS.reportUrl]: toUrlField(resolveReportUrl(issuesSource)),
+    [RUN_FIELDS.feishuDocUrl]: toUrlField(readTextFile(DOC_URL_FILE)),
+    [RUN_FIELDS.failureReasons]: blockerCount > 0 ? `历史回填 · blocker ${blockerCount}` : '',
+  };
+}
+
 function formatTopEntries(record?: Record<string, number>, limit = 5): string {
   if (!record) return '';
   return Object.entries(record)
@@ -321,7 +397,10 @@ function formatTopEntries(record?: Record<string, number>, limit = 5): string {
 
 function formatTopScripts(issues: UiIssue[], limit = 5): string {
   const counts = new Map<string, number>();
-  for (const issue of issues) counts.set(issue.scriptKey, (counts.get(issue.scriptKey) ?? 0) + 1);
+  for (const issue of issues) {
+    const label = formatScriptLabel(issue.scriptKey) || issue.scriptKey;
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
   return [...counts.entries()]
     .sort((a, b) => b[1] - a[1])
     .slice(0, limit)

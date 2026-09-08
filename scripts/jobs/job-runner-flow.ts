@@ -9,7 +9,7 @@ import {
   readUiIssuesSummaryLine,
   sendJobFeishuNotification,
 } from "./job-notify.js";
-import { writeBitableReport } from "../feishu/write-bitable-report.js";
+import { writeBitableIfAuto } from "../feishu/bitable-auto.js";
 import { writeQualityDashboard } from "../report/generate-quality-dashboard.js";
 import { formatRunId, type AccountProfileFilter } from "./job-utils.js";
 import { listJobRunEnvs, resolveJobRunEnv, type NotifyOn, type ResolvedTestJob } from "./test-jobs-config.js";
@@ -291,15 +291,21 @@ export async function runFlowJob(
     !job.steps.compare ||
     (runnerKey !== "request-flow-golden" && runnerKey !== "approval-flow-golden");
   let comparePassed = true;
-  if (!compareSkipped) {
-    const flowId = runnerKey === "approval-flow-golden" ? "approval-flow" : FLOW_ID;
-    const manifest = readLastFlowManifest(repoRoot, flowId);
-    const hasCompare = Boolean(manifest?.compareReportRel);
-    if (hasCompare && job.steps.compareGate) {
+  const isGoldenRunner =
+    runnerKey === "request-flow-golden" || runnerKey === "approval-flow-golden";
+
+  if (!compareSkipped && isGoldenRunner) {
+    try {
+      const cmpCmd = job.steps.compareGate
+        ? "npm run compare-flow-screenshots -- --gate"
+        : "npm run compare-flow-screenshots";
+      execSync(cmpCmd, { stdio: "inherit", cwd: repoRoot, env: process.env });
       const ui = readUiIssuesSummaryCounts();
-      comparePassed = (ui?.blocker ?? 0) === 0;
-    } else if (hasCompare) {
-      comparePassed = true;
+      if (job.steps.compareGate) {
+        comparePassed = (ui?.blocker ?? 0) === 0;
+      }
+    } catch {
+      comparePassed = false;
     }
   }
 
@@ -353,10 +359,10 @@ export async function runFlowJob(
     });
   }
 
-  if (job.steps.writeFeishuBitable) {
+  if (job.steps.writeFeishuBitable && compareSkipped) {
     try {
       const finalStatus = flowAllOk ? "success" : "failed";
-      await writeBitableReport({ summary, env: effectiveEnv, status: finalStatus });
+      await writeBitableIfAuto({ summary, env: effectiveEnv, status: finalStatus });
     } catch (error) {
       console.log(
         "⚠️  飞书多维表写入失败（不影响任务流程）:",
