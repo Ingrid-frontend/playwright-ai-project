@@ -9,6 +9,28 @@
  *     requestDocNo: process.env.REQUEST_DOC_NO || '',
  *   };
  */
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv';
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+dotenv.config({ path: path.join(repoRoot, '.env'), quiet: true });
+
+export function resolveBaseURL(fallback?: string): string {
+  const envId = process.env.PLAYWRIGHT_ENV || 'dev';
+  try {
+    const raw = JSON.parse(
+      fs.readFileSync(path.join(repoRoot, 'datasource/base-config.json'), 'utf8'),
+    ) as Record<string, { baseURL?: string }>;
+    const fromCfg = raw[envId]?.baseURL;
+    if (fromCfg) return fromCfg;
+  } catch {
+    /* ignore */
+  }
+  if (process.env.BASE_URL) return process.env.BASE_URL;
+  return fallback || 'https://dev.huilianyi.com';
+}
 export type BaseEnv = {
   baseURL: string;
   username: string;
@@ -31,7 +53,9 @@ export type BaseEnvOptions = {
 
 export function createBaseEnv(opts: BaseEnvOptions): BaseEnv {
   return {
-    baseURL: process.env.BASE_URL || opts.defaultBaseURL || 'https://dev.huilianyi.com',
+    get baseURL() {
+      return resolveBaseURL(opts.defaultBaseURL);
+    },
     username: process.env.LOGIN_USERNAME || '',
     password: process.env.LOGIN_PASSWORD || '',
     loginPath: process.env.LOGIN_PATH || '/login',

@@ -579,7 +579,7 @@ export class GenericListPage {
 
   // ---------- 接口侧兜底 ----------
 
-  private listRowsFromBody(body: unknown): Record<string, unknown>[] {
+  protected listRowsFromBody(body: unknown): Record<string, unknown>[] {
     if (!body || typeof body !== 'object') return [];
     const obj = body as Record<string, unknown>;
     const nested =
@@ -596,7 +596,7 @@ export class GenericListPage {
     );
   }
 
-  private docNoFromRow(row: Record<string, unknown>): string {
+  protected docNoFromRow(row: Record<string, unknown>): string {
     const candidates = [
       row.businessCode,
       row.documentNumber,
@@ -611,6 +611,14 @@ export class GenericListPage {
     const blob = JSON.stringify(row);
     const match = blob.match(this.catalog.docNoRe) || blob.match(/[A-Za-z0-9]{10,}/);
     return match?.[0] || '';
+  }
+
+  protected extractDocNoFromBody(body: unknown): string {
+    for (const row of this.listRowsFromBody(body)) {
+      const docNo = this.docNoFromRow(row);
+      if (docNo) return docNo;
+    }
+    return '';
   }
 
   /** 列表 UI 无行时，从最近一次列表接口响应里解析单号 */
@@ -629,17 +637,13 @@ export class GenericListPage {
       resp = await this.page
         .waitForResponse(
           (r) => apiRe.test(r.url()) && r.request().method() === 'POST' && r.status() === 200,
-          { timeout: opts.refresh ? 5_000 : 20_000 },
+          { timeout: opts.refresh ? 5_000 : 3_000 },
         )
         .catch(() => null);
     }
     if (!resp) return '';
     const body = await resp.json().catch(() => null);
-    for (const row of this.listRowsFromBody(body)) {
-      const docNo = this.docNoFromRow(row);
-      if (docNo) return docNo;
-    }
-    return '';
+    return this.extractDocNoFromBody(body);
   }
 
   /** 空状态兜底文案 */

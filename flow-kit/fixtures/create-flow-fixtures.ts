@@ -12,6 +12,7 @@ import { appendApiFailures, flowRunsDir, initWorkerRun } from '../../src/utils/f
 import { HomePage } from '../pages/home.page';
 import { LoginPage } from '../pages/login.page';
 import { ApiGuard, createApiGuard, type ApiFailure } from '../utils/api-guard';
+import { resolveBaseURL } from '../utils/env';
 
 /**
  * 流程级 fixtures 工厂。
@@ -110,7 +111,7 @@ export function createFlowFixtures<Extra extends Record<string, unknown>>(
       ) => {
         const storageState = resolveStorageState();
         const context = await browser.newContext({
-          baseURL: env.baseURL,
+          baseURL: resolveBaseURL(env.baseURL),
           locale: 'zh-CN',
           timezoneId: 'Asia/Shanghai',
           viewport: useWindowViewport() ? null : VIEWPORT,
