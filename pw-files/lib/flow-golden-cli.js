@@ -3,6 +3,7 @@ const path = require('path');
 const { spawnTracked } = require('./kill-proc');
 const { createPlaywrightLogSink } = require('./failure-report');
 const { readLastFlowRun } = require('./flow-run-common');
+const { readGoldenBatch, summarizeGoldenBatch } = require('./golden-batch');
 
 const GOLDEN_NPM_SCRIPTS = {
   'request-flow': 'request-flow:golden',
@@ -72,11 +73,18 @@ async function streamGoldenCliRun(ws, session, flowId, opts = {}) {
   }
 
   const lastRun = readLastFlowRun(repoRoot, flowId);
-  const ok = exitCode === 0 && (lastRun?.ok !== false);
+  const goldenBatch = readGoldenBatch(repoRoot, flowId);
+  const batchSummary = summarizeGoldenBatch(goldenBatch);
+  const procExit = exitCode || 0;
+  const ok = procExit === 0 && (goldenBatch ? goldenBatch.ok !== false : lastRun?.ok !== false);
+  const failedRun = goldenBatch?.results?.find((r) => !r.ok && !r.skipped) || null;
   return {
     ok,
-    exitCode: ok ? 0 : exitCode || 1,
+    exitCode: ok ? 0 : procExit || 1,
     lastRun,
+    goldenBatch,
+    batchSummary,
+    failedRun,
     logPrefix,
     label,
   };
@@ -126,16 +134,22 @@ async function runStudioGoldenRun(ws, session, flowId, msg, deps, hooks = {}) {
     label: `${flowId}/golden-cli`,
   });
 
+  const manifest = result.failedRun
+    ? null
+    : result.lastRun?.manifest || null;
   const payload = {
     ok: result.ok,
+    exitCode: result.exitCode,
     cancelled: Boolean(result.cancelled),
     mode,
     spec,
     grep,
     env: envId,
     viaCli: true,
+    goldenBatch: result.goldenBatch || null,
+    batchHeadline: result.batchSummary?.headline || '',
     lastRun: result.lastRun || null,
-    manifest: result.lastRun?.manifest || null,
+    manifest,
     compareReportOpenPath: result.lastRun?.compareReportRel
       ? `/repo-report/${result.lastRun.compareReportRel}`
       : '',
@@ -147,7 +161,15 @@ async function runStudioGoldenRun(ws, session, flowId, msg, deps, hooks = {}) {
   send(ws, `${eventPrefix}:run:done`, payload);
   if (result.ok) logLine(ws, `[${flowId}] Golden CLI 通过`, 'ok');
   else if (!result.cancelled) {
-    send(ws, 'error', { message: result.error || `Golden CLI 退出码 ${result.exitCode}` });
+    if (result.batchSummary?.lines?.length) {
+      logLine(ws, `[${flowId}] ${result.batchSummary.headline}`, 'warn');
+      for (const line of result.batchSummary.lines) {
+        logLine(ws, `[${flowId}]   ${line}`, line.startsWith('失败') ? 'err' : 'warn');
+      }
+    }
+    send(ws, 'error', {
+      message: result.error || result.batchSummary?.headline || `Golden CLI 退出码 ${result.exitCode}`,
+    });
   }
   return result;
 }

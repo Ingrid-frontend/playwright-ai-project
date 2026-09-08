@@ -19,6 +19,7 @@ const {
   parsePlaywrightSkips,
   logConcisePlaywrightFailures,
 } = require("../../pw-files/lib/failure-report.js");
+const { writeGoldenBatch, summarizeGoldenBatch } = require("../../pw-files/lib/golden-batch.js");
 
 const FLOW_ID = "request-flow";
 const FLOW_LABEL = "申请单流程";
@@ -29,7 +30,14 @@ type RunOneResult = {
   ok: boolean;
   skipped?: boolean;
   profileId: string;
+  roleSlug: string;
   exitCode: number;
+  passed?: number;
+  failed?: number;
+  total?: number;
+  runId?: string;
+  error?: string;
+  reason?: string;
 };
 
 function parseArgs(argv: string[]) {
@@ -56,6 +64,21 @@ function resolveStorage(repoRoot: string, envId: string, profileId: string): str
 
 function storageSkipReason(repoRoot: string, envId: string, profileId: string): string {
   return repoEnv.resolveValidatedStorageAbs(repoRoot, envId, profileId).reason || "无有效登录态";
+}
+
+function listIgnoredProfiles(repoRoot: string, envId: string, profile?: string) {
+  if (profile) return [];
+  const all = repoEnv
+    .listGoldenProfileIds(repoRoot, envId)
+    .filter((id: string) => repoEnv.isGoldenProfileId(id));
+  const runnable = new Set(listProfiles(repoRoot, envId));
+  return all
+    .filter((id: string) => !runnable.has(id))
+    .map((id: string) => ({
+      profileId: id,
+      roleSlug: repoEnv.resolveFlowRoleSlug(repoRoot, envId, id) || "",
+      reason: storageSkipReason(repoRoot, envId, id),
+    }));
 }
 
 function listProfiles(repoRoot: string, envId: string, profile?: string): string[] {
@@ -90,16 +113,17 @@ function runOne(
   filterKeyword: string,
   grep: string,
 ): RunOneResult {
+  const roleSlug = repoEnv.resolveFlowRoleSlug(repoRoot, envId, profileId) || "";
   const storage = resolveStorage(repoRoot, envId, profileId);
   if (!storage) {
-    console.warn(`[request-flow:golden] 跳过 ${profileId}: ${storageSkipReason(repoRoot, envId, profileId)}`);
-    return { ok: true, skipped: true, profileId, exitCode: 0 };
+    const reason = storageSkipReason(repoRoot, envId, profileId);
+    console.warn(`[request-flow:golden] 跳过 ${profileId}: ${reason}`);
+    return { ok: true, skipped: true, profileId, roleSlug, exitCode: 0, reason };
   }
 
   const base = repoEnv.getBaseEnvConfig(repoRoot, envId);
   const creds = repoEnv.resolveAccountCredentials(repoRoot, envId, profileId);
   const profileDefaults = repoEnv.resolveProfileFlowDefaults(repoRoot, envId, profileId);
-  const roleSlug = repoEnv.resolveFlowRoleSlug(repoRoot, envId, profileId);
   const goldenSeed = resolveGoldenSeed(repoRoot, envId, roleSlug);
   const entry = repoEnv.enrichProfileStorageEntry(repoRoot, envId, profileId);
 
@@ -265,7 +289,17 @@ function runOne(
     runMarker,
   });
 
-  return { ok: Boolean(finalized.ok), profileId, exitCode: finalized.ok ? exitCode : exitCode || 1 };
+  return {
+    ok: Boolean(finalized.ok),
+    profileId,
+    roleSlug,
+    exitCode: finalized.ok ? exitCode : exitCode || 1,
+    passed,
+    failed,
+    total,
+    runId,
+    error: failures[0]?.message || (ok ? "" : `失败 ${failed}/${total || 1}`),
+  };
 }
 
 function runNpmScript(script: string, extraArgs: string[] = []): void {
@@ -299,11 +333,32 @@ function runEnv(
 
   console.log(`[request-flow:golden] 开始 · env=${envId} · ${profiles.length} 个角色 · ${SPEC}`);
 
+  const ignored = listIgnoredProfiles(repoRoot, envId, profile || undefined);
+  const results: RunOneResult[] = [];
   let ok = true;
   for (const profileId of profiles) {
     const result = runOne(repoRoot, envId, profileId, filterKeyword, grep);
+    results.push(result);
     if (!result.ok && !result.skipped) ok = false;
   }
+
+  const batch = {
+    flowId: FLOW_ID,
+    env: envId,
+    finishedAt: new Date().toISOString(),
+    ok,
+    exitCode: ok ? 0 : 1,
+    ignored,
+    results,
+  };
+  writeGoldenBatch(repoRoot, FLOW_ID, batch);
+  const summary = summarizeGoldenBatch(batch);
+  console.log(`[request-flow:golden] ${summary.headline}`);
+  for (const line of summary.lines) {
+    const logFn = line.startsWith("失败") ? console.error : console.log;
+    logFn(`[request-flow:golden]   ${line}`);
+  }
+
   return { ok, ran: true };
 }
 

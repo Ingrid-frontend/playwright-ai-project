@@ -32,7 +32,7 @@ async function trySeedGoldenContext(approval: ApprovalListPage) {
   }
 
   if (!(await hasDataRows(approval))) {
-    await approval.recoverIfEmptyList();
+    await approval.resetFilterState().catch(() => undefined);
   }
   if (!(await hasDataRows(approval))) {
     if (!goldenCtx.docNo) {

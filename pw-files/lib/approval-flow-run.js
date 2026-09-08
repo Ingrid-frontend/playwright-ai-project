@@ -603,6 +603,8 @@ async function runApprovalFlowGoldenAll(ws, session, msg, deps) {
     send(ws, 'approval-flow:golden-all:done', {
       ok: Boolean(result.ok),
       env: envId,
+      goldenBatch: result.goldenBatch || null,
+      batchHeadline: result.batchSummary?.headline || '',
       results: ready.map((profileId) => {
         const entry = repoEnv.enrichProfileStorageEntry(repoRoot, envId, profileId);
         return { profile: profileId, roleSlug: entry.roleSlug, roleLabel: entry.roleLabel };

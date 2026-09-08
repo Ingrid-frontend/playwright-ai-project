@@ -10,6 +10,8 @@ import {
   FILTER_POP,
   FILTER_ROW,
   FILTER_TRIGGER,
+  FILTER_TRIGGER_ACTIVE_RE,
+  FILTER_TRIGGER_CLEAR,
   LIST_API,
   LIST_API_RE,
   PENDING_LIST_API_RE,
@@ -56,6 +58,7 @@ export const APPROVAL_LIST_CATALOG: ListCatalog = {
   emptyTextRe: /暂无数据|No Data|没有更多|暂无待审批/,
   loadedTextRe: /我的审批|待审批/,
   requireRowsOnLoad: false,
+  recoverEmptyOnLoad: true,
   searchActionSearch: SEARCH_ACTION_SEARCH,
   searchActionClear: SEARCH_ACTION_CLEAR,
   comboTrigger: COMBO_TRIGGER,
@@ -85,12 +88,44 @@ export class ApprovalListPage extends GenericListPage {
   /** 取单号时限定待审批接口，避免页签切换后误抓已办/抄送响应 */
   override async readDocNoFromListApi(opts: { refresh?: boolean } = {}): Promise<string> {
     await this.switchToPending().catch(() => undefined);
+    if (opts.refresh || !(await this.hasDataRows())) {
+      await this.resetFilterState().catch(() => undefined);
+    }
     return super.readDocNoFromListApi(opts);
   }
 
-  /** 已在审批列表时还原筛选：先面板「清除筛选值」，再清外露（与申请单 reset 不同） */
+  /** 筛选按钮是否带有已生效条件（如「筛选/2」） */
+  async hasActiveFilterTrigger(): Promise<boolean> {
+    const trigger = this.filterTrigger();
+    if (!(await trigger.isVisible({ timeout: 2_000 }).catch(() => false))) return false;
+    const text = ((await trigger.innerText()) || '').replace(/\s+/g, ' ');
+    const m = text.match(FILTER_TRIGGER_ACTIVE_RE);
+    if (m && Number(m[1]) > 0) return true;
+    const clear = trigger.locator(FILTER_TRIGGER_CLEAR).filter({ visible: true }).first();
+    return clear.isVisible({ timeout: 500 }).catch(() => false);
+  }
+
+  /** 点筛选按钮上的 ×，清掉已生效的面板条件（UAT 常见残留导致列表空） */
+  async clearFilterTriggerBadge(): Promise<boolean> {
+    if (!(await this.hasActiveFilterTrigger())) return false;
+    const trigger = this.filterTrigger();
+    const clears = [
+      trigger.locator(FILTER_TRIGGER_CLEAR),
+      trigger.locator('svg').last(),
+    ];
+    for (const clear of clears) {
+      const btn = clear.filter({ visible: true }).first();
+      if (!(await btn.isVisible({ timeout: 500 }).catch(() => false))) continue;
+      await this.withListMutation(() => btn.click({ force: true }));
+      return true;
+    }
+    return false;
+  }
+
+  /** 已在审批列表时还原筛选：先清筛选徽章 ×，再面板「清除筛选值」，最后清外露 */
   async resetFilterState(): Promise<void> {
     await this.closeFilterPanel().catch(() => undefined);
+    await this.clearFilterTriggerBadge().catch(() => undefined);
     await this.resetBusinessType().catch(() => undefined);
     await this.clearFilterPanel().catch(() => undefined);
     if (await this.hasExposedClear()) {
@@ -554,8 +589,9 @@ export class ApprovalListPage extends GenericListPage {
     await this.submitFilterPanel();
   }
 
-  /** 清除面板 + 外露筛选（审批两条路径都要走，先面板后外露） */
+  /** 清除面板 + 外露筛选（审批两条路径都要走，先徽章 × 再面板后外露） */
   async clearFilters(): Promise<void> {
+    await this.clearFilterTriggerBadge().catch(() => undefined);
     await this.clearFilterPanel().catch(() => undefined);
     if (await this.hasExposedClear()) {
       await this.clearExposedFilters().catch(() => undefined);

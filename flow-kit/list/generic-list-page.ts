@@ -469,7 +469,7 @@ export class GenericListPage {
     if (!(await btn.isVisible({ timeout: 1_000 }).catch(() => false))) return;
     const respP = this.waitListApi();
     await btn.click({ force: true });
-    await respP;
+    await Promise.race([respP, this.waitListSettled()]);
     await this.waitListSettled();
   }
 

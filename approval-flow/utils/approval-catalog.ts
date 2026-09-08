@@ -17,6 +17,10 @@ export const SEARCH_PLACEHOLDER = '申请人/事由/单号';
 
 export const BUSINESS_TYPE_SELECT = '.approve-business-filter-type-select';
 export const FILTER_TRIGGER = '.advanced-search-filter-trigger';
+/** 筛选按钮上的已生效条件数，如「筛选/2」 */
+export const FILTER_TRIGGER_ACTIVE_RE = /筛选\s*\/\s*(\d+)/;
+export const FILTER_TRIGGER_CLEAR =
+  '.advanced-search-filter-trigger .anticon-close, .advanced-search-filter-trigger .anticon-close-circle, .advanced-search-filter-trigger [class*="clear"]';
 export const FILTER_POP = '.advanced-search-filter-pop, .advanced-search-filter-content';
 export const FILTER_ROW = '.advanced-search-filter-row';
 export const COMBO_TRIGGER = '.combo-trigger';
