@@ -51,18 +51,24 @@ function parseArgs(argv: string[]) {
 }
 
 function resolveStorage(repoRoot: string, envId: string, profileId: string): string {
-  const rel = repoEnv.resolveStorageStateRelDirect(repoRoot, envId, profileId);
-  if (rel && repoEnv.storageExists(repoRoot, rel)) {
-    return path.resolve(repoRoot, rel);
-  }
-  return "";
+  return repoEnv.resolveValidatedStorageAbs(repoRoot, envId, profileId).abs;
+}
+
+function storageSkipReason(repoRoot: string, envId: string, profileId: string): string {
+  return repoEnv.resolveValidatedStorageAbs(repoRoot, envId, profileId).reason || "无有效登录态";
 }
 
 function listProfiles(repoRoot: string, envId: string, profile?: string): string[] {
   const ids = profile
     ? [profile]
     : repoEnv.listGoldenProfileIds(repoRoot, envId).filter((id: string) => repoEnv.isGoldenProfileId(id));
-  return ids.filter((id: string) => resolveStorage(repoRoot, envId, id));
+  if (profile) return ids;
+  return ids.filter((id: string) => {
+    const storage = resolveStorage(repoRoot, envId, id);
+    if (storage) return true;
+    console.warn(`[request-flow:golden] 忽略 ${id}: ${storageSkipReason(repoRoot, envId, id)}`);
+    return false;
+  });
 }
 
 function writeDebugPlaywrightResult(
@@ -86,8 +92,8 @@ function runOne(
 ): RunOneResult {
   const storage = resolveStorage(repoRoot, envId, profileId);
   if (!storage) {
-    console.error(`[request-flow:golden] 跳过 ${profileId}: 无登录态`);
-    return { ok: false, skipped: true, profileId, exitCode: 0 };
+    console.warn(`[request-flow:golden] 跳过 ${profileId}: ${storageSkipReason(repoRoot, envId, profileId)}`);
+    return { ok: true, skipped: true, profileId, exitCode: 0 };
   }
 
   const base = repoEnv.getBaseEnvConfig(repoRoot, envId);

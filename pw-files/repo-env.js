@@ -195,6 +195,16 @@ function validateStorageForRun(repoRoot, storageRel) {
   return { ok: false, reason: `登录态为空（无账号/userId/localStorage）: ${storageRel}` };
 }
 
+/** Golden/Flow 开跑前：校验登录态有效，返回绝对路径或跳过原因 */
+function resolveValidatedStorageAbs(repoRoot, envId, profileId) {
+  const rel = resolveStorageStateRelDirect(repoRoot, envId, profileId);
+  const check = validateStorageForRun(repoRoot, rel);
+  if (!check.ok) {
+    return { abs: '', rel: rel || '', reason: check.reason || '无有效登录态' };
+  }
+  return { abs: path.resolve(repoRoot, rel), rel, reason: '' };
+}
+
 function runProfileLogin(repoRoot, envId, profileId, refresh) {
   const { execSync } = require('child_process');
   const prof = resolveAccountProfile(repoRoot, envId, profileId);
@@ -676,6 +686,7 @@ module.exports = {
   listAccountProfiles,
   storageExists,
   validateStorageForRun,
+  resolveValidatedStorageAbs,
   resolveStorageMaxAgeMs,
   isStorageStale,
   runProfileLogin,

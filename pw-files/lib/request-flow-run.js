@@ -587,10 +587,13 @@ async function runRequestFlowGoldenAll(ws, session, msg, deps) {
   const { getSessionPlaywrightEnv } = deps;
   const envId = String(msg.env || getSessionPlaywrightEnv(session) || 'dev').trim();
   const goldenIds = repoEnv.listGoldenProfileIds(repoRoot, envId);
-  const ready = goldenIds.filter((id) => {
+  const ready = [];
+  for (const id of goldenIds) {
     const rel = repoEnv.resolveStorageStateRelDirect(repoRoot, envId, id);
-    return repoEnv.storageExists(repoRoot, rel);
-  });
+    const check = repoEnv.validateStorageForRun(repoRoot, rel);
+    if (check.ok) ready.push(id);
+    else logLine(ws, `[request-flow] 忽略 ${id}: ${check.reason || '无有效登录态'}`, 'warn');
+  }
 
   if (!ready.length) {
     send(ws, 'error', { message: '无已登录 Golden 角色，请先为 golden* 档案完成登录' });
