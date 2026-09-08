@@ -3192,12 +3192,18 @@ function isFlowRunUnsuccessful(msg) {
   return totalN > 0 && passN < totalN;
 }
 
-function syncFlowRunReplayBtn(msg, btnId) {
+function syncFlowRunReplayBtn(msg, btnId, flowId) {
   const btn = document.getElementById(btnId);
   if (!btn) return;
-  const show = isFlowRunUnsuccessful(msg) && hasFlowReplayPath(msg);
+  const show = Boolean(msg && !msg.cancelled && resolveFlowReplayPath(msg, flowId));
   btn.style.display = show ? '' : 'none';
   btn.disabled = !show;
+}
+
+function maybeAutoOpenFlowReplay(msg, flowId) {
+  if (!msg || msg.cancelled) return;
+  const path = resolveFlowReplayPath(msg, flowId);
+  if (path) openFlowReplay(path);
 }
 
 let lastRequestFlowRun = null;
@@ -3242,7 +3248,7 @@ function openRequestFlowProbeReport() {
 }
 
 function openRequestFlowReplay() {
-  const path = lastRequestFlowRun?.replayReportOpenPath || lastRequestFlowRun?.videoReportOpenPath;
+  const path = resolveFlowReplayPath(lastRequestFlowRun, 'request-flow');
   if (!path) {
     showToast('本次运行没有流程回放', 'err');
     return;
@@ -3250,8 +3256,21 @@ function openRequestFlowReplay() {
   openFlowReplay(path);
 }
 
+function resolveFlowReplayPath(msg, flowId) {
+  if (!msg) return '';
+  const direct =
+    msg.replayReportOpenPath ||
+    msg.videoReportOpenPath ||
+    msg.lastRun?.replayReportOpenPath ||
+    msg.lastRun?.videoReportOpenPath;
+  if (direct) return direct;
+  const runId = String(msg.runId || msg.lastRun?.runId || msg.manifest?.runId || '').trim();
+  if (!runId || !flowId) return '';
+  return `/repo-report/results/flow-runs/${flowId}/${runId}/flow.html`;
+}
+
 function hasFlowReplayPath(msg) {
-  return Boolean(msg?.replayReportOpenPath || msg?.videoReportOpenPath);
+  return Boolean(resolveFlowReplayPath(msg, 'request-flow') || resolveFlowReplayPath(msg, 'approval-flow'));
 }
 
 const REQUEST_FLOW_REPORT_BTNS = [
@@ -3311,15 +3330,17 @@ function openRequestFlowUiAuditReport() {
 }
 
 function updateRequestFlowReportBtn(msg) {
-  setFlowReportButtons(REQUEST_FLOW_REPORT_BTNS, msg || lastRequestFlowRun, requestFlowSubTab);
-  syncFlowRunAiDebugBtn('request-flow', msg, 'btnRequestTocAiDebug', lastRequestFlowRun);
-  syncFlowRunReplayBtn(msg || lastRequestFlowRun, 'btnRequestTocReplay');
+  const merged = normalizeFlowRunDoneMsg(msg || lastRequestFlowRun, 'request-flow');
+  setFlowReportButtons(REQUEST_FLOW_REPORT_BTNS, merged, requestFlowSubTab);
+  syncFlowRunAiDebugBtn('request-flow', merged, 'btnRequestTocAiDebug', lastRequestFlowRun);
+  syncFlowRunReplayBtn(merged, 'btnRequestTocReplay', 'request-flow');
 }
 
 function updateApprovalFlowReportBtn(msg) {
-  setFlowReportButtons(APPROVAL_FLOW_REPORT_BTNS, msg || lastApprovalFlowRun, approvalFlowSubTab);
-  syncFlowRunAiDebugBtn('approval-flow', msg, 'btnApprovalTocAiDebug', lastApprovalFlowRun);
-  syncFlowRunReplayBtn(msg || lastApprovalFlowRun, 'btnApprovalTocReplay');
+  const merged = normalizeFlowRunDoneMsg(msg || lastApprovalFlowRun, 'approval-flow');
+  setFlowReportButtons(APPROVAL_FLOW_REPORT_BTNS, merged, approvalFlowSubTab);
+  syncFlowRunAiDebugBtn('approval-flow', merged, 'btnApprovalTocAiDebug', lastApprovalFlowRun);
+  syncFlowRunReplayBtn(merged, 'btnApprovalTocReplay', 'approval-flow');
 }
 
 let lastApprovalFlowRun = null;
@@ -3348,7 +3369,7 @@ function openApprovalFlowProbeReport() {
 }
 
 function openApprovalFlowReplay() {
-  const path = lastApprovalFlowRun?.replayReportOpenPath || lastApprovalFlowRun?.videoReportOpenPath;
+  const path = resolveFlowReplayPath(lastApprovalFlowRun, 'approval-flow');
   if (!path) {
     showToast('本次运行没有流程回放', 'err');
     return;
@@ -3914,6 +3935,10 @@ function isStudioCompact() {
   return Boolean(app?.classList.contains('studio-compact') && !app.classList.contains('studio-compact-off'));
 }
 
+function shouldProbeBeforeCompactGolden() {
+  return isStudioCompact();
+}
+
 function toggleStudioCompactAdvanced() {
   const app = document.querySelector('.app');
   if (!app) return;
@@ -4302,9 +4327,39 @@ function syncFlowConfigAiDebugBtn(runId) {
 function syncFlowRunAiDebugBtn(flowId, msg, btnId, fallbackRun) {
   const btn = document.getElementById(btnId);
   if (!btn) return;
-  const runId = String(msg?.runId || msg?.manifest?.runId || fallbackRun?.runId || '').trim();
+  const runId = String(
+    msg?.runId || msg?.manifest?.runId || msg?.lastRun?.runId || fallbackRun?.runId || '',
+  ).trim();
   btn.style.display = runId ? '' : 'none';
   btn.disabled = !runId;
+}
+
+function normalizeFlowRunDoneMsg(msg, flowId) {
+  if (!msg || msg.cancelled) return msg;
+  const last = msg.lastRun || {};
+  const manifest = msg.manifest || last.manifest || {};
+  const merged = {
+    ...last,
+    ...msg,
+    runId: msg.runId || last.runId || manifest.runId || '',
+    passed: msg.passed ?? manifest.passed,
+    failed: msg.failed ?? manifest.failed,
+    total: msg.total ?? manifest.total,
+    skipped: msg.skipped ?? manifest.skipped,
+    skips: msg.skips || manifest.skips || [],
+    failures: msg.failures || manifest.failures || [],
+    pipeline: msg.pipeline || manifest.pipeline,
+    runMarker: msg.runMarker || manifest.runMarker,
+    replayReportOpenPath:
+      msg.replayReportOpenPath ||
+      last.replayReportOpenPath ||
+      resolveFlowReplayPath(msg, flowId),
+    videoReportOpenPath: msg.videoReportOpenPath || last.videoReportOpenPath || '',
+    reportOpenPath: msg.reportOpenPath || last.reportOpenPath || '',
+    customerReportOpenPath: msg.customerReportOpenPath || last.customerReportOpenPath || '',
+    summaryReportOpenPath: msg.summaryReportOpenPath || last.summaryReportOpenPath || '',
+  };
+  return merged;
 }
 
 async function copyFlowRunAiDebug(flowId, runId, btnId, logTag) {
@@ -7408,9 +7463,31 @@ function handleMessage(msg) {
     case 'request-flow:probe:start':
       setRequestFlowBusy(true);
       switchToRequestFlowTab();
+      if (requestFlowProbeChain) {
+        const tocLabel = document.getElementById('btnRequestTocRunLabel');
+        if (tocLabel) tocLabel.textContent = '探活中…';
+        const tocAllLabel = document.getElementById('btnRequestTocRunAllLabel');
+        if (tocAllLabel) tocAllLabel.textContent = '探活中…';
+      }
       log('info', `[request-flow] 探活开始 · env=${msg.env || 'dev'}`);
       break;
     case 'request-flow:probe:done':
+      if (requestFlowProbeChain) {
+        const chain = requestFlowProbeChain;
+        requestFlowProbeChain = null;
+        renderRequestFlowStatus(msg, { skipSelects: true });
+        if (msg.ok) {
+          log('ok', `[request-flow] 探活完成 · ${msg.snapshotRel || 'live-snapshot.json'}，开始 Golden 检测…`);
+          if (chain === 'goldenAll') runRequestFlowGoldenAllDirect();
+          else runRequestFlowGoldenDirect();
+        } else {
+          setRequestFlowBusy(false);
+          showToast(msg.cancelled ? '探活已取消，检测未执行' : '探活失败，检测已取消', msg.cancelled ? 'warn' : 'err');
+          if (msg.cancelled) log('warn', '[request-flow] 探活已取消');
+          else log('err', '[request-flow] 探活失败，已取消 Golden 检测');
+        }
+        break;
+      }
       setRequestFlowBusy(false);
       renderRequestFlowStatus(msg, { skipSelects: true });
       if (msg.ok) {
@@ -7452,21 +7529,22 @@ function handleMessage(msg) {
       break;
     case 'request-flow:run:done':
       setRequestFlowBusy(false);
-      lastRequestFlowRun = msg;
-      updateRequestFlowReportBtn(msg);
-      handleRequestFlowFailureFromMsg(msg);
-      if (!msg.cancelled) {
-        if (msg.apiFailureCount > 0) {
-          log('warn', `[request-flow] 接口报错 ${msg.apiFailureCount} 条，见运行汇总`);
+      lastRequestFlowRun = normalizeFlowRunDoneMsg(msg, 'request-flow');
+      updateRequestFlowReportBtn(lastRequestFlowRun);
+      handleRequestFlowFailureFromMsg(lastRequestFlowRun);
+      maybeAutoOpenFlowReplay(lastRequestFlowRun, 'request-flow');
+      if (!lastRequestFlowRun.cancelled) {
+        if (lastRequestFlowRun.apiFailureCount > 0) {
+          log('warn', `[request-flow] 接口报错 ${lastRequestFlowRun.apiFailureCount} 条，见运行汇总`);
         }
-        if (msg.startedAt) {
-          log('info', `[request-flow] 运行 ${msg.startedAt} → ${msg.finishedAt || '?'}`);
+        if (lastRequestFlowRun.startedAt) {
+          log('info', `[request-flow] 运行 ${lastRequestFlowRun.startedAt} → ${lastRequestFlowRun.finishedAt || '?'}`);
         }
-        if (msg.skipped > 0) {
-          log('warn', `[request-flow] ${msg.skipped} 个用例已跳过，见运行汇总`);
+        if (lastRequestFlowRun.skipped > 0) {
+          log('warn', `[request-flow] ${lastRequestFlowRun.skipped} 个用例已跳过，见运行汇总`);
         }
       }
-      if (msg.ok) {
+      if (lastRequestFlowRun.ok) {
         const extras = [];
         if (msg.skipped > 0) extras.push(`跳过 ${msg.skipped}`);
         if (msg.pipeline === 'golden' && msg.baselinePromoted) extras.push('已 seed Golden 基线');
@@ -7477,7 +7555,10 @@ function handleMessage(msg) {
         if (msg.accountProfile) extras.push(`profile=${msg.accountProfile}`);
         if (msg.roleSlug) extras.push(`role=${msg.roleSlug}`);
         if (isStudioCompact() && msg.pipeline === 'golden') {
-          showToast('检测完成，可点「查看报告」', 'ok');
+          showToast(
+            hasFlowReplayPath(lastRequestFlowRun) ? '检测完成，已打开回放' : '检测完成，可点「查看报告」',
+            'ok',
+          );
         } else {
           showToast(extras.length ? `申请单流程用例通过 · ${extras.join(' · ')}` : '申请单流程用例通过', 'ok');
         }
@@ -7544,11 +7625,32 @@ function handleMessage(msg) {
     case 'approval-flow:probe:start':
       setApprovalFlowBusy(true);
       switchToApprovalFlowTab();
+      if (approvalFlowProbeChain) {
+        const tocLabel = document.getElementById('btnApprovalTocRunLabel');
+        if (tocLabel) tocLabel.textContent = '探活中…';
+        const tocAllLabel = document.getElementById('btnApprovalTocRunAllLabel');
+        if (tocAllLabel) tocAllLabel.textContent = '探活中…';
+      }
       log('info', `[approval-flow] 探活开始 · env=${msg.env || 'dev'}`);
       break;
     case 'approval-flow:probe:done':
+      if (approvalFlowProbeChain) {
+        const chain = approvalFlowProbeChain;
+        approvalFlowProbeChain = null;
+        renderApprovalFlowStatus(msg, { skipSelects: true });
+        if (msg.ok) {
+          log('ok', `[approval-flow] 探活完成 · ${msg.snapshotRel || 'live-snapshot.json'}，开始 Golden 检测…`);
+          if (chain === 'goldenAll') runApprovalFlowGoldenAllDirect();
+          else runApprovalFlowGoldenDirect();
+        } else {
+          setApprovalFlowBusy(false);
+          showToast(msg.cancelled ? '探活已取消，检测未执行' : '探活失败，检测已取消', msg.cancelled ? 'warn' : 'err');
+          if (msg.cancelled) log('warn', '[approval-flow] 探活已取消');
+          else log('err', '[approval-flow] 探活失败，已取消 Golden 检测');
+        }
+        break;
+      }
       setApprovalFlowBusy(false);
-    setRequestFlowBusy(false);
       renderApprovalFlowStatus(msg, { skipSelects: true });
       if (msg.ok) {
         showToast('审批列表探活完成', 'ok');
@@ -7589,9 +7691,10 @@ function handleMessage(msg) {
     case 'approval-flow:run:done':
       setApprovalFlowBusy(false);
     setRequestFlowBusy(false);
-      lastApprovalFlowRun = msg;
-      updateApprovalFlowReportBtn(msg);
-      handleApprovalFlowFailureFromMsg(msg);
+      lastApprovalFlowRun = normalizeFlowRunDoneMsg(msg, 'approval-flow');
+      updateApprovalFlowReportBtn(lastApprovalFlowRun);
+      handleApprovalFlowFailureFromMsg(lastApprovalFlowRun);
+      maybeAutoOpenFlowReplay(lastApprovalFlowRun, 'approval-flow');
       if (!msg.cancelled) {
         if (msg.apiFailureCount > 0) {
           log('warn', `[approval-flow] 接口报错 ${msg.apiFailureCount} 条，见运行汇总`);
@@ -7609,43 +7712,47 @@ function handleMessage(msg) {
       if (msg.ok) {
         const skipNote = msg.skipped > 0 ? `（跳过 ${msg.skipped}）` : '';
         if (isStudioCompact() && (msg.pipeline === 'golden' || !msg.pipeline)) {
-          showToast('检测完成，可点「查看报告」', 'ok');
+          showToast(
+            hasFlowReplayPath(lastApprovalFlowRun) ? '检测完成，已打开回放' : '检测完成，可点「查看报告」',
+            'ok',
+          );
         } else {
           showToast(`审批流程用例通过${skipNote}`, 'ok');
         }
         log('ok', `[approval-flow] 用例通过 · mode=${msg.mode || ''}`);
-      } else if (!msg.cancelled) {
-        const batchStats = goldenBatchStats(msg.goldenBatch);
-        if (msg.goldenBatch && logGoldenBatchOutcome('approval-flow', msg)) {
+      } else if (!lastApprovalFlowRun.cancelled) {
+        const batchStats = goldenBatchStats(lastApprovalFlowRun.goldenBatch);
+        if (lastApprovalFlowRun.goldenBatch && logGoldenBatchOutcome('approval-flow', lastApprovalFlowRun)) {
+          const replayHint = hasFlowReplayPath(lastApprovalFlowRun) ? '，可点「查看回放」' : '';
           showToast(
-            msg.batchHeadline || (batchStats.partial ? 'Golden 部分角色失败' : 'Golden 批次失败'),
+            `${lastApprovalFlowRun.batchHeadline || (batchStats.partial ? 'Golden 部分角色失败' : 'Golden 批次失败')}${replayHint}`,
             batchStats.partial ? 'warn' : 'err',
           );
           if (!batchStats.partial) {
-            log('err', `[approval-flow] 用例失败 · exit=${msg.exitCode ?? '?'}`);
+            log('err', `[approval-flow] 用例失败 · exit=${lastApprovalFlowRun.exitCode ?? '?'}`);
           }
         } else {
-        const passN = Number(msg.passed) || 0;
-        const totalN = Number(msg.total) || 0;
-        const skipN = Number(msg.skipped) || 0;
-        const incomplete = msg.exitCode === 0 && skipN > 0 && passN < (totalN || passN + skipN + 1);
-        const replayHint = hasFlowReplayPath(msg) ? '，可点「查看回放」' : '';
+        const passN = Number(lastApprovalFlowRun.passed) || 0;
+        const totalN = Number(lastApprovalFlowRun.total) || 0;
+        const skipN = Number(lastApprovalFlowRun.skipped) || 0;
+        const incomplete = lastApprovalFlowRun.exitCode === 0 && skipN > 0 && passN < (totalN || passN + skipN + 1);
+        const replayHint = hasFlowReplayPath(lastApprovalFlowRun) ? '，可点「查看回放」' : '';
         showToast(
           incomplete
             ? `审批流程未完成（${passN}/${totalN || passN + skipN}，${skipN} 跳过）${replayHint}`
-            : `审批流程用例失败（退出码 ${msg.exitCode ?? '?' }）${replayHint}`,
+            : `审批流程用例失败（退出码 ${lastApprovalFlowRun.exitCode ?? '?' }）${replayHint}`,
           incomplete ? 'warn' : 'err',
         );
-        log('err', `[approval-flow] 用例失败 · exit=${msg.exitCode ?? '?'}`);
+        log('err', `[approval-flow] 用例失败 · exit=${lastApprovalFlowRun.exitCode ?? '?'}`);
         }
-        if (msg.reportOpenPath) {
-          log('info', `[approval-flow] 报告 ${msg.reportOpenPath}`);
+        if (lastApprovalFlowRun.reportOpenPath) {
+          log('info', `[approval-flow] 报告 ${lastApprovalFlowRun.reportOpenPath}`);
         }
-        if (hasFlowReplayPath(msg)) {
-          log('info', `[approval-flow] 回放 ${msg.replayReportOpenPath || msg.videoReportOpenPath}`);
+        if (hasFlowReplayPath(lastApprovalFlowRun)) {
+          log('info', `[approval-flow] 回放 ${lastApprovalFlowRun.replayReportOpenPath || lastApprovalFlowRun.videoReportOpenPath}`);
         }
       }
-      if (msg.runMarker) fillFlowRunSearchQuery(msg.runMarker, false);
+      if (lastApprovalFlowRun.runMarker) fillFlowRunSearchQuery(lastApprovalFlowRun.runMarker, false);
       break;
     case 'flow:config:list:done':
       if (msg.ok) {
@@ -8652,6 +8759,9 @@ function setRequestFlowBusy(busy) {
 
 const requestFlowProfileState = {};
 let requestFlowSubTab = 'golden';
+/** compact 检测模式：探活完成后继续跑的 Golden 动作 */
+let requestFlowProbeChain = null;
+let approvalFlowProbeChain = null;
 let flowProfileLoginTarget = '';
 let pendingGoldenProfileLogin = false;
 let pendingWriteProfileLogin = false;
@@ -9425,7 +9535,7 @@ function requestFlowScriptKeyFromDom(spec) {
   return key;
 }
 
-function runRequestFlowGolden() {
+function runRequestFlowGoldenDirect() {
   switchToRequestFlowSubTab('golden');
   const p = getSelectedGoldenProfile();
   if (!p?.hasStorage) {
@@ -9443,7 +9553,23 @@ function runRequestFlowGolden() {
   });
 }
 
-function runRequestFlowGoldenAll() {
+function runRequestFlowGolden() {
+  switchToRequestFlowSubTab('golden');
+  const p = getSelectedGoldenProfile();
+  if (!p?.hasStorage) {
+    showToast('请先选择并已登录 Golden 角色', 'err');
+    return;
+  }
+  if (shouldProbeBeforeCompactGolden()) {
+    requestFlowProbeChain = 'golden';
+    log('info', '[request-flow] 检测模式：先探活再跑 Golden…');
+    startRequestFlowProbe();
+    return;
+  }
+  runRequestFlowGoldenDirect();
+}
+
+function runRequestFlowGoldenAllDirect() {
   switchToRequestFlowSubTab('golden');
   const ready = Object.values(requestFlowProfileState).filter((p) => isGoldenProfileId(p.id) && p.hasStorage);
   if (!ready.length) {
@@ -9463,6 +9589,22 @@ function runRequestFlowGoldenAll() {
   })) {
     setRequestFlowBusy(false);
   }
+}
+
+function runRequestFlowGoldenAll() {
+  switchToRequestFlowSubTab('golden');
+  const ready = Object.values(requestFlowProfileState).filter((p) => isGoldenProfileId(p.id) && p.hasStorage);
+  if (!ready.length) {
+    showToast('请先为至少一个 golden* 档案完成登录', 'err');
+    return;
+  }
+  if (shouldProbeBeforeCompactGolden()) {
+    requestFlowProbeChain = 'goldenAll';
+    log('info', '[request-flow] 检测模式：先探活再跑全部 Golden…');
+    startRequestFlowProbe();
+    return;
+  }
+  runRequestFlowGoldenAllDirect();
 }
 
 function runRequestFlowProbePreset(presetKey, chain) {
@@ -9530,6 +9672,7 @@ function clearRequestFlowBaseline() {
 }
 
 function cancelRequestFlowRun() {
+  requestFlowProbeChain = null;
   if (!send('cancel:request-flow', {})) {
     showToast('未连接 Studio 服务', 'err');
     return;
@@ -9785,8 +9928,11 @@ function switchToApprovalFlowTab() {
 function startApprovalFlowProbe() {
   switchToApprovalFlowTab();
   const frontendRepo = document.getElementById('approvalFrontendRepo')?.value?.trim() || '';
+  const golden = getSelectedApprovalGoldenProfile();
+  const payload = { frontendRepo, env: envState.current };
+  if (golden?.id) payload.accountProfile = golden.id;
   setApprovalFlowBusy(true);
-  if (!send('approval-flow:probe', { frontendRepo, env: envState.current })) setApprovalFlowBusy(false);
+  if (!send('approval-flow:probe', payload)) setApprovalFlowBusy(false);
 }
 
 function getApprovalFlowMode() {
@@ -9870,7 +10016,7 @@ function approvalFlowScriptKeyFromDom(spec) {
   return key;
 }
 
-function runApprovalFlowGolden() {
+function runApprovalFlowGoldenDirect() {
   switchToApprovalFlowSubTab('golden');
   const p = getSelectedApprovalGoldenProfile();
   if (!p?.hasStorage) {
@@ -9888,7 +10034,23 @@ function runApprovalFlowGolden() {
   });
 }
 
-function runApprovalFlowGoldenAll() {
+function runApprovalFlowGolden() {
+  switchToApprovalFlowSubTab('golden');
+  const p = getSelectedApprovalGoldenProfile();
+  if (!p?.hasStorage) {
+    showToast('请先选择并已登录 Golden 角色', 'err');
+    return;
+  }
+  if (shouldProbeBeforeCompactGolden()) {
+    approvalFlowProbeChain = 'golden';
+    log('info', '[approval-flow] 检测模式：先探活再跑 Golden…');
+    startApprovalFlowProbe();
+    return;
+  }
+  runApprovalFlowGoldenDirect();
+}
+
+function runApprovalFlowGoldenAllDirect() {
   switchToApprovalFlowSubTab('golden');
   const ready = Object.values(requestFlowProfileState).filter((p) => isGoldenProfileId(p.id) && p.hasStorage);
   if (!ready.length) {
@@ -9906,6 +10068,22 @@ function runApprovalFlowGoldenAll() {
   })) {
     setApprovalFlowBusy(false);
   }
+}
+
+function runApprovalFlowGoldenAll() {
+  switchToApprovalFlowSubTab('golden');
+  const ready = Object.values(requestFlowProfileState).filter((p) => isGoldenProfileId(p.id) && p.hasStorage);
+  if (!ready.length) {
+    showToast('请先为至少一个 golden* 档案完成登录', 'err');
+    return;
+  }
+  if (shouldProbeBeforeCompactGolden()) {
+    approvalFlowProbeChain = 'goldenAll';
+    log('info', '[approval-flow] 检测模式：先探活再跑全部 Golden…');
+    startApprovalFlowProbe();
+    return;
+  }
+  runApprovalFlowGoldenAllDirect();
 }
 
 function promoteApprovalFlowBaseline() {
@@ -9929,6 +10107,7 @@ function clearApprovalFlowBaseline() {
 }
 
 function cancelApprovalFlowRun() {
+  approvalFlowProbeChain = null;
   if (!send('cancel:approval-flow', {})) {
     showToast('未连接 Studio 服务', 'err');
     return;

@@ -1,9 +1,66 @@
+const fs = require('fs');
 const { spawn } = require('child_process');
 const path = require('path');
 const { spawnTracked } = require('./kill-proc');
 const { createPlaywrightLogSink } = require('./failure-report');
 const { readLastFlowRun } = require('./flow-run-common');
 const { readGoldenBatch, summarizeGoldenBatch } = require('./golden-batch');
+
+function readLastRunManifest(repoRoot, flowId) {
+  const abs = path.join(repoRoot, 'results', 'flow-runs', flowId, 'last-run.json');
+  if (!fs.existsSync(abs)) return null;
+  try {
+    const data = JSON.parse(fs.readFileSync(abs, 'utf8'));
+    return data && typeof data === 'object' ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveReplayOpenPath(repoRoot, flowId, lastRun, manifest) {
+  const direct = lastRun?.replayReportOpenPath || lastRun?.videoReportOpenPath || '';
+  if (direct) return direct;
+  const runId = String(lastRun?.runId || manifest?.runId || '').trim();
+  if (!runId) return '';
+  const rel = `results/flow-runs/${flowId}/${runId}/flow.html`;
+  const abs = path.join(repoRoot, rel);
+  return fs.existsSync(abs) ? `/repo-report/${rel.replace(/\\/g, '/')}` : '';
+}
+
+function buildGoldenCliDonePayload(repoRoot, flowId, result, base) {
+  const lastRun = result.lastRun || {};
+  const manifest = readLastRunManifest(repoRoot, flowId) || lastRun.manifest || null;
+  const runId = String(lastRun.runId || manifest?.runId || '').trim();
+  const replayReportOpenPath = resolveReplayOpenPath(repoRoot, flowId, lastRun, manifest);
+  const videoReportOpenPath = lastRun.videoReportOpenPath || '';
+  const spec = manifest?.spec || base.spec || '';
+  const flowDir = flowId === 'approval-flow' ? 'approval-flow' : 'request-flow';
+  return {
+    ...base,
+    runId,
+    startedAt: lastRun.startedAt || manifest?.startedAt,
+    finishedAt: lastRun.finishedAt || manifest?.finishedAt,
+    passed: manifest?.passed,
+    failed: manifest?.failed,
+    total: manifest?.total,
+    skipped: manifest?.skipped,
+    skips: manifest?.skips || [],
+    failures: manifest?.failures || [],
+    pipeline: manifest?.pipeline || 'golden',
+    runMarker: manifest?.runMarker,
+    specRelative: spec ? `${flowDir}/tests/${spec}` : undefined,
+    roleSlug: manifest?.roleSlug,
+    accountProfile: manifest?.accountProfile,
+    compareReportOpenPath: lastRun.compareReportOpenPath || '',
+    customerReportOpenPath: lastRun.customerReportOpenPath || '',
+    summaryReportOpenPath: lastRun.summaryReportOpenPath || '',
+    reportOpenPath: lastRun.reportOpenPath || '',
+    replayReportOpenPath,
+    videoReportOpenPath,
+    lastRun,
+    manifest,
+  };
+}
 
 const GOLDEN_NPM_SCRIPTS = {
   'request-flow': 'request-flow:golden',
@@ -134,10 +191,7 @@ async function runStudioGoldenRun(ws, session, flowId, msg, deps, hooks = {}) {
     label: `${flowId}/golden-cli`,
   });
 
-  const manifest = result.failedRun
-    ? null
-    : result.lastRun?.manifest || null;
-  const payload = {
+  const payload = buildGoldenCliDonePayload(repoRoot, flowId, result, {
     ok: result.ok,
     exitCode: result.exitCode,
     cancelled: Boolean(result.cancelled),
@@ -148,15 +202,7 @@ async function runStudioGoldenRun(ws, session, flowId, msg, deps, hooks = {}) {
     viaCli: true,
     goldenBatch: result.goldenBatch || null,
     batchHeadline: result.batchSummary?.headline || '',
-    lastRun: result.lastRun || null,
-    manifest,
-    compareReportOpenPath: result.lastRun?.compareReportRel
-      ? `/repo-report/${result.lastRun.compareReportRel}`
-      : '',
-    replayReportOpenPath: result.lastRun?.replayReportRel
-      ? `/repo-report/${result.lastRun.replayReportRel}`
-      : '',
-  };
+  });
 
   send(ws, `${eventPrefix}:run:done`, payload);
   if (result.ok) logLine(ws, `[${flowId}] Golden CLI 通过`, 'ok');
