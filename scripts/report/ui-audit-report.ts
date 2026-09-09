@@ -2,6 +2,7 @@ import path from 'path';
 import type { AuditHistoryEntry } from './ui-audit-history.js';
 import type { UiIssueSeverity } from './ui-issues.js';
 import type { AuditIssue, AuditResult, AuditVerdict } from './ui-audit-schema.js';
+import { friendlyScriptLabel } from './customer-report-naming.js';
 
 export interface AuditStepReport {
   scriptKey: string;
@@ -12,6 +13,7 @@ export interface AuditStepReport {
   /** 报告 HTML 所在目录到 Figma 设计稿图的相对路径 */
   figmaRel?: string;
   figmaUrl?: string;
+  helios?: boolean;
   /** 截图真实像素尺寸，用于把 bbox 换算成百分比 */
   imageWidth: number;
   imageHeight: number;
@@ -30,10 +32,23 @@ const SEVERITY_COLOR: Record<UiIssueSeverity, string> = {
 };
 
 const SEVERITY_LABEL: Record<UiIssueSeverity, string> = {
-  blocker: '阻塞',
-  warning: '警告',
-  noise: '噪声',
-  info: '提示',
+  blocker: '需要修复',
+  warning: '建议确认',
+  noise: '观察项',
+  info: '分析说明',
+};
+
+const ISSUE_TYPE_LABEL: Record<AuditIssue['type'], string> = {
+  overflow: '内容溢出',
+  occlusion: '内容遮挡',
+  truncation: '内容截断',
+  layout: '布局异常',
+  whitespace: '留白异常',
+  component: '组件异常',
+  'missing-element': '元素缺失',
+  console: '页面报错',
+  'design-mismatch': '与设计不一致',
+  other: '其他',
 };
 
 const VERDICT_LABEL: Record<AuditVerdict, string> = {
@@ -102,11 +117,11 @@ function renderOverlay(step: AuditStepReport): string {
 function renderIssue(issue: AuditIssue): string {
   const color = SEVERITY_COLOR[issue.severity];
   const selector = issue.selector
-    ? `<code class="sel">${escapeHtml(issue.selector)}</code>`
+    ? `<details class="tech"><summary>技术定位</summary><code class="sel">${escapeHtml(issue.selector)}</code></details>`
     : '';
   return `<li class="issue">
       <span class="sev" style="background:${color}">${escapeHtml(SEVERITY_LABEL[issue.severity])}</span>
-      <span class="type">${escapeHtml(issue.type)}</span>
+      <span class="type">${escapeHtml(ISSUE_TYPE_LABEL[issue.type])}</span>
       <span class="desc">${escapeHtml(issue.description)}</span>
       ${selector}
       <span class="conf">置信 ${Math.round(issue.confidence * 100)}%</span>
@@ -127,20 +142,22 @@ function renderCard(step: AuditStepReport): string {
       ? '<span class="src">规则分析</span>'
       : result.source === 'ai'
         ? '<span class="src ai">AI 视觉</span>'
-        : '<span class="src err">分析失败</span>';
+        : '<span class="src err">AI 失败 · 规则降级</span>';
 
-  const figmaBadge = step.figmaRel
+  const figmaBadge = step.result.baseline === 'figma'
     ? '<span class="src figma">Figma 双图</span>'
     : step.result.baseline === 'figma-spec'
       ? '<span class="src figma">Figma 规范</span>'
+      : step.helios
+        ? '<span class="src figma">Helios 设计规范</span>'
       : '';
 
   const title = `${step.stepNumber != null ? `#${step.stepNumber} ` : ''}${step.stepName}`;
 
   const sub =
     result.verdict === 'skipped'
-      ? `${escapeHtml(step.scriptKey)} · 未审计 ${sourceBadge}${figmaBadge}`
-      : `${escapeHtml(step.scriptKey)} · 健康分 ${result.score} ${sourceBadge}${figmaBadge}`;
+      ? `${escapeHtml(friendlyScriptLabel(step.scriptKey))} · 未完成有效审计 ${sourceBadge}${figmaBadge}`
+      : `${escapeHtml(friendlyScriptLabel(step.scriptKey))} · 健康分 ${result.score} ${sourceBadge}${figmaBadge}`;
 
   const shotHtml = step.figmaRel
     ? `<div class="compare">
@@ -178,6 +195,7 @@ export interface AuditReportMeta {
   scriptKey?: string;
   runId?: string;
   runTs?: string;
+  manifestRunId?: string;
 }
 
 const AUDIT_REPORT_STYLES = `
@@ -217,7 +235,11 @@ const AUDIT_REPORT_STYLES = `
  .issue .desc{flex:1;min-width:160px}
  .issue .sel{font-size:11px;color:#0a66c2;background:#eef4ff;padding:1px 6px;border-radius:4px;word-break:break-all}
  .issue .conf{color:#999;font-size:11px}
+ .tech{font-size:11px;color:#777}.tech summary{cursor:pointer}.tech .sel{display:block;margin-top:4px}
  .issue.ok{color:#18794e}
+ .summary{background:#fff;border:1px solid #e3e6ea;border-left:4px solid #0a66c2;border-radius:10px;padding:14px 16px;margin:14px 0}
+ .summary.fail{border-left-color:#e5484d}.summary.review{border-left-color:#f5a623}.summary.pass{border-left-color:#18794e}
+ .summary-title{font-size:17px;font-weight:700}.summary-desc{margin-top:6px;color:#666;font-size:13px}
  .empty{background:#fff;border:1px dashed #ccc;border-radius:10px;padding:32px;text-align:center;color:#888}
  .lightbox{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.82);display:none;align-items:center;justify-content:center;padding:24px;box-sizing:border-box}
  .lightbox.open{display:flex}
@@ -242,32 +264,75 @@ const AUDIT_REPORT_STYLES = `
 function auditCounts(steps: AuditStepReport[]): {
   counts: Record<AuditVerdict, number>;
   issueTotal: number;
+  observationTotal: number;
+  degradedSteps: number;
+  auditedSteps: number;
+  designSteps: number;
 } {
   const counts: Record<AuditVerdict, number> = { pass: 0, review: 0, fail: 0, skipped: 0 };
   let issueTotal = 0;
+  let observationTotal = 0;
   for (const s of steps) {
     counts[s.result.verdict]++;
-    if (s.result.verdict !== 'skipped') issueTotal += s.result.issues.length;
+    if (s.result.verdict === 'skipped') continue;
+    issueTotal += s.result.issues.filter(
+      (issue) => issue.severity === 'blocker' || issue.severity === 'warning',
+    ).length;
+    observationTotal += s.result.issues.filter((issue) => issue.severity === 'noise').length;
   }
-  return { counts, issueTotal };
+  return {
+    counts,
+    issueTotal,
+    observationTotal,
+    degradedSteps: steps.filter((s) => s.result.source === 'error').length,
+    auditedSteps: steps.filter((s) => s.result.verdict !== 'skipped').length,
+    designSteps: steps.filter(
+      (s) => s.result.baseline === 'figma' || s.result.baseline === 'figma-spec' || s.helios,
+    ).length,
+  };
 }
 
 function renderAuditReportBody(steps: AuditStepReport[], meta: AuditReportMeta = {}): string {
-  const { counts, issueTotal } = auditCounts(steps);
+  const { counts, issueTotal, observationTotal, degradedSteps, auditedSteps, designSteps } =
+    auditCounts(steps);
   const when = (meta.generatedAt ?? new Date()).toLocaleString('zh-CN');
   const modeText = meta.mode ? ` · ${escapeHtml(meta.mode)}` : '';
+  const overall = counts.fail > 0 ? 'fail' : counts.review > 0 ? 'review' : counts.skipped > 0 ? 'review' : 'pass';
+  const overallTitle =
+    counts.fail > 0
+      ? `${counts.fail} 个页面需要修复`
+      : counts.review > 0
+        ? `${counts.review} 个页面建议确认`
+        : counts.skipped > 0
+          ? '审计覆盖不完整，暂不能确认通过'
+          : '本次未发现明显 UI 缺陷';
+  const summaryDesc = [
+    `有效审计 ${auditedSteps}/${steps.length} 步`,
+    `需处理或确认 ${issueTotal} 项`,
+    observationTotal > 0 ? `观察项 ${observationTotal} 项` : '',
+    `设计依据覆盖 ${designSteps}/${steps.length} 步`,
+    degradedSteps > 0 ? `${degradedSteps} 步 AI 失败后使用规则降级，结论可信度受限` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
   const runText =
     meta.scriptKey && meta.runTs
-      ? `<div class="time">${escapeHtml(meta.scriptKey)} · run ${escapeHtml(meta.runTs)}</div>`
+      ? `<div class="time">${escapeHtml(friendlyScriptLabel(meta.scriptKey))} · run ${escapeHtml(meta.manifestRunId || meta.runTs)}</div>`
       : '';
   return `
  <div class="top"><h1>AI UI 审计报告</h1><div><div class="time">${escapeHtml(when)}${modeText}</div>${runText}</div></div>
+ <div class="summary ${overall}">
+   <div class="summary-title">${escapeHtml(overallTitle)}</div>
+   <div class="summary-desc">${escapeHtml(summaryDesc)}</div>
+ </div>
  <div class="stats">
    <div class="stat p">🟢 通过 ${counts.pass}</div>
    <div class="stat r">🟡 待确认 ${counts.review}</div>
    <div class="stat f">🔴 需修复 ${counts.fail}</div>
    <div class="stat s">⚪ 未审计 ${counts.skipped}</div>
-   <div class="stat n">问题数 ${issueTotal}</div>
+   <div class="stat n">需处理或确认 ${issueTotal}</div>
+   ${observationTotal > 0 ? `<div class="stat n">观察项 ${observationTotal}</div>` : ''}
+   ${degradedSteps > 0 ? `<div class="stat f">AI 降级 ${degradedSteps}</div>` : ''}
  </div>
  ${
    steps.length === 0
@@ -365,7 +430,8 @@ export function renderAuditDashboardHtml(
   const body = renderAuditReportBody(steps, meta);
   const { counts, issueTotal } = auditCounts(steps);
   const histRows = history.filter((h) => h.runId !== meta.runId);
-  const verdict = counts.fail > 0 ? 'fail' : counts.review > 0 ? 'review' : 'pass';
+  const verdict: AuditHistoryEntry['verdict'] =
+    counts.fail > 0 ? 'fail' : counts.review > 0 ? 'review' : 'pass';
   const verdictLabel = counts.fail > 0 ? '需修复' : counts.review > 0 ? '待确认' : '通过';
   const allHistory = meta.runId
     ? [

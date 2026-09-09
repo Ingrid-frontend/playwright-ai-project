@@ -89,11 +89,15 @@ async function runUiAudit(ws, session, msg = {}, deps) {
 
   const limit = Math.max(1, Math.min(100, Number(msg.limit) || 6));
   const scriptFilter = String(msg.script || '').trim();
+  const scriptKey = String(msg.scriptKey || '').trim();
+  const runId = String(msg.runId || '').trim();
   const gate = Boolean(msg.gate);
   const mockOnly = Boolean(msg.mock);
 
   const args = ['run', 'ui-audit', '--', `--limit=${limit}`];
-  if (scriptFilter) args.push(`--script=${scriptFilter}`);
+  if (scriptKey) args.push(`--script-key=${scriptKey}`);
+  else if (scriptFilter) args.push(`--script=${scriptFilter}`);
+  if (runId) args.push(`--run=${runId}`);
   const dirFilter = String(msg.dir || '').trim();
   if (dirFilter) args.push(`--dir=${dirFilter}`);
   if (gate) args.push('--gate');
@@ -106,10 +110,17 @@ async function runUiAudit(ws, session, msg = {}, deps) {
   const usingAi = !mockOnly && Boolean(resolveVisionApiKey(env));
   session.uiAuditCancelled = false;
 
-  send(ws, 'ui-audit:run:start', { limit, script: scriptFilter, gate, mode: usingAi ? 'ai' : 'mock' });
+  send(ws, 'ui-audit:run:start', {
+    limit,
+    script: scriptFilter,
+    scriptKey,
+    runId,
+    gate,
+    mode: usingAi ? 'ai' : 'mock',
+  });
   logLine(
     ws,
-    `[ui-audit] 开始审计 · limit=${limit}${scriptFilter ? ` · script=${scriptFilter}` : ''}${figmaUrl ? ' · Figma 基准' : ''} · ${usingAi ? 'AI 视觉分析' : 'mock 规则分析'}`,
+    `[ui-audit] 开始审计 · limit=${limit}${scriptKey ? ` · script=${scriptKey}` : scriptFilter ? ` · script=${scriptFilter}` : ''}${runId ? ` · run=${runId}` : ''}${figmaUrl ? ' · Figma 基准' : ''} · ${usingAi ? 'AI 视觉分析' : 'mock 规则分析'}`,
     'info',
   );
   if (!usingAi && !mockOnly) {
@@ -168,7 +179,7 @@ async function runUiAudit(ws, session, msg = {}, deps) {
       `[ui-audit] 完成 · 🟢 ${s.pass} 🟡 ${s.review} 🔴 ${s.fail} ⚪ ${s.skipped}`,
       s.fail > 0 ? 'err' : s.review > 0 ? 'warn' : 'ok',
     );
-    if (s.skipped > 0 && s.mode === 'mock') {
+    if (s.skipped > 0 && s.mode !== 'ai') {
       logLine(
         ws,
         `[ui-audit] ${s.skipped} 个步骤缺少判定依据未审计；配置 AI_API_KEY 可启用 AI 视觉分析`,

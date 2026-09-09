@@ -13,6 +13,7 @@ import {
 import {
   archiveAuditRun,
   deriveRunMeta,
+  groupCandidatesByRun,
   pickLatestRunGroup,
   readAuditHistory,
   runsDir,
@@ -33,6 +34,8 @@ interface Args {
   out: string;
   gate: boolean;
   script?: string;
+  scriptKey?: string;
+  run?: string;
   figma?: string;
   figmaImage?: string;
 }
@@ -52,6 +55,8 @@ function parseArgs(argv: string[]): Args {
     out: get('out') || path.join('results', 'ui-audit'),
     gate: argv.includes('--gate'),
     script: get('script'),
+    scriptKey: get('script-key'),
+    run: get('run'),
     figma: get('figma'),
     figmaImage: get('figma-image'),
   };
@@ -112,13 +117,13 @@ function readPngSize(pngPath: string): { width: number; height: number } | null 
   }
 }
 
-function collectCandidates(rootDir: string, script?: string): Candidate[] {
+function collectCandidates(rootDir: string, script?: string, exact = false): Candidate[] {
   const out: Candidate[] = [];
   for (const pngPath of walk(rootDir)) {
     const metaPath = pngPath.replace(/\.png$/i, '.meta.json');
     if (!fs.existsSync(metaPath)) continue;
     const scriptKey = deriveScriptKey(pngPath, rootDir);
-    if (script && !scriptKey.includes(script)) continue;
+    if (script && (exact ? scriptKey !== script : !scriptKey.includes(script))) continue;
     const { stepName, stepNumber } = deriveStep(path.basename(pngPath));
     out.push({ pngPath, metaPath, scriptKey, stepName, stepNumber });
   }
@@ -127,6 +132,7 @@ function collectCandidates(rootDir: string, script?: string): Candidate[] {
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
+  if (args.scriptKey) args.scriptKey = args.scriptKey.replace(/^flows\//, '');
   const rootDir = path.resolve(process.cwd(), args.dir);
   const outDir = path.resolve(process.cwd(), args.out);
   const assetDir = path.join(outDir, 'assets');
@@ -152,11 +158,18 @@ async function main(): Promise<void> {
   if (args.figma) console.log(`   Figma URL: ${args.figma}`);
   if (args.figmaImage) console.log(`   Figma 本地图: ${args.figmaImage}`);
 
-  const allCandidates = collectCandidates(rootDir, args.script);
-  const runGroup = pickLatestRunGroup(allCandidates, rootDir);
+  const allCandidates = collectCandidates(rootDir, args.scriptKey || args.script, Boolean(args.scriptKey));
+  const runGroup = args.run
+    ? groupCandidatesByRun(allCandidates, rootDir).find(
+        (group) => group.runTs === args.run && (!args.scriptKey || group.scriptKey === args.scriptKey),
+      ) || null
+    : pickLatestRunGroup(allCandidates, rootDir);
   const candidates = (runGroup?.items || []).slice(0, args.limit);
   if (runGroup) {
     console.log(`   本次 run: ${runGroup.runTs}（${runGroup.scriptKey}，${runGroup.items.length} 步）`);
+  } else if (args.run) {
+    console.error(`   未找到绑定 run: ${args.run}`);
+    process.exit(1);
   }
   if (candidates.length === 0) {
     console.log(`\n⚠️  未找到可审计的截图（需要 .png 与同名 .meta.json 配对）`);
@@ -237,6 +250,7 @@ async function main(): Promise<void> {
       screenshotRel: relativeAssetPath(outDir, assetPath),
       figmaRel,
       figmaUrl: figma?.url,
+      helios: helios.enabled,
       imageWidth,
       imageHeight,
       viewportWidth: meta.viewport?.width ?? imageWidth,
@@ -278,7 +292,17 @@ async function main(): Promise<void> {
   ]
     .filter(Boolean)
     .join(' · ');
-  const modeLabel = `${mock ? 'mock 规则分析' : 'AI 视觉分析'}${figmaModeLabel ? ` · ${figmaModeLabel}` : ''}`;
+  const aiSteps = steps.filter((s) => s.result.source === 'ai').length;
+  const ruleSteps = steps.filter((s) => s.result.source === 'mock').length;
+  const degradedSteps = steps.filter((s) => s.result.source === 'error').length;
+  const sourceLabel = [
+    aiSteps ? `AI 视觉 ${aiSteps}` : '',
+    ruleSteps ? `规则分析 ${ruleSteps}` : '',
+    degradedSteps ? `AI 降级 ${degradedSteps}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const modeLabel = `${sourceLabel || (mock ? 'mock 规则分析' : 'AI 视觉分析')}${figmaModeLabel ? ` · ${figmaModeLabel}` : ''}`;
   const generatedAt = new Date();
   const firstCand = candidates[0];
   const runMeta = firstCand ? deriveRunMeta(firstCand.pngPath, rootDir, firstCand.scriptKey) : null;
@@ -292,6 +316,7 @@ async function main(): Promise<void> {
     scriptKey,
     runId,
     runTs,
+    manifestRunId: args.run || runTs,
   };
 
   const history = readAuditHistory(outDir);
@@ -338,8 +363,13 @@ async function main(): Promise<void> {
     generatedAt: generatedAt.toISOString(),
     runId,
     runTs,
+    manifestRunId: args.run || runTs,
     scriptKey,
-    mode: mock ? 'mock' : 'ai',
+    mode: degradedSteps > 0 ? 'degraded' : aiSteps > 0 ? 'ai' : 'mock',
+    requestedMode: mock ? 'mock' : 'ai',
+    aiSteps,
+    ruleSteps,
+    degradedSteps,
     total: steps.length,
     pass: steps.filter((s) => s.result.verdict === 'pass').length,
     review: steps.filter((s) => s.result.verdict === 'review').length,
@@ -349,17 +379,36 @@ async function main(): Promise<void> {
     figmaVision: figmaVisionCount,
     figmaSpec: figmaSpecCount,
     helios: heliosCount,
+    issueTotal: steps.reduce(
+      (n, s) =>
+        n +
+        s.result.issues.filter(
+          (issue) => issue.severity === 'blocker' || issue.severity === 'warning',
+        ).length,
+      0,
+    ),
+    observationTotal: steps.reduce(
+      (n, s) => n + s.result.issues.filter((issue) => issue.severity === 'noise').length,
+      0,
+    ),
     steps: steps.map((s) => ({
       scriptKey: s.scriptKey,
       stepName: s.stepName,
       verdict: s.result.verdict,
       score: s.result.score,
+      source: s.result.source,
       baseline: s.result.baseline,
+      helios: s.helios,
       figmaUrl: s.figmaUrl,
       issues: s.result.issues,
     })),
   };
   fs.writeFileSync(path.join(outDir, 'summary.json'), JSON.stringify(summary, null, 2), 'utf-8');
+  if (runId && steps.length > 0) {
+    const runOut = path.join(runsDir(outDir), runId);
+    fs.mkdirSync(runOut, { recursive: true });
+    fs.writeFileSync(path.join(runOut, 'summary.json'), JSON.stringify(summary, null, 2), 'utf-8');
+  }
 
   const flat = steps
     .filter((s) => s.result.issues.length > 0 && s.result.verdict !== 'skipped')
@@ -394,7 +443,11 @@ async function main(): Promise<void> {
       fail: summary.fail,
       skipped: summary.skipped,
       issueTotal: steps.reduce(
-        (n, s) => n + (s.result.verdict === 'skipped' ? 0 : s.result.issues.length),
+        (n, s) =>
+          n +
+          s.result.issues.filter(
+            (issue) => issue.severity === 'blocker' || issue.severity === 'warning',
+          ).length,
         0,
       ),
       verdict,

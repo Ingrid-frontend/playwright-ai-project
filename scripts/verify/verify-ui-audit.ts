@@ -109,6 +109,7 @@ async function main(): Promise<void> {
   // 动态导入（保持与 tsx ESM 运行方式一致）
   const { auditStep } = await import('../report/ui-audit-analyzer.js');
   const { renderAuditReportHtml, relativeAssetPath } = await import('../report/ui-audit-report.js');
+  const { normalizeAuditResult } = await import('../report/ui-audit-schema.js');
 
   // 审计
   const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
@@ -123,6 +124,25 @@ async function main(): Promise<void> {
   assert.notEqual(result.verdict, 'pass', 'mock 分析应发现至少 1 个问题');
   assert.ok(result.issues.length >= 2, `mock 分析应至少发现 2 个问题（实际 ${result.issues.length}）`);
   assert.ok(result.score >= 0 && result.score <= 100, `score 在 0-100 范围内（实际 ${result.score}）`);
+
+  const reconciled = normalizeAuditResult({
+    score: 100,
+    verdict: 'pass',
+    issues: [
+      {
+        id: 'conflict-1',
+        type: 'occlusion',
+        severity: 'blocker',
+        selector: '',
+        bbox: null,
+        description: '主要操作被遮挡',
+        confidence: 0.9,
+      },
+    ],
+  });
+  assert.equal(reconciled.verdict, 'fail', 'AI verdict 与问题冲突时应按更严格的问题严重度判定');
+  assert.equal(reconciled.score, 75, '健康分不得高于问题严重度推导分');
+  console.log('✅ AI 结论与问题严重度冲突时已自动收敛');
 
   // 验证具体问题类型
   const types = result.issues.map((i: { type: string }) => i.type);
@@ -152,6 +172,8 @@ async function main(): Promise<void> {
   // 验证 HTML 包含标注框
   assert.ok(html.includes('class="box"'), '报告 HTML 应包含标注框 overlay');
   assert.ok(html.includes('需修复') || html.includes('待确认'), '报告应包含三态结论');
+  assert.ok(html.includes('需处理或确认'), '报告首屏应使用客户可理解的问题口径');
+  assert.ok(!html.includes('>overflow<'), '报告正文不应直接展示英文问题类型');
   assert.ok(html.includes('src="' + steps[0].screenshotRel + '"'), '截图路径应正确');
   console.log('✅ 报告 HTML 包含标注框与三态结论');
 

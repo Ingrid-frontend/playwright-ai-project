@@ -133,12 +133,12 @@ export function deriveShipAdvice(coverage: CoverageStats): { advice: ShipAdvice;
     return { advice: 'baseline', label: '检测覆盖不足，建议补充验收基线后再验收' };
   }
   if (coverage.minorSteps > 0) {
-    return { advice: 'confirm', label: '可发版，轻微变化无需处理' };
+    return { advice: 'confirm', label: '未发现阻断问题，建议确认可接受差异后发布' };
   }
   if (coverage.uncoveredSteps > 0) {
     return {
       advice: 'ship',
-      label: `已检测 ${coverage.comparedSteps} 步全部通过，另有 ${coverage.uncoveredSteps} 步未建基线，可发版`,
+      label: `已对比 ${coverage.comparedSteps} 步未发现问题；另有 ${coverage.uncoveredSteps} 步缺少基线，建议补齐后确认`,
     };
   }
   return { advice: 'ship', label: '可以发版' };
@@ -146,8 +146,13 @@ export function deriveShipAdvice(coverage: CoverageStats): { advice: ShipAdvice;
 
 export function buildActionItems(model: CustomerReportModel): string[] {
   const items: string[] = [];
+  const seen = new Set<string>();
   for (const g of model.regressionGroups) {
-    items.push(`修复「${g.title}」：${g.reason || '检测到与验收基线不一致'}`);
+    const item = `修复「${g.title}」：${g.reason || '检测到与验收基线不一致'}`;
+    if (!seen.has(item)) {
+      seen.add(item);
+      items.push(item);
+    }
   }
   const meaningfulUncovered = model.uncovered.filter((p) => !p.processOnly).length;
   const uncoveredRatio =
@@ -194,6 +199,10 @@ export function buildPlainDescription(slot: CoverageSlot, width?: number, height
       ? `内容与验收基线完全一致，整体位置挪了约 ${shift}（页面差异 ${pct}%）`
       : `内容与验收基线一致，仅显示效果有细微差别（页面差异 ${pct}%）`;
   }
+  if (slot.status === 'minor' && slot.evidence?.stateDrift) {
+    const base = slot.evidence.reason || '页面结构与基线一致，差异多为数据或渲染导致';
+    return `${base}（页面差异 ${pct}%）`;
+  }
 
   // 需要处理的卡片先说实质变化，位移/渲染差异往后排
   const ordered = [...regions].sort((a, b) => {
@@ -206,6 +215,7 @@ export function buildPlainDescription(slot: CoverageSlot, width?: number, height
     const what = r.nature ? natureLabel(r.nature) : '内容变化';
     return `${zone}${what}`;
   });
+  const uniqueParts = [...new Set(parts)];
   const lead = slot.status === 'regress' ? '需要修复' : '无需处理';
-  return `${lead}：${parts.join('、')}（页面差异 ${pct}%）`;
+  return `${lead}：${uniqueParts.join('、')}（页面差异 ${pct}%）`;
 }

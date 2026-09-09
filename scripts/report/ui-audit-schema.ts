@@ -144,17 +144,19 @@ export function normalizeAuditResult(
       confidence: clamp(Number(i.confidence) || 0.6, 0, 1),
     }));
 
-  const verdict = ((): AuditVerdict => {
-    const v = String(obj.verdict ?? '').toLowerCase();
-    if (v === 'pass' || v === 'review' || v === 'fail' || v === 'skipped') return v;
-    return verdictFromIssues(issues);
-  })();
+  const rawVerdict = String(obj.verdict ?? '').toLowerCase();
+  const derivedVerdict = verdictFromIssues(issues);
+  const verdict =
+    rawVerdict === 'skipped' && derivedVerdict === 'pass'
+      ? 'skipped'
+      : derivedVerdict;
 
   const score = ((): number => {
-    const s = Number(obj.score);
-    if (Number.isFinite(s)) return clamp(Math.round(s), 0, 100);
     const penalty = issues.reduce((sum, i) => sum + SEVERITY_WEIGHT[i.severity], 0);
-    return clamp(100 - penalty, 0, 100);
+    const derived = clamp(100 - penalty, 0, 100);
+    const s = Number(obj.score);
+    if (Number.isFinite(s)) return Math.min(clamp(Math.round(s), 0, 100), derived);
+    return derived;
   })();
 
   return { score, verdict, issues, source };

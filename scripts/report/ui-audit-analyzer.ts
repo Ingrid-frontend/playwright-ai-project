@@ -237,13 +237,26 @@ function parseAuditJson(text: string): unknown {
   const trimmed = text.trim();
   const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const body = fence?.[1]?.trim() ?? trimmed;
-  try {
-    return JSON.parse(body);
-  } catch {
-    const match = body.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error(`模型返回非 JSON: ${body.slice(0, 200)}`);
-    return JSON.parse(match[0]);
+  const match = body.match(/\{[\s\S]*\}/);
+  const candidates = [body, match?.[0]]
+    .filter((item): item is string => Boolean(item))
+    .flatMap((item) => [
+      item,
+      item
+        .replace(/,\s*([}\]])/g, '$1')
+        .replace(/}\s*{/g, '},{')
+        .replace(/([{,]\s*)([a-zA-Z_][\w-]*)\s*:/g, '$1"$2":'),
+    ]);
+  let lastError: unknown;
+  for (const candidate of [...new Set(candidates)]) {
+    try {
+      return JSON.parse(candidate);
+    } catch (err) {
+      lastError = err;
+    }
   }
+  if (!match) throw new Error(`模型返回非 JSON: ${body.slice(0, 200)}`);
+  throw lastError;
 }
 
 function visionContent(
@@ -311,9 +324,14 @@ async function callVision(
   return json.choices?.[0]?.message?.content || '';
 }
 
-function withInfo(result: AuditResult, description: string): AuditResult {
+function withInfo(
+  result: AuditResult,
+  description: string,
+  source: AuditResult['source'] = result.source,
+): AuditResult {
   return {
     ...result,
+    source,
     issues: [
       ...result.issues,
       {
@@ -341,7 +359,7 @@ export async function auditStep(
   opts?: { figmaImagePath?: string },
 ): Promise<AuditResult> {
   const figmaPath = opts?.figmaImagePath;
-  const useFigmaVision = shouldUseFigmaVision() && Boolean(figmaPath);
+  const useFigmaVision = Boolean(figmaPath);
   const hasFigmaSpec = Boolean(ctx.figmaNote || ctx.figmaUrl) && !useFigmaVision;
 
   if (shouldUseMock()) {
@@ -359,17 +377,17 @@ export async function auditStep(
   if (!config) {
     const fallback = mockAnalyze(meta);
     if (useFigmaVision) {
-      return withInfo(fallback, '已提供 Figma 基准图但当前无视觉模型，已降级为规则分析');
+      return withInfo(fallback, '已提供 Figma 基准图但当前无视觉模型，已降级为规则分析', 'error');
     }
     if (hasFigmaSpec) {
-      return withInfo(fallback, '已加载 Figma 文本规范但当前无视觉模型，已降级为规则分析');
+      return withInfo(fallback, '已加载 Figma 文本规范但当前无视觉模型，已降级为规则分析', 'error');
     }
-    return fallback;
+    return withInfo(fallback, '视觉模型配置不可用，已降级为规则分析', 'error');
   }
 
   const image = readImageAsBase64(screenshotPath);
   if (!image) {
-    return withInfo(mockAnalyze(meta), '截图不可读或超出大小限制，已降级为规则分析');
+    return withInfo(mockAnalyze(meta), '截图不可读或超出大小限制，已降级为规则分析', 'error');
   }
 
   const figmaImage = useFigmaVision && figmaPath ? readImageAsBase64(figmaPath) : null;
@@ -386,19 +404,31 @@ export async function auditStep(
     : hasFigmaSpec
       ? 'figma-spec'
       : 'none';
+  const systemPrompt = buildAuditSystemPrompt({
+    hasFigmaVision,
+    hasFigmaSpec: hasFigmaSpec || hasFigmaVision,
+    hasHelios: Boolean(ctx.helios?.tokensSummary || ctx.helios?.layoutRules?.length),
+  });
+  const userPrompt = buildAuditUserPrompt(meta, ctx, { figmaVision: hasFigmaVision });
 
   try {
     const text = await callVision(
-      buildAuditSystemPrompt({
-        hasFigmaVision,
-        hasFigmaSpec: hasFigmaSpec || hasFigmaVision,
-        hasHelios: Boolean(ctx.helios?.tokensSummary || ctx.helios?.layoutRules?.length),
-      }),
-      buildAuditUserPrompt(meta, ctx, { figmaVision: hasFigmaVision }),
+      systemPrompt,
+      userPrompt,
       visionImages,
       config,
     );
-    return { ...normalizeAuditResult(parseAuditJson(text), 'ai'), baseline };
+    try {
+      return { ...normalizeAuditResult(parseAuditJson(text), 'ai'), baseline };
+    } catch {
+      const retry = await callVision(
+        systemPrompt,
+        `${userPrompt}\n上次输出无法解析。请重新检查 JSON 语法，只返回合法 JSON，不要尾逗号或说明文字。`,
+        visionImages,
+        config,
+      );
+      return { ...normalizeAuditResult(parseAuditJson(retry), 'ai'), baseline };
+    }
   } catch (err) {
     const raw = err instanceof Error ? err.message : String(err);
     const modeLabel = hasFigmaVision ? '双图 Figma 对比' : hasFigmaSpec ? 'Figma 规范单图' : '单图';
@@ -406,6 +436,10 @@ export async function auditStep(
       ? `视觉接口请求超时（${modeLabel}，可设 AI_VISION_TIMEOUT_MS 加大）`
       : raw;
     console.log(`⚠️  AI 审计失败 (${ctx.stepName}): ${msg.slice(0, 140)}`);
-    return withInfo(mockAnalyze(meta), `AI 审计失败，已降级为规则分析: ${msg.slice(0, 80)}`);
+    return withInfo(
+      mockAnalyze(meta),
+      `AI 审计失败，已降级为规则分析: ${msg.slice(0, 80)}`,
+      'error',
+    );
   }
 }
