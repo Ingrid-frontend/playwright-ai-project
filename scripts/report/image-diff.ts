@@ -2,7 +2,12 @@ import fs from 'fs';
 import path from 'path';
 import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
-import { resolveIgnoreRegions, resolveDiffRegionsConfig, resolveWatermarkSuppress } from './ui-regression-config.js';
+import {
+  resolveCompareAlign,
+  resolveDiffRegionsConfig,
+  resolveIgnoreRegions,
+  resolveWatermarkSuppress,
+} from './ui-regression-config.js';
 import { classifyRegionNature, type ChangeNature } from './change-nature.js';
 
 export type DiffRegionSeverity = 'high' | 'medium' | 'low';
@@ -17,7 +22,10 @@ export const DIFF_REGIONS_VERSION = 2;
  * 区域性质识别版本。
  * v3 起每个区域带 nature（位移/渲染/内容），缓存需重算。
  */
-export const DIFF_NATURE_VERSION = 7;
+export const DIFF_NATURE_VERSION = 8;
+
+/** 比对前微平移对齐版本；变更后 diff 缓存失效 */
+export const ALIGN_SHIFT_VERSION = 1;
 
 /** 水印抑制算法版本；变更后 diff 缓存失效 */
 export const WATERMARK_SUPPRESS_VERSION = 1;
@@ -93,6 +101,8 @@ interface PreparedPair {
   width: number;
   height: number;
   sizeMismatch: boolean;
+  alignDx?: number;
+  alignDy?: number;
 }
 
 function readPNG(filePath: string): Promise<PNG> {
@@ -211,8 +221,98 @@ function suppressWatermarkDrift(prepared: PreparedPair): void {
   }
 }
 
+function lumAt(png: PNG, x: number, y: number, width: number, height: number): number {
+  if (x < 0 || y < 0 || x >= width || y >= height) return 255;
+  const i = (width * y + x) << 2;
+  return pixelLuminance(png.data[i]!, png.data[i + 1]!, png.data[i + 2]!);
+}
+
+function pairAlignResidual(
+  img1: PNG,
+  img2: PNG,
+  width: number,
+  height: number,
+  dx: number,
+  dy: number,
+  step: number,
+): number {
+  let sum = 0;
+  let n = 0;
+  for (let y = 0; y < height; y += step) {
+    for (let x = 0; x < width; x += step) {
+      sum += Math.abs(lumAt(img1, x, y, width, height) - lumAt(img2, x + dx, y + dy, width, height));
+      n++;
+    }
+  }
+  return n > 0 ? sum / n : 0;
+}
+
+function findBestAlignShift(
+  img1: PNG,
+  img2: PNG,
+  width: number,
+  height: number,
+  maxShift: number,
+): { dx: number; dy: number; residual: number } {
+  let best = { dx: 0, dy: 0, residual: pairAlignResidual(img1, img2, width, height, 0, 0, 4) };
+  for (let dy = -maxShift; dy <= maxShift; dy++) {
+    for (let dx = -maxShift; dx <= maxShift; dx++) {
+      const residual = pairAlignResidual(img1, img2, width, height, dx, dy, 4);
+      if (residual < best.residual) best = { dx, dy, residual };
+    }
+  }
+  const coarse = best;
+  for (let dy = coarse.dy - 1; dy <= coarse.dy + 1; dy++) {
+    for (let dx = coarse.dx - 1; dx <= coarse.dx + 1; dx++) {
+      const residual = pairAlignResidual(img1, img2, width, height, dx, dy, 2);
+      if (residual < best.residual) best = { dx, dy, residual };
+    }
+  }
+  return best;
+}
+
+function applyAlignShift(prepared: PreparedPair, dx: number, dy: number): void {
+  const { croppedImg1, croppedImg2, width, height } = prepared;
+  const src = Buffer.from(croppedImg2.data);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const sx = x + dx;
+      const sy = y + dy;
+      const di = (width * y + x) << 2;
+      if (sx < 0 || sy < 0 || sx >= width || sy >= height) {
+        croppedImg2.data[di] = croppedImg1.data[di]!;
+        croppedImg2.data[di + 1] = croppedImg1.data[di + 1]!;
+        croppedImg2.data[di + 2] = croppedImg1.data[di + 2]!;
+        croppedImg2.data[di + 3] = croppedImg1.data[di + 3]!;
+      } else {
+        const si = (width * sy + sx) << 2;
+        croppedImg2.data[di] = src[si]!;
+        croppedImg2.data[di + 1] = src[si + 1]!;
+        croppedImg2.data[di + 2] = src[si + 2]!;
+        croppedImg2.data[di + 3] = src[si + 3]!;
+      }
+    }
+  }
+}
+
+function alignComparePair(prepared: PreparedPair): void {
+  const cfg = resolveCompareAlign();
+  if (!cfg.enabled || prepared.sizeMismatch) return;
+  const { croppedImg1, croppedImg2, width, height } = prepared;
+  const raw = pairAlignResidual(croppedImg1, croppedImg2, width, height, 0, 0, 4);
+  const best = findBestAlignShift(croppedImg1, croppedImg2, width, height, cfg.maxShift);
+  if (best.dx === 0 && best.dy === 0) return;
+  if (raw <= 0) return;
+  const gain = (raw - best.residual) / raw;
+  if (gain < cfg.minGain) return;
+  applyAlignShift(prepared, best.dx, best.dy);
+  prepared.alignDx = best.dx;
+  prepared.alignDy = best.dy;
+}
+
 function prepareComparePair(prepared: PreparedPair, scriptKey?: string): void {
   applyIgnoreRegionsToPair(prepared, scriptKey);
+  alignComparePair(prepared);
   suppressWatermarkDrift(prepared);
 }
 
@@ -507,6 +607,9 @@ export async function compareImagesWithDiff(
       regions,
       regionsVersion: DIFF_REGIONS_VERSION,
       natureVersion: DIFF_NATURE_VERSION,
+      alignShiftVersion: resolveCompareAlign().enabled ? ALIGN_SHIFT_VERSION : 0,
+      alignDx: prepared.alignDx ?? 0,
+      alignDy: prepared.alignDy ?? 0,
       watermarkSuppressVersion: resolveWatermarkSuppress().enabled ? WATERMARK_SUPPRESS_VERSION : 0,
     });
 
@@ -539,6 +642,10 @@ export interface DiffMeta {
   regionsVersion?: number;
   /** 变化性质识别版本；与 DIFF_NATURE_VERSION 不符时缓存失效 */
   natureVersion?: number;
+  /** 微平移对齐版本；与 ALIGN_SHIFT_VERSION 不符时缓存失效 */
+  alignShiftVersion?: number;
+  alignDx?: number;
+  alignDy?: number;
   /** 水印抑制版本；与 WATERMARK_SUPPRESS_VERSION 不符时缓存失效 */
   watermarkSuppressVersion?: number;
 }
@@ -582,6 +689,9 @@ export function isDiffCacheValid(
         if (!meta.regions) return false;
         if ((meta.regionsVersion ?? 1) !== DIFF_REGIONS_VERSION) return false;
         if ((meta.natureVersion ?? 0) !== DIFF_NATURE_VERSION) return false;
+        const align = resolveCompareAlign();
+        const wantAlign = align.enabled ? ALIGN_SHIFT_VERSION : 0;
+        if ((meta.alignShiftVersion ?? 0) !== wantAlign) return false;
         const ws = resolveWatermarkSuppress();
         const wantWs = ws.enabled ? WATERMARK_SUPPRESS_VERSION : 0;
         if ((meta.watermarkSuppressVersion ?? 0) !== wantWs) return false;

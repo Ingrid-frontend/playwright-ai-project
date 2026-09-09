@@ -481,6 +481,84 @@ assert.equal(driftClassified.status, 'minor');
 assert.equal(driftClassified.evidence.stateDrift, true);
 pass('侧栏页面状态漂移降级为无需处理');
 
+// domHash 一致 + 监控区文案未变：列表数据/渲染抖动不得标红
+const stableDomDrift = detectPageStateDrift({
+  baselineMeta: {
+    domHash: 'SEC|filter',
+    sections: [{ key: 'approval-filter-bar', structureHash: 'filter', textHash: 't1', nodeCount: 9, childTags: 'DIV' }],
+    imageWidth: 1280,
+  },
+  currentMeta: {
+    domHash: 'SEC|filter',
+    sections: [{ key: 'approval-filter-bar', structureHash: 'filter', textHash: 't1', nodeCount: 9, childTags: 'DIV' }],
+    imageWidth: 1280,
+  },
+  regions: [
+    { x: 695, y: 297, w: 178, h: 43, pixels: 1920, ratio: 0.004, severity: 'high', nature: 'content' },
+    { x: 384, y: 126, w: 183, h: 12, pixels: 632, ratio: 0.001, severity: 'medium', nature: 'content' },
+  ],
+  width: 1280,
+  height: 720,
+});
+assert.equal(stableDomDrift.drift, true);
+const stableDomClassified = classifyDifference(
+  0.007,
+  [
+    { x: 695, y: 297, w: 178, h: 43, pixels: 1920, ratio: 0.004, severity: 'high', nature: 'content' },
+    { x: 384, y: 126, w: 183, h: 12, pixels: 632, ratio: 0.001, severity: 'medium', nature: 'content' },
+  ],
+  undefined,
+  { width: 1280, height: 720 },
+  stableDomDrift,
+);
+assert.equal(stableDomClassified.status, 'minor');
+assert.equal(stableDomClassified.evidence.stateDrift, true);
+pass('domHash 一致时列表/渲染差异降级');
+
+const softDominantDrift = detectPageStateDrift({
+  baselineMeta: {
+    domHash: 'BODY|1|',
+    sections: [
+      { key: 'request-list-root', structureHash: 'root', textHash: 't1', nodeCount: 103, childTags: 'DIV' },
+    ],
+    imageWidth: 1280,
+  },
+  currentMeta: {
+    domHash: 'BODY|1|',
+    sections: [
+      { key: 'request-list-root', structureHash: 'root', textHash: 't2', nodeCount: 103, childTags: 'DIV' },
+    ],
+    imageWidth: 1280,
+  },
+  regions: [
+    { x: 160, y: 80, w: 262, h: 239, pixels: 4694, ratio: 0.01, severity: 'high', nature: 'rendering' },
+    { x: 160, y: 342, w: 156, h: 66, pixels: 3496, ratio: 0.008, severity: 'high', nature: 'content' },
+    { x: 1200, y: 294, w: 64, h: 34, pixels: 1424, ratio: 0.003, severity: 'high', nature: 'shifted' },
+    { x: 651, y: 499, w: 122, h: 109, pixels: 1268, ratio: 0.003, severity: 'high', nature: 'shifted' },
+    { x: 720, y: 80, w: 44, h: 93, pixels: 974, ratio: 0.002, severity: 'high', nature: 'content' },
+    { x: 100, y: 200, w: 40, h: 20, pixels: 500, ratio: 0.001, severity: 'medium', nature: 'shifted' },
+  ],
+  width: 1280,
+  height: 720,
+});
+assert.equal(softDominantDrift.drift, true);
+const softDominantClassified = classifyDifference(
+  0.0227,
+  [
+    { x: 160, y: 80, w: 262, h: 239, pixels: 4694, ratio: 0.01, severity: 'high', nature: 'rendering' },
+    { x: 160, y: 342, w: 156, h: 66, pixels: 3496, ratio: 0.008, severity: 'high', nature: 'content' },
+    { x: 1200, y: 294, w: 64, h: 34, pixels: 1424, ratio: 0.003, severity: 'high', nature: 'shifted' },
+    { x: 651, y: 499, w: 122, h: 109, pixels: 1268, ratio: 0.003, severity: 'high', nature: 'shifted' },
+    { x: 720, y: 80, w: 44, h: 93, pixels: 974, ratio: 0.002, severity: 'high', nature: 'content' },
+    { x: 100, y: 200, w: 40, h: 20, pixels: 500, ratio: 0.001, severity: 'medium', nature: 'shifted' },
+  ],
+  undefined,
+  { width: 1280, height: 720 },
+  softDominantDrift,
+);
+assert.equal(softDominantClassified.status, 'minor');
+pass('domHash 一致且位移/渲染占主导时降级');
+
 assert.ok(scriptKeyMatches('flows/approval-flow', 'approval-flow/dev/golden-regression/by-account/menma_comic_com'));
 assert.ok(!scriptKeyMatches('flows/request-flow', 'approval-flow/dev/golden-regression/by-account/menma_comic_com'));
 pass('scriptKeyMatches 支持 flows/ 前缀与 flow 扫描路径');

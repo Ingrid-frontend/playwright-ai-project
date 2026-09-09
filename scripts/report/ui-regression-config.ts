@@ -113,7 +113,10 @@ export interface UiRegressionConfig {
     fullPage: boolean;
     /** 截图前是否 setViewportSize 锁视口；默认 false，避免有头运行时页面突然缩小 */
     lockViewport?: boolean;
+    /** 截图前等待 document.fonts.ready，减少字体未加载导致的字宽抖动 */
+    waitForFonts?: boolean;
   };
+  compareAlign?: CompareAlignConfig;
   crossBrowser: {
     blockerRatio: number;
     warningRatio: number;
@@ -191,6 +194,15 @@ export interface PixelmatchOptions {
   includeAA: boolean;
 }
 
+/** 比对前对两图做 ±N 像素微平移对齐，消除整页亚像素偏移误报 */
+export interface CompareAlignConfig {
+  enabled: boolean;
+  /** 搜索半径（px），默认 8 */
+  maxShift: number;
+  /** 对齐后残差相对未对齐的下降比例下限，默认 0.12 */
+  minGain: number;
+}
+
 /** 比对前抑制浅色半透明水印（如汇联易用户名斜纹）的像素抖动 */
 export interface WatermarkSuppressConfig {
   enabled: boolean;
@@ -246,6 +258,12 @@ const DEFAULT_CONFIG: UiRegressionConfig = {
     deviceScaleFactor: 1,
     fullPage: false,
     lockViewport: false,
+    waitForFonts: true,
+  },
+  compareAlign: {
+    enabled: true,
+    maxShift: 8,
+    minGain: 0.12,
   },
   crossBrowser: {
     blockerRatio: 0.03,
@@ -354,6 +372,10 @@ export function loadUiRegressionConfig(): UiRegressionConfig {
           ...DEFAULT_CONFIG.watermarkSuppress!,
           ...raw.watermarkSuppress,
         } as WatermarkSuppressConfig,
+        compareAlign: {
+          ...DEFAULT_CONFIG.compareAlign!,
+          ...raw.compareAlign,
+        } as CompareAlignConfig,
         viewports: raw.viewports?.length ? raw.viewports : DEFAULT_CONFIG.viewports,
       };
     } catch (e) {
@@ -466,6 +488,16 @@ export function resolveMaskSelectors(scriptKey?: string): string[] {
 
 export function resolveWatermarkSuppress(): WatermarkSuppressConfig {
   return { ...DEFAULT_CONFIG.watermarkSuppress!, ...(loadUiRegressionConfig().watermarkSuppress ?? {}) };
+}
+
+export function resolveCompareAlign(): CompareAlignConfig {
+  return { ...DEFAULT_CONFIG.compareAlign!, ...(loadUiRegressionConfig().compareAlign ?? {}) };
+}
+
+export function resolveScreenshotWaitFonts(): boolean {
+  if (process.env.SCREENSHOT_WAIT_FONTS === '0') return false;
+  if (process.env.SCREENSHOT_WAIT_FONTS === '1') return true;
+  return loadUiRegressionConfig().screenshot.waitForFonts !== false;
 }
 
 function activeViewports(all: SnapshotViewport[]): SnapshotViewport[] {

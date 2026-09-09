@@ -9,6 +9,7 @@ import {
   resolveMaskSelectors,
   resolveSnapshotViewports,
   resolveScreenshotFullPage,
+  resolveScreenshotWaitFonts,
   resolveStructureCheckItems,
   resolveStyleCheckItems,
   resolveChangeDetectionSections,
@@ -46,6 +47,21 @@ function withViewportSuffix(filePath: string, vpName: string, isDefault: boolean
 export async function lockViewportForSnapshot(page: Page, viewport: SnapshotViewport): Promise<void> {
   if (!resolveLockViewportForSnapshot()) return;
   await page.setViewportSize({ width: viewport.width, height: viewport.height });
+}
+
+export async function waitForScreenshotStable(page: Page): Promise<void> {
+  if (!resolveScreenshotWaitFonts()) return;
+  try {
+    await page.evaluate(async () => {
+      try {
+        if (document.fonts?.ready) await document.fonts.ready;
+      } catch {
+        /* ignore */
+      }
+    });
+  } catch {
+    /* frame 可能已销毁 */
+  }
 }
 
 function bandIsLetterbox(png: PNG, y0: number, y1: number): boolean {
@@ -458,6 +474,7 @@ export async function captureScreenshotAtViewports(
     resetPageDiag(page);
     await applyMaskSelectors(page, opts.scriptKey);
     await lockViewportForSnapshot(page, vp);
+    await waitForScreenshotStable(page);
     await page.screenshot({ path: outPath, fullPage, scale: SCREENSHOT_SCALE });
     const imageSize = normalizeScreenshotToCssViewport(outPath, vp, fullPage);
     if (imageSize.cropped) {

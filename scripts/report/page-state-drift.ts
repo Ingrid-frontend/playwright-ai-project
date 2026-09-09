@@ -3,6 +3,7 @@ import path from 'path';
 import { isActionableNature } from './change-nature.js';
 import type { DiffRegion } from './image-diff.js';
 import type { StepMeta } from './structure-check.js';
+import { resolveCustomerReportConfig } from './ui-regression-config.js';
 
 /** 左侧栏/待办列表常见占位，宽于表格左列 */
 const LEFT_SIDEBAR_MAX_X_RATIO = 0.28;
@@ -49,6 +50,15 @@ function sharedSectionStructureChanged(baselineMeta: StepMeta, currentMeta: Step
   return false;
 }
 
+function sharedSectionTextChanged(baselineMeta: StepMeta, currentMeta: StepMeta): boolean {
+  const baseMap = new Map((baselineMeta.sections || []).map((s) => [s.key, s]));
+  for (const cur of currentMeta.sections || []) {
+    const base = baseMap.get(cur.key);
+    if (base && base.textHash !== cur.textHash) return true;
+  }
+  return false;
+}
+
 function maxSectionNodeRatio(baselineMeta: StepMeta, currentMeta: StepMeta): number {
   const baseMap = new Map((baselineMeta.sections || []).map((s) => [s.key, s]));
   let ratio = 1;
@@ -58,6 +68,27 @@ function maxSectionNodeRatio(baselineMeta: StepMeta, currentMeta: StepMeta): num
     ratio = Math.max(ratio, cur.nodeCount / base.nodeCount);
   }
   return ratio;
+}
+
+function sumPixels(regs: DiffRegion[]): number {
+  return regs.reduce((s, r) => s + r.pixels, 0);
+}
+
+function hasLargeHardVisual(actionable: DiffRegion[], majorPixels: number): boolean {
+  return actionable
+    .filter((r) => r.nature === 'appeared' || r.nature === 'vanished' || !r.nature)
+    .some((r) => r.pixels >= majorPixels);
+}
+
+/** 位移/渲染差异块远多于内容块时，整页像素差多为抖动而非样式回归 */
+function isSoftDominantDiff(significant: DiffRegion[], actionable: DiffRegion[]): boolean {
+  const contentActionable = actionable.filter((r) => r.nature === 'content');
+  if (contentActionable.length === 0) return false;
+  const soft = significant.filter((r) => r.nature === 'shifted' || r.nature === 'rendering');
+  if (soft.length < 3) return false;
+  const softPixels = sumPixels(soft);
+  const contentPixels = sumPixels(contentActionable);
+  return softPixels >= contentPixels * 1.5 && soft.length >= contentActionable.length * 2;
 }
 
 /**
@@ -72,7 +103,6 @@ export function detectPageStateDrift(opts: {
 }): PageStateDriftResult {
   const { baselineMeta, currentMeta } = opts;
   if (!baselineMeta?.domHash || !currentMeta?.domHash) return { drift: false };
-  if (baselineMeta.domHash === currentMeta.domHash) return { drift: false };
 
   const w = opts.width || currentMeta.imageWidth || baselineMeta.imageWidth || 1280;
   const significant = (opts.regions || [])
@@ -80,6 +110,28 @@ export function detectPageStateDrift(opts: {
     .sort((a, b) => b.pixels - a.pixels);
   const actionable = significant.filter((r) => !r.nature || isActionableNature(r.nature));
   if (actionable.length === 0) return { drift: false };
+
+  if (baselineMeta.domHash === currentMeta.domHash) {
+    if (!sharedSectionStructureChanged(baselineMeta, currentMeta)) {
+      const majorPixels = resolveCustomerReportConfig().majorRegionPixels;
+      if (!hasLargeHardVisual(actionable, majorPixels)) {
+        if (!sharedSectionTextChanged(baselineMeta, currentMeta)) {
+          return {
+            drift: true,
+            reason:
+              '页面结构与监控区域文案均与基线一致，差异多为列表数据或显示渲染导致，非样式回归',
+          };
+        }
+        if (isSoftDominantDiff(significant, actionable)) {
+          return {
+            drift: true,
+            reason: '页面结构未变，差异主要为位置偏移或渲染抖动，非样式回归',
+          };
+        }
+      }
+    }
+    return { drift: false };
+  }
 
   const structureChanged = sharedSectionStructureChanged(baselineMeta, currentMeta);
   const nodeRatio = maxSectionNodeRatio(baselineMeta, currentMeta);

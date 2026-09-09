@@ -327,7 +327,13 @@
   "screenshot": {
     "freezeAnimations": true,
     "deviceScaleFactor": 1,
-    "fullPage": false
+    "fullPage": false,
+    "waitForFonts": true
+  },
+  "compareAlign": {
+    "enabled": true,
+    "maxShift": 8,
+    "minGain": 0.12
   },
   "autoPromote": {
     "maxDiffRatio": 0.001,
