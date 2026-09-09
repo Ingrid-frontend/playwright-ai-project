@@ -326,8 +326,7 @@ function isComparableTrendVerdict(v: string): boolean {
 }
 
 function renderTrendHint(model: CustomerReportModel): string {
-  const improved: string[] = [];
-  const worsened: string[] = [];
+  const transitions = new Map<string, { delta: number; text: string }>();
   const rank = (v: string) => (v === 'regress' ? 3 : v === 'minor' ? 2 : v === 'pass' ? 1 : 0);
   for (const [scriptKey, rows] of model.runHistory) {
     const sorted = [...rows].sort((a, b) => b.runIndex - a.runIndex);
@@ -336,16 +335,25 @@ function renderTrendHint(model: CustomerReportModel): string {
     const prev = sorted.find((r) => r.runIndex === latest.runIndex - 1) || sorted[1]!;
     if (!isComparableTrendVerdict(latest.verdict) || !isComparableTrendVerdict(prev.verdict)) continue;
     const label = friendlyScriptLabel(scriptKey);
-    if (rank(latest.verdict) < rank(prev.verdict)) improved.push(label);
-    else if (rank(latest.verdict) > rank(prev.verdict)) worsened.push(label);
+    const delta = rank(latest.verdict) - rank(prev.verdict);
+    if (delta === 0) continue;
+    const current = transitions.get(label);
+    if (!current || delta > current.delta) {
+      transitions.set(label, {
+        delta,
+        text: `${label}：${prev.verdictLabel} → ${latest.verdictLabel}`,
+      });
+    }
   }
+  const worsened = [...transitions.values()].filter((item) => item.delta > 0).map((item) => item.text);
+  const improved = [...transitions.values()].filter((item) => item.delta < 0).map((item) => item.text);
   if (improved.length === 0 && worsened.length === 0) return '';
   const parts: string[] = [];
   if (worsened.length > 0) {
-    parts.push(`${worsened.length} 个流程较上一轮恶化（${worsened.join('、')}）`);
+    parts.push(`${worsened.length} 个业务流程状态恶化（${worsened.join('；')}）`);
   }
   if (improved.length > 0) {
-    parts.push(`${improved.length} 个流程较上一轮好转（${improved.join('、')}）`);
+    parts.push(`${improved.length} 个业务流程状态改善（${improved.join('；')}）`);
   }
   return `<div class="trend-hint">${esc(parts.join(' · '))}</div>`;
 }
@@ -386,7 +394,7 @@ function renderReadingGuide(): string {
   <details class="reading-guide">
     <summary>阅读指南（30 秒看懂）</summary>
     <ol>
-      <li>看顶部颜色：红 = 有问题要修；琥珀 = 轻微变化无需处理；绿 = 可发版</li>
+      <li>看顶部颜色：红 = 当前验收不通过；琥珀 = 存在可接受差异，建议确认；绿 = 未发现需要修复的问题</li>
       <li>问题清单每行可点「看对比图」查看证据</li>
       <li>「待建基线」不算通过，需补基线后再测</li>
     </ol>
@@ -396,8 +404,11 @@ function renderIssueBrief(group: CustomerIssueGroup, index: number): string {
   const card = group.representative.browsers[0];
   const scope =
     group.affectedSteps > 1 ? `影响 ${group.affectedSteps} 个步骤` : '影响 1 个步骤';
-  const priority = group.status === 'regress' ? 'P0' : 'P1';
   const natureTag = natureTagForGroup(group);
+  const priority =
+    group.status === 'regress'
+      ? '<span class="brief-priority p0">需修复</span>'
+      : '';
   const scripts =
     group.scriptLabels.length > 0 ? `<span class="brief-flow">${esc(group.scriptLabels.join('、'))}</span>` : '';
   return `
@@ -406,7 +417,7 @@ function renderIssueBrief(group: CustomerIssueGroup, index: number): string {
     <span class="brief-no">${index + 1}</span>
     <span class="brief-main">
       <span class="brief-tags">
-        <span class="brief-priority ${group.status === 'regress' ? 'p0' : 'p1'}">${priority}</span>
+        ${priority}
         ${natureTag ? `<span class="brief-nature">${esc(natureTag)}</span>` : ''}
       </span>
       <span class="brief-title">${esc(group.title)}</span>
@@ -414,7 +425,7 @@ function renderIssueBrief(group: CustomerIssueGroup, index: number): string {
       ${scripts}
     </span>
     <span class="brief-meta">
-      <span class="brief-diff">${esc(group.maxDifferenceLabel)}</span>
+      <span class="brief-diff" title="差异率 = 有效差异像素 / 可比较区域像素">${esc(group.maxDifferenceLabel)}</span>
       <span class="brief-scope">${esc(scope)}</span>
     </span>
     <a class="brief-link" href="#${esc(group.anchorId)}" onclick="openCustomerIssue('${esc(group.anchorId)}')">看对比图</a>
@@ -685,18 +696,18 @@ function renderMinorRunHistoryPanel(model: CustomerReportModel): string {
     return `
     <section class="run-history-block">
       <h3 class="run-history-title">${esc(label)}</h3>
-      <p class="run-history-meta">共 ${rows.length} 次 run 判定为轻微变化 · 内容与基线一致，多为位置偏移或显示效果差异</p>
+      <p class="run-history-meta">共 ${rows.length} 次运行存在可接受差异 · 多为位置偏移、显示效果或测试数据变化</p>
       ${renderRunHistoryTable(rows, { showShots: true })}
     </section>`;
   });
 }
 
-function minorTabLabel(latestCount: number, minorRunCount: number): string {
+function minorTabLabel(latestCount: number, latestSteps: number, minorRunCount: number): string {
   if (latestCount > 0 && minorRunCount > 0) {
-    return `轻微变化 · 本轮 ${latestCount} / 历史 ${minorRunCount}`;
+    return `可接受差异 · 本轮 ${latestCount} 组（${latestSteps} 步）/ 历史 ${minorRunCount} 次`;
   }
-  if (latestCount > 0) return `轻微变化 (${latestCount})`;
-  return `历史留档 (${minorRunCount})`;
+  if (latestCount > 0) return `可接受差异 · ${latestCount} 组（${latestSteps} 步）`;
+  return `历史留档（${minorRunCount} 次）`;
 }
 
 function renderMinorTabBody(
@@ -716,7 +727,7 @@ function renderMinorTabBody(
     minorRunCount > 0 ? `历史留档 · ${minorRunCount} 次 run` : '历史留档';
   const latestBlock =
     latestCount > 0
-      ? `<h3 class="sec-title sec-minor">本轮轻微变化 · ${latestCount} 项</h3>${latest}`
+      ? `<h3 class="sec-title sec-minor">本轮可接受差异 · ${latestCount} 组（影响 ${model.minors.length} 步）</h3>${latest}`
       : '';
   const historyBlock =
     minorRunCount > 0
@@ -792,6 +803,59 @@ function renderEnvBreakdown(model: CustomerReportModel): string {
   </div>`;
 }
 
+function renderBatchScope(model: CustomerReportModel): string {
+  const batch = model.reportBatch;
+  if (!batch) return '';
+  const missing = Math.max(0, batch.expectedRunCount - batch.completedRunCount - batch.failedRunCount);
+  const status =
+    batch.failedRunCount > 0
+      ? `${batch.failedRunCount} 个运行失败`
+      : batch.skippedRunCount > 0
+        ? `${batch.skippedRunCount} 个运行因缺少业务数据跳过`
+        : missing > 0
+        ? `${missing} 个运行未完成`
+        : '批次运行已完成';
+  return `<section class="batch-scope">
+    <div class="batch-scope-head">
+      <div>
+        <h3 class="sec-title">本次交付范围</h3>
+        <p class="sec-lead">${esc(batch.flowLabels.join('、'))} · ${esc(batch.envLabels.join('、'))}</p>
+      </div>
+      <span class="batch-id">批次 ${esc(batch.batchId)}</span>
+    </div>
+    <div class="batch-stats">
+      <div><strong>${batch.completedRunCount}/${batch.expectedRunCount}</strong><span>已完成运行</span></div>
+      <div><strong>${batch.flowLabels.length}</strong><span>业务流程</span></div>
+      <div><strong>${batch.envLabels.length}</strong><span>环境</span></div>
+      <div><strong>${batch.skippedRunCount}</strong><span>跳过运行</span></div>
+    </div>
+    <p class="batch-status">${esc(status)}。本报告只汇总清单中明确绑定的运行，不包含其他历史截图。</p>
+  </section>`;
+}
+
+function renderBatchAudit(model: CustomerReportModel): string {
+  const batch = model.reportBatch;
+  if (!batch) return '';
+  const audit = batch.audit;
+  if (audit.runCount === 0) {
+    return `<section class="batch-audit">
+      <h3 class="sec-title">AI 质量观察</h3>
+      <p class="sec-lead">本批次尚未生成 AI 审计摘要。截图基线验收结论不受影响。</p>
+    </section>`;
+  }
+  return `<section class="batch-audit">
+    <h3 class="sec-title">AI 质量观察</h3>
+    <p class="sec-lead">AI 用于补充发现布局、遮挡、截断等体验问题，不改变上方截图基线验收结论。</p>
+    <div class="batch-stats">
+      <div><strong>${audit.runCount}/${batch.completedRunCount}</strong><span>已审计运行</span></div>
+      <div><strong>${audit.total - audit.skipped}/${audit.total}</strong><span>有效审计步骤</span></div>
+      <div><strong>${audit.issueTotal}</strong><span>需处理或确认</span></div>
+      <div><strong>${audit.observationTotal}</strong><span>观察项</span></div>
+    </div>
+    ${audit.degradedSteps > 0 ? `<p class="batch-status warn">${audit.degradedSteps} 步 AI 分析降级为规则分析，相关结论需人工复核。</p>` : ''}
+  </section>`;
+}
+
 function renderConclusionBody(model: CustomerReportModel): string {
   if (model.coverage.comparedSteps === 0) {
     return `
@@ -812,8 +876,8 @@ function renderConclusionBody(model: CustomerReportModel): string {
     model.minorGroups.length > 0
       ? `<details class="minor-block">
            <summary>
-             <span class="badge badge-minor">无需处理</span>
-             ${model.minorGroups.length} 项轻微变化（共 ${model.minors.length} 个步骤）· 内容与基线一致，仅位置偏移或显示效果差异
+             <span class="badge badge-minor">建议确认</span>
+             ${model.minorGroups.length} 组可接受差异（共 ${model.minors.length} 个步骤）· 多为位置偏移、显示效果或测试数据变化
              <button type="button" class="link-btn" onclick="event.preventDefault();switchCustomerTab('minor')">查看留档</button>
            </summary>
            <ol class="brief-list">${model.minorGroups.map((g, i) => renderIssueBrief(g, i)).join('')}</ol>
@@ -824,15 +888,21 @@ function renderConclusionBody(model: CustomerReportModel): string {
     ${renderReadingGuide()}
     ${renderActionItems(model)}
     ${renderIncompleteNotice(model)}
+    ${renderBatchScope(model)}
     ${renderEnvBreakdown(model)}
     ${focus}
     ${minorBlock}
     ${renderUncoveredSummary(model)}
+    ${renderBatchAudit(model)}
   `;
 }
 
 export function renderCustomerReportHtml(model: CustomerReportModel): string {
   const c = model.coverage;
+  const batch = model.reportBatch;
+  const batchMissing = batch
+    ? Math.max(0, batch.expectedRunCount - batch.completedRunCount - batch.failedRunCount)
+    : 0;
   const regressList =
     model.regressionGroups.length > 0
       ? `<h3 class="sec-title sec-regress">需要修复 · ${model.regressionGroups.length} 个问题</h3>
@@ -840,12 +910,16 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
       : `<div class="empty">本次未发现需要修复的问题</div>`;
   const minorList =
     model.minorGroups.length > 0
-      ? `<p class="sec-lead">以下差异范围很小，多为位置偏移或显示效果不同，不影响功能，可不处理。</p>
+      ? `<p class="sec-lead">以下差异未达到阻断标准，多为位置偏移、显示效果或测试数据变化；建议业务确认后接受。</p>
          ${model.minorGroups.map((g, i) => renderIssueGroup(g, i, model)).join('')}`
       : '';
   const uncoveredRatio = c.expectedSteps > 0 ? c.uncoveredSteps / c.expectedSteps : 0;
   const verdictClass =
-    c.regressSteps > 0
+    batch?.failedRunCount
+      ? 'bad'
+      : batch?.skippedRunCount || batchMissing > 0
+        ? 'watch'
+        : c.regressSteps > 0
       ? 'bad'
       : c.minorSteps > 0
         ? 'watch'
@@ -854,12 +928,23 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
           : uncoveredRatio >= COVERAGE_GAP_RATIO
             ? 'watch'
             : 'good';
-  const headline = buildHeadline(c, model.regressionGroups.length);
-  const subline =
-    c.regressSteps > 0
-      ? `影响 ${c.regressSteps} 个检测步骤${c.minorSteps > 0 ? `；另有 ${c.minorSteps} 步为位置偏移等无害差异，无需处理` : ''} · ${model.shipAdviceLabel}`
+  const headline = batch?.failedRunCount
+    ? `交付批次有 ${batch.failedRunCount} 个运行失败`
+    : batch?.skippedRunCount
+      ? `交付批次有 ${batch.skippedRunCount} 个运行因缺少业务数据跳过`
+      : batchMissing > 0
+      ? `交付批次尚有 ${batchMissing} 个运行未完成`
+      : buildHeadline(c, model.regressionGroups.length);
+  const subline = batch?.failedRunCount
+    ? `已有 ${batch.completedRunCount} 个运行完成，失败运行未纳入截图结论 · 建议修复运行失败后重新生成报告`
+    : batch?.skippedRunCount
+      ? `已有 ${batch.completedRunCount} 个运行完成，跳过运行未纳入截图结论 · 建议补充业务数据后重新验收`
+      : batchMissing > 0
+      ? `已有 ${batch?.completedRunCount ?? 0} 个运行完成，未完成运行未纳入截图结论 · 建议补齐后再验收`
+      : c.regressSteps > 0
+      ? `影响 ${c.regressSteps} 个检测步骤${c.minorSteps > 0 ? `；另有 ${c.minorSteps} 步为可接受差异，建议业务确认` : ''} · ${model.shipAdviceLabel}`
       : c.minorSteps > 0
-        ? `${c.minorSteps} 步存在位置偏移或显示效果差异，内容与验收基线一致 · ${model.shipAdviceLabel}`
+        ? `${c.minorSteps} 步存在可接受差异，建议业务确认 · ${model.shipAdviceLabel}`
         : c.uncoveredSteps > 0
           ? model.shipAdviceLabel
           : `已对比 ${c.comparedSteps} 个步骤，与验收基线一致 · ${model.shipAdviceLabel}`;
@@ -868,11 +953,20 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
   const minorEvidenceCount = model.minorGroups.length;
   const minorTabCount = minorRunCount + minorEvidenceCount;
   const showMinorTab = minorTabCount > 0;
-  const minorTabLabelText = showMinorTab ? minorTabLabel(minorEvidenceCount, minorRunCount) : '';
-  const stepsHint = `最新一轮共 ${c.expectedSteps} 步`;
-  const scopeLine = model.reportScope === 'all' ? '全部脚本截图' : 'Golden 回归';
+  const minorTabLabelText = showMinorTab ? minorTabLabel(minorEvidenceCount, c.minorSteps, minorRunCount) : '';
+  const stepsHint = `本报告共 ${c.expectedSteps} 步`;
+  const scopeLine = batch
+    ? `交付批次 · ${batch.completedRunCount}/${batch.expectedRunCount} 个运行`
+    : model.reportScope === 'all'
+      ? '全部脚本截图'
+      : 'Golden 回归';
   const ctxParts = [model.envLabel, model.releaseTag ? `v${model.releaseTag}` : ''].filter(Boolean);
   const ctxLine = ctxParts.length > 0 ? `${esc(ctxParts.join(' · '))} · ` : '';
+  const scopeNote = batch
+    ? '<div class="report-scope-note">本报告按交付批次清单精确汇总；每项数据均绑定业务场景、账号与运行，不包含批次外历史数据。</div>'
+    : model.envSummaries?.length
+    ? '<div class="report-scope-note">本报告按各环境、各业务场景最近一次完整运行汇总，运行时间可能不同；分环境结论不可视为同一发布批次的同步检测。</div>'
+    : '';
 
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -883,11 +977,11 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
   <style>${customerReportCss()}</style>
 </head>
 <body>
-  <div class="internal-ribbon">内部产物 · 仅用于内部回归核对，<b>禁止外发客户</b>；客户交付请走飞书文档 + 多维表</div>
   <div class="header">
     <h1>UI 验收检测报告</h1>
     <div class="sub">${ctxLine}生成时间 ${esc(model.generatedAt)} · ${esc(scopeLine)} · 与验收基线逐项对比</div>
   </div>
+  ${scopeNote}
   <div class="wrap">
     <div class="verdict ${verdictClass}">
       <div class="verdict-title">${esc(headline)}</div>
@@ -896,15 +990,17 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
       ${renderCoverageBar(model)}
       <div class="stats">
         <div class="stat"><span class="n n-red">${c.regressSteps}</span><span class="l">需要修复</span><span class="h">步骤级，需处理</span></div>
-        <div class="stat"><span class="n n-amber">${c.minorSteps}</span><span class="l">无需处理</span><span class="h">内容一致，可忽略</span></div>
+        <div class="stat"><span class="n n-amber">${c.minorSteps}</span><span class="l">可接受差异</span><span class="h">建议业务确认</span></div>
         <div class="stat"><span class="n n-green">${c.passSteps}</span><span class="l">完全一致</span><span class="h">与基线零差异</span></div>
         <div class="stat"><span class="n">${c.comparedSteps}</span><span class="l">已对比步骤</span><span class="h">${esc(stepsHint)}</span></div>
       </div>
-      <div class="verdict-foot">${c.uncoveredSteps > 0
-        ? `已检测 ${c.comparedSteps} 步全部通过 · ${c.uncoveredSteps} 步待建基线未参与判定（检测覆盖 ${Math.round((c.comparedSteps / Math.max(1, c.expectedSteps)) * 100)}%）`
+      <div class="verdict-foot">${c.regressSteps > 0
+        ? `已对比 ${c.comparedSteps} 步：${c.regressSteps} 步需修复、${c.minorSteps} 步为可接受差异、${c.passSteps} 步完全一致${c.uncoveredSteps > 0 ? `；另有 ${c.uncoveredSteps} 步缺少基线，未参与判定` : ''}`
         : c.minorSteps > 0
-          ? `已对比 ${c.comparedSteps} 步，无需修复（其中 ${c.minorSteps} 步为轻微变化，内容与基线一致）`
-          : `已对比 ${c.comparedSteps} 步，与验收基线一致`}</div>
+          ? `已对比 ${c.comparedSteps} 步：${c.minorSteps} 步为可接受差异、${c.passSteps} 步完全一致${c.uncoveredSteps > 0 ? `；另有 ${c.uncoveredSteps} 步缺少基线` : ''}`
+          : c.uncoveredSteps > 0
+            ? `已对比 ${c.comparedSteps} 步未发现问题；另有 ${c.uncoveredSteps} 步缺少基线，未参与判定`
+            : `已对比 ${c.comparedSteps} 步，与验收基线一致`}</div>
     </div>
 
     <div class="tabs">
@@ -924,7 +1020,7 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
       ${renderMinorTabBody(model, minorList, minorRunCount)}
     </div>` : ''}
     <div id="panel-scope" class="panel">
-      <p class="sec-lead">下表为<strong>最新一轮</strong> run 的全部检测项。「待建基线」表示该步骤有截图但尚无可配对的验收基线；标记「过程」的是操作中间态截图，不作为验收结论。${showMinorTab && minorRunCount > 0 ? '历史轻微变化见「历史留档」。' : showMinorTab ? '轻微变化见对应 Tab。' : ''}</p>
+      <p class="sec-lead">下表为本报告绑定运行的全部检测项。「待建基线」表示该步骤有截图但尚无可配对的验收基线；标记「过程」的是操作中间态截图，不作为验收结论。差异率为有效差异像素占可比较区域像素的比例。${showMinorTab && minorRunCount > 0 ? '历史可接受差异见「历史留档」。' : showMinorTab ? '可接受差异见对应 Tab。' : ''}</p>
       ${renderScopeTable(model)}
     </div>
   </div>

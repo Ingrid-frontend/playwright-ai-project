@@ -1663,12 +1663,16 @@
 
               <div class="flow-toc-actions studio-toc-only" id="requestFlowTocActions">
                 <button type="button" class="btn btn-run" id="btnRequestTocRun" onclick="runRequestFlowGolden()">
-                  <span class="btn-label" id="btnRequestTocRunLabel">开始检测</span>
+                  <span class="btn-label" id="btnRequestTocRunLabel">开始交付检测</span>
                 </button>
                 <button type="button" class="btn" id="btnRequestTocRunAll" onclick="runRequestFlowGoldenAll()" style="border-color:rgba(52,211,153,.35);color:var(--green)">
                   <span class="btn-label" id="btnRequestTocRunAllLabel">检测全部</span>
                 </button>
-                <button type="button" class="btn" id="btnRequestTocReport" onclick="openRequestFlowTocReport()" style="border-color:rgba(52,211,153,.4);color:var(--green,#34d399)">查看报告</button>
+                <button type="button" class="btn" id="btnRequestTocReport" onclick="openRequestFlowCustomerReport()" style="border-color:rgba(52,211,153,.4);color:var(--green,#34d399)">客户验收报告</button>
+                <button type="button" class="btn" id="btnRequestTocRunUiAudit" onclick="runFlowUiAudit('request-flow')" style="border-color:rgba(167,139,250,.45);color:var(--purple,#a78bfa)">
+                  <span class="btn-label">运行 AI 审计</span>
+                </button>
+                <button type="button" class="btn" id="btnRequestTocUiAudit" onclick="openRequestFlowUiAuditReport()" style="border-color:rgba(167,139,250,.45);color:var(--purple,#a78bfa)">AI 审计报告</button>
                 <button type="button" class="btn" id="btnRequestTocReplay" style="display:none;border-color:rgba(77,159,255,.45);color:var(--blue,#4d9fff)" onclick="openRequestFlowReplay()">查看回放</button>
                 <button type="button" class="btn" id="btnRequestTocAiDebug" style="display:none;border-color:rgba(167,139,250,.45);color:var(--purple,#a78bfa)" onclick="copyRequestFlowAiDebug()">AI 排查</button>
                 <button type="button" class="btn" id="btnRequestTocCancel" style="display:none" onclick="cancelRequestFlowRun()">取消</button>
@@ -1819,12 +1823,16 @@
 
               <div class="flow-toc-actions studio-toc-only" id="approvalFlowTocActions">
                 <button type="button" class="btn btn-run" id="btnApprovalTocRun" onclick="runApprovalFlowGolden()">
-                  <span class="btn-label" id="btnApprovalTocRunLabel">开始检测</span>
+                  <span class="btn-label" id="btnApprovalTocRunLabel">开始交付检测</span>
                 </button>
                 <button type="button" class="btn" id="btnApprovalTocRunAll" onclick="runApprovalFlowGoldenAll()" style="border-color:rgba(52,211,153,.35);color:var(--green)">
                   <span class="btn-label" id="btnApprovalTocRunAllLabel">检测全部</span>
                 </button>
-                <button type="button" class="btn" id="btnApprovalTocReport" onclick="openApprovalFlowCustomerReport()" style="border-color:rgba(52,211,153,.4);color:var(--green,#34d399)">查看报告</button>
+                <button type="button" class="btn" id="btnApprovalTocReport" onclick="openApprovalFlowCustomerReport()" style="border-color:rgba(52,211,153,.4);color:var(--green,#34d399)">客户验收报告</button>
+                <button type="button" class="btn" id="btnApprovalTocRunUiAudit" onclick="runFlowUiAudit('approval-flow')" style="border-color:rgba(167,139,250,.45);color:var(--purple,#a78bfa)">
+                  <span class="btn-label">运行 AI 审计</span>
+                </button>
+                <button type="button" class="btn" id="btnApprovalTocUiAudit" onclick="openApprovalFlowUiAuditReport()" style="border-color:rgba(167,139,250,.45);color:var(--purple,#a78bfa)">AI 审计报告</button>
                 <button type="button" class="btn" id="btnApprovalTocReplay" style="display:none;border-color:rgba(77,159,255,.45);color:var(--blue,#4d9fff)" onclick="openApprovalFlowReplay()">查看回放</button>
                 <button type="button" class="btn" id="btnApprovalTocAiDebug" style="display:none;border-color:rgba(167,139,250,.45);color:var(--purple,#a78bfa)" onclick="copyApprovalFlowAiDebug()">AI 排查</button>
                 <button type="button" class="btn" id="btnApprovalTocCancel" style="display:none" onclick="cancelApprovalFlowRun()">取消</button>
@@ -3274,6 +3282,8 @@ function hasFlowReplayPath(msg) {
 }
 
 const REQUEST_FLOW_REPORT_BTNS = [
+  { id: 'btnRequestTocReport', path: (m) => m.customerReportOpenPath, always: true },
+  { id: 'btnRequestTocUiAudit', path: (m) => m.uiAuditReportOpenPath, always: true },
   { id: 'btnRequestOpenCompare', path: (m) => (m?.pipeline === 'probe' ? '' : m?.compareReportOpenPath), goldenOnly: true },
   { id: 'btnRequestOpenCustomer', path: (m) => m.customerReportOpenPath, hideOnGolden: true },
   { id: 'btnRequestOpenProbeReport', path: (m) => m.probeReportOpenPath || '/repo-report/results/flow-probe-report.html', probeOnly: true },
@@ -3283,6 +3293,8 @@ const REQUEST_FLOW_REPORT_BTNS = [
 ];
 
 const APPROVAL_FLOW_REPORT_BTNS = [
+  { id: 'btnApprovalTocReport', path: (m) => m.customerReportOpenPath, always: true },
+  { id: 'btnApprovalTocUiAudit', path: (m) => m.uiAuditReportOpenPath, always: true },
   { id: 'btnApprovalOpenCompare', path: (m) => m.compareReportOpenPath },
   { id: 'btnApprovalOpenCustomer', path: (m) => m.customerReportOpenPath },
   { id: 'btnApprovalOpenProbeReport', path: (m) => m.probeReportOpenPath || '/repo-report/results/flow-probe-report.html', probeOnly: true },
@@ -3355,6 +3367,10 @@ function openApprovalFlowCompareReport() {
 
 function openApprovalFlowCustomerReport() {
   openFlowReportPath(lastApprovalFlowRun?.customerReportOpenPath, '客户报告');
+}
+
+function openApprovalFlowUiAuditReport() {
+  openFlowReportPath(lastApprovalFlowRun?.uiAuditReportOpenPath, 'AI 审计报告');
 }
 
 function openApprovalFlowSummaryReport() {
@@ -4342,6 +4358,9 @@ function normalizeFlowRunDoneMsg(msg, flowId) {
     ...last,
     ...msg,
     runId: msg.runId || last.runId || manifest.runId || '',
+    scriptKey: msg.scriptKey || last.scriptKey || manifest.scriptKey || '',
+    boundRunId: msg.boundRunId || last.boundRunId || manifest.boundRunId || '',
+    boundScriptKey: msg.boundScriptKey || last.boundScriptKey || manifest.boundScriptKey || '',
     passed: msg.passed ?? manifest.passed,
     failed: msg.failed ?? manifest.failed,
     total: msg.total ?? manifest.total,
@@ -4357,7 +4376,10 @@ function normalizeFlowRunDoneMsg(msg, flowId) {
     videoReportOpenPath: msg.videoReportOpenPath || last.videoReportOpenPath || '',
     reportOpenPath: msg.reportOpenPath || last.reportOpenPath || '',
     customerReportOpenPath: msg.customerReportOpenPath || last.customerReportOpenPath || '',
+    compareReportOpenPath: msg.compareReportOpenPath || last.compareReportOpenPath || '',
+    uiAuditReportOpenPath: msg.uiAuditReportOpenPath || last.uiAuditReportOpenPath || '',
     summaryReportOpenPath: msg.summaryReportOpenPath || last.summaryReportOpenPath || '',
+    manifest,
   };
   return merged;
 }
@@ -7429,6 +7451,7 @@ function handleMessage(msg) {
       setUiAuditBusy(false);
       renderUiAuditStatus(msg);
       if (!msg.ok) {
+        flowUiAuditTarget = '';
         if (msg.cancelled) {
           log('warn', '[ui-audit] 已取消');
         } else {
@@ -7443,6 +7466,14 @@ function handleMessage(msg) {
         msg.gateBlocked ? `Gate 拦截：发现 ${s.fail} 处 UI 衰退` : `AI UI 审计完成 · ${hint}`,
         msg.gateBlocked ? 'err' : 'ok',
       );
+      if (msg.openPath && flowUiAuditTarget === 'request-flow') {
+        lastRequestFlowRun = { ...(lastRequestFlowRun || {}), uiAuditReportOpenPath: msg.openPath };
+        updateRequestFlowReportBtn(lastRequestFlowRun);
+      } else if (msg.openPath && flowUiAuditTarget === 'approval-flow') {
+        lastApprovalFlowRun = { ...(lastApprovalFlowRun || {}), uiAuditReportOpenPath: msg.openPath };
+        updateApprovalFlowReportBtn(lastApprovalFlowRun);
+      }
+      flowUiAuditTarget = '';
       if (msg.openPath) {
         const url = new URL(msg.openPath, location.origin).href;
         if (!openCompareReportInNewWindow(url)) {
@@ -7516,8 +7547,21 @@ function handleMessage(msg) {
       break;
     case 'request-flow:golden-all:done':
       setRequestFlowBusy(false);
+      if (msg.customerReportOpenPath) {
+        lastRequestFlowRun = {
+          ...(lastRequestFlowRun || {}),
+          reportBatchId: msg.reportBatchId || '',
+          customerReportOpenPath: msg.customerReportOpenPath,
+        };
+        updateRequestFlowReportBtn(lastRequestFlowRun);
+      }
       refreshRequestFlowStatus(true);
-      if (msg.ok) showToast('全部 Golden 角色回归完成', 'ok');
+      if (msg.ok) {
+        showToast(
+          msg.customerReportOpenPath ? '全部 Golden 角色回归完成，客户汇总报告已生成' : '全部 Golden 角色回归完成',
+          'ok',
+        );
+      }
       else if (!msg.cancelled) {
         const batchStats = goldenBatchStats(msg.goldenBatch);
         showToast(
@@ -7549,14 +7593,14 @@ function handleMessage(msg) {
         if (msg.skipped > 0) extras.push(`跳过 ${msg.skipped}`);
         if (msg.pipeline === 'golden' && msg.baselinePromoted) extras.push('已 seed Golden 基线');
         if (hasFlowReplayPath(msg)) extras.push('回放已生成');
-        if (msg.pipeline === 'probe' && msg.uiAuditReportOpenPath) extras.push('UI 审计报告已生成');
+        if (msg.uiAuditReportOpenPath) extras.push('AI 审计报告已生成');
         else if (msg.pipeline === 'probe' && msg.probeReportOpenPath) extras.push('调试报告已更新');
         else if (msg.pipeline === 'probe' && msg.ok) extras.push('可对截图点「AI 审计」');
         if (msg.accountProfile) extras.push(`profile=${msg.accountProfile}`);
         if (msg.roleSlug) extras.push(`role=${msg.roleSlug}`);
         if (isStudioCompact() && msg.pipeline === 'golden') {
           showToast(
-            hasFlowReplayPath(lastRequestFlowRun) ? '检测完成，已打开回放' : '检测完成，可点「查看报告」',
+            hasFlowReplayPath(lastRequestFlowRun) ? '交付检测完成，已打开回放' : '交付检测完成，可查看验收与审计报告',
             'ok',
           );
         } else {
@@ -7672,8 +7716,21 @@ function handleMessage(msg) {
       break;
     case 'approval-flow:golden-all:done':
       setApprovalFlowBusy(false);
+      if (msg.customerReportOpenPath) {
+        lastApprovalFlowRun = {
+          ...(lastApprovalFlowRun || {}),
+          reportBatchId: msg.reportBatchId || '',
+          customerReportOpenPath: msg.customerReportOpenPath,
+        };
+        updateApprovalFlowReportBtn(lastApprovalFlowRun);
+      }
       refreshApprovalFlowStatus(true);
-      if (msg.ok) showToast('审批 Golden 全角色回归完成', 'ok');
+      if (msg.ok) {
+        showToast(
+          msg.customerReportOpenPath ? '审批 Golden 全角色回归完成，客户汇总报告已生成' : '审批 Golden 全角色回归完成',
+          'ok',
+        );
+      }
       else if (!msg.cancelled) {
         const batchStats = goldenBatchStats(msg.goldenBatch);
         showToast(
@@ -7713,7 +7770,7 @@ function handleMessage(msg) {
         const skipNote = msg.skipped > 0 ? `（跳过 ${msg.skipped}）` : '';
         if (isStudioCompact() && (msg.pipeline === 'golden' || !msg.pipeline)) {
           showToast(
-            hasFlowReplayPath(lastApprovalFlowRun) ? '检测完成，已打开回放' : '检测完成，可点「查看报告」',
+            hasFlowReplayPath(lastApprovalFlowRun) ? '交付检测完成，已打开回放' : '交付检测完成，可查看验收与审计报告',
             'ok',
           );
         } else {
@@ -8653,6 +8710,8 @@ function startChangeDetectionFullFlow() {
   }
 }
 
+let flowUiAuditTarget = '';
+
 function setUiAuditBusy(busy) {
   const btn = document.getElementById('btnUiAuditRun');
   const btnOpen = document.getElementById('btnUiAuditOpen');
@@ -8665,6 +8724,14 @@ function setUiAuditBusy(busy) {
   }
   if (btnOpen) btnOpen.disabled = busy;
   if (btnCancel) btnCancel.disabled = !busy;
+  ['btnRequestTocRunUiAudit', 'btnApprovalTocRunUiAudit'].forEach((id) => {
+    const flowBtn = document.getElementById(id);
+    if (!flowBtn) return;
+    flowBtn.disabled = busy;
+    flowBtn.style.opacity = busy ? 0.6 : 1;
+    const label = flowBtn.querySelector('.btn-label');
+    if (label) label.textContent = busy ? '审计中…' : '运行 AI 审计';
+  });
 }
 
 /** 四态结论徽章：🟢 通过 / 🟡 待复核 / 🔴 衰退 / ⚪ 未审计 */
@@ -8703,6 +8770,7 @@ function renderUiAuditStatus(msg) {
 
 function startUiAudit() {
   openReportHub('compare');
+  flowUiAuditTarget = '';
   const limit = Math.max(1, Math.min(100, Number(document.getElementById('uiAuditLimit')?.value) || 6));
   const script = document.getElementById('uiAuditScript')?.value?.trim() || '';
   const figma = document.getElementById('uiAuditFigma')?.value?.trim() || '';
@@ -8710,6 +8778,25 @@ function startUiAudit() {
   const mock = Boolean(document.getElementById('uiAuditMock')?.checked);
   setUiAuditBusy(true);
   if (!send('ui-audit:run', { limit, script, figma, gate, mock })) {
+    setUiAuditBusy(false);
+  }
+}
+
+function runFlowUiAudit(flowId, limit = 6) {
+  flowUiAuditTarget = flowId;
+  const last = flowId === 'approval-flow' ? lastApprovalFlowRun : lastRequestFlowRun;
+  const manifest = last?.manifest || {};
+  const scriptKey = last?.boundScriptKey || last?.scriptKey || manifest.boundScriptKey || manifest.scriptKey || '';
+  const runId = last?.boundRunId || last?.runId || manifest.boundRunId || manifest.runId || '';
+  setUiAuditBusy(true);
+  if (!send('ui-audit:run', {
+    limit,
+    script: flowId,
+    scriptKey,
+    runId,
+    dir: 'screenshots/flows',
+  })) {
+    flowUiAuditTarget = '';
     setUiAuditBusy(false);
   }
 }
@@ -8725,7 +8812,7 @@ function refreshUiAuditStatus() {
 }
 
 function setRequestFlowBusy(busy) {
-  ['btnRequestProbe', 'btnRequestPresetPreview', 'btnRequestPresetReadOnly', 'btnRequestPresetWrite', 'btnRequestPresetSubmitApprove', 'btnRequestRunSelected', 'btnRequestGoldenRun', 'btnRequestGoldenRunAll', 'btnRequestTravelProbe', 'btnRequestProbeFlow', 'btnRequestTravelProbeChain', 'btnRequestProbeChain', 'btnRequestProbeRunUiAudit', 'btnRequestPromoteBaseline', 'btnRequestClearBaseline', 'btnAddGoldenProfile', 'btnAddWriteProfile', 'btnRequestTocRun', 'btnRequestTocRunAll', 'btnRequestTocReport', 'btnRequestTocReplay', 'btnRequestTocAiDebug'].forEach((id) => {
+  ['btnRequestProbe', 'btnRequestPresetPreview', 'btnRequestPresetReadOnly', 'btnRequestPresetWrite', 'btnRequestPresetSubmitApprove', 'btnRequestRunSelected', 'btnRequestGoldenRun', 'btnRequestGoldenRunAll', 'btnRequestTravelProbe', 'btnRequestProbeFlow', 'btnRequestTravelProbeChain', 'btnRequestProbeChain', 'btnRequestProbeRunUiAudit', 'btnRequestPromoteBaseline', 'btnRequestClearBaseline', 'btnAddGoldenProfile', 'btnAddWriteProfile', 'btnRequestTocRun', 'btnRequestTocRunAll', 'btnRequestTocReport', 'btnRequestTocRunUiAudit', 'btnRequestTocUiAudit', 'btnRequestTocReplay', 'btnRequestTocAiDebug'].forEach((id) => {
     const btn = document.getElementById(id);
     if (!btn) return;
     btn.disabled = busy;
@@ -9548,6 +9635,8 @@ function runRequestFlowGoldenDirect() {
   runSelectedRequestFlow('headless', {
     preset: 'golden',
     pipeline: 'golden',
+    runUiAudit: true,
+    uiAuditLimit: 6,
     writeEnabled: false,
     accountProfile: p.id,
   });
@@ -9645,10 +9734,7 @@ function runRequestFlowProbeChain() {
 function runRequestFlowProbeUiAudit() {
   openReportHub('compare');
   const limit = Math.max(1, Math.min(100, Number(document.getElementById('uiAuditLimit')?.value) || 6));
-  setUiAuditBusy(true);
-  if (!send('ui-audit:run', { limit, script: 'request-flow', dir: 'screenshots/flows' })) {
-    setUiAuditBusy(false);
-  }
+  runFlowUiAudit('request-flow', limit);
 }
 
 function promoteRequestFlowBaseline() {
@@ -9684,7 +9770,7 @@ function cancelRequestFlowRun() {
 }
 
 function setApprovalFlowBusy(busy) {
-  ['btnApprovalProbe', 'btnApprovalPresetPreview', 'btnApprovalPresetReadOnly', 'btnApprovalPresetFilter', 'btnApprovalRunSelected', 'btnApprovalGoldenRun', 'btnApprovalGoldenRunAll', 'btnApprovalPromoteBaseline', 'btnApprovalClearBaseline', 'btnApprovalTocRun', 'btnApprovalTocRunAll', 'btnApprovalTocReport', 'btnApprovalTocReplay', 'btnApprovalTocAiDebug'].forEach((id) => {
+  ['btnApprovalProbe', 'btnApprovalPresetPreview', 'btnApprovalPresetReadOnly', 'btnApprovalPresetFilter', 'btnApprovalRunSelected', 'btnApprovalGoldenRun', 'btnApprovalGoldenRunAll', 'btnApprovalPromoteBaseline', 'btnApprovalClearBaseline', 'btnApprovalTocRun', 'btnApprovalTocRunAll', 'btnApprovalTocReport', 'btnApprovalTocRunUiAudit', 'btnApprovalTocUiAudit', 'btnApprovalTocReplay', 'btnApprovalTocAiDebug'].forEach((id) => {
     const btn = document.getElementById(id);
     if (!btn) return;
     btn.disabled = busy;
@@ -10000,6 +10086,8 @@ function runSelectedApprovalFlow(mode, opts = {}) {
     grep,
     preset: opts.preset || 'custom',
     pipeline: opts.pipeline || presetCfg?.pipeline || '',
+    runUiAudit: Boolean(opts.runUiAudit),
+    uiAuditLimit: Number(opts.uiAuditLimit) || 24,
     accountProfile,
   };
   setApprovalFlowBusy(true);
@@ -10027,6 +10115,8 @@ function runApprovalFlowGoldenDirect() {
   runSelectedApprovalFlow('headless', {
     preset: 'golden',
     pipeline: 'golden',
+    runUiAudit: true,
+    uiAuditLimit: 6,
     writeEnabled: false,
     accountProfile: p.id,
     spec: 'approval/golden-regression.spec.ts',

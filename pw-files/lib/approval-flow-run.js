@@ -16,6 +16,7 @@ const { finalizeFlowRun, detectPipeline, flowScriptKey, readLastFlowRun } = requ
 const { shouldUseGoldenCli, runStudioGoldenRun } = require('./flow-golden-cli');
 const { makeRunMarker, writeRunMarkerFile } = require('./flow-run-marker.js');
 const { resolveApprovalGoldenSeed } = require('./approval-golden-seed.js');
+const { createReportBatchId } = require('./report-batch.js');
 const repoEnv = require('../repo-env');
 const { getFrontendRepoDefaults, prepareFrontendIndex, resolveFrontendRepoConfig } = require('./frontend-repo-sync');
 
@@ -553,6 +554,8 @@ async function runApprovalFlowTests(ws, session, msg, deps) {
     accountProfile: profile,
     roleSlug,
     runMarker,
+    runUiAudit: Boolean(msg.runUiAudit),
+    uiAuditLimit: Number(msg.uiAuditLimit) || 24,
   });
 
   send(ws, 'approval-flow:run:done', finalized);
@@ -580,9 +583,16 @@ async function runApprovalFlowGoldenAll(ws, session, msg, deps) {
   }
 
   const spec = String(msg.spec || GOLDEN_SPEC).trim();
+  const reportBatchId = createReportBatchId('approval-flow', envId);
   session.approvalFlowGoldenAllRun = true;
   session.approvalFlowCancelled = false;
-  send(ws, 'approval-flow:golden-all:start', { env: envId, profiles: ready, total: ready.length, viaCli: true });
+  send(ws, 'approval-flow:golden-all:start', {
+    env: envId,
+    profiles: ready,
+    total: ready.length,
+    reportBatchId,
+    viaCli: true,
+  });
   logLine(ws, `[approval-flow] Golden 全角色回归 · CLI · ${ready.length} 个角色`, 'info');
 
   try {
@@ -593,6 +603,8 @@ async function runApprovalFlowGoldenAll(ws, session, msg, deps) {
       {
         ...msg,
         spec,
+        reportBatchId,
+        reportBatchExpected: ready.length,
         pipeline: 'golden',
         writeEnabled: false,
         mode: 'headless',
@@ -605,6 +617,8 @@ async function runApprovalFlowGoldenAll(ws, session, msg, deps) {
       env: envId,
       goldenBatch: result.goldenBatch || null,
       batchHeadline: result.batchSummary?.headline || '',
+      reportBatchId,
+      customerReportOpenPath: result.customerReportOpenPath || '',
       results: ready.map((profileId) => {
         const entry = repoEnv.enrichProfileStorageEntry(repoRoot, envId, profileId);
         return { profile: profileId, roleSlug: entry.roleSlug, roleLabel: entry.roleLabel };

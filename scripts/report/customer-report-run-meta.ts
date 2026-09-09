@@ -335,6 +335,7 @@ function findRunRootSegments(scriptPath: string): string[] {
 export function resolveScriptRunMeta(
   scriptKeys: string[],
   scanTargets: Array<{ testDir: string; scriptPath: string }> = [],
+  usedRunIds: Map<string, string> = new Map(),
 ): Map<string, ScriptRunMeta> {
   const unique = [...new Set(scriptKeys.filter(Boolean))];
   const out = new Map<string, ScriptRunMeta>();
@@ -343,7 +344,7 @@ export function resolveScriptRunMeta(
 
   for (const scriptKey of unique) {
     const scriptPath = pathByKey.get(scriptKey) || '';
-    const runId = scriptPath ? latestRunIdFromScreenshots(scriptPath) : '';
+    const runId = usedRunIds.get(scriptKey) || (scriptPath ? latestRunIdFromScreenshots(scriptPath) : '');
     const byRunId = manifests.find(
       (m) => m.runId === runId && scriptKeysMatch(manifestScriptKey(m), scriptKey),
     );

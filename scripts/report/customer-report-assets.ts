@@ -36,6 +36,13 @@ body {
 @media print { .internal-ribbon { display: none; } }
 .header h1 { font-size: 24px; font-weight: 650; }
 .header .sub { margin-top: 6px; opacity: 0.85; font-size: 13px; }
+.report-scope-note {
+  max-width: 1180px;
+  margin: 12px auto 0;
+  padding: 8px 20px;
+  color: var(--muted);
+  font-size: 12px;
+}
 .wrap { max-width: 1180px; margin: 0 auto; padding: 20px 20px 48px; }
 .verdict {
   background: var(--card);
@@ -125,6 +132,41 @@ body {
   color: var(--text);
 }
 .action-list li { margin: 4px 0; }
+.batch-scope,
+.batch-audit {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.batch-scope-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.batch-id {
+  color: var(--muted);
+  font-size: 11px;
+  word-break: break-all;
+}
+.batch-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-top: 12px;
+}
+.batch-stats > div {
+  background: #f8f9fb;
+  border-radius: 8px;
+  padding: 10px;
+  text-align: center;
+}
+.batch-stats strong { display: block; font-size: 18px; }
+.batch-stats span { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }
+.batch-status { margin-top: 10px; color: var(--muted); font-size: 12px; }
+.batch-status.warn { color: #b25e09; }
 .reading-guide {
   margin-bottom: 14px;
   background: #f8f9fb;
@@ -1015,6 +1057,9 @@ body {
 }
 @media (max-width: 720px) {
   .stats { grid-template-columns: repeat(2, 1fr); }
+  .batch-stats { grid-template-columns: repeat(2, 1fr); }
+  .batch-scope-head { display: block; }
+  .batch-id { display: block; margin-top: 6px; }
   .brief {
     grid-template-columns: 72px 22px minmax(0, 1fr);
     row-gap: 6px;

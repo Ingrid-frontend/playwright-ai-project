@@ -32,7 +32,17 @@ function check(name: string, fn: () => void) {
 check('首屏有一句话结论', () => {
   assert.match(html, /class="verdict (bad|good|unknown|watch)"/);
   assert.match(html, /class="verdict-title">[^<]+/);
-  assert.match(html, /(个问题需要修复|本次未发现需要修复的问题|建议人工确认)/);
+  assert.match(
+    html,
+    /(个问题需要修复|本次未发现需要修复的问题|建议人工确认|交付批次有 \d+ 个运行|交付批次尚有 \d+ 个运行)/,
+  );
+});
+
+check('首屏结论与统计口径一致', () => {
+  const verdict = html.slice(html.indexOf('class="verdict '), html.indexOf('<div class="tabs">'));
+  if (verdict.includes('class="verdict bad"')) {
+    assert.ok(!verdict.includes('全部通过'), '存在需修复步骤时不得显示「全部通过」');
+  }
 });
 
 check('统计四格为客户口径', () => {
@@ -47,6 +57,15 @@ check('统计四格为客户口径', () => {
 check('首屏有检测覆盖进度条', () => {
   assert.match(html, /class="coverage-bar/);
   assert.match(html, /检测覆盖/);
+});
+
+check('交付批次展示运行范围与 AI 补充口径', () => {
+  if (!html.includes('class="batch-scope"')) return;
+  assert.match(html, /本次交付范围/);
+  assert.match(html, /已完成运行/);
+  assert.match(html, /不包含其他历史截图/);
+  assert.match(html, /AI 质量观察/);
+  assert.match(html, /不改变上方截图基线验收结论/);
 });
 
 check('首屏有建议操作', () => {
@@ -89,6 +108,14 @@ check('轻微变化默认折叠，不与衰退混在一起', () => {
   if (html.includes('minor-block')) {
     const open = /<details class="minor-block"[^>]*\sopen/.test(html);
     assert.equal(open, false, '轻微变化区块不应默认展开');
+  }
+});
+
+check('可接受差异不伪装成 P1 待办', () => {
+  const parts = html.split('<li class="brief minor">').slice(1);
+  for (const part of parts) {
+    const seg = part.slice(0, part.indexOf('</li>'));
+    assert.ok(!seg.includes('brief-priority'), '可接受差异不应显示 P1 优先级');
   }
 });
 

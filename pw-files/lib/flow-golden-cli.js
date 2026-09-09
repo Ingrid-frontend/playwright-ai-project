@@ -1,10 +1,14 @@
 const fs = require('fs');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const path = require('path');
 const { spawnTracked } = require('./kill-proc');
 const { createPlaywrightLogSink } = require('./failure-report');
-const { readLastFlowRun } = require('./flow-run-common');
+const { flowScriptKey, readLastFlowRun } = require('./flow-run-common');
 const { readGoldenBatch, summarizeGoldenBatch } = require('./golden-batch');
+const {
+  reportBatchCustomerRel,
+  writeReportBatch,
+} = require('./report-batch.js');
 
 function readLastRunManifest(repoRoot, flowId) {
   const abs = path.join(repoRoot, 'results', 'flow-runs', flowId, 'last-run.json');
@@ -15,6 +19,20 @@ function readLastRunManifest(repoRoot, flowId) {
   } catch {
     return null;
   }
+}
+
+function linkBatchReportToLastRun(repoRoot, flowId, batchId, reportRel) {
+  const manifest = readLastRunManifest(repoRoot, flowId);
+  if (!manifest?.runId) return;
+  const next = {
+    ...manifest,
+    reportBatchId: batchId,
+    customerReportRel: reportRel,
+  };
+  const lastAbs = path.join(repoRoot, 'results', 'flow-runs', flowId, 'last-run.json');
+  const runAbs = path.join(repoRoot, 'results', 'flow-runs', flowId, manifest.runId, 'manifest.json');
+  fs.writeFileSync(lastAbs, JSON.stringify(next, null, 2), 'utf8');
+  if (fs.existsSync(runAbs)) fs.writeFileSync(runAbs, JSON.stringify(next, null, 2), 'utf8');
 }
 
 function resolveReplayOpenPath(repoRoot, flowId, lastRun, manifest) {
@@ -52,7 +70,8 @@ function buildGoldenCliDonePayload(repoRoot, flowId, result, base) {
     roleSlug: manifest?.roleSlug,
     accountProfile: manifest?.accountProfile,
     compareReportOpenPath: lastRun.compareReportOpenPath || '',
-    customerReportOpenPath: lastRun.customerReportOpenPath || '',
+    customerReportOpenPath: result.customerReportOpenPath || lastRun.customerReportOpenPath || '',
+    uiAuditReportOpenPath: lastRun.uiAuditReportOpenPath || '',
     summaryReportOpenPath: lastRun.summaryReportOpenPath || '',
     reportOpenPath: lastRun.reportOpenPath || '',
     replayReportOpenPath,
@@ -85,6 +104,11 @@ async function streamGoldenCliRun(ws, session, flowId, opts = {}) {
     profile = '',
     grep = '',
     filterKeyword = '',
+    runUiAudit = false,
+    uiAuditLimit = 24,
+    reportBatchId = '',
+    reportBatchExpected = 0,
+    spec = '',
     cancelKey,
     procKey,
     label,
@@ -107,10 +131,20 @@ async function streamGoldenCliRun(ws, session, flowId, opts = {}) {
   if (filterKeyword) args.push(`--filter-keyword=${filterKeyword}`);
 
   let proc;
+  const launchedAt = Date.now();
   try {
+    const env = {
+      ...process.env,
+      FLOW_PROMOTE_IF_CLEAN: process.env.FLOW_PROMOTE_IF_CLEAN || '0',
+    };
+    if (runUiAudit) {
+      env.FLOW_UI_AUDIT_AFTER_GOLDEN = '1';
+      env.FLOW_UI_AUDIT_LIMIT = String(uiAuditLimit);
+    }
+    if (reportBatchId) env.FLOW_REPORT_BATCH_ID = reportBatchId;
     proc = spawnTracked(npm, args, {
       cwd: repoRoot,
-      env: { ...process.env, FLOW_PROMOTE_IF_CLEAN: process.env.FLOW_PROMOTE_IF_CLEAN || '0' },
+      env,
       shell: process.platform === 'win32',
     });
   } catch (e) {
@@ -132,6 +166,56 @@ async function streamGoldenCliRun(ws, session, flowId, opts = {}) {
   const lastRun = readLastFlowRun(repoRoot, flowId);
   const goldenBatch = readGoldenBatch(repoRoot, flowId);
   const batchSummary = summarizeGoldenBatch(goldenBatch);
+  const reportGoldenBatch =
+    goldenBatch && Date.parse(goldenBatch.finishedAt || '') >= launchedAt - 5000
+      ? goldenBatch
+      : null;
+  let customerReportOpenPath = '';
+  if (reportBatchId && reportGoldenBatch?.results?.length) {
+    const runs = reportGoldenBatch.results.map((item) => ({
+      flowId,
+      env: envId,
+      profileId: item.profileId,
+      roleSlug: item.roleSlug,
+      scriptKey: item.roleSlug
+        ? flowScriptKey(flowId, envId, spec, item.roleSlug).replace(/^flows\//, '')
+        : '',
+      runId: item.runId || '',
+      ok: Boolean(item.ok),
+      skipped: Boolean(item.skipped),
+      required: true,
+      passed: item.passed,
+      failed: item.failed,
+      total: item.total,
+    }));
+    writeReportBatch(repoRoot, {
+      batchId: reportBatchId,
+      flowId,
+      env: envId,
+      createdAt: new Date().toISOString(),
+      expectedRunCount: Number(reportBatchExpected) || runs.length,
+      runs,
+    });
+    if (runs.some((item) => item.runId && item.scriptKey)) {
+      const batchProc = spawnSync(
+        npm,
+        ['run', 'report:flow-customer', '--', `--batch-id=${reportBatchId}`],
+        {
+          cwd: repoRoot,
+          env: { ...process.env, FLOW_REPORT_BATCH_ID: reportBatchId },
+          encoding: 'utf8',
+          maxBuffer: 16 * 1024 * 1024,
+        },
+      );
+      const batchOutput = `${batchProc.stdout || ''}${batchProc.stderr || ''}`;
+      if (batchOutput.trim()) logSink.feed(batchOutput);
+      if (batchProc.status === 0) {
+        const reportRel = reportBatchCustomerRel(reportBatchId);
+        customerReportOpenPath = `/repo-report/${reportRel}`;
+        linkBatchReportToLastRun(repoRoot, flowId, reportBatchId, reportRel);
+      }
+    }
+  }
   const procExit = exitCode || 0;
   const ok = procExit === 0 && (goldenBatch ? goldenBatch.ok !== false : lastRun?.ok !== false);
   const failedRun = goldenBatch?.results?.find((r) => !r.ok && !r.skipped) || null;
@@ -144,6 +228,8 @@ async function streamGoldenCliRun(ws, session, flowId, opts = {}) {
     failedRun,
     logPrefix,
     label,
+    reportBatchId,
+    customerReportOpenPath,
   };
 }
 
@@ -152,7 +238,7 @@ function shouldUseGoldenCli(msg = {}) {
   if (msg.goldenAll) return true;
   if (!isGoldenSpec(spec)) return false;
   const mode = String(msg.mode || 'headless').trim();
-  return mode === 'headless' && !msg.runUiAudit;
+  return mode === 'headless';
 }
 
 async function runStudioGoldenRun(ws, session, flowId, msg, deps, hooks = {}) {
@@ -186,6 +272,11 @@ async function runStudioGoldenRun(ws, session, flowId, msg, deps, hooks = {}) {
     profile,
     grep,
     filterKeyword,
+    runUiAudit: Boolean(msg.runUiAudit),
+    uiAuditLimit: Number(msg.uiAuditLimit) || 24,
+    reportBatchId: String(msg.reportBatchId || '').trim(),
+    reportBatchExpected: Number(msg.reportBatchExpected) || 0,
+    spec,
     cancelKey,
     procKey,
     label: `${flowId}/golden-cli`,
@@ -200,6 +291,7 @@ async function runStudioGoldenRun(ws, session, flowId, msg, deps, hooks = {}) {
     grep,
     env: envId,
     viaCli: true,
+    reportBatchId: result.reportBatchId || '',
     goldenBatch: result.goldenBatch || null,
     batchHeadline: result.batchSummary?.headline || '',
   });

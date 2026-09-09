@@ -102,12 +102,14 @@ function tryPromoteFlowBaseline(repoRoot, scriptKey) {
   return { ...result, seeded };
 }
 
-function runFlowUiAudit(repoRoot, flowId, limit = 24, gate = false) {
+function runFlowUiAudit(repoRoot, flowId, limit = 24, gate = false, opts = {}) {
   const args = [
     '--dir=screenshots/flows',
-    `--script=${flowId}`,
     `--limit=${limit}`,
   ];
+  if (opts.scriptKey) args.push(`--script-key=${opts.scriptKey}`);
+  else args.push(`--script=${flowId}`);
+  if (opts.runId) args.push(`--run=${opts.runId}`);
   if (gate) args.push('--gate');
   return runNpmScript(repoRoot, 'ui-audit', args);
 }
@@ -219,6 +221,9 @@ function discardFlowRunScreenshots(repoRoot, flowId, payload, runIds) {
 function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
   const { startedAt, finishedAt, runId } = alignRunTimes(payload);
   const pipeline = detectPipeline(payload.spec, payload);
+  const scriptKey = flowScriptKey(flowId, payload.env, payload.spec, payload.roleSlug);
+  const boundScriptKey = scriptKey.replace(/^flows\//, '');
+  let boundRunId = runId;
 
   let apiFailures = readApiFailures(repoRoot, flowId, runId);
   if (!apiFailures.length && payload.runId && payload.runId !== runId) {
@@ -230,6 +235,7 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
   let customerReportRel = '';
   let probeReportRel = '';
   let uiAuditReportRel = '';
+  let uiAuditSummaryRel = '';
   let replayReportRel = '';
   let videoReportRel = '';
   let baselinePromoted = false;
@@ -252,6 +258,9 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
         ? flowScreenshotRunAbs(repoRoot, flowId, payload, payload.runId)
         : '';
     const hasRunShots = hasRunScreenshotPng(runShotDir) || hasRunScreenshotPng(altRunShotDir);
+    if (!hasRunScreenshotPng(runShotDir) && hasRunScreenshotPng(altRunShotDir)) {
+      boundRunId = payload.runId;
+    }
 
     if (hasRunShots || videoReportRel) {
       const replayArgs = [
@@ -288,25 +297,51 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
       if (cmp.ok && fs.existsSync(path.join(repoRoot, FLOW_COMPARE_REL))) {
         compareReportRel = FLOW_COMPARE_REL;
       }
-      const cust = runNpmScript(repoRoot, 'report:flow-customer');
-      if (cust.ok && fs.existsSync(path.join(repoRoot, FLOW_CUSTOMER_REL))) {
-        customerReportRel = FLOW_CUSTOMER_REL;
+      if (!process.env.FLOW_REPORT_BATCH_ID) {
+        const cust = runNpmScript(repoRoot, 'report:flow-customer', [
+          `--script-key=${boundScriptKey}`,
+          `--run=${boundRunId}`,
+        ]);
+        if (cust.ok && fs.existsSync(path.join(repoRoot, FLOW_CUSTOMER_REL))) {
+          customerReportRel = FLOW_CUSTOMER_REL;
+        }
       }
     }
   }
 
+  const runUiAudit =
+    payload.runUiAudit ||
+    (pipeline === 'golden' && process.env.FLOW_UI_AUDIT_AFTER_GOLDEN === '1');
+  const canAudit =
+    pipeline === 'probe' ||
+    (pipeline === 'golden' && fullPass && hasShots);
   if (
-    pipeline === 'probe' &&
-    payload.runUiAudit &&
+    canAudit &&
+    runUiAudit &&
     payload.ok &&
     !payload.cancelled &&
     !fastDebug
   ) {
     const auditGate = Boolean(payload.uiAuditGate || process.env.FLOW_UI_AUDIT_GATE === '1');
-    const audit = runFlowUiAudit(repoRoot, flowId, payload.uiAuditLimit || 24, auditGate);
+    const auditLimit =
+      Number(payload.uiAuditLimit) ||
+      Number(process.env.FLOW_UI_AUDIT_LIMIT) ||
+      24;
+    const audit = runFlowUiAudit(repoRoot, flowId, auditLimit, auditGate, {
+      scriptKey: boundScriptKey,
+      runId: boundRunId,
+    });
     if (auditGate && !audit.ok) uiAuditGateFailed = true;
     if (audit.ok && fs.existsSync(path.join(repoRoot, UI_AUDIT_REPORT_REL))) {
       uiAuditReportRel = UI_AUDIT_REPORT_REL;
+      const summary = readJsonSafe(path.join(repoRoot, 'results', 'ui-audit', 'summary.json'));
+      if (
+        summary?.runId &&
+        summary?.manifestRunId === boundRunId &&
+        summary?.scriptKey === boundScriptKey
+      ) {
+        uiAuditSummaryRel = `results/ui-audit/runs/${summary.runId}/summary.json`;
+      }
     }
   }
 
@@ -316,7 +351,6 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
   const runOk = Boolean(payload.ok) && !compareGateFailed && !uiAuditGateFailed;
 
   if (pipeline === 'golden' && runOk && fullPass && !payload.cancelled && !fastDebug) {
-    const scriptKey = flowScriptKey(flowId, payload.env, payload.spec, payload.roleSlug);
     const promoted = tryPromoteFlowBaseline(repoRoot, scriptKey);
     baselinePromoted = promoted.seeded;
     if (process.env.FLOW_PROMOTE_IF_CLEAN === '1') {
@@ -364,13 +398,17 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     skipped: payload.skipped,
     skips: payload.skips || [],
     durationSec: payload.duration ? Number(payload.duration) : undefined,
-    scriptKey: flowScriptKey(flowId, payload.env, payload.spec, payload.roleSlug),
+    scriptKey,
+    boundRunId,
+    boundScriptKey,
+    reportBatchId: process.env.FLOW_REPORT_BATCH_ID || undefined,
     roleSlug: payload.roleSlug || undefined,
     screenshotDir: `screenshots/flows/${flowId}`,
     compareReportRel: compareReportRel || undefined,
     customerReportRel: customerReportRel || undefined,
     probeReportRel: probeReportRel || undefined,
     uiAuditReportRel: uiAuditReportRel || undefined,
+    uiAuditSummaryRel: uiAuditSummaryRel || undefined,
     replayReportRel: replayReportRel || undefined,
     videoReportRel: videoReportRel || undefined,
     baselinePromoted: baselinePromoted || undefined,

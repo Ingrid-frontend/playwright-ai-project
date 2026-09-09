@@ -19,6 +19,7 @@ export type CustomerReportSummary = {
   coveragePct: number;
   envLabel?: string;
   releaseTag?: string;
+  reportBatch?: CustomerReportModel['reportBatch'];
   actionItems: string[];
   issues: Array<{
     title: string;
@@ -36,13 +37,34 @@ export function buildCustomerReportSummary(model: CustomerReportModel): Customer
   const c = model.coverage;
   const coveragePct =
     c.expectedSteps > 0 ? Math.round((c.comparedSteps / c.expectedSteps) * 100) : 0;
-  const headline = buildHeadline(model.coverage, model.regressionGroups.length);
+  const batch = model.reportBatch;
+  const batchMissing = batch
+    ? Math.max(0, batch.expectedRunCount - batch.completedRunCount - batch.failedRunCount)
+    : 0;
+  const headline = batch?.failedRunCount
+    ? `交付批次有 ${batch.failedRunCount} 个运行失败`
+    : batch?.skippedRunCount
+      ? `交付批次有 ${batch.skippedRunCount} 个运行因缺少业务数据跳过`
+      : batchMissing > 0
+      ? `交付批次尚有 ${batchMissing} 个运行未完成`
+      : buildHeadline(model.coverage, model.regressionGroups.length);
+  const shipAdviceLabel = batch?.failedRunCount
+    ? '运行失败项未纳入截图结论，建议修复后重新验收'
+    : batch?.skippedRunCount
+      ? '跳过运行未纳入截图结论，建议补充业务数据后重新验收'
+      : batchMissing > 0
+      ? '批次覆盖不完整，建议补齐运行后重新验收'
+      : model.shipAdviceLabel;
+  const shipAdvice =
+    batch?.failedRunCount || batch?.skippedRunCount || batchMissing > 0
+      ? 'baseline'
+      : model.shipAdvice;
 
   return {
     generatedAt: model.generatedAt,
     headline,
-    shipAdvice: model.shipAdvice,
-    shipAdviceLabel: model.shipAdviceLabel,
+    shipAdvice,
+    shipAdviceLabel,
     regressGroupCount: model.regressionGroups.length,
     regressSteps: c.regressSteps,
     minorSteps: c.minorSteps,
@@ -54,6 +76,7 @@ export function buildCustomerReportSummary(model: CustomerReportModel): Customer
     coveragePct,
     envLabel: model.envLabel,
     releaseTag: model.releaseTag,
+    reportBatch: model.reportBatch,
     actionItems: model.actionItems,
     issues: model.regressionGroups.map((g) => {
       const card = g.representative.browsers[0];
@@ -102,10 +125,6 @@ export function formatCustomerSummaryMarkdown(s: CustomerReportSummary): string 
     `检测覆盖：${s.coveragePct}%（已对比 ${s.comparedSteps}/${s.expectedSteps} 步）`,
     `需要修复 ${s.regressSteps} 步 · 无需处理 ${s.minorSteps} 步 · 完全一致 ${s.passSteps} 步`,
   ];
-  // 覆盖率不足时不输出通过率结论：已测项 100% 与「35% 未测」并排，会把客户带偏
-  if (s.uncoveredSteps === 0) {
-    lines.push(`本轮通过率 ${(s.passRate * 100).toFixed(1)}%（${s.comparedSteps} / ${s.expectedSteps} 步均已比对）`);
-  }
   if (s.uncoveredSteps > 0) {
     lines.push(`待建基线 ${s.uncoveredSteps} 步（未参与判定）`);
   }
@@ -114,7 +133,7 @@ export function formatCustomerSummaryMarkdown(s: CustomerReportSummary): string 
     for (const [i, issue] of s.issues.slice(0, 5).entries()) {
       const nature = issue.natureLabel ? ` · ${issue.natureLabel}` : '';
       lines.push(
-        `${i + 1}. [${issue.priority}] ${issue.title}（${issue.maxDifferenceLabel}，影响 ${issue.affectedSteps} 步${nature}）`,
+        `${i + 1}. [需修复] ${issue.title}（差异率 ${issue.maxDifferenceLabel}，影响 ${issue.affectedSteps} 步${nature}）`,
       );
       lines.push(`   ${issue.reason}`);
     }

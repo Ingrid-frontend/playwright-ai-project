@@ -16,6 +16,7 @@ const { finalizeFlowRun, detectPipeline, flowScriptKey, readLastFlowRun } = requ
 const { shouldUseGoldenCli, runStudioGoldenRun } = require('./flow-golden-cli');
 const { makeRunMarker, writeRunMarkerFile } = require('./flow-run-marker.js');
 const { resolveGoldenSeed } = require('./golden-seed.js');
+const { createReportBatchId } = require('./report-batch.js');
 const repoEnv = require('../repo-env');
 const { getFrontendRepoDefaults, prepareFrontendIndex, resolveFrontendRepoConfig } = require('./frontend-repo-sync');
 
@@ -602,9 +603,16 @@ async function runRequestFlowGoldenAll(ws, session, msg, deps) {
   }
 
   const spec = String(msg.spec || 'request/golden-regression.spec.ts').trim();
+  const reportBatchId = createReportBatchId('request-flow', envId);
   session.requestFlowGoldenAllRun = true;
   session.requestFlowCancelled = false;
-  send(ws, 'request-flow:golden-all:start', { env: envId, profiles: ready, total: ready.length, viaCli: true });
+  send(ws, 'request-flow:golden-all:start', {
+    env: envId,
+    profiles: ready,
+    total: ready.length,
+    reportBatchId,
+    viaCli: true,
+  });
   logLine(ws, `[request-flow] Golden 全角色回归 · CLI · ${ready.length} 个角色`, 'info');
 
   try {
@@ -615,6 +623,8 @@ async function runRequestFlowGoldenAll(ws, session, msg, deps) {
       {
         ...msg,
         spec,
+        reportBatchId,
+        reportBatchExpected: ready.length,
         pipeline: 'golden',
         writeEnabled: false,
         mode: 'headless',
@@ -631,6 +641,8 @@ async function runRequestFlowGoldenAll(ws, session, msg, deps) {
       env: envId,
       goldenBatch: result.goldenBatch || null,
       batchHeadline: result.batchSummary?.headline || '',
+      reportBatchId,
+      customerReportOpenPath: result.customerReportOpenPath || '',
       results: ready.map((profileId) => {
         const entry = repoEnv.enrichProfileStorageEntry(repoRoot, envId, profileId);
         return { profile: profileId, roleSlug: entry.roleSlug, roleLabel: entry.roleLabel };

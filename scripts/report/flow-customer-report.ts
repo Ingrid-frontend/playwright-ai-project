@@ -18,7 +18,18 @@ import { buildCustomerReportModel } from './customer-report-model.js';
 import { renderCustomerReportHtml } from './customer-report-render.js';
 import { sanitizeCustomerReportHtml } from './customer-report-sanitize.js';
 import { resolveScriptRunMeta, resolveScriptRunHistory } from './customer-report-run-meta.js';
-import { enrichRunHistoryComparisons, screenshotsForMainReport } from './customer-report-run-history.js';
+import {
+  readReportBatch,
+  readReportBatchAudit,
+  reportBatchDir,
+} from './customer-report-batch.js';
+import { envLabelFromId } from './customer-report-naming.js';
+import { writeCustomerReportSummary } from './customer-report-summary.js';
+import {
+  enrichRunHistoryComparisons,
+  filterScreenshotsByRun,
+  screenshotsForMainReport,
+} from './customer-report-run-history.js';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
@@ -28,7 +39,21 @@ const DEFAULT_OUT = 'results/flow-customer-report.html';
 async function main() {
   const args = process.argv.slice(2);
   const positional = args.filter((a) => !a.startsWith('--'));
-  const outputPath = positional[0] || DEFAULT_OUT;
+  const batchId = args.find((a) => a.startsWith('--batch-id='))?.slice('--batch-id='.length);
+  const batch = batchId ? readReportBatch(batchId) : null;
+  const outputPath =
+    positional[0] ||
+    (batch ? path.join(reportBatchDir(batch.batchId), 'customer-report.html') : DEFAULT_OUT);
+  const scriptKey = args
+    .find((a) => a.startsWith('--script-key='))
+    ?.slice('--script-key='.length)
+    .replace(/^flows\//, '');
+  const boundRunId = args.find((a) => a.startsWith('--run='))?.slice('--run='.length);
+  const batchRuns = new Map(
+    (batch?.runs || [])
+      .filter((run) => run.scriptKey && run.runId)
+      .map((run) => [run.scriptKey.replace(/^flows\//, ''), run]),
+  );
 
   const scanRoot = fs.existsSync(FLOW_ROOT) ? FLOW_ROOT : 'screenshots';
   if (!fs.existsSync(scanRoot)) {
@@ -36,8 +61,11 @@ async function main() {
     process.exit(1);
   }
 
-  const scanTargets = discoverFlowScriptScanTargets(scanRoot).filter((t) =>
-    isGoldenRegressionTarget(t.testDir),
+  const scanTargets = discoverFlowScriptScanTargets(scanRoot).filter(
+    (t) =>
+      isGoldenRegressionTarget(t.testDir) &&
+      (!scriptKey || t.testDir === scriptKey) &&
+      (!batch || batchRuns.has(t.testDir)),
   );
   if (scanTargets.length === 0) {
     console.error('未发现 Golden 回归流程截图，请先运行 golden-regression 用例');
@@ -47,6 +75,9 @@ async function main() {
   console.log('正在生成流程客户报告…');
   console.log(`  范围: Golden 回归`);
   console.log(`  脚本数: ${scanTargets.length}`);
+  if (scriptKey) console.log(`  绑定脚本: ${scriptKey}`);
+  if (boundRunId) console.log(`  绑定 run: ${boundRunId}`);
+  if (batch) console.log(`  交付批次: ${batch.batchId}（${batch.runs.length} 个运行）`);
   console.log(`  输出: ${outputPath}`);
 
   const testDirComparisons: TestDirComparisons[] = [];
@@ -65,7 +96,13 @@ async function main() {
     const screenshots = getAllScreenshots(scriptPath, 'optimized', outputPath);
     screenshotsByDir.set(testDir, screenshots);
     const rows = runHistory.get(testDir) || [];
-    const { filtered, runId } = screenshotsForMainReport(screenshots, rows);
+    const runIdForTarget = batchRuns.get(testDir)?.runId || boundRunId;
+    const { filtered, runId } = runIdForTarget
+      ? {
+          filtered: filterScreenshotsByRun(screenshots, runIdForTarget),
+          runId: runIdForTarget,
+        }
+      : screenshotsForMainReport(screenshots, rows);
     if (runId) usedRunIds.set(testDir, runId);
     if (filtered.size === 0) continue;
     hasPng = true;
@@ -80,7 +117,7 @@ async function main() {
 
   const coverage = buildCoverageStats(testDirComparisons);
   const scriptKeys = [...new Set(coverage.slots.map((s) => s.scriptKey))];
-  const scriptRuns = resolveScriptRunMeta(scriptKeys, scanTargets);
+  const scriptRuns = resolveScriptRunMeta(scriptKeys, scanTargets, usedRunIds);
   for (const { testDir, scriptPath } of scanTargets) {
     const rows = runHistory.get(testDir);
     const shots = screenshotsByDir.get(testDir);
@@ -90,15 +127,50 @@ async function main() {
     });
     runHistory.set(testDir, enriched);
   }
-  const model = buildCustomerReportModel(coverage, undefined, scriptRuns, runHistory, {
-    releaseTag: process.env.RELEASE_TAG || process.env.npm_package_version,
-    reportScope: 'golden',
-  }, usedRunIds);
+  const audit = batch ? readReportBatchAudit(batch) : null;
+  const reportBatch = batch
+    ? {
+        batchId: batch.batchId,
+        expectedRunCount: batch.expectedRunCount,
+        completedRunCount: batch.runs.filter((run) => run.ok && !run.skipped && Boolean(run.runId))
+          .length,
+        failedRunCount: batch.runs.filter((run) => !run.ok && !run.skipped).length,
+        skippedRunCount: batch.runs.filter((run) => run.skipped).length,
+        flowLabels: [
+          ...new Set(
+            batch.runs.map((run) =>
+              run.flowId === 'approval-flow'
+                ? '审批流程'
+                : run.flowId === 'request-flow'
+                  ? '申请单流程'
+                  : run.flowId,
+            ),
+          ),
+        ],
+        envLabels: [...new Set(batch.runs.map((run) => envLabelFromId(run.env)))],
+        audit: audit!,
+      }
+    : undefined;
+  const model = buildCustomerReportModel(
+    coverage,
+    undefined,
+    scriptRuns,
+    runHistory,
+    {
+      releaseTag: process.env.RELEASE_TAG || process.env.npm_package_version,
+      reportScope: 'golden',
+      reportBatch,
+    },
+    usedRunIds,
+  );
   const html = sanitizeCustomerReportHtml(renderCustomerReportHtml(model), outputPath).html;
 
   const outAbs = path.resolve(outputPath);
   fs.mkdirSync(path.dirname(outAbs), { recursive: true });
   fs.writeFileSync(outAbs, html, 'utf-8');
+  if (batch) {
+    writeCustomerReportSummary(model, path.join(path.dirname(outputPath), 'summary.json'));
+  }
 
   console.log(`\n✅ 客户报告: ${outputPath}`);
   console.log(

@@ -99,6 +99,27 @@ export type IncompleteScriptNote = {
   detail: string;
 };
 
+export type CustomerReportBatchMeta = {
+  batchId: string;
+  expectedRunCount: number;
+  completedRunCount: number;
+  failedRunCount: number;
+  skippedRunCount: number;
+  flowLabels: string[];
+  envLabels: string[];
+  audit: {
+    runCount: number;
+    total: number;
+    pass: number;
+    review: number;
+    fail: number;
+    skipped: number;
+    issueTotal: number;
+    observationTotal: number;
+    degradedSteps: number;
+  };
+};
+
 /** 同一根因在多个步骤重复出现时聚成一组，首屏只显示代表页 */
 export type CustomerIssueGroup = {
   groupKey: string;
@@ -150,6 +171,7 @@ export type CustomerReportModel = {
   /** 发版版本号 */
   releaseTag?: string;
   reportScope?: 'golden' | 'all';
+  reportBatch?: CustomerReportBatchMeta;
 };
 
 export type CustomerReportMeta = {
@@ -157,6 +179,7 @@ export type CustomerReportMeta = {
   envLabel?: string;
   /** golden=仅 Golden 回归；all=含流程调试截图 */
   reportScope?: 'golden' | 'all';
+  reportBatch?: CustomerReportBatchMeta;
 };
 
 function browserLabel(browser: string): string {
@@ -406,6 +429,7 @@ export function buildCustomerReportModel(
     incompleteScripts: incompleteScripts.length ? incompleteScripts : undefined,
     releaseTag: meta?.releaseTag || undefined,
     reportScope: meta?.reportScope || 'golden',
+    reportBatch: meta?.reportBatch,
   };
   const { advice, label } = deriveShipAdvice(coverage);
   model.shipAdvice = advice;
