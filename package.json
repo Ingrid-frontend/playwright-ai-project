@@ -151,6 +151,8 @@
     "hooks:install": "git config core.hooksPath .githooks",
     "expense-flow:golden": "tsx scripts/flow/run-expense-flow-golden.ts",
     "expense-flow:debug-fast": "tsx scripts/flow/flow-debug-fast.ts --flow=expense-flow",
+    "expense-flow:write": "tsx scripts/flow/run-expense-flow-write.ts",
+    "expense-flow:stability-gate": "tsx scripts/flow/run-expense-flow-stability-gate.ts",
     "prune:flow-videos": "tsx scripts/report/prune-flow-videos.ts",
     "prune:flow-history": "tsx scripts/report/prune-flow-history.ts"
   },

@@ -93,7 +93,7 @@ const RAW: FlowDescriptor[] = [
     fullFlowSpec: 'expense/full-flow.spec.ts',
     reportDir: 'expense-flow/playwright-report',
     goldenRunner: 'run-expense-flow-golden.ts',
-    writeRunner: null,
+    writeRunner: 'run-expense-flow-write.ts',
     docNoEnv: 'EXPENSE_DOC_NO',
     keywordEnv: 'EXPENSE_FILTER_KEYWORD',
     defaultKeyword: '',

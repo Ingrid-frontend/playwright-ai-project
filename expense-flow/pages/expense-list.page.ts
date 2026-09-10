@@ -1,5 +1,6 @@
 import { type Page } from '@playwright/test';
 import { GenericListPage, type ListCatalog } from '../../flow-kit/list/generic-list-page';
+import { ExpenseEditPage } from './expense-edit.page';
 import {
   COMBO_TRIGGER,
   DOC_NO_COLUMN,
@@ -57,4 +58,55 @@ export class ExpenseListPage extends GenericListPage {
   }
 
   // ---------- 本流程特有动作写在下面 ----------
+
+  /** 列表点「新建」进入报销单编辑（打开模板下拉/弹窗由 ExpenseEditPage 处理） */
+  async clickNewExpense(): Promise<void> {
+    await this.closeDetailIfOpen();
+    const btn = this.page
+      .getByRole('button', { name: /新\s*建|新建报销/ })
+      .filter({ visible: true })
+      .first();
+    await btn.waitFor({ state: 'visible', timeout: 15_000 });
+    await btn.click();
+  }
+
+  /** 关闭打开的详情侧滑（新建前清场） */
+  async closeDetailIfOpen(): Promise<void> {
+    const url = this.page.url();
+    if (!url.includes(LIST_PATH)) return;
+    const close = this.page
+      .locator(
+        '.slide-frame.slide-frame-open .anticon-close, .full-width-slideframe .ant-modal-close, [aria-label="Close"]',
+      )
+      .filter({ visible: true })
+      .first();
+    if (await close.isVisible({ timeout: 1_000 }).catch(() => false)) {
+      await close.click();
+      await this.waitListSettled();
+    }
+  }
+
+  /** 新建报销单：点新建 → 确认模板（如有）→ 进入编辑态 */
+  async startNewExpense(formName?: string): Promise<ExpenseEditPage> {
+    await this.closeDetailIfOpen();
+    const edit = new ExpenseEditPage(this.page);
+    await this.clickNewExpense();
+    // 单模板直接进编辑；多模板下拉 / 弹窗
+    const panel = this.page
+      .locator('.ant-dropdown, .ant-select-dropdown, .ant-modal')
+      .filter({ visible: true })
+      .last();
+    if (await panel.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      const items = panel
+        .locator('.ant-dropdown-menu-item, .ant-select-dropdown-menu-item, .ant-select-item-option, .ant-menu-item')
+        .filter({ visible: true });
+      const item = formName
+        ? items.filter({ hasText: formName }).first()
+        : items.first();
+      await item.waitFor({ state: 'visible', timeout: 10_000 });
+      await item.click({ force: true });
+    }
+    await edit.expectEditVisible();
+    return edit;
+  }
 }
