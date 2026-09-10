@@ -163,10 +163,12 @@ function main(): void {
     passed = (Number(s.expected) || 0) + (Number(s.flaky) || 0);
     failed = Number(s.unexpected) || 0;
     total = passed + failed + (Number(s.skipped) || 0);
-    failures = parsePlaywrightFailures(result, null, exitCode).map((item) => ({
-      title: item.title,
-      message: item.message,
-    }));
+    failures = parsePlaywrightFailures(result, null, exitCode).map(
+      (item: { title?: string; message?: string }) => ({
+        title: item.title,
+        message: item.message,
+      }),
+    );
   } catch {
     passed = exitCode === 0 ? 1 : 0;
     failed = exitCode === 0 ? 0 : 1;

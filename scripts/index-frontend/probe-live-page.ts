@@ -171,8 +171,8 @@ const DOM_DUMP = `(() => {
 })()`;
 
 async function dumpDom(page: Page) {
-  const main = await page.evaluate(DOM_DUMP);
-  const frames = [];
+  const main = (await page.evaluate(DOM_DUMP)) as Record<string, unknown>;
+  const frames: unknown[] = [];
   for (const frame of page.frames()) {
     if (frame === page.mainFrame()) continue;
     const info = await frame.evaluate(DOM_DUMP).catch(() => null);

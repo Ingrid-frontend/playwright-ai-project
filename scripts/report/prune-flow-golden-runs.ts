@@ -186,7 +186,7 @@ export function pruneOlderMatchingGoldenRuns(opts: {
     if (!shouldPruneStaleGoldenRun(oldVerdict, { aggressive: opts.aggressive })) continue;
     if (!listStepPngs(oldDir).length) continue;
     const count = pruneRunScreenshots(oldDir);
-    if (count > 0) {
+    if (count > 0 && oldVerdict) {
       writeVerdict(oldDir, { ...oldVerdict, prunedScreenshots: count });
       pruned.push({ runId: oldRunId, prunedScreenshots: count });
       console.log(

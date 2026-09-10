@@ -28,7 +28,7 @@ type FeishuApiResponse<T> = {
   data?: T;
 };
 
-type SearchRecordItem = {
+export type SearchRecordItem = {
   record_id: string;
   fields?: Record<string, unknown>;
 };

@@ -313,7 +313,7 @@ export function buildFeedbackDocMarkdown(ctx: FeedbackDocContext): string {
   if (ctx.baselinePath) lines.push(`- 基线: ${ctx.baselinePath}`);
   lines.push('');
   lines.push('## 修复建议');
-  lines.push(ctx.fixHint || fixHintForIssue({ structureType: ctx.structureType, severity: ctx.severity, compareKind: ctx.compareKind as UiIssue['compareKind'], detail: ctx.detail }));
+  lines.push(ctx.fixHint || fixHintForIssue({ structureType: ctx.structureType, severity: ctx.severity as UiIssue['severity'], compareKind: ctx.compareKind as UiIssue['compareKind'], detail: ctx.detail }));
   lines.push('');
   lines.push('---');
   lines.push('可将本文档与截图交给 AI 编辑器或 Codex，结合 `ui-feedback-diagnosis` 技能搜索源码并修复。');

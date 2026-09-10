@@ -68,7 +68,7 @@ export function readImageAsBase64(filePath: string): ImagePart | null {
 export function prepareVisionImage(filePath: string): ImagePart | null {
   try {
     if (!fs.existsSync(filePath)) return null;
-    let buf = fs.readFileSync(filePath);
+    let buf: Buffer = fs.readFileSync(filePath);
     if (buf.length === 0) return null;
     const ext = path.extname(filePath).toLowerCase();
     const mediaType: MediaType =

@@ -137,7 +137,16 @@ export function buildDailySummaryKey(date: string, env: string): string {
   return `${date}|${env}`;
 }
 
-export function calcUiPassRate(summary?: UiIssuesReport['summary']): number {
+type UiPassRateSummary = {
+  total?: number;
+  blocker?: number;
+  warning?: number;
+  comparisonTotal?: number;
+  comparisonBlocker?: number;
+  comparisonWarning?: number;
+};
+
+export function calcUiPassRate(summary?: UiPassRateSummary): number {
   if (!summary) return 100;
   const cmpTotal = summary.comparisonTotal ?? summary.total ?? 0;
   const cmpBlocker = summary.comparisonBlocker ?? summary.blocker ?? 0;

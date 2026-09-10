@@ -120,7 +120,7 @@ function mergeStructureCheck(
   scriptKey: string,
 ): boolean {
   if (!item.selector) return false;
-  const sc = regression.structureChecks as { items?: Array<{ key: string; selector: string; script?: string }> } | undefined;
+  const sc = regression.structureChecks as { items?: Array<{ key: string; selector: string; script?: string; required?: boolean }> } | undefined;
   if (!sc?.items) return false;
   const key = `feedback-${item.id.slice(-8)}`;
   if (sc.items.some((i) => i.key === key)) return false;
