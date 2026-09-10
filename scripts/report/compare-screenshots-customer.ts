@@ -16,6 +16,7 @@ import { buildCoverageStats } from './coverage-stats.js';
 import { buildCustomerReportModel } from './customer-report-model.js';
 import { renderCustomerReportHtml } from './customer-report-render.js';
 import { sanitizeCustomerReportHtml } from './customer-report-sanitize.js';
+import { inlineCustomerReportAssets } from './customer-report-inline.js';
 import { writeCustomerReportSummary } from './customer-report-summary.js';
 import { buildCustomerDeliveryPayload, writeCustomerDeliveryPayload } from './customer-delivery-payload.js';
 import { resolveScriptRunMeta, resolveScriptRunHistory } from './customer-report-run-meta.js';
@@ -35,6 +36,7 @@ async function main() {
   const positional = args.filter((a) => !a.startsWith('--'));
   const allScripts = args.includes('--all-scripts');
   const listEnvs = args.includes('--list-envs');
+  const inlineAssets = args.includes('--inline-assets');
   // 一次只交付一个环境的报告：多环境混在同一份里，读者无法判断验收对象
   const envFlag = args.find((a) => a.startsWith('--env='));
   const envFilter = envFlag ? envFlag.slice('--env='.length).trim().toLowerCase() : '';
@@ -171,6 +173,13 @@ async function main() {
   const outAbs = path.resolve(outputPath);
   fs.mkdirSync(path.dirname(outAbs), { recursive: true });
   fs.writeFileSync(outAbs, html, 'utf-8');
+
+  if (inlineAssets) {
+    const standalonePath = outputPath.replace(/(\.html?)$/i, '.standalone$1');
+    const standaloneHtml = inlineCustomerReportAssets(html, outputPath);
+    fs.writeFileSync(path.resolve(standalonePath), standaloneHtml, 'utf-8');
+    console.log(`\n  单文件版已生成: ${standalonePath}`);
+  }
 
   console.log(`\n客户报告已生成: ${outputPath}`);
   console.log(

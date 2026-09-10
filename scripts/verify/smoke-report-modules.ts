@@ -28,6 +28,7 @@ import { classifyDifference, isProcessOnlyStep } from '../report/coverage-stats.
 import { detectPageStateDrift } from '../report/page-state-drift.js';
 import { scriptKeyMatches } from '../report/ui-regression-config.js';
 import { classifyRegionNature, isActionableNature } from '../report/change-nature.js';
+import { inlineCustomerReportAssets } from '../report/customer-report-inline.js';
 import {
   friendlyScriptLabel,
   friendlyStepLabel,
@@ -631,5 +632,19 @@ pass('domHash 一致且位移/渲染占主导时降级');
 assert.ok(scriptKeyMatches('flows/approval-flow', 'approval-flow/dev/golden-regression/by-account/menma_comic_com'));
 assert.ok(!scriptKeyMatches('flows/request-flow', 'approval-flow/dev/golden-regression/by-account/menma_comic_com'));
 pass('scriptKeyMatches 支持 flows/ 前缀与 flow 扫描路径');
+
+// 单文件内嵌：把 -assets/ 下图片转成 base64 data URI，让 HTML 脱离仓库目录也能打开
+const inlineTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pw-inline-'));
+const inlineSlug = 'report';
+const inlineAssetsDir = path.join(inlineTmp, `${inlineSlug}-assets`);
+fs.mkdirSync(inlineAssetsDir, { recursive: true });
+const inlinePng = path.join(inlineAssetsDir, 'img-test.png');
+fs.writeFileSync(inlinePng, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64'));
+const inlineHtml = `<html><img src="${inlineSlug}-assets/img-test.png" data-screenshot="${inlineSlug}-assets/img-test.png"></html>`;
+const inlinedHtml = inlineCustomerReportAssets(inlineHtml, path.join(inlineTmp, `${inlineSlug}.html`));
+assert.ok(inlinedHtml.includes('data:image/png;base64,'), '内嵌后应出现 data:image/png;base64');
+assert.ok(!inlinedHtml.includes(`${inlineSlug}-assets/img-test.png`), '内嵌后不应再保留相对图片引用');
+fs.rmSync(inlineTmp, { recursive: true, force: true });
+pass('inlineCustomerReportAssets 把 -assets 图片内嵌为 data URI');
 
 console.log('\n✅ smoke-report-modules 通过');
