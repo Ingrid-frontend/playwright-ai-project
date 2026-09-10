@@ -58,11 +58,12 @@ export class ExpenseListPage extends GenericListPage {
   }
 
   // ---------- 本流程特有动作写在下面 ----------
+  // 注意：业务内容在 zoom iframe 内，以下定位一律走 scope()，不能直接打顶层 page。
 
   /** 列表点「新建」进入报销单编辑（打开模板下拉/弹窗由 ExpenseEditPage 处理） */
   async clickNewExpense(): Promise<void> {
     await this.closeDetailIfOpen();
-    const btn = this.page
+    const btn = this.scope()
       .getByRole('button', { name: /新\s*建|新建报销/ })
       .filter({ visible: true })
       .first();
@@ -70,13 +71,13 @@ export class ExpenseListPage extends GenericListPage {
     await btn.click();
   }
 
-  /** 关闭打开的详情侧滑（新建前清场） */
+  /** 关闭打开的详情侧滑/全屏（新建前清场） */
   async closeDetailIfOpen(): Promise<void> {
     const url = this.page.url();
     if (!url.includes(LIST_PATH)) return;
-    const close = this.page
+    const close = this.scope()
       .locator(
-        '.slide-frame.slide-frame-open .anticon-close, .full-width-slideframe .ant-modal-close, [aria-label="Close"]',
+        '.slide-frame.slide-frame-open .anticon-close, .full-width-slideframe .ant-modal-close, .full-screen .anticon-close, [aria-label="Close"]',
       )
       .filter({ visible: true })
       .first();
@@ -92,8 +93,8 @@ export class ExpenseListPage extends GenericListPage {
     const edit = new ExpenseEditPage(this.page);
     await this.clickNewExpense();
     // 单模板直接进编辑；多模板下拉 / 弹窗
-    const panel = this.page
-      .locator('.ant-dropdown, .ant-select-dropdown, .ant-modal')
+    const panel = this.scope()
+      .locator('.ant-dropdown, .ant-select-dropdown, .ant-modal, .stations-dropdown-content')
       .filter({ visible: true })
       .last();
     if (await panel.isVisible({ timeout: 3_000 }).catch(() => false)) {

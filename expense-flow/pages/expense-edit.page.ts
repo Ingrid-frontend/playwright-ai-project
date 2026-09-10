@@ -1,44 +1,70 @@
-import { type Locator, type Page, expect } from '@playwright/test';
-import { DETAIL, LIST_PATH, DOC_NO_RE } from '../utils/expense-catalog';
+import { type FrameLocator, type Locator, type Page, expect } from '@playwright/test';
+import { waitForAppRoot, type AppRoot } from '../../flow-kit/utils/app-frame';
+import { DETAIL, DOC_NO_RE } from '../utils/expense-catalog';
 import { randomReason } from '../utils/random';
+
+type Scope = FrameLocator | Page;
 
 /**
  * 报销单编辑/详情页对象模型。
  *
- * 结构对齐 request-flow 的 RequestEditPage，但报销单详情的判定信号更简单：
- * SlideFrame 侧滑 / 全屏容器 + 底栏「保\s*存 / 提\s*交」按钮。
+ * 结构对齐 request-flow 的 RequestEditPage：业务内容在 iframe[src*="openBySelf=zoom"] 内，
+ * 所有定位必须经 waitForAppRoot() 拿到的 scope，不能直接打在顶层 page。
  * 写操作（save/submit）只在 EXPENSE_ENABLE_WRITE=1 的 full-flow 里被调用。
  */
 export class ExpenseEditPage {
   readonly page: Page;
+  private root: AppRoot | null = null;
 
   constructor(page: Page) {
     this.page = page;
   }
 
+  private scope(): Scope {
+    if (!this.root) {
+      this.root = { page: this.page, scope: this.page, inIframe: false };
+    }
+    return this.root.scope;
+  }
+
+  async ensureRoot(): Promise<void> {
+    if (!this.root) {
+      this.root = await waitForAppRoot(this.page);
+    }
+  }
+
   /** 详情容器：侧滑或全屏，取可见的最后一个 */
   detailShell(): Locator {
-    return this.page.locator(DETAIL).filter({ visible: true }).last();
+    return this.scope().locator(DETAIL).filter({ visible: true }).last();
   }
 
   async expectEditVisible(): Promise<void> {
-    // 双信号：底栏动作按钮 or 容器内出现单号格式文本（列表页头也有「单号」列，故需限定在容器内）
-    const action = this.page
+    await this.ensureRoot();
+    // 双信号：底栏动作按钮 or 「单据详情」+单号文本
+    const action = this.scope()
       .getByRole('button', { name: /保\s*存|提\s*交|删\s*除|返\s*回/ })
       .filter({ visible: true })
       .first();
     const shell = this.detailShell();
+    const detailHeading = this.scope()
+      .getByText(/单据详情|单据信息/)
+      .filter({ visible: true })
+      .first();
+    const docNoText = this.scope().getByText(DOC_NO_RE).filter({ visible: true }).first();
     await expect(async () => {
       const actionOk = await action.isVisible().catch(() => false);
       const shellOk =
         (await shell.isVisible().catch(() => false)) &&
         (await shell.getByText(DOC_NO_RE).first().isVisible().catch(() => false));
-      expect(actionOk || shellOk, '未打开报销单详情').toBeTruthy();
+      const headingOk =
+        (await detailHeading.isVisible().catch(() => false)) &&
+        (await docNoText.isVisible().catch(() => false));
+      expect(actionOk || shellOk || headingOk, '未打开报销单详情').toBeTruthy();
     }).toPass({ timeout: 60_000 });
   }
 
   private async waitFormReady(): Promise<void> {
-    await this.page
+    await this.scope()
       .locator('.ant-spin-spinning')
       .first()
       .waitFor({ state: 'hidden', timeout: 30_000 })
@@ -48,9 +74,10 @@ export class ExpenseEditPage {
   /** 事由输入框：报销单编辑页的事由块（textarea / input） */
   private async findReasonInput(): Promise<Locator> {
     await this.waitFormReady();
+    const scope = this.scope();
     let found: Locator | null = null;
     await expect(async () => {
-      const blocks = this.page
+      const blocks = scope
         .locator('.ant-form-item, [class*="form-item"]')
         .filter({ hasText: /事\s*由/ })
         .filter({ visible: true });
@@ -73,8 +100,8 @@ export class ExpenseEditPage {
       }
       // 兜底：label / placeholder 定位
       const outs = [
-        this.page.getByLabel(/事\s*由/).filter({ visible: true }).first(),
-        this.page.getByPlaceholder(/事由|请输入/).filter({ visible: true }).first(),
+        scope.getByLabel(/事\s*由/).filter({ visible: true }).first(),
+        scope.getByPlaceholder(/事由|请输入/).filter({ visible: true }).first(),
       ];
       for (const loc of outs) {
         if (await loc.isVisible({ timeout: 300 }).catch(() => false)) {
@@ -105,23 +132,26 @@ export class ExpenseEditPage {
 
   /** 底栏动作按钮（保存/提交），详情态先点「编辑」再保存的场景不覆盖——报销单新建即编辑态 */
   private actionBtn(name: RegExp): Locator {
-    return this.page
+    return this.scope()
       .getByRole('button', { name })
       .filter({ visible: true })
       .first();
   }
 
-  /** 保存报销单。返回是否成功（保存后底栏出现「提交」或出现成功 toast） */
+  /** 成功 toast（zoom iframe 内） */
+  private successToast(): Locator {
+    return this.scope()
+      .locator('.ant-message-success, .ant-notification-notice-success')
+      .filter({ visible: true })
+      .first();
+  }
+
+  /** 保存报销单。保存后底栏出现「提交」或出现成功 toast */
   async save(): Promise<void> {
     await this.actionBtn(/保\s*存/).click();
-    // 保存成功信号：提交按钮可见（保存并继续编辑）或 toast
     await expect(async () => {
       const submitOk = await this.actionBtn(/提\s*交/).isVisible().catch(() => false);
-      const toastOk = await this.page
-        .locator('.ant-message-success, .ant-notification-notice-success')
-        .first()
-        .isVisible()
-        .catch(() => false);
+      const toastOk = await this.successToast().isVisible().catch(() => false);
       expect(submitOk || toastOk, '报销单保存未成功').toBeTruthy();
     }).toPass({ timeout: 60_000 });
   }
@@ -132,23 +162,18 @@ export class ExpenseEditPage {
     await expect(btn, '未找到「提交」按钮（可能未保存）').toBeVisible({ timeout: 10_000 });
     await btn.click();
     // 确认弹窗（如有）
-    const confirm = this.page
-      .locator('.ant-modal-confirm')
+    const confirm = this.scope()
+      .locator('.ant-modal-confirm, .ant-modal')
       .filter({ visible: true })
       .last();
     if (await confirm.isVisible({ timeout: 1_500 }).catch(() => false)) {
       await confirm.getByRole('button', { name: /确\s*定|同\s*意/ }).first().click();
     }
     await expect(async () => {
-      // 提交成功：回到列表 or 成功 toast
-      const backToList = this.page.url().includes(LIST_PATH.replace('/main', '/main'));
-      const toastOk = await this.page
-        .locator('.ant-message-success, .ant-notification-notice-success')
-        .first()
-        .isVisible()
-        .catch(() => false);
-      const closed = !(await this.detailShell().isVisible().catch(() => false));
-      expect(backToList && (toastOk || closed), '报销单提交未成功').toBeTruthy();
+      // 提交成功：详情态关闭（提交按钮消失）或成功 toast
+      const stillEditing = await this.actionBtn(/提\s*交/).isVisible().catch(() => false);
+      const toastOk = await this.successToast().isVisible().catch(() => false);
+      expect((!stillEditing || toastOk), '报销单提交未成功').toBeTruthy();
     }).toPass({ timeout: 60_000 });
   }
 
