@@ -3951,8 +3951,63 @@ function isStudioCompact() {
   return Boolean(app?.classList.contains('studio-compact') && !app.classList.contains('studio-compact-off'));
 }
 
-function shouldProbeBeforeCompactGolden() {
-  return isStudioCompact();
+const PROBE_TTL_MS = 60 * 60 * 1000;
+
+function probeCacheKey(flowId, envId) {
+  return `studio:probeAt:${flowId}:${envId || 'dev'}`;
+}
+
+function markProbeDone(flowId, envId, at = Date.now()) {
+  try {
+    sessionStorage.setItem(probeCacheKey(flowId, envId), String(at));
+  } catch {
+    /* ignore */
+  }
+}
+
+function getProbeAt(flowId, envId) {
+  try {
+    const raw = sessionStorage.getItem(probeCacheKey(flowId, envId));
+    const t = Number(raw);
+    if (Number.isFinite(t) && t > 0) return t;
+  } catch {
+    /* ignore */
+  }
+  return 0;
+}
+
+function parseProbeIso(iso) {
+  const t = Date.parse(String(iso || ''));
+  return Number.isFinite(t) ? t : 0;
+}
+
+const flowSnapshotAtByEnv = {};
+
+function setFlowSnapshotAt(flowId, envId, at) {
+  flowSnapshotAtByEnv[`${flowId}:${envId || 'dev'}`] = at || 0;
+}
+
+function getFlowSnapshotAt(flowId, envId) {
+  return flowSnapshotAtByEnv[`${flowId}:${envId || 'dev'}`] || 0;
+}
+
+function isProbeFresh(flowId, snapshotAt = 0) {
+  const envId = envState.current || 'dev';
+  const latest = Math.max(getProbeAt(flowId, envId), snapshotAt || 0);
+  if (!latest) return false;
+  return Date.now() - latest < PROBE_TTL_MS;
+}
+
+function probeTtlMinutesLeft(flowId, snapshotAt = 0) {
+  const envId = envState.current || 'dev';
+  const latest = Math.max(getProbeAt(flowId, envId), snapshotAt || 0);
+  if (!latest) return 0;
+  return Math.max(0, Math.ceil((PROBE_TTL_MS - (Date.now() - latest)) / 60_000));
+}
+
+function shouldProbeBeforeCompactGolden(flowId = 'request-flow') {
+  if (!isStudioCompact()) return false;
+  return !isProbeFresh(flowId, getFlowSnapshotAt(flowId, envState.current));
 }
 
 function toggleStudioCompactAdvanced() {
@@ -7503,6 +7558,7 @@ function handleMessage(msg) {
       log('info', `[request-flow] 探活开始 · env=${msg.env || 'dev'}`);
       break;
     case 'request-flow:probe:done':
+      if (msg.ok) markProbeDone('request-flow', msg.env || envState.current);
       if (requestFlowProbeChain) {
         const chain = requestFlowProbeChain;
         requestFlowProbeChain = null;
@@ -7678,6 +7734,7 @@ function handleMessage(msg) {
       log('info', `[approval-flow] 探活开始 · env=${msg.env || 'dev'}`);
       break;
     case 'approval-flow:probe:done':
+      if (msg.ok) markProbeDone('approval-flow', msg.env || envState.current);
       if (approvalFlowProbeChain) {
         const chain = approvalFlowProbeChain;
         approvalFlowProbeChain = null;
@@ -9383,9 +9440,13 @@ function renderRequestFlowStatus(msg, opts = {}) {
     ? `<span style="color:var(--green)">已就绪</span> · ${escHtml(msg.storageState || '')}`
     : `<span style="color:var(--amber)">缺失</span> · ${escHtml(requestFlowLoginHint())}${msg.storageHint ? `（${escHtml(msg.storageHint)}）` : ''}`;
   const snap = msg.snapshot;
+  const snapAt = parseProbeIso(snap?.probedAt);
+  setFlowSnapshotAt('request-flow', msg.env, snapAt);
   let snapLine = '暂无 live-snapshot，可先点「实机探活」';
   if (snap) {
     snapLine = `表头：${(snap.headers || []).slice(0, 6).join(' / ') || '—'}${snap.sampleDocNo ? ` · 样例单号 ${snap.sampleDocNo}` : ''}`;
+    const left = probeTtlMinutesLeft('request-flow', snapAt);
+    if (left > 0) snapLine += ` · ${left} 分钟内免重复探活`;
   }
   const catalog = msg.catalogCheck;
   let catalogLine = '';
@@ -9649,11 +9710,14 @@ function runRequestFlowGolden() {
     showToast('请先选择并已登录 Golden 角色', 'err');
     return;
   }
-  if (shouldProbeBeforeCompactGolden()) {
+  if (shouldProbeBeforeCompactGolden('request-flow')) {
     requestFlowProbeChain = 'golden';
     log('info', '[request-flow] 检测模式：先探活再跑 Golden…');
     startRequestFlowProbe();
     return;
+  }
+  if (isStudioCompact() && isProbeFresh('request-flow', getFlowSnapshotAt('request-flow', envState.current))) {
+    log('info', `[request-flow] 探活快照仍有效（${probeTtlMinutesLeft('request-flow', getFlowSnapshotAt('request-flow', envState.current))} 分钟内），跳过探活`);
   }
   runRequestFlowGoldenDirect();
 }
@@ -9687,11 +9751,14 @@ function runRequestFlowGoldenAll() {
     showToast('请先为至少一个 golden* 档案完成登录', 'err');
     return;
   }
-  if (shouldProbeBeforeCompactGolden()) {
+  if (shouldProbeBeforeCompactGolden('request-flow')) {
     requestFlowProbeChain = 'goldenAll';
     log('info', '[request-flow] 检测模式：先探活再跑全部 Golden…');
     startRequestFlowProbe();
     return;
+  }
+  if (isStudioCompact() && isProbeFresh('request-flow', getFlowSnapshotAt('request-flow', envState.current))) {
+    log('info', `[request-flow] 探活快照仍有效（${probeTtlMinutesLeft('request-flow', getFlowSnapshotAt('request-flow', envState.current))} 分钟内），跳过探活`);
   }
   runRequestFlowGoldenAllDirect();
 }
@@ -9937,10 +10004,14 @@ function renderApprovalFlowStatus(msg, opts = {}) {
     ? `<span style="color:var(--green)">已就绪</span> · ${escHtml(msg.storageState || '')}`
     : '<span style="color:var(--amber)">缺失</span> · 请先在侧栏登录';
   const snap = msg.snapshot;
+  const snapAt = parseProbeIso(snap?.probedAt);
+  setFlowSnapshotAt('approval-flow', msg.env, snapAt);
   let snapLine = '暂无 live-snapshot，可先点「实机探活」';
   if (snap) {
     const tabs = (snap.tabs || []).join(' / ') || '—';
     snapLine = `页签：${tabs}${snap.sampleDocNo ? ` · 样例单号 ${snap.sampleDocNo}` : ''}`;
+    const left = probeTtlMinutesLeft('approval-flow', snapAt);
+    if (left > 0) snapLine += ` · ${left} 分钟内免重复探活`;
   }
   const catalog = msg.catalogCheck;
   let catalogLine = '';
@@ -10131,11 +10202,14 @@ function runApprovalFlowGolden() {
     showToast('请先选择并已登录 Golden 角色', 'err');
     return;
   }
-  if (shouldProbeBeforeCompactGolden()) {
+  if (shouldProbeBeforeCompactGolden('approval-flow')) {
     approvalFlowProbeChain = 'golden';
     log('info', '[approval-flow] 检测模式：先探活再跑 Golden…');
     startApprovalFlowProbe();
     return;
+  }
+  if (isStudioCompact() && isProbeFresh('approval-flow', getFlowSnapshotAt('approval-flow', envState.current))) {
+    log('info', `[approval-flow] 探活快照仍有效（${probeTtlMinutesLeft('approval-flow', getFlowSnapshotAt('approval-flow', envState.current))} 分钟内），跳过探活`);
   }
   runApprovalFlowGoldenDirect();
 }
@@ -10167,11 +10241,14 @@ function runApprovalFlowGoldenAll() {
     showToast('请先为至少一个 golden* 档案完成登录', 'err');
     return;
   }
-  if (shouldProbeBeforeCompactGolden()) {
+  if (shouldProbeBeforeCompactGolden('approval-flow')) {
     approvalFlowProbeChain = 'goldenAll';
     log('info', '[approval-flow] 检测模式：先探活再跑全部 Golden…');
     startApprovalFlowProbe();
     return;
+  }
+  if (isStudioCompact() && isProbeFresh('approval-flow', getFlowSnapshotAt('approval-flow', envState.current))) {
+    log('info', `[approval-flow] 探活快照仍有效（${probeTtlMinutesLeft('approval-flow', getFlowSnapshotAt('approval-flow', envState.current))} 分钟内），跳过探活`);
   }
   runApprovalFlowGoldenAllDirect();
 }
