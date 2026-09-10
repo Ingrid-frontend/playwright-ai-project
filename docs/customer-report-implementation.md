@@ -15,6 +15,7 @@
 | `change-nature.ts` | 判定单个差异区的变化性质（位移/渲染/新增/缺失/内容变化），误判治理的核心 |
 | `coverage-stats.ts` | 四档状态分级（pass/minor/regress/uncovered）+ 判定理由文本 |
 | `customer-report-model.ts` | 组装展示模型，按根因聚类成 issue group，生成锚点 id |
+| `customer-report-bundle.ts` | 公共布局衰退合并：`buildRegressionDisplay` → `regressionDisplay`（首屏/摘要/行动项计数） |
 | `customer-report-plain.ts` | 大白话描述文案 |
 | `customer-report-naming.ts` | 展示名清洗：环境名、步骤 slug、方位描述 |
 | `customer-report-render.ts` | HTML 结构：结论速览 + 对比明细 + 检测范围 |
@@ -37,7 +38,7 @@
 - 仅当变化人眼可见才允许判 `appeared`/`vanished`，防止极淡 1px 分隔线被当成新增内容
 - 符号约定：`shiftX` 正值 = 当前截图内容相对基线**右移**
 
-**改判定逻辑必须同时递增 `DIFF_NATURE_VERSION`（当前 6），否则增量缓存不失效。**
+**改判定逻辑必须同时递增 `DIFF_NATURE_VERSION`（当前 8），否则增量缓存不失效。**
 
 ## 3. 不许回退的基线
 

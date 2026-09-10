@@ -253,6 +253,9 @@ check('不再出现内部术语 / 账号身份 / 运行目录', () => {
   for (const bad of ['技术附录', 'by-account', 'run-chromium', 'menma']) {
     assert.ok(!html.includes(bad), `报告泄漏内部串: ${bad}`);
   }
+  for (const bad of ['样式回归', '监控区域', '渲染抖动', 'trend-hint']) {
+    assert.ok(!html.includes(bad), `报告出现内部术语: ${bad}`);
+  }
 });
 
 check('P1-⑤ 截图已资产中立化（不直连内部截图树）', () => {

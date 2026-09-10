@@ -7,7 +7,12 @@ import {
 } from './customer-report-model.js';
 import type { CustomerRegressionDisplayItem } from './customer-report-bundle.js';
 import { customerReportCss, customerReportClientJs } from './customer-report-assets.js';
-import { buildFeedbackRegisterDescription, buildHeadline, COVERAGE_GAP_RATIO } from './customer-report-plain.js';
+import {
+  buildFeedbackRegisterDescription,
+  buildHeadline,
+  COVERAGE_GAP_RATIO,
+  stripTechnicalNoise,
+} from './customer-report-plain.js';
 import { IMPACT_TIER_LABEL } from './coverage-stats.js';
 import { friendlyScriptLabel, friendlyStepLabel, regionZoneLabel, extractEnvId, envIdSortKey, envLabelFromId } from './customer-report-naming.js';
 import { formatDurationSec, formatScriptStartedAt } from './customer-report-run-meta.js';
@@ -111,7 +116,7 @@ function renderRegionBoxes(card: CustomerBrowserCard, suppressReal: boolean): st
 /** 基线与当前并排展示，右侧叠加差异标注 */
 function dataDriftWarnHtml(card: CustomerBrowserCard): string {
   if (card.stateDriftReason) {
-    return `<div class="pair-warn">${esc(card.stateDriftReason)}</div>`;
+    return `<div class="pair-warn">${esc(stripTechnicalNoise(card.stateDriftReason))}</div>`;
   }
   const natures = card.regions.map((r) => r.nature).filter(Boolean);
   const w = card.imageWidth || 1280;
@@ -407,45 +412,6 @@ function natureTagForGroup(group: CustomerIssueGroup): string {
   return group.natureLabel || '';
 }
 
-function isComparableTrendVerdict(v: string): boolean {
-  return v === 'pass' || v === 'minor' || v === 'regress';
-}
-
-function renderTrendHint(model: CustomerReportModel): string {
-  const transitions = new Map<string, { delta: number; text: string }>();
-  const rank = (v: string) => (v === 'regress' ? 3 : v === 'minor' ? 2 : v === 'pass' ? 1 : 0);
-  for (const [scriptKey, rows] of model.runHistory) {
-    const sorted = [...rows].sort((a, b) => b.runIndex - a.runIndex);
-    if (sorted.length < 2) continue;
-    const latest = sorted.find((r) => r.isLatest) || sorted[0]!;
-    const prev = sorted.find((r) => r.runIndex === latest.runIndex - 1) || sorted[1]!;
-    if (!isComparableTrendVerdict(latest.verdict) || !isComparableTrendVerdict(prev.verdict)) continue;
-    const label = friendlyScriptLabel(scriptKey);
-    const delta = rank(latest.verdict) - rank(prev.verdict);
-    if (delta === 0) continue;
-    const current = transitions.get(label);
-    if (!current || delta > current.delta) {
-      transitions.set(label, {
-        delta,
-        text: `${label}：${prev.verdictLabel} → ${latest.verdictLabel}`,
-      });
-    }
-  }
-  const worsened = [...transitions.values()].filter((item) => item.delta > 0).map((item) => item.text);
-  const improved = [...transitions.values()].filter((item) => item.delta < 0).map((item) => item.text);
-  if (improved.length === 0 && worsened.length === 0) return '';
-  const parts: string[] = [];
-  if (worsened.length > 0) {
-    parts.push(`${worsened.length} 个流程判定加重（${worsened.join('；')}）`);
-  }
-  if (improved.length > 0) {
-    parts.push(`${improved.length} 个流程判定减轻（${improved.join('；')}）`);
-  }
-  // 必须说明判定变化不等于「本次引入了/修好了问题」：同一页面同一差异率在两次报告中
-  // 结论相反时，不解释原因会让客户直接判定报告不可信。
-  return `<div class="trend-hint">与上一次运行相比：${esc(parts.join(' · '))}。判定变化可能来自验收基线更新、测试环境数据不同或本次改动，请结合下方证据确认，不代表本次一定引入或修复了问题。</div>`;
-}
-
 function renderCoverageBar(model: CustomerReportModel): string {
   const c = model.coverage;
   if (c.expectedSteps === 0) return '';
@@ -508,7 +474,7 @@ function renderRegressionBrief(item: CustomerRegressionDisplayItem, index: numbe
     <span class="brief-main">
       <span class="brief-tags">${priority}${natureTag}</span>
       <span class="brief-title">${esc(item.title)}</span>
-      <span class="brief-reason">${esc(item.reason)}（涉及：${esc(steps)}）</span>
+      <span class="brief-reason">${esc(stripTechnicalNoise(item.reason))}（涉及：${esc(steps)}）</span>
     </span>
     <span class="brief-meta">
       <span class="brief-diff" title="差异率 = 有效差异像素 / 可比较区域像素">${esc(item.maxDifferenceLabel)}</span>
@@ -541,7 +507,7 @@ function renderIssueBrief(group: CustomerIssueGroup, index: number): string {
         ${natureTag ? `<span class="brief-nature">${esc(natureTag)}</span>` : ''}
       </span>
       <span class="brief-title">${esc(group.title)}</span>
-      <span class="brief-reason">${esc(group.reason || '检测到与验收基线的差异')}</span>
+      <span class="brief-reason">${esc(stripTechnicalNoise(group.reason || '检测到与验收基线的差异'))}</span>
       ${group.auditInsights?.length ? `<span class="brief-ai">${esc(group.auditInsights[0]!.description)}</span>` : ''}
       ${scripts}
     </span>
@@ -1133,7 +1099,6 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
     <div class="verdict ${verdictClass}">
       <div class="verdict-title">${esc(headline)}</div>
       <div class="verdict-meta">${esc(subline)}</div>
-      ${renderTrendHint(model)}
       ${renderCoverageBar(model)}
       <div class="stats">
         <div class="stat"><span class="n n-red">${c.regressSteps}</span><span class="l">${IMPACT_TIER_LABEL.blocking}</span><span class="h">内容变了，阻断使用</span></div>

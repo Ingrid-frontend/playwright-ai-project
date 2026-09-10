@@ -79,6 +79,7 @@ npm run selector-drift:suggest
 | [ui-regression-report-for-customer.md](./ui-regression-report-for-customer.md) | **要把报告发给客户前**。怎么读、分级口径（为什么「差异 1.23%」反而不用管）、刻意不放什么 |
 | [customer-report-implementation.md](./customer-report-implementation.md) | 要改报告代码时（内部）。模块职责、判定口径「性质优先而非差异率优先」、已知维护陷阱 |
 | [report-quality-review-2026-09-10.md](./report-quality-review-2026-09-10.md) | 要做报告质量整改时（内部）。首屏口径矛盾、AI 审计与像素报告结论冲突的完整问题清单 |
+| [delivery-freeze-2026-09.md](./delivery-freeze-2026-09.md) | **本次发版收尾前**。Stage9084 交付 DoD、冻结范围、NOT-DOING 与 POST-DELIVERY |
 | [page-change-detection-design.md](./page-change-detection-design.md) | 想扩展检测能力时。对标 PageWatch 的逆向分析 + 本项目缺口 + 不建议照搬的部分 |
 
 ```bash
@@ -181,7 +182,7 @@ hook 脚本在 `.githooks/pre-commit`，纳入版本控制，不依赖 husky 之
 | job | 内容 | 是否阻塞 | 为什么 |
 | --- | --- | --- | --- |
 | `docs` | `npm run docs:check` | **阻塞** | 索引问题都是本次改动引入的，没有历史债，能一直保持绿灯 |
-| `lint` | `npm run lint` 全仓 | 非阻塞 | 有 194 个既有 error（`scripts` 102 / `pw-files` 52 / `custom-reporters` 30 / 其他 10），设成硬门禁会立刻变永久红灯 |
+| `lint` | `npm run lint` 全仓 | 非阻塞（CI）/ **本地交付 DoD 阻塞** | 全仓已于 2026-09-10 清零至 0 error（124 warning 可接受）；CI 仍保留 `continue-on-error` 防回退观察期 |
 | `lint` | `npx eslint flow-kit/ scripts/verify/check-docs-index.ts` | **阻塞** | 已清零的目录做防回退。某个目录清干净后，往这一步的路径列表里加 |
 
 它独立于 `playwright.yml`：那条流水线要 90 分钟、要浏览器、要 secrets，

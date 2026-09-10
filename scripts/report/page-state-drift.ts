@@ -118,14 +118,13 @@ export function detectPageStateDrift(opts: {
         if (!sharedSectionTextChanged(baselineMeta, currentMeta)) {
           return {
             drift: true,
-            reason:
-              '页面结构与监控区域文案均与基线一致，差异多为列表数据或显示渲染导致，非样式回归',
+            reason: '页面布局与主要文案未变，差异多为列表数据或显示效果导致',
           };
         }
         if (isSoftDominantDiff(significant, actionable)) {
           return {
             drift: true,
-            reason: '页面结构未变，差异主要为位置偏移或渲染抖动，非样式回归',
+            reason: '页面布局未变，差异主要为位置偏移或显示效果差别',
           };
         }
       }
@@ -164,7 +163,7 @@ export function detectPageStateDrift(opts: {
   ) {
     return {
       drift: true,
-      reason: '左侧列表同时出现新增与消失区域，多为基线与本次待办数据不一致，非样式回归',
+      reason: '左侧列表同时出现新增与消失区域，多为待办数据与上次验收时不一致',
     };
   }
 

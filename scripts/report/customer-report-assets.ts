@@ -107,11 +107,6 @@ body {
   color: var(--muted);
 }
 .cov-note.warn { color: #e67700; font-weight: 500; }
-.trend-hint {
-  margin-top: 8px;
-  font-size: 12px;
-  color: #a37200;
-}
 .action-box {
   background: var(--card);
   border: 1px solid var(--line);

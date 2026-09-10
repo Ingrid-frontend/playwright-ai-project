@@ -36,7 +36,7 @@ function safeZone(
   return regionZoneLabel({ x, y, w, h }, width, height);
 }
 
-function stripTechnicalNoise(text: string): string {
+export function stripTechnicalNoise(text: string): string {
   return text
     .replace(/（整页差异 [\d.]+%）/g, '')
     .replace(/整页差异 [\d.]+%[，,]?/g, '')
@@ -45,6 +45,9 @@ function stripTechnicalNoise(text: string): string {
     .replace(/仅字体渲染存在细微差异/g, '仅显示效果有细微差别')
     .replace(/字体渲染\/抗锯齿[^，。]*/g, '显示效果有细微差别')
     .replace(/字体渲染[^，。]*/g, '显示效果有细微差别')
+    .replace(/样式回归/g, '界面变化')
+    .replace(/监控区域/g, '主要区域')
+    .replace(/渲染抖动/g, '显示效果差别')
     .replace(/无需处理：/g, '')
     .replace(/需要修复：/g, '')
     .replace(/\s+/g, ' ')
@@ -232,7 +235,9 @@ export function buildPlainDescription(slot: CoverageSlot, width?: number, height
       : `内容与验收基线一致，仅显示效果有细微差别（页面差异 ${pct}%）`;
   }
   if (slot.status === 'minor' && slot.evidence?.stateDrift) {
-    const base = slot.evidence.reason || '页面结构与基线一致，差异多为数据或渲染导致';
+    const base = stripTechnicalNoise(
+      slot.evidence.reason || '页面布局与基线一致，差异多为数据或显示效果导致',
+    );
     return `${base}（页面差异 ${pct}%）`;
   }
 
