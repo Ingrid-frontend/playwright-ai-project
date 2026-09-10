@@ -12,6 +12,7 @@ const outDir = path.join(root, 'public-reports');
 const pwReport = path.join(root, 'playwright-report');
 const uiHtml = path.join(root, 'results', 'screenshot-comparison.html');
 const customerHtml = path.join(root, 'results', 'ui-regression-customer.html');
+const customerStandaloneHtml = path.join(root, 'results', 'ui-regression-customer.standalone.html');
 const uiIssues = path.join(root, 'results', 'ui-issues.json');
 
 function copyDir(src: string, dest: string): void {
@@ -46,6 +47,7 @@ function main(): void {
   const hasPw = fs.existsSync(pwReport);
   const hasUi = fs.existsSync(uiHtml);
   const hasCustomer = fs.existsSync(customerHtml);
+  const hasCustomerStandalone = fs.existsSync(customerStandaloneHtml);
 
   if (hasPw) copyDir(pwReport, path.join(outDir, 'playwright-report'));
   if (hasUi) {
@@ -58,11 +60,25 @@ function main(): void {
   }
   if (hasCustomer) {
     fs.mkdirSync(path.join(outDir, 'customer-report'), { recursive: true });
-    const bundledCustomer = fs
-      .readFileSync(customerHtml, 'utf-8')
-      .replace(/src="\.\.\/screenshots\//g, 'src="../screenshots/')
-      .replace(/src="diffs\//g, 'src="../diffs/');
-    fs.writeFileSync(path.join(outDir, 'customer-report', 'index.html'), bundledCustomer, 'utf-8');
+    if (hasCustomerStandalone) {
+      // 优先打包单文件内嵌版：图片已 base64 内嵌，脱离 screenshots/ 也能离线查看
+      fs.copyFileSync(customerStandaloneHtml, path.join(outDir, 'customer-report', 'index.html'));
+    } else {
+      const bundledCustomer = fs
+        .readFileSync(customerHtml, 'utf-8')
+        .replace(/src="\.\.\/screenshots\//g, 'src="../screenshots/')
+        .replace(/src="diffs\//g, 'src="../diffs/');
+      fs.writeFileSync(path.join(outDir, 'customer-report', 'index.html'), bundledCustomer, 'utf-8');
+      // 客户报告自己的 -assets/ 配图与 sidecar 一并带上
+      const customerAssetsSrc = path.join(root, 'results', 'ui-regression-customer-assets');
+      const customerKeysSrc = path.join(root, 'results', 'ui-regression-customer.report-keys.json');
+      if (fs.existsSync(customerAssetsSrc)) {
+        copyDir(customerAssetsSrc, path.join(outDir, 'customer-report-assets'));
+      }
+      if (fs.existsSync(customerKeysSrc)) {
+        fs.copyFileSync(customerKeysSrc, path.join(outDir, 'ui-regression-customer.report-keys.json'));
+      }
+    }
   }
 
   const hasScreenshots = fs.existsSync(path.join(root, 'screenshots'));
