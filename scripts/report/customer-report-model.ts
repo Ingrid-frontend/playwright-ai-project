@@ -11,6 +11,10 @@ import { buildActionItems, buildPlainDescription, deriveShipAdvice, type ShipAdv
 import { friendlyScriptLabel, friendlyStepLabel, extractEnvLabel, extractEnvId, envLabelFromId, envIdSortKey } from './customer-report-naming.js';
 import type { ScriptRunMeta, ScriptRunHistoryEntry } from './customer-report-run-meta.js';
 import type { AuditInsight, AuditInjection } from './customer-report-audit-inject.js';
+import {
+  buildRegressionDisplay,
+  type CustomerRegressionDisplayItem,
+} from './customer-report-bundle.js';
 
 export type CustomerStatus = CoverageStatus;
 
@@ -182,8 +186,10 @@ export type CustomerReportModel = {
   minors: CustomerPageCard[];
   passes: CustomerPageCard[];
   uncovered: CustomerPageCard[];
-  /** 需要处理的问题：按根因聚合，首屏速览与明细共用同一份 */
+  /** 需要处理的问题：按步骤聚合，统计与对账用 */
   regressionGroups: CustomerIssueGroup[];
+  /** 首屏与证据 Tab 展示：公共布局类问题合并为一条，各步骤仍保留独立对比 */
+  regressionDisplay: CustomerRegressionDisplayItem[];
   /** 轻微变化分组，默认折叠 */
   minorGroups: CustomerIssueGroup[];
   /** 发版建议：fix / confirm / ship / baseline */
@@ -514,6 +520,7 @@ export function buildCustomerReportModel(
   const passes = pages.filter((p) => p.worstStatus === 'pass');
   const uncovered = pages.filter((p) => p.worstStatus === 'uncovered');
   const regressionGroups = groupIssues(regressions, 'issue');
+  const regressionDisplay = buildRegressionDisplay(regressionGroups, pages);
   const minorGroups = groupIssues(minors, 'minor');
   const scriptKeys = [...new Set(coverage.slots.map((s) => s.scriptKey))];
   const envSummaries = buildEnvSummaries(coverage.slots);
@@ -529,6 +536,7 @@ export function buildCustomerReportModel(
     passes,
     uncovered,
     regressionGroups,
+    regressionDisplay,
     minorGroups,
     shipAdvice: 'ship',
     shipAdviceLabel: '',

@@ -51,7 +51,7 @@ export function buildCustomerReportSummary(model: CustomerReportModel): Customer
       ? `交付批次有 ${batch.skippedRunCount} 个运行因缺少业务数据跳过`
       : batchMissing > 0
       ? `交付批次尚有 ${batchMissing} 个运行未完成`
-      : buildHeadline(model.coverage, model.regressionGroups.length);
+      : buildHeadline(model.coverage, model.regressionDisplay.length);
   const shipAdviceLabel = batch?.failedRunCount
     ? '运行失败项未纳入截图结论，建议修复后重新验收'
     : batch?.skippedRunCount
@@ -69,7 +69,7 @@ export function buildCustomerReportSummary(model: CustomerReportModel): Customer
     headline,
     shipAdvice,
     shipAdviceLabel,
-    regressGroupCount: model.regressionGroups.length,
+    regressGroupCount: model.regressionDisplay.length,
     regressSteps: c.regressSteps,
     minorSteps: c.minorSteps,
     /** minorSteps 拆分：内容确有变化但未阻断 / 内容未变可忽略 */
@@ -85,7 +85,18 @@ export function buildCustomerReportSummary(model: CustomerReportModel): Customer
     releaseTag: model.releaseTag,
     reportBatch: model.reportBatch,
     actionItems: model.actionItems,
-    issues: model.regressionGroups.map((g) => {
+    issues: model.regressionDisplay.map((entry) => {
+      if (entry.kind === 'shared') {
+        return {
+          title: entry.title,
+          reason: `${entry.reason}（涉及：${entry.stepTitles.join('、')}）`,
+          maxDifferenceLabel: entry.maxDifferenceLabel,
+          affectedSteps: entry.affectedSteps,
+          priority: entry.impactTier === 'blocking' ? 'P0' : 'P1',
+          natureLabel: entry.natureLabel,
+        };
+      }
+      const g = entry.group;
       const card = g.representative.browsers[0];
       const region = card?.regions.find((r) => r.actionable) || card?.regions[0];
       return {

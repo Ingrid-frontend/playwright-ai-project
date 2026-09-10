@@ -832,6 +832,26 @@ body {
   margin: 12px 0 0;
   border-top: 1px solid var(--line);
 }
+.bundle-note {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #f8f9fb;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.bundle-step {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+  scroll-margin-top: 16px;
+}
+.bundle-step-title {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text);
+}
 .page-card.compact .page-title { font-size: 14px; }
 .group-others {
   margin-top: 12px;
@@ -1393,7 +1413,7 @@ function collectPreviewShots(scopeEl) {
   var shots = [];
   var scope = scopeEl || document;
   var block = scope.closest
-    ? scope.closest('.issue-group, .page-card, .brief, .browser-card')
+    ? scope.closest('.issue-group, .issue-bundle, .bundle-step, .page-card, .brief, .browser-card')
     : null;
   var root = block || scope;
   root.querySelectorAll('.brief-thumb img, .fb-shot-wrap img, .run-history-shot-img img').forEach(function (img) {

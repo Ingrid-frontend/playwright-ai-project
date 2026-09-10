@@ -161,8 +161,11 @@ export function buildActionItems(model: CustomerReportModel): string[] {
   const items: string[] = [];
   const seen = new Set<string>();
   const c = model.coverage;
-  for (const g of model.regressionGroups) {
-    const item = `修复「${g.title}」：${g.reason || '检测到与验收基线不一致'}`;
+  for (const entry of model.regressionDisplay) {
+    const item =
+      entry.kind === 'shared'
+        ? `修复「${entry.title}」：${entry.reason || '公共布局与验收基线不一致'}（涉及：${entry.stepTitles.join('、')}）`
+        : `修复「${entry.group.title}」：${entry.group.reason || '检测到与验收基线不一致'}`;
     if (!seen.has(item)) {
       seen.add(item);
       items.push(item);
