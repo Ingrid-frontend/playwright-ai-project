@@ -4,6 +4,7 @@ import { RequestEditPage } from './request-edit.page';
 import {
   COMBO_CLEAR,
   COMBO_TRIGGER,
+  DETAIL_MARKERS,
   DOC_NO_RE,
   FILTER_LABELS,
   LIST_API_RE,
@@ -167,6 +168,20 @@ export class RequestListPage extends GenericListPage {
     return this.columnContains(FILTER_LABELS.reason, keyword);
   }
 
+  /** 读指定单号所在行的「事由」前缀，用于 Golden 现场读取（不用单号前缀当事由） */
+  async readReasonForDocNo(docNo: string, maxLen = 8): Promise<string> {
+    let row = this.rowByCode(docNo);
+    if (!(await row.isVisible({ timeout: 2_000 }).catch(() => false))) {
+      await this.search(docNo, { keepListFilters: true });
+      row = this.rowByCode(docNo);
+    }
+    await expect(row, `列表未找到单号「${docNo}」`).toBeVisible({ timeout: 20_000 });
+    const idx = await this.columnIndex(FILTER_LABELS.reason);
+    const reason = ((await row.locator('td').nth(idx).innerText()) || '').replace(/\s+/g, ' ').trim();
+    if (!reason || reason === '-') throw new Error(`单号「${docNo}」所在行事由为空`);
+    return reason.slice(0, Math.min(maxLen, reason.length));
+  }
+
   async expectReasonFilterResult(keyword: string): Promise<void> {
     await expect
       .poll(async () => await this.dataRows().count().catch(() => 0), {
@@ -174,6 +189,21 @@ export class RequestListPage extends GenericListPage {
         message: `事由筛选「${keyword}」后列表无数据行`,
       })
       .toBeGreaterThan(0);
+    await expect
+      .poll(async () => await this.reasonKeywordExists(keyword), {
+        timeout: 20_000,
+        message: `事由筛选「${keyword}」后「事由」列无匹配行`,
+      })
+      .toBe(true);
+  }
+
+  override async openByCode(code: string): Promise<void> {
+    const row = this.rowByCode(code);
+    await expect(row, `未找到单据「${code}」`).toBeVisible({ timeout: 20_000 });
+    await row.getByText(code).first().click();
+    await expect(
+      this.scope().getByText(DETAIL_MARKERS).filter({ visible: true }).first(),
+    ).toBeVisible({ timeout: 20_000 });
   }
 
   /** 先清筛选再取首行单号（申请单列表默认筛选常导致列表为空） */

@@ -6,17 +6,60 @@ import { resolveGoldenSeed } from '../../utils/golden-seed';
 import { bindFlowStepCapture, flowStep } from '../../../src/utils/flow-step';
 
 /**
- * Golden 固定回归（只读 + 固定筛选项）：
- * 供像素基线对比；筛选用 REQUEST_FILTER_KEYWORD，单号用 REQUEST_DOC_NO。
+ * Golden 固定回归（只读）：
+ * 单号/事由默认从列表现场读取；REQUEST_DOC_NO、REQUEST_FILTER_KEYWORD、golden-seeds 仅作覆盖。
  * 须使用 golden* 账号档案，勿与 write 档案混跑造单用例。
- * 多角色时基线按登录账号 slug 分目录（by-account/<slug>）。
  */
 test.describe.configure({ mode: 'serial' });
 
 const goldenCtx = { docNo: '', keyword: '' };
 const keepFilters = { keepListFilters: true } as const;
-const GOLDEN_SKIP_MSG =
-  '列表无可用单号，跳过后续 Golden 步骤（Studio「指定单号」/ accounts.json requestDocNo / golden-seeds.json）';
+const GOLDEN_SKIP_MSG = '列表无可用单号，跳过后续 Golden 步骤';
+
+function annotateLiveSeed(field: 'docNo' | 'keyword', value: string) {
+  if (!value) return;
+  test.info().annotations.push({
+    type: 'golden-live-seed',
+    description: `${field}=${value}`,
+  });
+}
+
+const KEYWORD_SKIP_MSG = '无法从列表读取可用事由关键字';
+
+async function pickKeywordFromList(list: RequestListPage, prev?: string): Promise<boolean> {
+  if (!goldenCtx.docNo) return false;
+  try {
+    goldenCtx.keyword = await list.readReasonForDocNo(goldenCtx.docNo);
+  } catch {
+    try {
+      goldenCtx.keyword = await list.readFirstReasonKeyword();
+    } catch {
+      return false;
+    }
+  }
+  annotateLiveSeed('keyword', goldenCtx.keyword);
+  if (prev && prev !== goldenCtx.keyword) {
+    test.info().annotations.push({
+      type: 'golden-filter-fallback',
+      description: `事由关键字「${prev}」当前列表无匹配，改用「${goldenCtx.keyword}」`,
+    });
+  }
+  return true;
+}
+
+async function fillKeywordFromList(list: RequestListPage) {
+  if (!goldenCtx.docNo || goldenCtx.keyword) return;
+  if (!(await pickKeywordFromList(list))) return;
+}
+
+async function ensureFilterKeyword(list: RequestListPage) {
+  if (!goldenCtx.docNo) return;
+  if (goldenCtx.keyword && (await list.reasonKeywordExists(goldenCtx.keyword))) return;
+  const prev = goldenCtx.keyword;
+  if (!(await pickKeywordFromList(list, prev))) {
+    test.skip(true, KEYWORD_SKIP_MSG);
+  }
+}
 
 async function trySeedGoldenContext(list: RequestListPage) {
   if (!goldenCtx.docNo) goldenCtx.docNo = env.requestDocNo.trim();
@@ -38,9 +81,8 @@ async function trySeedGoldenContext(list: RequestListPage) {
       goldenCtx.docNo = await list.readDocNoFromListApi({ refresh: true });
     }
     if (goldenCtx.docNo) {
-      if (!goldenCtx.keyword) {
-        goldenCtx.keyword = goldenCtx.docNo.slice(0, Math.min(8, goldenCtx.docNo.length));
-      }
+      annotateLiveSeed('docNo', goldenCtx.docNo);
+      await fillKeywordFromList(list);
       return;
     }
     return;
@@ -49,27 +91,26 @@ async function trySeedGoldenContext(list: RequestListPage) {
   if (!goldenCtx.docNo) {
     try {
       goldenCtx.docNo = await list.readFirstDocNo();
+      annotateLiveSeed('docNo', goldenCtx.docNo);
     } catch {
       return;
     }
   }
 
   if (!goldenCtx.keyword) {
-    try {
-      goldenCtx.keyword = await list.readFirstReasonKeyword();
-    } catch {
-      goldenCtx.keyword = goldenCtx.docNo.slice(0, Math.min(8, goldenCtx.docNo.length));
-    }
+    await fillKeywordFromList(list);
   } else if (!(await list.reasonKeywordExists(goldenCtx.keyword))) {
-    try {
-      goldenCtx.keyword = await list.readFirstReasonKeyword();
-      test.info().annotations.push({
-        type: 'golden-filter-fallback',
-        description: `REQUEST_FILTER_KEYWORD「${env.requestFilterKeyword}」无匹配事由，改用首行「${goldenCtx.keyword}」`,
-      });
-    } catch {
-      goldenCtx.keyword = goldenCtx.docNo.slice(0, Math.min(8, goldenCtx.docNo.length));
-    }
+    await pickKeywordFromList(list, goldenCtx.keyword);
+  }
+}
+
+async function ensureGoldenCtxReady(list: RequestListPage) {
+  await list.ensureOnList();
+  if (!goldenCtx.docNo) {
+    await trySeedGoldenContext(list);
+  }
+  if (!goldenCtx.docNo) {
+    test.skip(true, GOLDEN_SKIP_MSG);
   }
 }
 
@@ -125,8 +166,9 @@ test.describe('申请单 · Golden 回归', () => {
   test('展开筛选并按固定关键字筛选', async ({ page, flowRunDir }) => {
     bindFlowStepCapture({ page, flowRunDir });
     const list = new RequestListPage(page);
-    await ensureGoldenList(list);
-    const keyword = goldenCtx.keyword || goldenCtx.docNo.slice(0, 8);
+    await ensureGoldenCtxReady(list);
+    await ensureFilterKeyword(list);
+    const keyword = goldenCtx.keyword;
     await flowStep('按事由筛选', async () => {
       await list.filterByReason(keyword, keepFilters);
       await list.expectReasonFilterResult(keyword);
@@ -138,7 +180,7 @@ test.describe('申请单 · Golden 回归', () => {
   test('用现场单号搜索并打开详情', async ({ page, flowRunDir }) => {
     bindFlowStepCapture({ page, flowRunDir });
     const list = new RequestListPage(page);
-    await ensureGoldenList(list);
+    await ensureGoldenCtxReady(list);
     const docNo = goldenCtx.docNo;
     await flowStep('搜索并打开详情', async () => {
       await list.search(docNo, keepFilters);

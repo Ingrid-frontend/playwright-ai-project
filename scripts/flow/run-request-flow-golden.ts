@@ -156,7 +156,9 @@ function runOne(
     runMarker,
     { runId, flowId: FLOW_ID, scriptKey, startedAt },
   );
-  spawnEnv.REQUEST_FILTER_KEYWORD = filterKeyword || profileDefaults.requestFilterKeyword || goldenSeed.requestFilterKeyword || "测试";
+  const kw = filterKeyword || profileDefaults.requestFilterKeyword || goldenSeed.requestFilterKeyword || "";
+  if (kw) spawnEnv.REQUEST_FILTER_KEYWORD = kw;
+  else delete spawnEnv.REQUEST_FILTER_KEYWORD;
   const docNo = String(process.env.REQUEST_DOC_NO || profileDefaults.requestDocNo || goldenSeed.requestDocNo || "").trim();
   if (docNo) spawnEnv.REQUEST_DOC_NO = docNo;
   else {
@@ -174,7 +176,7 @@ function runOne(
   }
 
   console.log(
-    `[request-flow:golden] 角色 ${entry.roleLabel || profileId} (${profileId}) · env=${envId} · filter=${filterKeyword}${
+    `[request-flow:golden] 角色 ${entry.roleLabel || profileId} (${profileId}) · env=${envId} · filter=${kw || "现场读取"}${
       grep ? ` · grep=${grep}` : ""
     } · marker=${runMarker}`,
   );
