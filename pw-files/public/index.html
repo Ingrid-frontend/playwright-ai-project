@@ -3951,7 +3951,7 @@ function isStudioCompact() {
   return Boolean(app?.classList.contains('studio-compact') && !app.classList.contains('studio-compact-off'));
 }
 
-const PROBE_TTL_MS = 60 * 60 * 1000;
+const PROBE_TTL_MS = 2 * 60 * 60 * 1000;
 
 function probeCacheKey(flowId, envId) {
   return `studio:probeAt:${flowId}:${envId || 'dev'}`;
