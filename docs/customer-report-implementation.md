@@ -92,3 +92,52 @@ npx tsx scripts/verify/probe-change-nature.ts         # 逐区域性质探针
 - 渲染层三处同步改动：`customer-report-render.ts` 的 `verdictClass` 新增 `watch` 分支（minor-only 走 `watch`）；`customer-report-assets.ts` 新增 `.verdict.watch`（左边框 + 标题色 `#a37200`）；`compare-report-viz.ts` 的 `OverviewData.coverage.verdict` 类型放开 `'attention'`。
 - **CI 安全**：`--gate` 读取的是 `issuesReport` 的 `blocker` 严重度，**不读** `coverage.verdict`。因此 `attention` 不会造成 CI 误判失败——只有真实 `regress`（blocker）才会卡门禁。本次新增的 `attention` 状态对工程报告与 CI 均无副作用。
 - **与 autoPromote 的配合**：`maxDiffRatio` 从 0.005 降到 0.001（§6 陷阱 1），使轻微差异先以 `attention` 浮出、而非被自动晋升吞掉；确认接受后再手动固化基线。
+
+---
+
+## 8. 业务影响三档与数字对账（2026-09-10）
+
+### 8.1 为什么要把 minor 拆开
+
+此前只有 `regress / minor` 两档对外。实测同一批数据里，「表格最后一行被分页栏遮挡无法点击」和「整体平移 9px」同为 minor，严重度被抹平，客户无法判断该看哪一个。
+
+`DiffEvidence.impactTier` 由 `classifyDifference` 的**判定分支直接给出**，展示层不得二次猜测：
+
+| impactTier | 客户可见说法 | 对应 status | 触发条件 |
+|---|---|---|---|
+| `blocking` | 需要修复 | `regress` | 内容变了且达到阻断阈值 |
+| `degraded` | 影响体验 | `minor` | 内容确实有变化，但未阻断操作 |
+| `benign` | 可忽略 | `minor` / `pass` | 内容未变（位移 / 渲染 / 数据漂移） |
+
+恒定式：`regressSteps + degradedSteps + benignSteps + passSteps === comparedSteps`。
+`verify-customer-report-html.ts` 的「三档之和 = 已对比步骤数」断言会守住它。
+
+`IMPACT_TIER_LABEL` / `IMPACT_TIER_ORDER` 在 `coverage-stats.ts`，渲染层与摘要 JSON 共用，不要另写一份中文标签。
+
+### 8.2 步数口径：slot 级，不是页面级
+
+`CoverageStats.minorSteps` 等计数是 **slot（一次页面比对）** 级；而 `CustomerPageCard` 是页面级，多浏览器会产生多个 slot。
+
+此前 `groupIssues` 用 `sorted.length`（页面数）填 `affectedSteps`，导致首屏同时出现 26 / 16 / 24 三个数——客户第一屏就发现对不上账。
+
+规则：
+
+- `CustomerPageCard.slotCount` = 该页 slot 数
+- `CustomerIssueGroup.affectedSteps` = 成员 `slotCount` 求和
+- 差额由 `model.accounting.ungroupedSteps` 承接，且**必须在对账句里写明去处**（当前为被 `hasVisibleDifference` 过滤掉的 0.00% 差异），不允许静默消失
+
+### 8.3 结论动词必须与发版建议同源
+
+`buildHeadline` 与 `deriveShipAdvice` 不得各说各话。此前标题写「无需处理」、副标题写「建议业务确认」，同一屏自相矛盾。
+
+现在 `buildHeadline` 内部直接调用 `deriveShipAdvice`：advice 为 `confirm` 时标题只能是「建议确认后发布」，为 `baseline` 时只说覆盖不足。断言见 `verify-customer-report-html.ts` 的「结论标题动词不与发版建议冲突」。
+
+### 8.4 变化性质标签必须与结论同源
+
+此前卡片标签取「第一个区域」的 `nature`，而结论文案取 `evidence.reason`，两者可能完全不同（标签写「内容变化」、结论写「只是整体挪了约 9px」）。
+
+现在统一由 `CustomerIssueGroup.natureLabel` 提供：`actionableRegions === 0` 时输出「位置偏移 / 显示差异」，否则输出主导性质；区域性质未知时回落 `evidence.dominantNature`，仍未知用中性词「有变化」，**不再武断写「内容变化」**。
+
+### 8.5 passRate 已去掉粉饰
+
+`passRate` 原为 `(pass + minor) / compared`，26 处差异也能显示 100%。现改为 `(pass + benign) / compared`，即「完全没有实质变化的占比」。飞书通知与多维表的「UI 通过率」会随之下降，这是预期修正，不是回归。
