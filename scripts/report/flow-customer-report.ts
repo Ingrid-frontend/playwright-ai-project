@@ -23,6 +23,7 @@ import {
   readReportBatchAudit,
   reportBatchDir,
 } from './customer-report-batch.js';
+import { readAuditInsights } from './customer-report-audit-inject.js';
 import { envLabelFromId } from './customer-report-naming.js';
 import { writeCustomerReportSummary } from './customer-report-summary.js';
 import {
@@ -128,6 +129,7 @@ async function main() {
     runHistory.set(testDir, enriched);
   }
   const audit = batch ? readReportBatchAudit(batch) : null;
+  const auditInsights = readAuditInsights();
   const reportBatch = batch
     ? {
         batchId: batch.batchId,
@@ -162,6 +164,7 @@ async function main() {
       reportBatch,
     },
     usedRunIds,
+    auditInsights,
   );
   const html = sanitizeCustomerReportHtml(renderCustomerReportHtml(model), outputPath).html;
 

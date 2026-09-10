@@ -131,6 +131,20 @@ check('问题速览含缩略图与优先级', () => {
   }
 });
 
+check('AI 审计说明与像素结论同卡展示（有注入时）', () => {
+  const noteCount = (html.match(/class="ai-audit-note"/g) || []).length;
+  if (noteCount === 0) return; // 无审计数据时允许缺省
+  assert.ok(
+    (html.match(/class="ai-audit-list"/g) || []).length === noteCount,
+    '每个 AI 审计区块都应有说明列表',
+  );
+  // 注入的 AI 说明不应是降级提示（那是内部信息，不该给客户看）
+  const noteBody = html.slice(html.indexOf('class="ai-audit-note"'));
+  const seg = noteBody.slice(0, noteBody.indexOf('</div>') + 6);
+  assert.ok(!seg.includes('已降级为规则分析'), 'AI 审计区块不应出现内部降级提示');
+  assert.ok(!seg.includes('mock'), 'AI 审计区块不应出现 mock 字样');
+});
+
 check('按根因分组展示问题卡（有问题时）', () => {
   const hasIssues = html.includes('class="issue-group');
   const passOnly = html.includes('本次未发现需要修复的问题');

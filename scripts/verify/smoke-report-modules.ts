@@ -29,6 +29,7 @@ import { detectPageStateDrift } from '../report/page-state-drift.js';
 import { scriptKeyMatches } from '../report/ui-regression-config.js';
 import { classifyRegionNature, isActionableNature } from '../report/change-nature.js';
 import { inlineCustomerReportAssets } from '../report/customer-report-inline.js';
+import { readAuditInsights } from '../report/customer-report-audit-inject.js';
 import {
   friendlyScriptLabel,
   friendlyStepLabel,
@@ -646,5 +647,45 @@ assert.ok(inlinedHtml.includes('data:image/png;base64,'), '内嵌后应出现 da
 assert.ok(!inlinedHtml.includes(`${inlineSlug}-assets/img-test.png`), '内嵌后不应再保留相对图片引用');
 fs.rmSync(inlineTmp, { recursive: true, force: true });
 pass('inlineCustomerReportAssets 把 -assets 图片内嵌为 data URI');
+
+// AI 审计注入：stepName 两侧格式不同（审计 `a · b · c` vs 报告 `a` 或 `a__b__c`），
+// 索引时必须双格式兼容，否则永远匹配不上
+const auditTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pw-audit-'));
+const auditRuns = path.join(auditTmp, 'runs', 'demo-run-1');
+fs.mkdirSync(auditRuns, { recursive: true });
+fs.writeFileSync(
+  path.join(auditRuns, 'summary.json'),
+  JSON.stringify({
+    scriptKey: 'request-flow/dev/golden-regression/demo',
+    runId: 'demo-run-1',
+    steps: [
+      {
+        stepName: 'request-list · normal · main request',
+        verdict: 'review',
+        issues: [
+          { severity: 'warning', type: 'overflow', description: '元素超出视口右边界' },
+          { severity: 'info', type: 'other', description: '已降级为规则分析' },
+        ],
+      },
+      {
+        stepName: 'request-search__normal__main_request',
+        verdict: 'pass',
+        issues: [],
+      },
+    ],
+  }),
+);
+const auditMap = readAuditInsights(auditTmp);
+// 三种格式都应能命中同一个步骤的注入
+const fullKey = auditMap.get('request-flow/dev/golden-regression/demo::request-list · normal · main request');
+const shortKey = auditMap.get('request-flow/dev/golden-regression/demo::request-list');
+const underscoreKey = auditMap.get('request-flow/dev/golden-regression/demo::request-list__normal__main_request');
+assert.ok(fullKey && fullKey.insights.length === 1, '全格式 stepName 应命中，且降级 info 被过滤');
+assert.ok(shortKey, '短名 stepName 应命中（报告侧 scan 拆 route 后的格式）');
+assert.ok(underscoreKey, '下划线全格式 stepName 应命中');
+assert.equal(fullKey!.verdict, 'review', '步骤级审计结论应保留');
+assert.equal(auditMap.get('request-flow/dev/golden-regression/demo::request-search')?.verdict, 'pass');
+fs.rmSync(auditTmp, { recursive: true, force: true });
+pass('readAuditInsights 双格式 stepName 匹配 + 过滤降级说明');
 
 console.log('\n✅ smoke-report-modules 通过');

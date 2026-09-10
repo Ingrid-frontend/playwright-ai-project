@@ -1,7 +1,6 @@
 import {
   displayRegions,
   impactTierOf,
-  significantRegions,
   type CoverageSlot,
   type CoverageStats,
   type CoverageStatus,
@@ -11,6 +10,7 @@ import { isActionableNature, natureLabel, type ChangeNature } from './change-nat
 import { buildActionItems, buildPlainDescription, deriveShipAdvice, type ShipAdvice } from './customer-report-plain.js';
 import { friendlyScriptLabel, friendlyStepLabel, extractEnvLabel, extractEnvId, envLabelFromId, envIdSortKey } from './customer-report-naming.js';
 import type { ScriptRunMeta, ScriptRunHistoryEntry } from './customer-report-run-meta.js';
+import type { AuditInsight, AuditInjection } from './customer-report-audit-inject.js';
 
 export type CustomerStatus = CoverageStatus;
 
@@ -54,6 +54,10 @@ export type CustomerBrowserCard = {
   imageHeight?: number;
   /** 页面状态漂移说明，用于并排对比黄条提示 */
   stateDriftReason?: string;
+  /** AI 审计（ui-audit）注入的业务语义影响说明，与像素结论同卡展示 */
+  auditInsights?: AuditInsight[];
+  /** AI 审计步骤结论，用于与像素结论做统一状态映射 */
+  auditVerdict?: string;
 };
 
 export type CustomerPageCard = {
@@ -81,6 +85,10 @@ export type CustomerPageCard = {
   slotCount: number;
   /** 该页面的业务影响档位 */
   impactTier: ImpactTier;
+  /** AI 审计注入的影响说明（取组内代表页） */
+  auditInsights?: AuditInsight[];
+  /** AI 审计步骤结论（取组内最差） */
+  auditVerdict?: string;
 };
 
 /** 与报告展示一致：四舍五入到 0.00% 的差异不展示对比图 */
@@ -156,6 +164,10 @@ export type CustomerIssueGroup = {
   natureLabel: string;
   /** 位移量描述，如 `9px`，仅位移类差异有值 */
   shiftLabel?: string;
+  /** AI 审计注入的影响说明（取代表页） */
+  auditInsights?: AuditInsight[];
+  /** AI 审计步骤结论（取组内最差） */
+  auditVerdict?: string;
 };
 
 export type CustomerReportModel = {
@@ -295,20 +307,6 @@ function toBrowserCard(slot: CoverageSlot): CustomerBrowserCard {
   };
 }
 
-/**
- * 同源变化指纹：同一个全局改动（如头部高度、字体）会在多个步骤产生几乎相同的
- * 差异量与差异区位置。按「脚本 + 差异量档位 + 主变化区网格位置」聚合，
- * 让报告呈现「1 处根因影响 4 个步骤」而不是 4 张重复卡片。
- * 注意：不要混入 stepName——一旦 stepName 参与聚合键，跨步骤归并就永远失效，
- * 每个步骤都会变成「影响 1 个步骤」的独立问题。
- */
-function clusterKeyFor(slot: CoverageSlot): string {
-  const bucket = Math.round((slot.difference ?? 0) * 2000); // 0.05% 一档
-  const top = significantRegions(slot.regions, slot.regionsWidth, slot.regionsHeight)[0];
-  const zone = top ? `${Math.round(top.x / 64)}-${Math.round(top.y / 64)}-${Math.round(top.w / 64)}x${Math.round(top.h / 64)}` : 'none';
-  return `${slot.scriptKey}::${bucket}::${zone}`;
-}
-
 function groupIssues(pages: CustomerPageCard[], anchorPrefix: string): CustomerIssueGroup[] {
   const buckets = new Map<string, CustomerPageCard[]>();
   for (const page of pages) {
@@ -318,9 +316,12 @@ function groupIssues(pages: CustomerPageCard[], anchorPrefix: string): CustomerI
 
   const groups: CustomerIssueGroup[] = [];
   for (const [groupKey, list] of buckets) {
-    // 优先用正式验收步骤当代表页，过程截图排在后面
+    // 优先用正式验收步骤当代表页，过程截图排在后面；有 AI 审计说明的优先展示
     const sorted = [...list].sort((a, b) => {
       if (a.processOnly !== b.processOnly) return a.processOnly ? 1 : -1;
+      const hasAuditA = a.auditInsights?.length ? 0 : 1;
+      const hasAuditB = b.auditInsights?.length ? 0 : 1;
+      if (hasAuditA !== hasAuditB) return hasAuditA - hasAuditB;
       if (b.maxDifference !== a.maxDifference) return b.maxDifference - a.maxDifference;
       return a.stepNumber - b.stepNumber;
     });
@@ -349,6 +350,15 @@ function groupIssues(pages: CustomerPageCard[], anchorPrefix: string): CustomerI
           ? '位置偏移'
           : '显示差异'
         : resolveRegionNatureLabel(dominantNature);
+    // AI 审计注入：组内任一成员有审计说明即继承（代表页优先，其次成员）
+    const auditSource =
+      members.find((p) => p.auditInsights?.length && p === representative) ??
+      members.find((p) => p.auditInsights?.length);
+    const auditVerdictRank: Record<string, number> = { fail: 3, review: 2, pass: 1, skipped: 0 };
+    const auditVerdict = members
+      .map((p) => p.auditVerdict)
+      .filter(Boolean)
+      .sort((a, b) => (auditVerdictRank[String(b)] ?? 0) - (auditVerdictRank[String(a)] ?? 0))[0];
     groups.push({
       groupKey,
       anchorId: '',
@@ -365,6 +375,8 @@ function groupIssues(pages: CustomerPageCard[], anchorPrefix: string): CustomerI
       impactTier,
       natureLabel,
       shiftLabel,
+      auditInsights: auditSource?.auditInsights,
+      auditVerdict,
     });
   }
 
@@ -407,9 +419,7 @@ export function buildPageCardsFromCoverage(coverage: CoverageStats): CustomerPag
       browsers,
       worstStatus: worstStatus(slots.map((s) => s.status)),
       processOnly: slots.every((s) => s.processOnly),
-      clusterKey: clusterKeyFor(
-        slots.reduce((worst, s) => ((s.difference ?? 0) > (worst.difference ?? 0) ? s : worst), first),
-      ),
+      clusterKey: pageKey,
       maxDifference: Math.max(...slots.map((s) => s.difference ?? 0)),
       slotCount: slots.length,
       impactTier: slots.reduce<ImpactTier>((worst, s) => {
@@ -484,8 +494,20 @@ export function buildCustomerReportModel(
   runHistory: Map<string, ScriptRunHistoryEntry[]> = new Map(),
   meta?: CustomerReportMeta,
   usedRunIds: Map<string, string> = new Map(),
+  auditInsights: Map<string, AuditInjection> = new Map(),
 ): CustomerReportModel {
   const pages = buildPageCardsFromCoverage(coverage);
+  // AI 审计注入：按 scriptKey::stepName 精确匹配（模型侧只读，不改变像素判定）
+  // 审计侧 scriptKey 已 strip flows/ 前缀，模型侧带前缀，需归一化后匹配
+  const normalizeKey = (k: string) => k.replace(/^flows\//, '');
+  const auditLookup = new Map<string, AuditInjection>();
+  for (const [k, v] of auditInsights) auditLookup.set(normalizeKey(k), v);
+  for (const page of pages) {
+    const hit = auditLookup.get(`${normalizeKey(page.scriptKey)}::${page.stepName}`);
+    if (!hit) continue;
+    if (hit.insights.length > 0) page.auditInsights = hit.insights;
+    if (hit.verdict) page.auditVerdict = hit.verdict;
+  }
 
   const regressions = pages.filter((p) => p.worstStatus === 'regress');
   const minors = pages.filter((p) => p.worstStatus === 'minor' && hasVisibleDifference(p.maxDifference));

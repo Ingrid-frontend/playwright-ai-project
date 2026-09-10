@@ -14,6 +14,7 @@ import {
 } from './compare-screenshots-scan.js';
 import { buildCoverageStats } from './coverage-stats.js';
 import { buildCustomerReportModel } from './customer-report-model.js';
+import { readAuditInsights } from './customer-report-audit-inject.js';
 import { renderCustomerReportHtml } from './customer-report-render.js';
 import { sanitizeCustomerReportHtml } from './customer-report-sanitize.js';
 import { inlineCustomerReportAssets } from './customer-report-inline.js';
@@ -159,10 +160,11 @@ async function main() {
     });
     runHistory.set(testDir, enriched);
   }
+  const auditInsights = readAuditInsights();
   const model = buildCustomerReportModel(coverage, undefined, scriptRuns, runHistory, {
     releaseTag: process.env.RELEASE_TAG || process.env.npm_package_version,
     reportScope: allScripts ? 'all' : 'golden',
-  }, usedRunIds);
+  }, usedRunIds, auditInsights);
   const summary = writeCustomerReportSummary(model);
   // 交付载荷供飞书多维表 / 飞书文档链路消费，避免它们为了拿数据再跑一遍像素比对
   const maxItems = Number(process.env.DELIVERY_MAX_ITEMS || 20);

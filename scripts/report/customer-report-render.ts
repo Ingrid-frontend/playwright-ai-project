@@ -76,7 +76,7 @@ function renderSlider(card: CustomerBrowserCard, opts?: { stepLabel?: string }):
         <input type="range" class="slider-range" min="0" max="100" value="50" aria-label="对比滑块">
         <div class="slider-handle-line"></div>
       </div>
-      <div class="view-hint">左侧为验收基线，右侧为本次结果</div>
+      <div class="view-hint">左侧为「${esc(opts?.stepLabel || '本步骤')}」验收基线，右侧为同一步骤本次结果</div>
     </div>
     <div class="diff-view-panel" data-view="overlay">${renderOverlayView(card)}</div>
   `;
@@ -150,7 +150,7 @@ function renderSideBySideView(card: CustomerBrowserCard, stepLabel?: string): st
         </div>
       </div>
     </div>
-    <div class="view-hint">左右为同一快照并排对照；右侧红实线框为实质变化，灰虚线框为位置偏移/显示差异</div>`;
+    <div class="view-hint">左右均为「${snap || '本步骤'}」同一步骤的验收基线与本次结果，不是跨步骤对比；右侧红实线框为实质变化，灰虚线框为位置偏移/显示差异</div>`;
 }
 
 /** 在当前截图上叠加差异区定位框：客户不必逐像素找红点 */
@@ -235,10 +235,28 @@ function renderPageCard(page: CustomerPageCard, opts?: { compact?: boolean }): s
 }
 
 /** 一个根因一张卡：代表页给出证据，同源步骤折叠在下方 */
+function renderAuditInsights(group: CustomerIssueGroup): string {
+  const insights = group.auditInsights || [];
+  if (insights.length === 0) return '';
+  const items = insights
+    .slice(0, 3)
+    .map(
+      (i) =>
+        `<li class="ai-insight sev-${esc(i.severity)}">${esc(i.description)}</li>`,
+    )
+    .join('');
+  return `
+    <div class="ai-audit-note">
+      <span class="ai-audit-tag">AI 审计影响说明</span>
+      <ul class="ai-audit-list">${items}</ul>
+    </div>`;
+}
+
 function renderIssueGroup(group: CustomerIssueGroup, index: number, model: CustomerReportModel): string {
   const statusLabel = IMPACT_TIER_LABEL[group.impactTier];
   const primary = group.representative.browsers[0];
   const regionList = primary ? renderRegionList(primary) : '';
+  const auditNote = renderAuditInsights(group);
   const others =
     group.others.length > 0
       ? `<details class="group-others">
@@ -261,6 +279,7 @@ function renderIssueGroup(group: CustomerIssueGroup, index: number, model: Custo
           <span>${esc(group.scriptLabels.join('、'))}</span>
         </div>
         ${regionList}
+        ${auditNote}
       </div>
     </header>
     ${renderPageCard(group.representative)}
@@ -419,7 +438,7 @@ function renderReadingGuide(): string {
   <details class="reading-guide">
     <summary>阅读指南（30 秒看懂）</summary>
     <ol>
-      <li><b>两种数字不要混着看</b>：上方统计按「<b>步骤</b>」计数（一次页面比对＝一步）；下方问题清单按「<b>根因</b>」计数，同一处改动影响 3 个步骤会记 3 步、但只列 1 个问题。两者数字不同属正常。</li>
+      <li><b>一步一对比</b>：每个问题只对比<b>同一步骤</b>的验收基线与本次结果，不会把不同步骤的截图放在一起。上方「步骤数」与下方「问题数」在逐步报告时应一致。</li>
       <li>看结论颜色：红 = 需修复后才能验收；琥珀 = 内容确实有变化但未阻断，建议修；灰 = 内容没变（只是位置或显示差异），可忽略；绿 = 完全一致。</li>
       <li><b>差异百分比不代表严重程度</b>：整体挪动几像素的差异率可能高于「少了一个按钮」。严重程度看上面三档，百分比只作参考。</li>
       <li>问题清单每行可点「看对比图」查看证据；框线含义：红实线 = 内容变化，灰虚线 = 位置或显示差异。</li>
@@ -451,6 +470,7 @@ function renderIssueBrief(group: CustomerIssueGroup, index: number): string {
       </span>
       <span class="brief-title">${esc(group.title)}</span>
       <span class="brief-reason">${esc(group.reason || '检测到与验收基线的差异')}</span>
+      ${group.auditInsights?.length ? `<span class="brief-ai">${esc(group.auditInsights[0]!.description)}</span>` : ''}
       ${scripts}
     </span>
     <span class="brief-meta">
@@ -897,7 +917,7 @@ function renderConclusionBody(model: CustomerReportModel): string {
   const focus =
     model.regressionGroups.length > 0
       ? `<h3 class="sec-title sec-regress">需要修复 · ${model.regressionGroups.length} 个问题</h3>
-         <p class="sec-lead">按根因归并，同一变化影响多个步骤只算一个问题。点「看对比图」查看证据。</p>
+         <p class="sec-lead">每个验收步骤单独与基线对比。点「看对比图」查看该步骤的证据。</p>
          <ol class="brief-list">${model.regressionGroups.map((g, i) => renderIssueBrief(g, i)).join('')}</ol>`
       : `<div class="empty ok">本次未发现需要修复的问题</div>`;
 

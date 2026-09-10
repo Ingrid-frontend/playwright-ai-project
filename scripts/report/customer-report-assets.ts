@@ -633,6 +633,40 @@ body {
   font-weight: 650;
   color: var(--text);
 }
+.ai-audit-note {
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border: 1px solid #d9d2f5;
+  border-left: 3px solid #7c6bd9;
+  border-radius: 6px;
+  background: #f6f4fd;
+  font-size: 12px;
+}
+.ai-audit-tag {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: #7c6bd9;
+  color: #fff;
+  font-weight: 600;
+  font-size: 11px;
+}
+.ai-audit-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+}
+.ai-audit-list li { margin: 3px 0; color: #4a4370; }
+.ai-audit-list li.sev-blocker { color: #b3261e; font-weight: 600; }
+.ai-audit-list li.sev-warning { color: #8a5a00; }
+.brief-ai {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: #7c6bd9;
+}
+.brief-ai::before { content: 'AI 审计：'; font-weight: 600; }
 .run-history-block { margin-bottom: 20px; }
 .run-history-layout {
   display: flex;
@@ -1355,9 +1389,14 @@ function buildShotCaption(img) {
   return parts.join(' · ');
 }
 
-function collectPreviewShots() {
+function collectPreviewShots(scopeEl) {
   var shots = [];
-  document.querySelectorAll('.brief-thumb img, .fb-shot-wrap img, .run-history-shot-img img').forEach(function (img) {
+  var scope = scopeEl || document;
+  var block = scope.closest
+    ? scope.closest('.issue-group, .page-card, .brief, .browser-card')
+    : null;
+  var root = block || scope;
+  root.querySelectorAll('.brief-thumb img, .fb-shot-wrap img, .run-history-shot-img img').forEach(function (img) {
     var src = img.currentSrc || img.src;
     if (!src) return;
     shots.push({
@@ -1439,7 +1478,7 @@ function renderShotPreviewAt(index) {
 
 function openShotPreview(img) {
   ensureShotLightbox();
-  shotPreviewState.shots = collectPreviewShots();
+  shotPreviewState.shots = collectPreviewShots(img);
   var idx = -1;
   for (var i = 0; i < shotPreviewState.shots.length; i++) {
     if (shotPreviewState.shots[i].img === img) { idx = i; break; }
