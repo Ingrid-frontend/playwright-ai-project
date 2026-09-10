@@ -8,6 +8,7 @@
  * 策略（默认值可用参数覆盖）：
  *   - 通过/成功 run：每个 flow / intent 目录只保留最近 N 份录像，其余删除
  *   - 失败 run：保留（排障价值），但超过 fail-days 天（按 manifest.finishedAt / 目录名时间戳 / mtime）后回收
+ *   - 默认：成功保留 3 份，失败保留 7 天
  *   - 只删除 flow.webm / flow.html / _pw-video 内的视频文件，不动 manifest.json、截图与目录结构
  *
  * 用法:
@@ -25,7 +26,7 @@ function arg(name: string, def: string): string {
 const APPLY = process.argv.includes('--apply');
 const KEEP = Math.max(1, Number(arg('keep', '3')) || 3);
 const INTENT_KEEP = Math.max(1, Number(arg('intent-keep', '2')) || 2);
-const FAIL_DAYS = Math.max(1, Number(arg('fail-days', '60')) || 60);
+const FAIL_DAYS = Math.max(1, Number(arg('fail-days', '7')) || 7);
 
 const ROOT = path.resolve('results');
 const FLOW_RUNS = path.join(ROOT, 'flow-runs');
