@@ -233,7 +233,6 @@ export function comparisonToUiIssue(
     width: comp.width,
     height: comp.height,
   });
-  let driftDetail: string | undefined;
   if (pageStateDrift.drift) {
     return null;
   }

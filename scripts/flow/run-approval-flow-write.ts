@@ -147,7 +147,6 @@ function main(): void {
   );
 
   const stdout = proc.stdout || "";
-  const stderr = proc.stderr || "";
   const exitCode = proc.status ?? 1;
   const duration = ((Date.now() - startTime) / 1000).toFixed(1);
   const specRelative = path.join(FLOW_ID, "tests", specs[0] || DEFAULT_SPECS[0]!).replace(/\\/g, "/");

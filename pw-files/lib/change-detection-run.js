@@ -7,7 +7,6 @@ async function runChangeDetectionFullFlow(ws, session, msg = {}, deps) {
     resolveRepoRoot,
     spawn,
     buildRepoSpawnEnv,
-    getSessionPlaywrightEnv,
     runRepoCompareReport,
     runIntent,
     runRepoPromoteBaseline,

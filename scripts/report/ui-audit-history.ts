@@ -67,7 +67,7 @@ export function groupCandidatesByRun<
 >(candidates: T[], rootDir: string): AuditRunGroup[] {
   const buckets = new Map<string, AuditRunGroup>();
   for (const cand of candidates) {
-    const { runKey, runTs, runId } = deriveRunMeta(cand.pngPath, rootDir, cand.scriptKey);
+    const { runKey, runTs } = deriveRunMeta(cand.pngPath, rootDir, cand.scriptKey);
     if (!buckets.has(runKey)) {
       buckets.set(runKey, { runKey, runTs, scriptKey: cand.scriptKey, items: [] });
     }

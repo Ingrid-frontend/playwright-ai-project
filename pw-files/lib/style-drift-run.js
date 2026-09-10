@@ -7,7 +7,6 @@ async function runStyleDriftFullFlow(ws, session, msg = {}, deps) {
     resolveRepoRoot,
     spawn,
     buildRepoSpawnEnv,
-    getSessionPlaywrightEnv,
     runRepoCompareReport,
     runIntent,
   } = deps;

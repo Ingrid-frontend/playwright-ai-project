@@ -28,7 +28,7 @@ function switchTab(tabName) {
   const targetContent = document.getElementById(tabName + '-content');
   if (targetContent) targetContent.classList.add('active');
   
-  initDiffCards(targetContent || document);
+  if (typeof initDiffCards === 'function') initDiffCards(targetContent || document);
   if (typeof initVisualReview === 'function') initVisualReview();
   
   const activeBrowserTab = document.querySelector('.global-browser-tab.active');
@@ -374,10 +374,10 @@ function updateIssuesAnalysisBrowserFilter(effectiveBrowser) {
   var analysisFilterSummary = document.getElementById('analysis-filter-summary');
   if (analysisFilterSummary) {
     if (hasBrowserTabs && filterBrowser && analysisRows.length > 0) {
-      var browserLabel = filterBrowser === 'cross' ? '跨浏览器' : filterBrowser;
+      var analysisBrowserLabel = filterBrowser === 'cross' ? '跨浏览器' : filterBrowser;
       analysisFilterSummary.style.display = '';
       analysisFilterSummary.textContent =
-        '当前浏览器「' + browserLabel + '」筛选：' + visibleAnalysis + ' 项 · blocker ' + analysisBlockers + ' · warning ' + analysisWarnings + '（上方总览为全量）';
+        '当前浏览器「' + analysisBrowserLabel + '」筛选：' + visibleAnalysis + ' 项 · blocker ' + analysisBlockers + ' · warning ' + analysisWarnings + '（上方总览为全量）';
     } else {
       analysisFilterSummary.style.display = 'none';
       analysisFilterSummary.textContent = '';
@@ -509,6 +509,6 @@ document.addEventListener('DOMContentLoaded', function() {
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') {
     closeModal();
-    closeCompareModal();
+    if (typeof closeCompareModal === 'function') closeCompareModal();
   }
 });

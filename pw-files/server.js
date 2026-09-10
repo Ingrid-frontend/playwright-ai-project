@@ -65,14 +65,12 @@ const {
 } = require('./lib/ui-audit-run');
 const {
   sendApprovalFlowStatus,
-  sendApprovalFlowTestList,
   runApprovalFlowProbe,
   runApprovalFlowTests,
   cancelApprovalFlow,
 } = require('./lib/approval-flow-run');
 const {
   sendRequestFlowStatus,
-  sendRequestFlowTestList,
   runRequestFlowProbe,
   runRequestFlowTests,
   cancelRequestFlow,
@@ -482,6 +480,8 @@ wss.on('connection', (ws) => {
   ws.on('close', () => {
     console.log(`[${now()}] Client disconnected: ${sessionId}`);
     setTimeout(() => {
+      // 临时目录可能已被清理，删除失败无需处理
+      // eslint-disable-next-line no-empty
       try { fs.rmSync(session.tmpDir, { recursive: true, force: true }); } catch {}
       sessions.delete(sessionId);
     }, 60000);

@@ -3,7 +3,6 @@ import fs from 'fs';
 import path from 'path';
 import type { HistorySnapshot } from './ui-regression-history.js';
 import { buildScriptSummaryFromIssues, loadHistorySnapshots } from './ui-regression-history.js';
-import type { UiIssuesReport } from './ui-issues-index.js';
 import { formatIssuePassRate } from './compare-report-viz.js';
 import { loadFlakeHistory, type FlakeDashboard } from './flake-history.js';
 import { isFlowIssuesSource, readIssuesReport, resolveIssuesSource } from './issues-source.js';
@@ -109,9 +108,6 @@ function buildPayload(outFile = DEFAULT_OUT): DashboardPayload {
   };
 }
 
-function buildScriptMap(report: UiIssuesReport): HistorySnapshot['byScript'] {
-  return buildScriptSummaryFromIssues(report.issues);
-}
 
 function deltaText(current: number, previous: number | undefined): string {
   if (previous === undefined) return '—';

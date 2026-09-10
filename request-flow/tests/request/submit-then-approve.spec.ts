@@ -1,7 +1,6 @@
 import { type Page } from '@playwright/test';
 import { test, type ApiGuard } from '../../fixtures';
 import { RequestListPage } from '../../pages/request-list.page';
-import { RequestEditPage } from '../../pages/request-edit.page';
 import { ApprovalListPage } from '../../../approval-flow/pages/approval-list.page';
 import { env } from '../../utils/env';
 import { randomReason } from '../../utils/random';

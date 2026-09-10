@@ -31,12 +31,6 @@ function rmDirContents(dir: string): number {
   return count;
 }
 
-function rmFiles(globDirs: string[], files: string[]): void {
-  for (const dir of globDirs) rmDirContents(dir);
-  for (const file of files) {
-    if (fs.existsSync(file)) fs.rmSync(file, { force: true });
-  }
-}
 
 async function getToken(appId: string, appSecret: string): Promise<string> {
   const res = await fetchWithRetry('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {

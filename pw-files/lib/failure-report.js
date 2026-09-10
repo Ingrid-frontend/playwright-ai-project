@@ -266,7 +266,7 @@ function filterPlaywrightLogLine(line) {
   if (/^>\s*\d+\s*\|/.test(t)) return true;
   if (/^\|\s*\^/.test(t)) return true;
   if (JSON_KEY_LINE.test(t)) return true;
-  if (/^[\]},\[]+[,]?\s*$/.test(t)) return true;
+  if (/^[\]},[]+[,]?\s*$/.test(t)) return true;
   if (/^(true|false|null|\d+(\.\d+)?),?\s*$/.test(t)) return true;
   if (t.startsWith('{') || t.startsWith('}') || t.startsWith('[')) return true;
   return false;

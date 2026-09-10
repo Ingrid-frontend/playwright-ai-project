@@ -242,7 +242,6 @@ function optimizedImportDepthFromRel(relPath?: any) {
 
 /** depth = tests/optimized/ 下目录段数（不含文件名） */
 function optimizedImportPathsForDepth(depth?: any) {
-  const toOptimized = depth > 0 ? "../".repeat(depth) : "./";
   const toTests = "../".repeat(depth + 1);
   const toRoot = "../".repeat(depth + 2);
   const fixturesPrefix = depth > 0 ? "../".repeat(depth) : "./";

@@ -1,5 +1,4 @@
 const { spawn } = require('child_process');
-const path = require('path');
 const { replyText } = require('./feishu-im');
 
 function parseMessageText(content) {

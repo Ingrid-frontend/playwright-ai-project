@@ -6,7 +6,6 @@
  *   npm run feishu:bitable-setup
  *   npm run feishu:bitable-setup -- --fix-fields   # 自动补缺失字段
  */
-import dotenv from 'dotenv';
 import {
   BitableClient,
   DAILY_FIELDS,
@@ -34,7 +33,6 @@ type FieldSpec = {
   property?: Record<string, unknown>;
 };
 
-type FieldItem = { field_id: string; field_name: string; type: number };
 
 const FIELD_TYPE = BITABLE_FIELD_TYPE;
 

@@ -1,4 +1,3 @@
-const path = require('path');
 const { send, logLine } = require('./ws-safe');
 const { searchFlowRuns, deleteFlowRunsByMarker } = require('./flow-run-marker.js');
 

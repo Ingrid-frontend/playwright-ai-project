@@ -150,7 +150,7 @@ export class TestAnalyzer {
   private checkAssertions(): void {
     let hasAssertions = false;
 
-    this.lines.forEach((line, index) => {
+    this.lines.forEach((line) => {
       if (line.includes('expect(')) {
         hasAssertions = true;
       }

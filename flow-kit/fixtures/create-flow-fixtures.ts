@@ -91,6 +91,7 @@ export function createFlowFixtures<Extra extends Record<string, unknown>>(
 
   const workerScoped = {
     _flowWorkerRun: [
+      // eslint-disable-next-line no-empty-pattern -- Playwright worker fixture 不需要 test context
       async ({}, use: (r: void) => Promise<void>) => {
         const spec = process.env.FLOW_SPEC || defaultSpec;
         workerRun = initWorkerRun({
@@ -170,6 +171,7 @@ export function createFlowFixtures<Extra extends Record<string, unknown>>(
     page: async ({ sharedPage }: { sharedPage: Page }, use: (r: Page) => Promise<void>) => {
       await use(sharedPage);
     },
+    // eslint-disable-next-line no-empty-pattern -- Playwright fixture 不需要 test context
     flowRunDir: async ({}, use: (r: string) => Promise<void>) => {
       await use(workerRun?.runDir || '');
     },

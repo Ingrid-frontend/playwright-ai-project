@@ -20,13 +20,11 @@ import { fetchWithRetry } from './index.js';
 
 dotenv.config();
 
-const SENSITIVE = process.env.ENABLE_SENSITIVE_LOGS === '1';
 
 const DOC_TITLE = 'Playwright 自动化测试报告';
 const DOC_URL_FILE = 'results/feishu-doc-url.txt';
 const HISTORY_DIR = 'results/history';
 const ISSUES_FILE = 'results/ui-issues.json';
-const SCREENSHOTS_BASE = process.cwd();
 
 interface FeishuConfig {
   appId: string;
@@ -104,22 +102,6 @@ async function addBlocks(token: string, docId: string, blocks: any[]): Promise<v
   }
 }
 
-async function uploadImage(token: string, filePath: string): Promise<string | null> {
-  if (!fs.existsSync(filePath)) return null;
-  const buf = fs.readFileSync(filePath);
-  const fileName = path.basename(filePath);
-  const form = new FormData();
-  form.append('file', new Blob([buf], { type: 'image/png' }), fileName);
-  const res = await fetchWithRetry(`https://open.feishu.cn/open-apis/drive/v1/medias/upload_all?size=${buf.length}`, {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${token}` },
-    body: form,
-  }).catch(() => null);
-  if (!res) return null;
-  const data = await res.json();
-  if (data.code !== 0) return null;
-  return data.file?.token || null;
-}
 
 function shareUrl(docId: string): string {
   return `https://bytedance.feishu.cn/docx/${docId}`;

@@ -26,11 +26,6 @@ function copyDir(src: string, dest: string): void {
   }
 }
 
-function copyFile(src: string, dest: string): void {
-  if (!fs.existsSync(src)) return;
-  fs.mkdirSync(path.dirname(dest), { recursive: true });
-  fs.copyFileSync(src, dest);
-}
 
 /** ui-regression 报告从 results/ 迁到 public-reports/ui-regression/ 时修正 diff 相对路径 */
 function rewriteUiReportHtml(html: string): string {

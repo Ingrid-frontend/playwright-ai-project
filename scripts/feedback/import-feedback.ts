@@ -14,7 +14,6 @@ import { BitableClient } from '../feishu/bitable-client.js';
 import { FEEDBACK_FIELDS, loadBitableRuntimeConfig } from '../feishu/bitable-schema.js';
 import { fieldText } from '../feishu/write-feedback-bitable.js';
 import {
-  MANUAL_FEEDBACK_FILE,
   parseAssignees,
   readManualFeedbackList,
   type ManualFeedbackEntry,

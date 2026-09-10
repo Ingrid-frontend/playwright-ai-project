@@ -37,7 +37,7 @@ function assertNoAccountLeak(label, where) {
 /** 多维表一条记录的全部外发文本（字符串字段 + 链接字段），供脱敏断言 */
 function collectOutgoingTexts(fields) {
   const out = [];
-  for (const [k, v] of Object.entries(fields)) {
+  for (const [, v] of Object.entries(fields)) {
     if (typeof v === 'string') out.push(v);
     else if (v && typeof v === 'object' && typeof v.link === 'string') {
       out.push(v.link, v.text || '');

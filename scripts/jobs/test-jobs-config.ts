@@ -3,7 +3,7 @@ import path from 'path';
 import { isKnownEnv, listKnownEnvs } from '../../src/utils/test-env-path.js';
 import { countResolvedSpecs, type AccountProfileFilter } from './job-utils.js';
 import { countRequestFlowGoldenProfiles, countApprovalFlowGoldenProfiles } from './flow-golden-count.js';
-import { countRequestFlowWriteSpecs, countApprovalFlowWriteSpecs, isRequestFlowRunner, resolveFlowRunnerKey } from './flow-runner-registry.js';
+import { countRequestFlowWriteSpecs, countApprovalFlowWriteSpecs, resolveFlowRunnerKey } from './flow-runner-registry.js';
 
 export type { AccountProfileFilter };
 

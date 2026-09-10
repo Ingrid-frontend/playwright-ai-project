@@ -1,4 +1,4 @@
-import { test, expect } from '../../fixtures';
+import { test } from '../../fixtures';
 import { ApprovalListPage } from '../../pages/approval-list.page';
 
 test.describe('审批列表 · 列表加载与页签切换', () => {

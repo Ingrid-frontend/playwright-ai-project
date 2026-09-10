@@ -38,7 +38,6 @@ function flowDir(repoRoot) {
 }
 
 function resolveProfile(session, repoRoot, msg = {}) {
-  const envId = String(msg.env || '').trim();
   const override = String(msg.accountProfile || '').trim();
   if (override) return override;
   const { getSessionAccountProfile } = require('./repo-context');
@@ -60,10 +59,6 @@ function resolveStorageAbs(repoRoot, envId, profileId) {
   return '';
 }
 
-function resolveStorage(repoRoot, envId, profileId) {
-  return resolveStorageAbs(repoRoot, envId, profileId);
-}
-
 function readSnapshot(repoRoot) {
   const abs = path.join(repoRoot, SNAPSHOT_REL);
   if (!fs.existsSync(abs)) return null;
@@ -83,7 +78,6 @@ function pickSnapshotFrame(snapshot) {
 
 const DEFAULT_SPEC = 'approval/full-flow.spec.ts';
 const GOLDEN_SPEC = 'approval/golden-regression.spec.ts';
-const ENTRY_PATH = '/main/approve';
 
 function listApprovalFlowSpecs(repoRoot) {
   const dir = path.join(repoRoot, FLOW_DIR, 'tests', 'approval');

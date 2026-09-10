@@ -124,7 +124,6 @@ export async function generateBaselineComparisons(
   });
 
   const outputDir = path.dirname(outputPath);
-  const comparisons: ImageComparison[] = [];
   const tasks: Array<() => Promise<ImageComparison>> = [];
 
   for (const [stepName, nameScreenshots] of groupedByStepName) {

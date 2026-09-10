@@ -180,7 +180,6 @@ export function isListFilterSearchClick(desc: string): boolean {
 export function pickListFilterSearch(nodes: SnapshotNode[]): SnapshotNode | null {
   const searches = nodes.filter((n) => n.role === 'button' && n.name.trim() === '搜索');
   if (searches.length <= 1) return searches[0] || null;
-  const archive = searches.filter((n) => /资料|归档|成册|新建资料/.test(n.raw));
   const list = searches.filter((n) => !/资料|归档|成册|新建资料/.test(n.raw));
   if (list.length === 1) return list[0];
   if (list.length > 0) return list[0];

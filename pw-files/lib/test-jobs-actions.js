@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
-const { send, logLine, stripAnsi, errText } = require('./ws-safe');
+const { send, logLine, errText } = require('./ws-safe');
 const { createPlaywrightLogSink } = require('./failure-report');
 const repoEnv = require('../repo-env');
 

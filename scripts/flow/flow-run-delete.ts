@@ -1,5 +1,4 @@
 #!/usr/bin/env tsx
-import path from 'path';
 import {
   deleteFlowRunsByMarker,
   searchFlowRuns,

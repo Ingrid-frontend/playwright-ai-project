@@ -34,7 +34,7 @@ class POMGenerator {
   private extractElements(): void {
     const lines = this.content.split('\n');
     
-    lines.forEach((line, index) => {
+    lines.forEach((line) => {
       if (line.includes('page.getBy')) {
         this.parseGetByElement(line);
       } else if (line.includes('page.locator')) {
@@ -134,7 +134,7 @@ class POMGenerator {
   private extractActions(): void {
     const lines = this.content.split('\n');
     
-    lines.forEach((line, index) => {
+    lines.forEach((line) => {
       if (line.includes('.click()')) {
         this.parseClickAction(line);
       } else if (line.includes('.fill(')) {
@@ -274,11 +274,10 @@ class POMGenerator {
     return Array.from(uniqueMap.values());
   }
 
-  save(outputPath?: string): void {
+  save(_outputPath?: string): void {
     this.analyze();
     const pom = this.generatePOMClass();
     
-    const fileName = path.basename(this.filePath, '.spec.ts');
     const className = this.generateClassName();
     
     // 生成到单独的 POM 文件夹
@@ -353,15 +352,14 @@ ${this.generateTestSteps(className)}
     }
   }
 
-  private generateTestSteps(className: string): string {
+  private generateTestSteps(_className: string): string {
     let stepCounter = 2;
     const steps: string[] = [];
     
-    this.actions.forEach((action, index) => {
+    this.actions.forEach((action) => {
       const actionName = this.sanitizeActionName(action.description);
       const actionType = action.method;
       
-      const type = actionType === 'click' ? 'click' : actionType === 'fill' ? 'fill' : actionType === 'type' ? 'type' : actionType === 'check' ? 'check' : 'action';
       const actionLabel = actionType === 'click' ? '点击' : actionType === 'fill' ? '填写' : actionType === 'type' ? '输入' : actionType === 'check' ? '勾选' : '操作';
       
       const beforeComment = `    // 截图: ${actionLabel}前 ${actionName}`;

@@ -7,7 +7,6 @@
  *   npm run flow:verify -- --flow=approval-flow --grep=审批列表
  */
 import { spawnSync } from "child_process";
-import path from "path";
 import { listFlows, requireFlow } from "./flow-registry.js";
 
 type Args = {

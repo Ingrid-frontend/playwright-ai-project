@@ -1,4 +1,4 @@
-import { test, expect } from '../../fixtures';
+import { test } from '../../fixtures';
 import { ApprovalListPage } from '../../pages/approval-list.page';
 import { env } from '../../utils/env';
 

@@ -156,7 +156,9 @@ class ErrorReporter {
     if (!message) return '';
     
     return message
+      // eslint-disable-next-line no-control-regex
       .replace(/\u001b\[[0-9;]*m/g, '')
+      // eslint-disable-next-line no-control-regex
       .replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '')
       .trim();
   }

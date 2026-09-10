@@ -5,6 +5,7 @@ import {
   type CustomerPageCard,
   type CustomerReportModel,
 } from './customer-report-model.js';
+import type { CustomerRegressionDisplayItem } from './customer-report-bundle.js';
 import { customerReportCss, customerReportClientJs } from './customer-report-assets.js';
 import { buildFeedbackRegisterDescription, buildHeadline, COVERAGE_GAP_RATIO } from './customer-report-plain.js';
 import { IMPACT_TIER_LABEL } from './coverage-stats.js';
@@ -252,7 +253,50 @@ function renderAuditInsights(group: CustomerIssueGroup): string {
     </div>`;
 }
 
-function renderIssueGroup(group: CustomerIssueGroup, index: number, model: CustomerReportModel): string {
+function renderSharedBundle(
+  bundle: Extract<CustomerRegressionDisplayItem, { kind: 'shared' }>,
+  index: number,
+): string {
+  const statusLabel = IMPACT_TIER_LABEL[bundle.impactTier];
+  const stepList = bundle.stepTitles.join('、');
+  return `
+  <article class="issue-group issue-bundle ${esc(bundle.impactTier === 'blocking' ? 'regress' : 'minor')}" data-impact-tier="${esc(bundle.impactTier)}" id="${esc(bundle.anchorId)}">
+    <header class="ig-head">
+      <div class="ig-index">${index + 1}</div>
+      <div class="ig-main">
+        <div class="ig-title">${esc(bundle.title)}</div>
+        <div class="ig-reason">${esc(bundle.reason)}</div>
+        <div class="ig-meta">
+          <span class="badge ${bundle.impactTier === 'blocking' ? 'badge-regress' : 'badge-minor'}">${statusLabel}</span>
+          <span class="ig-nature">${esc(bundle.natureLabel)}</span>
+          <span title="差异率 = 差异像素 / 可比较区域像素，仅供参考，不代表严重程度">像素差异 ${esc(bundle.maxDifferenceLabel)}</span>
+          <span>影响 ${bundle.affectedSteps} 个步骤：${esc(stepList)}</span>
+        </div>
+        <p class="bundle-note">此为同一类公共布局变化，下列各步骤分别与各自验收基线对比，不会把不同步骤的截图放在一起比较。</p>
+      </div>
+    </header>
+    ${bundle.groups
+      .map(
+        (g) => `
+      <section class="bundle-step" id="${esc(g.anchorId)}">
+        <h4 class="bundle-step-title">${esc(g.title)}</h4>
+        ${renderPageCard(g.representative)}
+      </section>`,
+      )
+      .join('')}
+  </article>`;
+}
+
+function renderRegressionDisplayItem(
+  item: CustomerRegressionDisplayItem,
+  index: number,
+  model: CustomerReportModel,
+): string {
+  if (item.kind === 'shared') return renderSharedBundle(item, index);
+  return renderIssueGroup(item.group, index, model);
+}
+
+function renderIssueGroup(group: CustomerIssueGroup, index: number, _model: CustomerReportModel): string {
   const statusLabel = IMPACT_TIER_LABEL[group.impactTier];
   const primary = group.representative.browsers[0];
   const regionList = primary ? renderRegionList(primary) : '';
@@ -438,7 +482,7 @@ function renderReadingGuide(): string {
   <details class="reading-guide">
     <summary>阅读指南（30 秒看懂）</summary>
     <ol>
-      <li><b>一步一对比</b>：每个问题只对比<b>同一步骤</b>的验收基线与本次结果，不会把不同步骤的截图放在一起。上方「步骤数」与下方「问题数」在逐步报告时应一致。</li>
+      <li><b>一步一对比</b>：证据区每个步骤单独与各自基线对比，不会把不同步骤的截图放在一起。顶栏/侧栏等<b>公共布局</b>在多个步骤重复出现时，首屏会合并为一条，但展开后仍是逐步对比。</li>
       <li>看结论颜色：红 = 需修复后才能验收；琥珀 = 内容确实有变化但未阻断，建议修；灰 = 内容没变（只是位置或显示差异），可忽略；绿 = 完全一致。</li>
       <li><b>差异百分比不代表严重程度</b>：整体挪动几像素的差异率可能高于「少了一个按钮」。严重程度看上面三档，百分比只作参考。</li>
       <li>问题清单每行可点「看对比图」查看证据；框线含义：红实线 = 内容变化，灰虚线 = 位置或显示差异。</li>
@@ -446,6 +490,34 @@ function renderReadingGuide(): string {
     </ol>
   </details>`;
 }
+function renderRegressionBrief(item: CustomerRegressionDisplayItem, index: number): string {
+  if (item.kind === 'single') return renderIssueBrief(item.group, index);
+  const card = item.groups[0]?.representative.browsers[0];
+  const priority =
+    item.impactTier === 'blocking'
+      ? '<span class="brief-priority p0">需修复</span>'
+      : item.impactTier === 'degraded'
+        ? '<span class="brief-priority p1">建议修</span>'
+        : '<span class="brief-priority p2">可忽略</span>';
+  const natureTag = item.natureLabel ? `<span class="brief-nature">${esc(item.natureLabel)}</span>` : '';
+  const steps = item.stepTitles.join('、');
+  return `
+  <li class="brief regress" data-impact-tier="${esc(item.impactTier)}">
+    ${card ? renderBriefThumb(card) : ''}
+    <span class="brief-no">${index + 1}</span>
+    <span class="brief-main">
+      <span class="brief-tags">${priority}${natureTag}</span>
+      <span class="brief-title">${esc(item.title)}</span>
+      <span class="brief-reason">${esc(item.reason)}（涉及：${esc(steps)}）</span>
+    </span>
+    <span class="brief-meta">
+      <span class="brief-diff" title="差异率 = 有效差异像素 / 可比较区域像素">${esc(item.maxDifferenceLabel)}</span>
+      <span class="brief-scope">影响 ${item.affectedSteps} 个步骤</span>
+    </span>
+    <a class="brief-link" href="#${esc(item.anchorId)}" onclick="openCustomerIssue('${esc(item.anchorId)}')">看对比图</a>
+  </li>`;
+}
+
 function renderIssueBrief(group: CustomerIssueGroup, index: number): string {
   const card = group.representative.browsers[0];
   const scope =
@@ -915,10 +987,10 @@ function renderConclusionBody(model: CustomerReportModel): string {
   }
 
   const focus =
-    model.regressionGroups.length > 0
-      ? `<h3 class="sec-title sec-regress">需要修复 · ${model.regressionGroups.length} 个问题</h3>
-         <p class="sec-lead">每个验收步骤单独与基线对比。点「看对比图」查看该步骤的证据。</p>
-         <ol class="brief-list">${model.regressionGroups.map((g, i) => renderIssueBrief(g, i)).join('')}</ol>`
+    model.regressionDisplay.length > 0
+      ? `<h3 class="sec-title sec-regress">需要修复 · ${model.regressionDisplay.length} 个问题</h3>
+         <p class="sec-lead">公共布局类问题已合并展示；点「看对比图」查看各步骤独立对比证据。</p>
+         <ol class="brief-list">${model.regressionDisplay.map((item, i) => renderRegressionBrief(item, i)).join('')}</ol>`
       : `<div class="empty ok">本次未发现需要修复的问题</div>`;
 
   const { degraded: degradedGroups, benign: benignGroups, degradedSteps: degradedStepsOf, benignSteps: benignStepsOf } =
@@ -956,9 +1028,9 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
     ? Math.max(0, batch.expectedRunCount - batch.completedRunCount - batch.failedRunCount)
     : 0;
   const regressList =
-    model.regressionGroups.length > 0
-      ? `<h3 class="sec-title sec-regress">需要修复 · ${model.regressionGroups.length} 个问题</h3>
-         ${model.regressionGroups.map((g, i) => renderIssueGroup(g, i, model)).join('')}`
+    model.regressionDisplay.length > 0
+      ? `<h3 class="sec-title sec-regress">需要修复 · ${model.regressionDisplay.length} 个问题</h3>
+         ${model.regressionDisplay.map((item, i) => renderRegressionDisplayItem(item, i, model)).join('')}`
       : `<div class="empty">本次未发现需要修复的问题</div>`;
   const {
     degraded: degradedGroups,
@@ -1000,7 +1072,7 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
       ? `交付批次有 ${batch.skippedRunCount} 个运行因缺少业务数据跳过`
       : batchMissing > 0
       ? `交付批次尚有 ${batchMissing} 个运行未完成`
-      : buildHeadline(c, model.regressionGroups.length);
+      : buildHeadline(c, model.regressionDisplay.length);
   const subline = batch?.failedRunCount
     ? `已有 ${batch.completedRunCount} 个运行完成，失败运行未纳入截图结论 · 建议修复运行失败后重新生成报告`
     : batch?.skippedRunCount
@@ -1074,7 +1146,7 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
 
     <div class="tabs">
       <button class="tab active" data-tab="conclusion" onclick="switchCustomerTab('conclusion')">验收结论</button>
-      <button class="tab" data-tab="regress" onclick="switchCustomerTab('regress')">问题证据${model.regressionGroups.length > 0 ? ` (${model.regressionGroups.length})` : ''}</button>
+      <button class="tab" data-tab="regress" onclick="switchCustomerTab('regress')">问题证据${model.regressionDisplay.length > 0 ? ` (${model.regressionDisplay.length})` : ''}</button>
       ${showMinorTab ? `<button class="tab" data-tab="minor" onclick="switchCustomerTab('minor')">${minorTabLabelText}</button>` : ''}
       <button class="tab" data-tab="scope" onclick="switchCustomerTab('scope')">检测覆盖</button>
     </div>

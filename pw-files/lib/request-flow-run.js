@@ -39,7 +39,6 @@ function flowDir(repoRoot) {
 }
 
 function resolveProfile(session, repoRoot, msg = {}) {
-  const envId = String(msg.env || '').trim();
   const override = String(msg.accountProfile || '').trim();
   if (override) return override;
   const { getSessionAccountProfile } = require('./repo-context');

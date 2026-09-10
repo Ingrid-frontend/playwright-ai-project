@@ -14,7 +14,7 @@ import { runJobById, stopJob } from './job-runner.js';
 import { buildJobFailReasons } from './job-notify.js';
 import { listJobs, loadTestJobsConfig, resolveJob, resolveJobRunEnv, countJobSpecsForEnv } from './test-jobs-config.js';
 import { countResolvedSpecs, formatRunId } from './job-utils.js';
-import { countRequestFlowGoldenProfiles, formatFlowGoldenSpecsLabel, formatApprovalFlowGoldenSpecsLabel } from './flow-golden-count.js';
+import { formatFlowGoldenSpecsLabel, formatApprovalFlowGoldenSpecsLabel } from './flow-golden-count.js';
 import { resolveFlowRunnerKey } from './flow-runner-registry.js';
 
 const __filename = fileURLToPath(import.meta.url);

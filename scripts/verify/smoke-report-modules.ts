@@ -4,7 +4,6 @@ import os from 'os';
 import path from 'path';
 import { buildOverviewData, countComparisonSeverities } from '../report/compare-screenshots-overview.js';
 import {
-  buildIterationTabs,
   collectBrowserFilterList,
   renderCompareReportHtml,
 } from '../report/compare-screenshots-report.js';

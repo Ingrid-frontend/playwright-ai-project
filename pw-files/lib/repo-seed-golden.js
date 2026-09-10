@@ -1,4 +1,3 @@
-const path = require('path');
 const { spawn } = require('child_process');
 const { logLine, stripAnsi } = require('./ws-safe');
 

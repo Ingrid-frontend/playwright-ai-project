@@ -1,7 +1,6 @@
 import type { ScreenshotInfo } from './compare-screenshots-utils.js';
 import { generateTestComparisons } from './compare-screenshots-engine.js';
 import { buildCoverageStats } from './coverage-stats.js';
-import type { CustomerPageCard } from './customer-report-model.js';
 import { buildPageCardsFromCoverage, hasVisibleDifference, isDiffPage } from './customer-report-model.js';
 import type { ScriptRunHistoryEntry, ScriptRunHistoryPreview } from './customer-report-run-meta.js';
 import { friendlyStepLabel } from './customer-report-naming.js';

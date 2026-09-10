@@ -138,7 +138,7 @@ function scaledBaseBbox(
   item: StructureCheckItem,
   base: { bbox: { x: number; y: number; width: number; height: number }; fingerprint?: StructureCheckItem['fingerprint'] },
   current: StepMeta,
-  baseline: StepMeta | null,
+  _baseline: StepMeta | null,
 ): { x: number; y: number; width: number; height: number } {
   const fp = base.fingerprint || item.fingerprint;
   if (!fp?.baselinePageWidth || !fp.baselinePageHeight) return base.bbox;

@@ -1,5 +1,5 @@
 const fs = require('fs');
-const { spawn, spawnSync } = require('child_process');
+const { spawnSync } = require('child_process');
 const path = require('path');
 const { spawnTracked } = require('./kill-proc');
 const { createPlaywrightLogSink } = require('./failure-report');

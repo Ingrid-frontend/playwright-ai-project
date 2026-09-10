@@ -309,7 +309,6 @@ async function runRepoBatchTest(ws, session, msg, deps) {
           exitCode: r.exitCode,
           passed: r.passed,
           failed: r.failed,
-          total: r.total,
           cancelled: Boolean(r.cancelled),
           error: r.error || null,
           failures: r.failures || [],

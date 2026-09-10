@@ -1,5 +1,4 @@
 import { execSync } from "child_process";
-import fs from "fs";
 import path from "path";
 import { createRequire } from "module";
 import type { JobSummaryFile } from "./job-lock.js";
@@ -38,28 +37,12 @@ type FlowJobCtx = {
   accountProfile?: AccountProfileFilter;
 };
 
-const FLOW_ID = "request-flow";
-
 function shouldNotify(notifyOn: NotifyOn[], success: boolean): boolean {
   if (success && notifyOn.includes("success")) return true;
   if (!success && notifyOn.includes("failure")) return true;
   return false;
 }
 
-function readLastFlowManifest(repoRoot: string, flowId = FLOW_ID) {
-  const p = path.join(repoRoot, "results/flow-runs", flowId, "last-run.json");
-  if (!fs.existsSync(p)) return null;
-  try {
-    return JSON.parse(fs.readFileSync(p, "utf8")) as {
-      ok?: boolean;
-      compareReportRel?: string;
-      failed?: number;
-      passed?: number;
-    };
-  } catch {
-    return null;
-  }
-}
 
 export function isFlowRunner(runner?: string | null, jobId?: string): boolean {
   return resolveFlowRunnerKey(runner, jobId) != null;

@@ -121,7 +121,7 @@ function getActionLabel(action: Action): string {
   return "action";
 }
 
-function generateActionCode(ctx: CodegenCtx, action: Action, stepIndex: number, runDirVariable: string): string {
+function generateActionCode(ctx: CodegenCtx, action: Action, stepIndex: number, _runDirVariable: string): string {
   const wait = getGenWait();
   const label = getActionLabel(action);
   const fileLabel = cleanLabel(label) || `step-${stepIndex}`;

@@ -234,7 +234,7 @@ function createRecordingActions(deps) {
       storageSaved,
       storageState: storageRel || undefined,
       loginOnly: Boolean(session.loginOnlyRecord),
-      profile: session.recordProfileId || profile,
+      profile: session.recordProfileId,
     });
 
     if (storageSaved && storageRel) {

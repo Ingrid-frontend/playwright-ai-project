@@ -609,7 +609,7 @@ export class ApprovalListPage extends GenericListPage {
       : new Error(`未找到待审批页签（尝试过 ${PENDING_TABS.join(' / ')}）`);
   }
 
-  private async clickTab(tabEl: Locator, apiHint: string): Promise<void> {
+  private async clickTab(tabEl: Locator, _apiHint: string): Promise<void> {
     await expect(tabEl).toBeVisible({ timeout: 15_000 });
     for (let i = 0; i < 2; i += 1) {
       const respP = this.waitListApi(8_000);

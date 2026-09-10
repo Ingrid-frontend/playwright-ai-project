@@ -108,7 +108,7 @@ export async function completeText(prompt: string, options: CompleteTextOptions 
 
 export function extractFirstJsonValue(text: string): string {
   const trimmed = text.trim();
-  const start = trimmed.search(/[\[{]/);
+  const start = trimmed.search(/[[{]/);
   if (start < 0) return trimmed;
 
   let depth = 0;

@@ -1,3 +1,5 @@
+// ANSI 转义序列必须匹配 ESC(\x1B) 控制字符本身，此处控制字符是刻意的
+// eslint-disable-next-line no-control-regex
 const ANSI_RE = /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g;
 
 function stripAnsi(text) {

@@ -8,20 +8,6 @@ const { resolveCatalogAbs, readCatalogForm, writeCatalogForm } = require('./cata
 const { readLastFlowRun } = require('./flow-run-common');
 const repoEnv = require('../repo-env');
 
-function resolveFlowEntryFromRepo(repoRoot, label, entry) {
-  const proc = spawnSync(
-    'npx',
-    ['tsx', 'scripts/flow/resolve-flow-entry.ts', `--label=${label || ''}`, `--entry=${entry || ''}`],
-    { cwd: repoRoot, encoding: 'utf8', maxBuffer: 1024 * 1024 },
-  );
-  const out = `${proc.stdout || ''}`.trim();
-  if (proc.status !== 0 || !out) return null;
-  try {
-    return JSON.parse(out);
-  } catch {
-    return null;
-  }
-}
 
 function deriveFlowMeta(label, entry, tabbed = false) {
   const rawEntry = String(entry || '').trim();
