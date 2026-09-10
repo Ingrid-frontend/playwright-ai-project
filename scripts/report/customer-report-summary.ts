@@ -11,6 +11,10 @@ export type CustomerReportSummary = {
   regressGroupCount: number;
   regressSteps: number;
   minorSteps: number;
+  /** minorSteps 拆分：内容确有变化但未阻断操作 */
+  degradedSteps: number;
+  /** minorSteps 拆分：内容未变（位移/渲染/数据漂移），无需处理 */
+  benignSteps: number;
   passSteps: number;
   comparedSteps: number;
   expectedSteps: number;
@@ -68,6 +72,9 @@ export function buildCustomerReportSummary(model: CustomerReportModel): Customer
     regressGroupCount: model.regressionGroups.length,
     regressSteps: c.regressSteps,
     minorSteps: c.minorSteps,
+    /** minorSteps 拆分：内容确有变化但未阻断 / 内容未变可忽略 */
+    degradedSteps: c.degradedSteps,
+    benignSteps: c.benignSteps,
     passSteps: c.passSteps,
     comparedSteps: c.comparedSteps,
     expectedSteps: c.expectedSteps,

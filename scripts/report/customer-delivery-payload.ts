@@ -65,6 +65,10 @@ export type DeliveryPayload = {
     uncoveredSteps: number;
     passSteps: number;
     minorSteps: number;
+    /** minorSteps 拆分：内容确有变化但未阻断操作 */
+    degradedSteps: number;
+    /** minorSteps 拆分：内容未变（位移/渲染/数据漂移），无需处理 */
+    benignSteps: number;
     regressSteps: number;
     passRate: number;
     coveragePct: number;
@@ -209,6 +213,8 @@ export function buildCustomerDeliveryPayload(
       uncoveredSteps: c.uncoveredSteps,
       passSteps: c.passSteps,
       minorSteps: c.minorSteps,
+      degradedSteps: c.degradedSteps,
+      benignSteps: c.benignSteps,
       regressSteps: c.regressSteps,
       passRate: c.passRate,
       coveragePct,

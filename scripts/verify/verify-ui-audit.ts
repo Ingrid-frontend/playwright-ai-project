@@ -107,7 +107,7 @@ async function main(): Promise<void> {
   delete process.env.OPENAI_API_KEY;
 
   // 动态导入（保持与 tsx ESM 运行方式一致）
-  const { auditStep } = await import('../report/ui-audit-analyzer.js');
+  const { auditStep, prepareVisionImage } = await import('../report/ui-audit-analyzer.js');
   const { renderAuditReportHtml, relativeAssetPath } = await import('../report/ui-audit-report.js');
   const { normalizeAuditResult } = await import('../report/ui-audit-schema.js');
 
@@ -354,6 +354,14 @@ async function main(): Promise<void> {
   assert.ok(helios.layoutRules && helios.layoutRules.length > 0);
   assert.ok(helios.tokensSummary && helios.tokensSummary.includes('主题色'));
   console.log('✅ Helios 设计规范可解析并注入审计上下文');
+
+  process.env.AI_VISION_MAX_WIDTH = '640';
+  const scaled = prepareVisionImage(pngPath);
+  delete process.env.AI_VISION_MAX_WIDTH;
+  assert.ok(scaled, '降采样后应仍可读取截图');
+  const scaledPng = PNG.sync.read(Buffer.from(scaled!.data, 'base64'));
+  assert.equal(scaledPng.width, 640, '1440 宽截图应降到 640');
+  console.log('✅ 视觉审计前 PNG 降采样生效');
 
   // 清理
   fs.rmSync(reportDir, { recursive: true, force: true });

@@ -111,11 +111,24 @@ export const COVERAGE_GAP_RATIO = 0.3;
 /**
  * 统一结论标题口径。HTML 报告与摘要 JSON 必须共用这一份，
  * 否则会出现飞书消息与网页各说各话的结论打架。
+ *
+ * 标题动词必须与 deriveShipAdvice 的动作一致：此前标题写「无需处理」、
+ * 副标题又写「建议业务确认」，同一屏自相矛盾。
  */
 export function buildHeadline(coverage: CoverageStats, regressionGroupCount: number): string {
   const c = coverage;
   if (c.regressSteps > 0) return `发现 ${regressionGroupCount} 个问题需要修复`;
-  if (c.minorSteps > 0) return `存在 ${c.minorSteps} 处轻微变化，无需处理`;
+  if (c.minorSteps > 0) {
+    const { advice } = deriveShipAdvice(c);
+    if (advice === 'baseline') {
+      return `检测覆盖不足：${c.uncoveredSteps} 步未建基线，建议补基线后再验收`;
+    }
+    const detail =
+      c.degradedSteps > 0
+        ? `${c.minorSteps} 处差异，其中 ${c.degradedSteps} 处内容确实有变化`
+        : `${c.minorSteps} 处可忽略差异，页面内容未变`;
+    return `存在 ${detail}，建议确认后发布`;
+  }
   if (c.comparedSteps === 0) return '本次无有效对比，无法给出结论';
   if (c.uncoveredSteps > 0) return `已检测 ${c.comparedSteps} 步全部通过，${c.uncoveredSteps} 步未建基线`;
   return '本次未发现需要修复的问题';
@@ -147,6 +160,7 @@ export function deriveShipAdvice(coverage: CoverageStats): { advice: ShipAdvice;
 export function buildActionItems(model: CustomerReportModel): string[] {
   const items: string[] = [];
   const seen = new Set<string>();
+  const c = model.coverage;
   for (const g of model.regressionGroups) {
     const item = `修复「${g.title}」：${g.reason || '检测到与验收基线不一致'}`;
     if (!seen.has(item)) {
@@ -158,13 +172,28 @@ export function buildActionItems(model: CustomerReportModel): string[] {
   const uncoveredRatio =
     model.coverage.expectedSteps > 0 ? model.coverage.uncoveredSteps / model.coverage.expectedSteps : 0;
   const needsBaseline = uncoveredRatio >= COVERAGE_GAP_RATIO && meaningfulUncovered > 0;
-  if (model.regressionGroups.length === 0 && model.minorGroups.length > 0) {
-    items.push(`${model.minorGroups.length} 处轻微变化无需处理（多为位置偏移或显示效果差异）`);
+  if (model.regressionGroups.length === 0 && c.minorSteps > 0) {
+    const degradedGroups = model.minorGroups.filter((g) => g.impactTier === 'degraded');
+    if (degradedGroups.length > 0) {
+      items.push(
+        `${c.degradedSteps} 步内容确实有变化但未阻断操作（按根因归为 ${degradedGroups.length} 个问题），建议评估后修复`,
+      );
+    }
+    if (c.benignSteps > 0) {
+      items.push(`${c.benignSteps} 步仅为位置偏移或显示效果差异，内容未变，无需处理`);
+    }
+    if (model.accounting.ungroupedSteps > 0) {
+      items.push(`另有 ${model.accounting.ungroupedSteps} 步差异极小未单列证据（已计入上方步骤统计）`);
+    }
   }
   if (needsBaseline) {
     items.push(`检测覆盖不足，建议优先为 ${meaningfulUncovered} 个核心页面建立验收基线`);
-  } else if (model.regressionGroups.length === 0 && model.coverage.comparedSteps > 0) {
-    items.push('本次未发现需要修复的问题，可按计划发版');
+  } else if (model.regressionGroups.length === 0 && c.comparedSteps > 0) {
+    items.push(
+      c.degradedSteps > 0
+        ? '本次未发现阻断问题，其余差异建议业务确认后发布'
+        : '本次未发现需要修复的问题，可按计划发版',
+    );
   }
   return items.slice(0, 5);
 }

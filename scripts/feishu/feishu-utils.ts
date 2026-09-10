@@ -13,6 +13,8 @@ export interface FetchWithRetryOptions extends RequestInit {
   retries?: number;
   /** 退避基数毫秒（默认 1000，指数退避：1s, 2s, 4s…） */
   backoffMs?: number;
+  /** 超时（AbortError）是否重试；视觉接口建议 false，避免 120s×3 空等 */
+  retryOnAbort?: boolean;
 }
 
 /**
@@ -24,7 +26,13 @@ export async function fetchWithRetry(
   url: string,
   opts: FetchWithRetryOptions = {},
 ): Promise<Response> {
-  const { timeout = DEFAULT_TIMEOUT_MS, retries = DEFAULT_RETRIES, backoffMs = DEFAULT_BACKOFF_MS, ...fetchOpts } = opts;
+  const {
+    timeout = DEFAULT_TIMEOUT_MS,
+    retries = DEFAULT_RETRIES,
+    backoffMs = DEFAULT_BACKOFF_MS,
+    retryOnAbort = true,
+    ...fetchOpts
+  } = opts;
 
   let lastError: Error | null = null;
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -43,6 +51,8 @@ export async function fetchWithRetry(
     } catch (err: unknown) {
       clearTimeout(timer);
       lastError = err instanceof Error ? err : new Error(String(err));
+      const isAbort = lastError.name === 'AbortError' || /aborted/i.test(lastError.message);
+      if (isAbort && !retryOnAbort) throw lastError;
       if (attempt < retries) {
         await sleep(backoffMs * Math.pow(2, attempt));
       }

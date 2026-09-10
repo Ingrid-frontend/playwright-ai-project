@@ -1,9 +1,11 @@
 import {
   displayRegions,
+  impactTierOf,
   significantRegions,
   type CoverageSlot,
   type CoverageStats,
   type CoverageStatus,
+  type ImpactTier,
 } from './coverage-stats.js';
 import { isActionableNature, natureLabel, type ChangeNature } from './change-nature.js';
 import { buildActionItems, buildPlainDescription, deriveShipAdvice, type ShipAdvice } from './customer-report-plain.js';
@@ -42,6 +44,8 @@ export type CustomerBrowserCard = {
   regions: CustomerRegion[];
   /** 需要处理的区域数，用于图例与「仅位移」提示 */
   actionableRegions: number;
+  /** 客户可见的业务影响档位，与判定分支同源 */
+  impactTier: ImpactTier;
   /** 全部变化都只是位移/渲染差异 */
   benignOnly: boolean;
   /** 位移量描述，如 `9px`，用于速览清单直接说明「只是挪了位置」 */
@@ -69,6 +73,14 @@ export type CustomerPageCard = {
   /** 同源变化的聚合键，用于把同一根因的多个步骤合成一组 */
   clusterKey: string;
   maxDifference: number;
+  /**
+   * 该页面实际参与比对的步骤数（跨浏览器会 >1）。
+   * 统计口径对齐的关键：CoverageStats 的 minorSteps/regressSteps 是 slot（步骤）级，
+   * 此前分组却按页面计数，导致「分组步数合计 24」与「轻微变化 26」对不上账。
+   */
+  slotCount: number;
+  /** 该页面的业务影响档位 */
+  impactTier: ImpactTier;
 };
 
 /** 与报告展示一致：四舍五入到 0.00% 的差异不展示对比图 */
@@ -129,6 +141,7 @@ export type CustomerIssueGroup = {
   status: Exclude<CustomerStatus, 'uncovered'>;
   representative: CustomerPageCard;
   others: CustomerPageCard[];
+  /** 受影响的**步骤**数（与 CoverageStats 的 minorSteps/regressSteps 同口径，非页面数） */
   affectedSteps: number;
   scriptKeys: string[];
   /** 客户可读的业务流程名列表 */
@@ -137,6 +150,10 @@ export type CustomerIssueGroup = {
   maxDifferenceLabel: string;
   /** 该组内需要处理的区域总数；为 0 表示只有位移/渲染差异 */
   actionableRegions: number;
+  /** 客户可见的业务影响档位，用于首屏三档分组与排序 */
+  impactTier: ImpactTier;
+  /** 组内统一的变化性质标签，与 reason 同源，避免「内容变化」与「位置偏移」并存 */
+  natureLabel: string;
   /** 位移量描述，如 `9px`，仅位移类差异有值 */
   shiftLabel?: string;
 };
@@ -162,6 +179,8 @@ export type CustomerReportModel = {
   shipAdviceLabel: string;
   /** 首屏建议操作，3~5 条 */
   actionItems: string[];
+  /** 数字对账，确保分组步数与统计口径一致 */
+  accounting: StepAccounting;
   /** 报告头环境名 */
   envLabel?: string;
   /** 多环境时分环境统计 */
@@ -172,6 +191,22 @@ export type CustomerReportModel = {
   releaseTag?: string;
   reportScope?: 'golden' | 'all';
   reportBatch?: CustomerReportBatchMeta;
+};
+
+/**
+ * 数字对账：统计口径（步骤级）与问题分组（根因级）必须能对上账。
+ * 此前同一份首屏出现 26 / 16 / 24 三个数字却无人解释，客户第一屏就失去信任。
+ * 差额必须显式展示去处，不允许静默消失。
+ */
+export type StepAccounting = {
+  /** 统计口径下「有差异」的步骤数（regressSteps + minorSteps） */
+  changedSteps: number;
+  /** 已进入问题分组的步骤数 */
+  groupedSteps: number;
+  /** 未进入分组的步骤数 */
+  ungroupedSteps: number;
+  /** 差额原因；为空表示完全对账 */
+  ungroupedReason: string;
 };
 
 export type CustomerReportMeta = {
@@ -194,6 +229,15 @@ function verdictLabel(status: CustomerStatus): string {
   if (status === 'minor') return '无需处理';
   if (status === 'regress') return '需要修复';
   return '待建基线';
+}
+
+/**
+ * 区域未识别出变化性质时，回落到该步骤的主导性质；仍未知则用中性词。
+ * 此前一律写「内容变化」，与「只是整体挪了约 9px」的结论文案直接打架。
+ */
+function resolveRegionNatureLabel(nature?: ChangeNature, dominant?: ChangeNature): string {
+  const picked = nature || dominant;
+  return picked ? natureLabel(picked) : '有变化';
 }
 
 function worstStatus(statuses: CustomerStatus[]): CustomerStatus {
@@ -223,7 +267,7 @@ function toBrowserCard(slot: CoverageSlot): CustomerBrowserCard {
       h: r.h,
       label: `${r.w}x${r.h}`,
       nature: r.nature,
-      natureLabel: r.nature ? natureLabel(r.nature) : '内容变化',
+      natureLabel: resolveRegionNatureLabel(r.nature, slot.evidence?.dominantNature),
       actionable,
     };
   });
@@ -242,6 +286,7 @@ function toBrowserCard(slot: CoverageSlot): CustomerBrowserCard {
     reason: slot.evidence?.reason || '',
     regions,
     actionableRegions: actionableCount,
+    impactTier: impactTierOf(slot),
     benignOnly: regions.length > 0 && actionableCount === 0,
     shiftLabel: slot.evidence?.shiftLabel,
     imageWidth: slot.regionsWidth,
@@ -281,6 +326,29 @@ function groupIssues(pages: CustomerPageCard[], anchorPrefix: string): CustomerI
     });
     const representative = sorted[0]!;
     const primary = representative.browsers.find((b) => b.verdict === representative.worstStatus);
+    const members = sorted;
+    // 步骤级计数：多浏览器的同一页面会产生多个 slot，必须按 slot 求和才能与统计口径对账
+    const affectedSteps = members.reduce((sum, p) => sum + p.slotCount, 0);
+    const impactTier = members.reduce<ImpactTier>((worst, p) => {
+      const rank = { benign: 1, degraded: 2, blocking: 3 } as const;
+      return rank[p.impactTier] > rank[worst] ? p.impactTier : worst;
+    }, 'benign');
+    const actionableRegions = Math.max(
+      0,
+      ...members.flatMap((p) => p.browsers.map((b) => b.actionableRegions)),
+    );
+    const shiftLabel = members
+      .flatMap((p) => p.browsers.map((b) => b.shiftLabel))
+      .find((s): s is string => Boolean(s));
+    const dominantNature = primary?.regions.find((r) => r.actionable)?.nature
+      ?? primary?.regions[0]?.nature
+      ?? representative.browsers[0]?.regions[0]?.nature;
+    const natureLabel =
+      actionableRegions === 0
+        ? shiftLabel
+          ? '位置偏移'
+          : '显示差异'
+        : resolveRegionNatureLabel(dominantNature);
     groups.push({
       groupKey,
       anchorId: '',
@@ -288,22 +356,21 @@ function groupIssues(pages: CustomerPageCard[], anchorPrefix: string): CustomerI
       status: representative.worstStatus === 'uncovered' ? 'minor' : representative.worstStatus,
       representative,
       others: sorted.slice(1),
-      affectedSteps: sorted.length,
+      affectedSteps,
       scriptKeys: [...new Set(sorted.map((p) => p.scriptKey))],
       scriptLabels: [...new Set(sorted.map((p) => p.scriptLabel))],
       reason: primary?.reason || '',
       maxDifferenceLabel: `${(Math.max(...sorted.map((p) => p.maxDifference)) * 100).toFixed(2)}%`,
-      actionableRegions: Math.max(
-        0,
-        ...sorted.flatMap((p) => p.browsers.map((b) => b.actionableRegions)),
-      ),
-      shiftLabel: sorted
-        .flatMap((p) => p.browsers.map((b) => b.shiftLabel))
-        .find((s): s is string => Boolean(s)),
+      actionableRegions,
+      impactTier,
+      natureLabel,
+      shiftLabel,
     });
   }
 
   groups.sort((a, b) => {
+    const rank = { benign: 1, degraded: 2, blocking: 3 } as const;
+    if (rank[b.impactTier] !== rank[a.impactTier]) return rank[b.impactTier] - rank[a.impactTier];
     const da = Math.max(...a.others.concat(a.representative).map((p) => p.maxDifference));
     const db = Math.max(...b.others.concat(b.representative).map((p) => p.maxDifference));
     if (db !== da) return db - da;
@@ -344,6 +411,11 @@ export function buildPageCardsFromCoverage(coverage: CoverageStats): CustomerPag
         slots.reduce((worst, s) => ((s.difference ?? 0) > (worst.difference ?? 0) ? s : worst), first),
       ),
       maxDifference: Math.max(...slots.map((s) => s.difference ?? 0)),
+      slotCount: slots.length,
+      impactTier: slots.reduce<ImpactTier>((worst, s) => {
+        const rank = { benign: 1, degraded: 2, blocking: 3 } as const;
+        return rank[impactTierOf(s)] > rank[worst] ? impactTierOf(s) : worst;
+      }, 'benign'),
     });
   }
 
@@ -373,6 +445,21 @@ function buildEnvSummaries(slots: CoverageSlot[]): EnvCoverageSummary[] {
       expectedSteps: list.length,
       uncoveredSteps: list.filter((s) => s.status === 'uncovered').length,
     }));
+}
+
+/** 对账：分组步数合计与统计口径的差额必须可解释 */
+function buildStepAccounting(
+  coverage: CoverageStats,
+  groups: CustomerIssueGroup[],
+): StepAccounting {
+  const changedSteps = coverage.regressSteps + coverage.minorSteps;
+  const groupedSteps = groups.reduce((sum, g) => sum + g.affectedSteps, 0);
+  const ungroupedSteps = Math.max(0, changedSteps - groupedSteps);
+  const ungroupedReason =
+    ungroupedSteps > 0
+      ? `${ungroupedSteps} 步差异极小（显示 0.00%），未单列证据，已计入上方步骤统计`
+      : '';
+  return { changedSteps, groupedSteps, ungroupedSteps, ungroupedReason };
 }
 
 function buildIncompleteScripts(
@@ -424,6 +511,7 @@ export function buildCustomerReportModel(
     shipAdvice: 'ship',
     shipAdviceLabel: '',
     actionItems: [],
+    accounting: buildStepAccounting(coverage, [...regressionGroups, ...minorGroups]),
     envLabel: meta?.envLabel || extractEnvLabel(scriptKeys) || undefined,
     envSummaries: envSummaries.length > 1 ? envSummaries : undefined,
     incompleteScripts: incompleteScripts.length ? incompleteScripts : undefined,

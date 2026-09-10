@@ -205,6 +205,7 @@ body {
 .n-green { color: var(--green); }
 .n-red { color: var(--red); }
 .n-amber { color: var(--amber); }
+.n-gray { color: var(--muted); }
 .tabs {
   display: flex;
   gap: 8px;
@@ -420,6 +421,15 @@ body {
 }
 .brief-priority.p0 { background: #ffe3e3; color: #c92a2a; }
 .brief-priority.p1 { background: #fff3bf; color: #a37200; }
+.brief-priority.p2 { background: #f1f3f5; color: #868e96; }
+.ig-nature {
+  display: inline-block;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #f1f3f5;
+  color: #495057;
+}
 .brief-nature {
   display: inline-block;
   font-size: 10px;

@@ -45,8 +45,59 @@ check('首屏结论与统计口径一致', () => {
   }
 });
 
+check('三档之和 = 已对比步骤数，且步数差额有交代', () => {
+  const start = html.indexOf('<div class="stats">');
+  const end = html.indexOf('<div class="verdict-foot">');
+  assert.ok(start > 0 && end > start, '应存在统计区与对账句');
+  const nums = [...html.slice(start, end).matchAll(/class="n[^"]*">(\d+)</g)].map((m) => Number(m[1]));
+  assert.equal(nums.length, 4, '统计应为四格：需要修复 / 影响体验 / 可忽略 / 完全一致');
+  const footStart = html.indexOf('<div class="verdict-foot">');
+  const foot = html.slice(footStart, html.indexOf('</div>', footStart));
+  const m = foot.match(/已对比 (\d+) \/ 共 (\d+) 步/);
+  assert.ok(m, '对账句应写明「已对比 N / 共 M 步」');
+  const compared = Number(m![1]);
+  assert.equal(
+    nums.reduce((a, b) => a + b, 0),
+    compared,
+    '三档之和 + 完全一致 必须等于已对比步骤数，否则客户会发现数字对不上',
+  );
+});
+
+check('问题清单步数与统计口径同源（无静默丢步）', () => {
+  const summary = html.match(/([\d]+) 组非阻断差异（共 (\d+) 个步骤）/);
+  if (!summary) return;
+  const groupedSteps = Number(summary[2]);
+  const footStart = html.indexOf('<div class="verdict-foot">');
+  const foot = html.slice(footStart, html.indexOf('</div>', footStart));
+  // 差额必须在对账句里显式说明去处，不允许静默消失
+  if (!foot.includes('未单列证据')) {
+    const m = foot.match(/已对比 (\d+) \/ 共 (\d+) 步/);
+    const changed = [...foot.matchAll(/(\d+) 步(需要修复|影响体验|可忽略)/g)].reduce(
+      (s, x) => s + Number(x[1]),
+      0,
+    );
+    assert.ok(m);
+    assert.ok(
+      changed === 0 || groupedSteps <= changed,
+      `分组步数 ${groupedSteps} 不应超过有差异步骤数 ${changed}`,
+    );
+  }
+});
+
+check('结论标题动词不与发版建议冲突', () => {
+  const title = html.match(/class="verdict-title">([^<]*)</)?.[1] || '';
+  const meta = html.match(/class="verdict-meta">([^<]*)</)?.[1] || '';
+  if (meta.includes('建议业务确认') || title.includes('建议确认后发布')) {
+    assert.ok(
+      !title.includes('无需处理'),
+      `标题写「无需处理」与「建议确认」自相矛盾，实际标题：${title}`,
+    );
+  }
+});
+
 check('统计四格为客户口径', () => {
-  for (const label of ['需要修复', '无需处理', '完全一致', '已对比步骤']) {
+  // 新口径：业务影响三档 + 完全一致（四格），不再使用「无需处理/已对比步骤」
+  for (const label of ['需要修复', '影响体验', '可忽略', '完全一致']) {
     assert.ok(html.includes(label), `缺少统计项: ${label}`);
   }
   // P1-④ 统一口径：不再以「通过率」单值概括（通过/轻微/待建基线的口径不同）
@@ -111,25 +162,30 @@ check('轻微变化默认折叠，不与衰退混在一起', () => {
   }
 });
 
-check('可接受差异不伪装成 P1 待办', () => {
-  const parts = html.split('<li class="brief minor">').slice(1);
+check('可忽略差异不伪装成 P1 待办', () => {
+  // benign（可忽略）只应显示 p2 可忽略，不应显示 p0 需修复 / p1 建议修
+  const parts = html.split('data-impact-tier="benign"').slice(1);
   for (const part of parts) {
     const seg = part.slice(0, part.indexOf('</li>'));
-    assert.ok(!seg.includes('brief-priority'), '可接受差异不应显示 P1 优先级');
+    assert.ok(
+      !seg.includes('brief-priority p0') && !seg.includes('brief-priority p1'),
+      '可忽略差异不应显示 P0/P1 优先级',
+    );
   }
 });
 
-check('轻微变化分组内不出现红框', () => {
+check('可忽略分组内不出现红框', () => {
+  // 只有 benign（内容未变）分组不应出现红框；degraded 内容变化可以有 mark-real
   const parts = html.split('<article class="issue-group ');
   for (const part of parts.slice(1)) {
-    const status = part.slice(0, 20).split('"')[0];
-    if (status !== 'minor' && status !== 'pass') continue;
+    const impactTier = (/data-impact-tier="([^"]+)"/.exec(part) || [])[1];
+    if (impactTier !== 'benign') continue;
     const end = part.indexOf('</article>');
     const seg = end > 0 ? part.slice(0, end) : part;
-    const id = (/id="([^"]+)"/.exec(seg) || [])[1] ?? status;
+    const id = (/id="([^"]+)"/.exec(seg) || [])[1] ?? 'benign';
     assert.ok(
       !seg.includes('mark-real'),
-      `分组 ${id} 结论为「${status}」却画了红框，与分级口径矛盾`,
+      `分组 ${id} 为可忽略差异却画了红框，与分级口径矛盾`,
     );
   }
 });
@@ -161,11 +217,17 @@ check('Tab 命名为验收结论 / 问题证据 / 检测覆盖', () => {
 });
 check('差异视图四个 Tab 齐全且顺序正确', () => {
   if (!html.includes('data-view="marked"')) return;
-  const order = ['并排对比', '标注变化', '拖动对比', '像素差异'];
-  const idx = order.map((t) => html.indexOf(t));
-  for (let i = 0; i < order.length; i++) {
-    assert.ok(idx[i] > -1, `缺少 Tab: ${order[i]}`);
-    if (i > 0) assert.ok(idx[i] > idx[i - 1], `Tab 顺序不符: ${order[i]}`);
+  const labels = [
+    { view: 'side', label: '并排对比' },
+    { view: 'marked', label: '标注变化' },
+    { view: 'slider', label: '拖动对比' },
+    { view: 'overlay', label: '像素差异' },
+  ];
+  const markers = labels.map(({ view, label }) => `data-view="${view}">${label}</button>`);
+  const idx = markers.map((t) => html.indexOf(t));
+  for (let i = 0; i < markers.length; i++) {
+    assert.ok(idx[i] > -1, `缺少 Tab: ${labels[i].label}`);
+    if (i > 0) assert.ok(idx[i] > idx[i - 1], `Tab 顺序不符: ${labels[i].label}`);
   }
 });
 

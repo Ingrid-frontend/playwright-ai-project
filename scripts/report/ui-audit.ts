@@ -24,6 +24,14 @@ import { resolveFigmaBaseline } from './figma-baseline.js';
 import { resolveHeliosAuditContext } from './helios-design-spec.js';
 import { applyAuditRules, resolveAuditRule } from './ui-audit-rules.js';
 import { writeFeedbackDocsFromAuditIssues } from './ui-feedback-doc.js';
+import { runWithConcurrency } from './image-diff.js';
+
+/** 并行审计步数，默认 2。覆盖：UI_AUDIT_CONCURRENCY=1 恢复串行 */
+export const UI_AUDIT_CONCURRENCY = (() => {
+  const v = process.env.UI_AUDIT_CONCURRENCY;
+  const n = v ? Number(v) : 2;
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 2;
+})();
 
 // 必须在读取任何 AI_* 环境变量前加载，否则 .env 里配好的 Key 会被漏掉、永远降级 mock
 dotenv.config({ path: path.join(process.cwd(), '.env') });
@@ -174,15 +182,20 @@ async function main(): Promise<void> {
   if (candidates.length === 0) {
     console.log(`\n⚠️  未找到可审计的截图（需要 .png 与同名 .meta.json 配对）`);
   }
+  if (!mock && candidates.length > 1) {
+    console.log(`   并行审计: ${UI_AUDIT_CONCURRENCY}（UI_AUDIT_CONCURRENCY 可调）`);
+  }
 
   fs.mkdirSync(assetDir, { recursive: true });
 
-  const steps: AuditStepReport[] = [];
-  for (const [index, cand] of candidates.entries()) {
+  const auditOne = async (
+    index: number,
+    cand: Candidate,
+  ): Promise<{ index: number; step: AuditStepReport | null }> => {
     const meta = readMeta(cand.metaPath);
     if (!meta) {
       console.log(`  ⏭️  跳过（meta 不可解析）: ${cand.stepName}`);
-      continue;
+      return { index, step: null };
     }
 
     const size = readPngSize(cand.pngPath);
@@ -222,7 +235,6 @@ async function main(): Promise<void> {
     );
     const result = applyAuditRules(rawResult, auditRule);
 
-    // 复制截图到报告目录，保证报告可独立分享
     const assetName = `${String(index + 1).padStart(2, '0')}-${path.basename(cand.pngPath)}`;
     const assetPath = path.join(assetDir, assetName);
     try {
@@ -234,30 +246,14 @@ async function main(): Promise<void> {
     let figmaRel: string | undefined;
     if (figmaVision && figma?.imagePath) {
       const figmaName = `${String(index + 1).padStart(2, '0')}-figma${path.extname(figma.imagePath) || '.png'}`;
-      const figmaPath = path.join(assetDir, figmaName);
+      const figmaAssetPath = path.join(assetDir, figmaName);
       try {
-        fs.copyFileSync(figma.imagePath, figmaPath);
-        figmaRel = relativeAssetPath(outDir, figmaPath);
+        fs.copyFileSync(figma.imagePath, figmaAssetPath);
+        figmaRel = relativeAssetPath(outDir, figmaAssetPath);
       } catch {
         /* 复制失败不影响审计结论 */
       }
     }
-
-    steps.push({
-      scriptKey: cand.scriptKey,
-      stepName: cand.stepName,
-      stepNumber: cand.stepNumber,
-      screenshotRel: relativeAssetPath(outDir, assetPath),
-      figmaRel,
-      figmaUrl: figma?.url,
-      helios: helios.enabled,
-      imageWidth,
-      imageHeight,
-      viewportWidth: meta.viewport?.width ?? imageWidth,
-      viewportHeight: meta.viewport?.height ?? imageHeight,
-      url: meta.url,
-      result,
-    });
 
     const icon =
       result.verdict === 'fail'
@@ -278,7 +274,36 @@ async function main(): Promise<void> {
           ? ' · Figma 规范'
           : '';
     console.log(`  ${icon} ${cand.scriptKey} / ${cand.stepName} — ${detail}${figmaTag}`);
-  }
+
+    return {
+      index,
+      step: {
+        scriptKey: cand.scriptKey,
+        stepName: cand.stepName,
+        stepNumber: cand.stepNumber,
+        screenshotRel: relativeAssetPath(outDir, assetPath),
+        figmaRel,
+        figmaUrl: figma?.url,
+        helios: helios.enabled,
+        imageWidth,
+        imageHeight,
+        viewportWidth: meta.viewport?.width ?? imageWidth,
+        viewportHeight: meta.viewport?.height ?? imageHeight,
+        url: meta.url,
+        result,
+      },
+    };
+  };
+
+  const concurrency = mock ? 1 : UI_AUDIT_CONCURRENCY;
+  const auditResults = await runWithConcurrency(
+    candidates.map((cand, index) => () => auditOne(index, cand)),
+    concurrency,
+  );
+  const steps = auditResults
+    .filter((item): item is { index: number; step: AuditStepReport } => item.step != null)
+    .sort((a, b) => a.index - b.index)
+    .map((item) => item.step);
 
   const figmaVisionCount = steps.filter((s) => s.result.baseline === 'figma').length;
   const figmaSpecCount = steps.filter((s) => s.result.baseline === 'figma-spec').length;

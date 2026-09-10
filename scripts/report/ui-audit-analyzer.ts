@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { PNG } from 'pngjs';
 import { fetchWithRetry } from '../feishu/index.js';
 import { buildChatCompletionsUrl } from '../../src/ai/llm-client.js';
 import type { StepMeta } from './structure-check.js';
@@ -16,6 +17,7 @@ import {
 } from './ui-audit-schema.js';
 
 const MAX_IMAGE_BYTES = 4_500_000;
+const DEFAULT_VISION_MAX_WIDTH = 1280;
 
 type MediaType = 'image/png' | 'image/jpeg' | 'image/webp';
 
@@ -24,11 +26,50 @@ interface ImagePart {
   data: string;
 }
 
+function resolveVisionMaxWidth(): number {
+  const v = Number(process.env.AI_VISION_MAX_WIDTH);
+  if (Number.isFinite(v) && v >= 0) return v;
+  return DEFAULT_VISION_MAX_WIDTH;
+}
+
+function resolveVisionRetries(): number {
+  const v = Number(process.env.AI_VISION_RETRIES);
+  if (Number.isFinite(v) && v >= 0) return Math.floor(v);
+  return 1;
+}
+
+function downscalePng(buf: Buffer, maxWidth: number): Buffer {
+  const src = PNG.sync.read(buf);
+  if (maxWidth <= 0 || src.width <= maxWidth) return buf;
+  const scale = maxWidth / src.width;
+  const newW = maxWidth;
+  const newH = Math.max(1, Math.round(src.height * scale));
+  const dst = new PNG({ width: newW, height: newH });
+  for (let y = 0; y < newH; y++) {
+    const sy = Math.min(src.height - 1, Math.floor(y / scale));
+    for (let x = 0; x < newW; x++) {
+      const sx = Math.min(src.width - 1, Math.floor(x / scale));
+      const srcIdx = (sy * src.width + sx) * 4;
+      const dstIdx = (y * newW + x) * 4;
+      dst.data[dstIdx] = src.data[srcIdx];
+      dst.data[dstIdx + 1] = src.data[srcIdx + 1];
+      dst.data[dstIdx + 2] = src.data[srcIdx + 2];
+      dst.data[dstIdx + 3] = src.data[srcIdx + 3];
+    }
+  }
+  return PNG.sync.write(dst);
+}
+
 export function readImageAsBase64(filePath: string): ImagePart | null {
+  return prepareVisionImage(filePath);
+}
+
+/** 读取截图并可选降采样，减小视觉接口 payload、缩短推理时间 */
+export function prepareVisionImage(filePath: string): ImagePart | null {
   try {
     if (!fs.existsSync(filePath)) return null;
-    const buf = fs.readFileSync(filePath);
-    if (buf.length === 0 || buf.length > MAX_IMAGE_BYTES) return null;
+    let buf = fs.readFileSync(filePath);
+    if (buf.length === 0) return null;
     const ext = path.extname(filePath).toLowerCase();
     const mediaType: MediaType =
       ext === '.jpg' || ext === '.jpeg'
@@ -36,6 +77,15 @@ export function readImageAsBase64(filePath: string): ImagePart | null {
         : ext === '.webp'
           ? 'image/webp'
           : 'image/png';
+    const maxWidth = resolveVisionMaxWidth();
+    if (mediaType === 'image/png' && maxWidth > 0) {
+      try {
+        buf = downscalePng(buf, maxWidth);
+      } catch {
+        /* 非 PNG 或解析失败时沿用原图 */
+      }
+    }
+    if (buf.length > MAX_IMAGE_BYTES) return null;
     return { mediaType, data: buf.toString('base64') };
   } catch {
     return null;
@@ -280,14 +330,18 @@ async function callVision(
   userPrompt: string,
   images: { label?: string; image: ImagePart }[],
   config: VisionConfig,
+  opts?: { timeoutMs?: number },
 ): Promise<string> {
   const envTimeout = Number(process.env.AI_VISION_TIMEOUT_MS);
   const timeout =
-    Number.isFinite(envTimeout) && envTimeout > 0
+    opts?.timeoutMs ??
+    (Number.isFinite(envTimeout) && envTimeout > 0
       ? envTimeout
       : images.length > 1
         ? 180_000
-        : 120_000;
+        : images.length === 0
+          ? 45_000
+          : 120_000);
   const res = await fetchWithRetry(config.url, {
     method: 'POST',
     headers: {
@@ -296,7 +350,7 @@ async function callVision(
     },
     body: JSON.stringify({
       model: config.model,
-      max_tokens: images.length > 1 ? 2000 : 1500,
+      max_tokens: images.length > 1 ? 2000 : images.length === 0 ? 800 : 1000,
       temperature: 0,
       stream: false,
       // 部分兼容网关支持该字段强制 JSON；不支持时会忽略，prompt 里也已约定纯 JSON 输出
@@ -310,7 +364,8 @@ async function callVision(
       ],
     }),
     timeout,
-    retries: 2,
+    retries: resolveVisionRetries(),
+    retryOnAbort: false,
   });
 
   if (!res.ok) {
@@ -385,12 +440,12 @@ export async function auditStep(
     return withInfo(fallback, '视觉模型配置不可用，已降级为规则分析', 'error');
   }
 
-  const image = readImageAsBase64(screenshotPath);
+  const image = prepareVisionImage(screenshotPath);
   if (!image) {
     return withInfo(mockAnalyze(meta), '截图不可读或超出大小限制，已降级为规则分析', 'error');
   }
 
-  const figmaImage = useFigmaVision && figmaPath ? readImageAsBase64(figmaPath) : null;
+  const figmaImage = useFigmaVision && figmaPath ? prepareVisionImage(figmaPath) : null;
   const hasFigmaVision = Boolean(figmaImage);
   const visionImages = hasFigmaVision && figmaImage
     ? [
@@ -423,8 +478,8 @@ export async function auditStep(
     } catch {
       const retry = await callVision(
         systemPrompt,
-        `${userPrompt}\n上次输出无法解析。请重新检查 JSON 语法，只返回合法 JSON，不要尾逗号或说明文字。`,
-        visionImages,
+        `上次模型输出无法解析为 JSON，请只返回修正后的合法 JSON（不要 markdown、不要说明）：\n${text.slice(0, 1200)}`,
+        [],
         config,
       );
       return { ...normalizeAuditResult(parseAuditJson(retry), 'ai'), baseline };

@@ -16,9 +16,34 @@ import { detectPageStateDrift, readStepMeta, type PageStateDriftResult } from '.
  */
 export type CoverageStatus = 'pass' | 'minor' | 'regress' | 'uncovered';
 
+/**
+ * 客户可见的业务影响档位（与内部四档 status 解耦）：
+ * - blocking 阻断：内容真的变了且达到阻断阈值，需修复后才能验收（对应 status=regress）
+ * - degraded 影响体验：内容确实有变化但范围小，操作仍可完成，建议修复、可协商延期
+ * - benign   可忽略：内容本身没变（整体位移/渲染差异/测试数据漂移），不需要客户处理
+ *
+ * 三者之和 = 已对比步骤数。引入它的原因：此前只有 regress / minor 两档，
+ * 「表格最后一行被遮挡无法点击」与「整体平移 9px」同为 minor，严重度被抹平。
+ */
+export type ImpactTier = 'blocking' | 'degraded' | 'benign';
+
+export const IMPACT_TIER_LABEL: Record<ImpactTier, string> = {
+  blocking: '需要修复',
+  degraded: '影响体验',
+  benign: '可忽略',
+};
+
+export const IMPACT_TIER_ORDER: Record<ImpactTier, number> = {
+  blocking: 3,
+  degraded: 2,
+  benign: 1,
+};
+
 export interface DiffEvidence {
   /** 触发当前判定的原因，用于报告直接展示 */
   reason: string;
+  /** 客户可见的业务影响档位，由判定分支直接给出，避免展示层二次猜测 */
+  impactTier: ImpactTier;
   /** 最大差异块（已排除 low 噪声） */
   topRegionPixels: number;
   topRegionWidth: number;
@@ -64,11 +89,27 @@ export interface CoverageStats {
   passSteps: number;
   minorSteps: number;
   regressSteps: number;
-  /** (passSteps + minorSteps) / comparedSteps；无对比项时为 0 */
+  /** minorSteps 的拆分：内容确实有变化但未阻断操作（建议修复、可协商延期） */
+  degradedSteps: number;
+  /** minorSteps 的拆分：内容本身没变（位移/渲染/数据漂移），不需要客户处理；不含完全一致步骤 */
+  benignSteps: number;
+  /**
+   * (passSteps + benignSteps) / comparedSteps。
+   * 注意：分子只含「完全没有实质变化」的步骤。此前的实现把全部 minor 计入分子，
+   * 导致 26 处差异也能显示 100% 通过率，属于口径粉饰。
+   */
   passRate: number;
   verdict: 'pass' | 'attention' | 'regress' | 'insufficient_coverage';
   verdictLabel: string;
   slots: CoverageSlot[];
+}
+
+/** 从 slot 取业务影响档位；无证据数据时按 status 保守回落 */
+export function impactTierOf(slot: CoverageSlot): ImpactTier {
+  if (slot.evidence?.impactTier) return slot.evidence.impactTier;
+  if (slot.status === 'regress') return 'blocking';
+  if (slot.status === 'pass' || slot.status === 'uncovered') return 'benign';
+  return 'degraded';
 }
 
 function isBaselineKind(kind?: string): boolean {
@@ -195,8 +236,10 @@ export function classifyDifference(
   const significant = significantRegions(regions, size?.width, size?.height, cfg);
   const actionable = significant.filter(isActionableRegion);
   const top = actionable[0] ?? significant[0];
+  // 保守默认值：任何分支都必须显式覆写，遗漏时按「影响体验」而非「可忽略」处理
   const evidence: DiffEvidence = {
     reason: '',
+    impactTier: 'degraded',
     topRegionPixels: top?.pixels ?? 0,
     topRegionWidth: top?.w ?? 0,
     topRegionHeight: top?.h ?? 0,
@@ -207,6 +250,7 @@ export function classifyDifference(
 
   if (difference <= 0) {
     evidence.reason = '与验收基线完全一致';
+    evidence.impactTier = 'benign';
     return { status: 'pass', evidence };
   }
   // 没有区域数据（旧缓存 / 仅算了占比的对比）时无法做证据判定，退回占比口径，
@@ -214,12 +258,14 @@ export function classifyDifference(
   if (!regions) {
     if (difference >= cfg.majorRatio) {
       evidence.reason = `页面整体有明显差异（约 ${(difference * 100).toFixed(2)}%）`;
+      evidence.impactTier = 'blocking';
       return { status: 'regress', evidence };
     }
     evidence.reason =
       difference < cfg.identicalRatio
         ? '仅有极细微的显示差别，可忽略'
         : `页面整体有轻微差异（约 ${(difference * 100).toFixed(2)}%）`;
+    evidence.impactTier = difference < cfg.identicalRatio ? 'benign' : 'degraded';
     return { status: difference < cfg.identicalRatio ? 'pass' : 'minor', evidence };
   }
   if (significant.length === 0) {
@@ -227,6 +273,7 @@ export function classifyDifference(
       difference < cfg.identicalRatio
         ? '仅有极细微的显示差别，可忽略'
         : '差异很小，未发现明显的内容变化';
+    evidence.impactTier = 'benign';
     return { status: difference < cfg.identicalRatio ? 'pass' : 'minor', evidence };
   }
 
@@ -238,6 +285,7 @@ export function classifyDifference(
     evidence.reason = shift
       ? `${where}的内容没变，只是整体挪了约 ${shift}，无需处理`
       : `${where}的显示效果有细微差别，内容没变，无需处理`;
+    evidence.impactTier = 'benign';
     return { status: 'minor', evidence };
   }
 
@@ -248,6 +296,7 @@ export function classifyDifference(
   const downgradeDrift = (reason: string): { status: 'minor'; evidence: DiffEvidence } => {
     evidence.reason = reason;
     evidence.stateDrift = true;
+    evidence.impactTier = 'benign';
     return { status: 'minor', evidence };
   };
 
@@ -257,19 +306,24 @@ export function classifyDifference(
 
   if (bigBlock) {
     evidence.reason = `${where}有一大块区域${natureVerb(top.nature)}`;
+    evidence.impactTier = 'blocking';
     return { status: 'regress', evidence };
   }
   if (wideBlock) {
     evidence.reason = `${where}整块区域${natureVerb(top.nature)}`;
+    evidence.impactTier = 'blocking';
     return { status: 'regress', evidence };
   }
   const multiSpotMin = cfg.multiSpotRegressRatio ?? 0.01;
   if (difference >= cfg.majorRatio && actionable.length >= 3 && difference >= multiSpotMin) {
     evidence.reason = `页面有 ${actionable.length} 处内容变化，最大在${where}`;
+    evidence.impactTier = 'blocking';
     return { status: 'regress', evidence };
   }
 
+  // 内容确实变了，但没到阻断阈值：与「只是挪了位置」区分开，避免严重度被抹平
   evidence.reason = `页面有 ${actionable.length} 处小范围内容变化，最大在${where}，不影响整体布局`;
+  evidence.impactTier = 'degraded';
   return { status: 'minor', evidence };
 }
 
@@ -387,7 +441,14 @@ export function buildCoverageStats(
   const minorSteps = slots.filter((s) => s.status === 'minor').length;
   const regressSteps = slots.filter((s) => s.status === 'regress').length;
   const comparedSteps = passSteps + minorSteps + regressSteps;
-  const passRate = comparedSteps > 0 ? (passSteps + minorSteps) / comparedSteps : 0;
+  // 三档之和 === comparedSteps：blocking=regressSteps，degraded+benign=minorSteps
+  const benignSteps = slots.filter(
+    (s) => s.status === 'minor' && impactTierOf(s) === 'benign',
+  ).length;
+  const degradedSteps = minorSteps - benignSteps;
+  // 只把「完全没有实质变化」的步骤计入分子（完全一致 + 内容未变的可忽略差异），
+  // 避免 26 处差异仍显示 100% 通过率这种口径粉饰
+  const passRate = comparedSteps > 0 ? (passSteps + benignSteps) / comparedSteps : 0;
 
   let verdict: CoverageStats['verdict'];
   let verdictLabel: string;
@@ -402,7 +463,10 @@ export function buildCoverageStats(
     verdictLabel = '无可检测步骤';
   } else if (minorSteps > 0) {
     verdict = 'attention';
-    verdictLabel = `存在 ${minorSteps} 处轻微变化，建议人工确认`;
+    verdictLabel =
+      degradedSteps > 0
+        ? `存在 ${minorSteps} 处差异（${degradedSteps} 处内容确实有变化），建议人工确认`
+        : `存在 ${minorSteps} 处可忽略差异（内容未变），建议人工确认`;
   } else {
     verdict = 'pass';
     verdictLabel = '未发现 UI 衰退';
@@ -415,6 +479,8 @@ export function buildCoverageStats(
     passSteps,
     minorSteps,
     regressSteps,
+    degradedSteps,
+    benignSteps,
     passRate,
     verdict,
     verdictLabel,

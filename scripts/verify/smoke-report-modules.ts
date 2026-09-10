@@ -304,6 +304,58 @@ const scrollbarOnly = classifyDifference(
 assert.equal(scrollbarOnly.status, 'minor');
 pass('滚动条条带不判为衰退');
 
+// 业务影响三档：内容确实有变化但未阻断 ≠ 只是整体挪了位置，两者不得同为「可忽略」
+const contentChanged = classifyDifference(
+  0.006,
+  [{ x: 300, y: 200, w: 60, h: 20, pixels: 1200, ratio: 0.001, severity: 'high', nature: 'content' }],
+  undefined,
+  { width: 1280, height: 720 },
+);
+assert.equal(contentChanged.status, 'minor');
+assert.equal(contentChanged.evidence.impactTier, 'degraded');
+
+const onlyShifted = classifyDifference(
+  0.006,
+  [
+    {
+      x: 300,
+      y: 200,
+      w: 400,
+      h: 120,
+      pixels: 9000,
+      ratio: 0.008,
+      severity: 'high',
+      nature: 'shifted',
+      shiftX: 9,
+    },
+  ],
+  undefined,
+  { width: 1280, height: 720 },
+);
+assert.equal(onlyShifted.status, 'minor');
+assert.equal(onlyShifted.evidence.impactTier, 'benign');
+
+const blocking = classifyDifference(
+  0.03,
+  [
+    {
+      x: 200,
+      y: 300,
+      w: 600,
+      h: 40,
+      pixels: 24000,
+      ratio: 0.02,
+      severity: 'high',
+      nature: 'appeared',
+    },
+  ],
+  undefined,
+  { width: 1280, height: 720 },
+);
+assert.equal(blocking.status, 'regress');
+assert.equal(blocking.evidence.impactTier, 'blocking');
+pass('业务影响三档：内容变化 ≠ 位置偏移 ≠ 阻断');
+
 // 展示名清洗：客户看不到内部 stepName / 带时间戳的目录
 assert.equal(friendlyStepLabel('DEV管理员-after'), 'DEV管理员');
 assert.equal(friendlyStepLabel('返-回-after'), '返回');
@@ -313,19 +365,36 @@ assert.equal(friendlyScriptLabel('dev/260911/工作台_2026-08-20_19-29-59'), 'D
 assert.equal(friendlyScriptLabel('intent/dev/审批列表页可见'), 'DEV环境 · 审批列表页可见');
 assert.equal(
   friendlyScriptLabel('flows/request-flow/dev/golden-regression/by-account/menma_comic_com'),
-  'DEV环境 · 申请单流程 · menma_comic_com',
+  'DEV环境 · 申请单流程',
 );
 assert.equal(
   friendlyScriptLabel('flows/request-flow/uat/golden-regression/by-account/199702_comic_com'),
-  'UAT环境 · 申请单流程 · 199702_comic_com',
+  'UAT环境 · 申请单流程',
 );
+// 租户账号属于内部信息，不得出现在客户可见的流程名里（防泄漏回归）
+for (const scriptKey of [
+  'flows/request-flow/dev/golden-regression/by-account/menma_comic_com',
+  'flows/request-flow/uat/golden-regression/by-account/199702_comic_com',
+  'flows/approval-flow/stage9084/golden-regression/by-account/800187_hoymiles_com',
+]) {
+  const account = scriptKey.split('/').pop()!;
+  assert.equal(
+    friendlyScriptLabel(scriptKey).includes(account),
+    false,
+    `流程名不应泄漏租户账号 ${account}`,
+  );
+}
 assert.equal(
   friendlyScriptLabel('flows/request-flow/stage9084/golden-regression/by-account/18600582279'),
-  'Stage9084环境 · 申请单流程 · 18600582279',
+  'Stage9084环境 · 申请单流程',
 );
 assert.equal(
   friendlyScriptLabel('expense-flow/dev/golden-regression/by-account/menma_comic_com'),
-  'DEV环境 · 报销流程 · menma_comic_com',
+  'DEV环境 · 报销流程',
+);
+assert.equal(
+  friendlyScriptLabel('flows/approval-flow/stage9084/golden-regression/by-account/800187_hoymiles_com'),
+  'Stage9084环境 · 审批流程',
 );
 assert.equal(regionZoneLabel({ x: 0, y: 0, w: 40, h: 20 }, 1280, 720), '页面上部左侧');
 const stage9084Target = discoverGoldenScriptScanTargets('screenshots/flows').find((t) =>

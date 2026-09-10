@@ -7,6 +7,7 @@ import {
 } from './customer-report-model.js';
 import { customerReportCss, customerReportClientJs } from './customer-report-assets.js';
 import { buildFeedbackRegisterDescription, buildHeadline, COVERAGE_GAP_RATIO } from './customer-report-plain.js';
+import { IMPACT_TIER_LABEL } from './coverage-stats.js';
 import { friendlyScriptLabel, friendlyStepLabel, regionZoneLabel, extractEnvId, envIdSortKey, envLabelFromId } from './customer-report-naming.js';
 import { formatDurationSec, formatScriptStartedAt } from './customer-report-run-meta.js';
 import type { ScriptRunHistoryEntry } from './customer-report-run-meta.js';
@@ -235,7 +236,7 @@ function renderPageCard(page: CustomerPageCard, opts?: { compact?: boolean }): s
 
 /** 一个根因一张卡：代表页给出证据，同源步骤折叠在下方 */
 function renderIssueGroup(group: CustomerIssueGroup, index: number, model: CustomerReportModel): string {
-  const statusLabel = group.status === 'regress' ? '需要修复' : '无需处理';
+  const statusLabel = IMPACT_TIER_LABEL[group.impactTier];
   const primary = group.representative.browsers[0];
   const regionList = primary ? renderRegionList(primary) : '';
   const others =
@@ -246,15 +247,16 @@ function renderIssueGroup(group: CustomerIssueGroup, index: number, model: Custo
          </details>`
       : '';
   return `
-  <article class="issue-group ${esc(group.status)}" id="${esc(group.anchorId)}">
+  <article class="issue-group ${esc(group.status)}" data-impact-tier="${esc(group.impactTier)}" id="${esc(group.anchorId)}">
     <header class="ig-head">
       <div class="ig-index">${index + 1}</div>
       <div class="ig-main">
         <div class="ig-title">${esc(group.title)}</div>
         <div class="ig-reason">${esc(group.reason || '检测到与验收基线的差异')}</div>
         <div class="ig-meta">
-          <span class="badge ${group.status === 'regress' ? 'badge-regress' : 'badge-minor'}">${statusLabel}</span>
-          <span>最大差异 ${esc(group.maxDifferenceLabel)}</span>
+          <span class="badge ${group.impactTier === 'blocking' ? 'badge-regress' : 'badge-minor'}">${statusLabel}</span>
+          <span class="ig-nature">${esc(natureTagForGroup(group))}</span>
+          <span title="差异率 = 差异像素 / 可比较区域像素，仅供参考，不代表严重程度">像素差异 ${esc(group.maxDifferenceLabel)}</span>
           <span>影响 ${group.affectedSteps} 个步骤</span>
           <span>${esc(group.scriptLabels.join('、'))}</span>
         </div>
@@ -314,11 +316,32 @@ function renderBriefThumb(card: CustomerBrowserCard): string {
     </div>`;
 }
 
+/**
+ * 性质标签必须与结论同源：此前这里取「第一个区域」的性质，
+ * 与 reason 里「只是整体挪了约 9px」的结论可能完全不同，出现同一卡片自相矛盾。
+ */
+/**
+ * 按业务影响拆分非阻断差异组。步骤数取自受影响步骤（与统计口径同源），
+ * 不能用页面数，否则会出现「26 步」与「24 步」对不上账。
+ */
+function splitMinorGroups(model: CustomerReportModel): {
+  degraded: CustomerIssueGroup[];
+  benign: CustomerIssueGroup[];
+  degradedSteps: number;
+  benignSteps: number;
+} {
+  const degraded = model.minorGroups.filter((g) => g.impactTier === 'degraded');
+  const benign = model.minorGroups.filter((g) => g.impactTier === 'benign');
+  return {
+    degraded,
+    benign,
+    degradedSteps: degraded.reduce((s, g) => s + g.affectedSteps, 0),
+    benignSteps: benign.reduce((s, g) => s + g.affectedSteps, 0),
+  };
+}
+
 function natureTagForGroup(group: CustomerIssueGroup): string {
-  const card = group.representative.browsers[0];
-  if (!card) return '';
-  const region = card.regions.find((r) => r.actionable) || card.regions[0];
-  return region?.natureLabel || '';
+  return group.natureLabel || '';
 }
 
 function isComparableTrendVerdict(v: string): boolean {
@@ -350,12 +373,14 @@ function renderTrendHint(model: CustomerReportModel): string {
   if (improved.length === 0 && worsened.length === 0) return '';
   const parts: string[] = [];
   if (worsened.length > 0) {
-    parts.push(`${worsened.length} 个业务流程状态恶化（${worsened.join('；')}）`);
+    parts.push(`${worsened.length} 个流程判定加重（${worsened.join('；')}）`);
   }
   if (improved.length > 0) {
-    parts.push(`${improved.length} 个业务流程状态改善（${improved.join('；')}）`);
+    parts.push(`${improved.length} 个流程判定减轻（${improved.join('；')}）`);
   }
-  return `<div class="trend-hint">${esc(parts.join(' · '))}</div>`;
+  // 必须说明判定变化不等于「本次引入了/修好了问题」：同一页面同一差异率在两次报告中
+  // 结论相反时，不解释原因会让客户直接判定报告不可信。
+  return `<div class="trend-hint">与上一次运行相比：${esc(parts.join(' · '))}。判定变化可能来自验收基线更新、测试环境数据不同或本次改动，请结合下方证据确认，不代表本次一定引入或修复了问题。</div>`;
 }
 
 function renderCoverageBar(model: CustomerReportModel): string {
@@ -394,9 +419,11 @@ function renderReadingGuide(): string {
   <details class="reading-guide">
     <summary>阅读指南（30 秒看懂）</summary>
     <ol>
-      <li>看顶部颜色：红 = 当前验收不通过；琥珀 = 存在可接受差异，建议确认；绿 = 未发现需要修复的问题</li>
-      <li>问题清单每行可点「看对比图」查看证据</li>
-      <li>「待建基线」不算通过，需补基线后再测</li>
+      <li><b>两种数字不要混着看</b>：上方统计按「<b>步骤</b>」计数（一次页面比对＝一步）；下方问题清单按「<b>根因</b>」计数，同一处改动影响 3 个步骤会记 3 步、但只列 1 个问题。两者数字不同属正常。</li>
+      <li>看结论颜色：红 = 需修复后才能验收；琥珀 = 内容确实有变化但未阻断，建议修；灰 = 内容没变（只是位置或显示差异），可忽略；绿 = 完全一致。</li>
+      <li><b>差异百分比不代表严重程度</b>：整体挪动几像素的差异率可能高于「少了一个按钮」。严重程度看上面三档，百分比只作参考。</li>
+      <li>问题清单每行可点「看对比图」查看证据；框线含义：红实线 = 内容变化，灰虚线 = 位置或显示差异。</li>
+      <li>「待建基线」不算通过，需补基线后再测。</li>
     </ol>
   </details>`;
 }
@@ -406,13 +433,15 @@ function renderIssueBrief(group: CustomerIssueGroup, index: number): string {
     group.affectedSteps > 1 ? `影响 ${group.affectedSteps} 个步骤` : '影响 1 个步骤';
   const natureTag = natureTagForGroup(group);
   const priority =
-    group.status === 'regress'
+    group.impactTier === 'blocking'
       ? '<span class="brief-priority p0">需修复</span>'
-      : '';
+      : group.impactTier === 'degraded'
+        ? '<span class="brief-priority p1">建议修</span>'
+        : '<span class="brief-priority p2">可忽略</span>';
   const scripts =
     group.scriptLabels.length > 0 ? `<span class="brief-flow">${esc(group.scriptLabels.join('、'))}</span>` : '';
   return `
-  <li class="brief ${esc(group.status)}">
+  <li class="brief ${esc(group.status)}" data-impact-tier="${esc(group.impactTier)}">
     ${card ? renderBriefThumb(card) : ''}
     <span class="brief-no">${index + 1}</span>
     <span class="brief-main">
@@ -872,12 +901,15 @@ function renderConclusionBody(model: CustomerReportModel): string {
          <ol class="brief-list">${model.regressionGroups.map((g, i) => renderIssueBrief(g, i)).join('')}</ol>`
       : `<div class="empty ok">本次未发现需要修复的问题</div>`;
 
+  const { degraded: degradedGroups, benign: benignGroups, degradedSteps: degradedStepsOf, benignSteps: benignStepsOf } =
+    splitMinorGroups(model);
   const minorBlock =
     model.minorGroups.length > 0
       ? `<details class="minor-block">
            <summary>
              <span class="badge badge-minor">建议确认</span>
-             ${model.minorGroups.length} 组可接受差异（共 ${model.minors.length} 个步骤）· 多为位置偏移、显示效果或测试数据变化
+             ${model.minorGroups.length} 组非阻断差异（共 ${degradedStepsOf + benignStepsOf} 个步骤）：
+             ${degradedStepsOf} 步内容确有变化（${degradedGroups.length} 组）、${benignStepsOf} 步内容未变（${benignGroups.length} 组）
              <button type="button" class="link-btn" onclick="event.preventDefault();switchCustomerTab('minor')">查看留档</button>
            </summary>
            <ol class="brief-list">${model.minorGroups.map((g, i) => renderIssueBrief(g, i)).join('')}</ol>
@@ -908,11 +940,25 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
       ? `<h3 class="sec-title sec-regress">需要修复 · ${model.regressionGroups.length} 个问题</h3>
          ${model.regressionGroups.map((g, i) => renderIssueGroup(g, i, model)).join('')}`
       : `<div class="empty">本次未发现需要修复的问题</div>`;
-  const minorList =
-    model.minorGroups.length > 0
-      ? `<p class="sec-lead">以下差异未达到阻断标准，多为位置偏移、显示效果或测试数据变化；建议业务确认后接受。</p>
-         ${model.minorGroups.map((g, i) => renderIssueGroup(g, i, model)).join('')}`
+  const {
+    degraded: degradedGroups,
+    benign: benignGroups,
+    degradedSteps: degradedStepsOf,
+    benignSteps: benignStepsOf,
+  } = splitMinorGroups(model);
+  const degradedList =
+    degradedGroups.length > 0
+      ? `<h3 class="sec-title sec-minor">${IMPACT_TIER_LABEL.degraded} · ${degradedGroups.length} 个问题（${degradedStepsOf} 步）</h3>
+         <p class="sec-lead">页面内容确实发生了变化，但操作仍可完成。建议评估后修复，可协商是否延期。</p>
+         ${degradedGroups.map((g, i) => renderIssueGroup(g, i, model)).join('')}`
       : '';
+  const benignList =
+    benignGroups.length > 0
+      ? `<h3 class="sec-title sec-minor">${IMPACT_TIER_LABEL.benign} · ${benignGroups.length} 组（${benignStepsOf} 步）</h3>
+         <p class="sec-lead">页面内容未发生变化，差异来自整体位置偏移、字体渲染或测试数据不同，不需要你处理。</p>
+         ${benignGroups.map((g, i) => renderIssueGroup(g, i + degradedGroups.length, model)).join('')}`
+      : '';
+  const minorList = `${degradedList}${benignList}`;
   const uncoveredRatio = c.expectedSteps > 0 ? c.uncoveredSteps / c.expectedSteps : 0;
   const verdictClass =
     batch?.failedRunCount
@@ -944,7 +990,7 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
       : c.regressSteps > 0
       ? `影响 ${c.regressSteps} 个检测步骤${c.minorSteps > 0 ? `；另有 ${c.minorSteps} 步为可接受差异，建议业务确认` : ''} · ${model.shipAdviceLabel}`
       : c.minorSteps > 0
-        ? `${c.minorSteps} 步存在可接受差异，建议业务确认 · ${model.shipAdviceLabel}`
+        ? `${c.minorSteps} 步存在差异（${c.degradedSteps} 步内容确有变化、${c.benignSteps} 步内容未变），建议业务确认 · ${model.shipAdviceLabel}`
         : c.uncoveredSteps > 0
           ? model.shipAdviceLabel
           : `已对比 ${c.comparedSteps} 个步骤，与验收基线一致 · ${model.shipAdviceLabel}`;
@@ -954,13 +1000,22 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
   const minorTabCount = minorRunCount + minorEvidenceCount;
   const showMinorTab = minorTabCount > 0;
   const minorTabLabelText = showMinorTab ? minorTabLabel(minorEvidenceCount, c.minorSteps, minorRunCount) : '';
-  const stepsHint = `本报告共 ${c.expectedSteps} 步`;
   const scopeLine = batch
     ? `交付批次 · ${batch.completedRunCount}/${batch.expectedRunCount} 个运行`
     : model.reportScope === 'all'
       ? '全部脚本截图'
       : 'Golden 回归';
   const ctxParts = [model.envLabel, model.releaseTag ? `v${model.releaseTag}` : ''].filter(Boolean);
+  // 对账句：三档之和必须等于已对比步骤数，并显式交代未单列证据的步骤去处
+  const footSegments: string[] = [];
+  if (c.regressSteps > 0) footSegments.push(`${c.regressSteps} 步${IMPACT_TIER_LABEL.blocking}`);
+  if (c.degradedSteps > 0) footSegments.push(`${c.degradedSteps} 步${IMPACT_TIER_LABEL.degraded}`);
+  if (c.benignSteps > 0) footSegments.push(`${c.benignSteps} 步${IMPACT_TIER_LABEL.benign}`);
+  if (c.passSteps > 0) footSegments.push(`${c.passSteps} 步完全一致`);
+  const verdictFoot =
+    `已对比 ${c.comparedSteps} / 共 ${c.expectedSteps} 步：${footSegments.join('、') || '无有效对比'}` +
+    (c.uncoveredSteps > 0 ? `；另有 ${c.uncoveredSteps} 步缺少基线，未参与判定` : '') +
+    (model.accounting.ungroupedReason ? `。${model.accounting.ungroupedReason}` : '');
   const ctxLine = ctxParts.length > 0 ? `${esc(ctxParts.join(' · '))} · ` : '';
   const scopeNote = batch
     ? '<div class="report-scope-note">本报告按交付批次清单精确汇总；每项数据均绑定业务场景、账号与运行，不包含批次外历史数据。</div>'
@@ -989,18 +1044,12 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
       ${renderTrendHint(model)}
       ${renderCoverageBar(model)}
       <div class="stats">
-        <div class="stat"><span class="n n-red">${c.regressSteps}</span><span class="l">需要修复</span><span class="h">步骤级，需处理</span></div>
-        <div class="stat"><span class="n n-amber">${c.minorSteps}</span><span class="l">可接受差异</span><span class="h">建议业务确认</span></div>
+        <div class="stat"><span class="n n-red">${c.regressSteps}</span><span class="l">${IMPACT_TIER_LABEL.blocking}</span><span class="h">内容变了，阻断使用</span></div>
+        <div class="stat"><span class="n n-amber">${c.degradedSteps}</span><span class="l">${IMPACT_TIER_LABEL.degraded}</span><span class="h">内容有变化，建议修</span></div>
+        <div class="stat"><span class="n n-gray">${c.benignSteps}</span><span class="l">${IMPACT_TIER_LABEL.benign}</span><span class="h">内容未变，仅位移/显示差异</span></div>
         <div class="stat"><span class="n n-green">${c.passSteps}</span><span class="l">完全一致</span><span class="h">与基线零差异</span></div>
-        <div class="stat"><span class="n">${c.comparedSteps}</span><span class="l">已对比步骤</span><span class="h">${esc(stepsHint)}</span></div>
       </div>
-      <div class="verdict-foot">${c.regressSteps > 0
-        ? `已对比 ${c.comparedSteps} 步：${c.regressSteps} 步需修复、${c.minorSteps} 步为可接受差异、${c.passSteps} 步完全一致${c.uncoveredSteps > 0 ? `；另有 ${c.uncoveredSteps} 步缺少基线，未参与判定` : ''}`
-        : c.minorSteps > 0
-          ? `已对比 ${c.comparedSteps} 步：${c.minorSteps} 步为可接受差异、${c.passSteps} 步完全一致${c.uncoveredSteps > 0 ? `；另有 ${c.uncoveredSteps} 步缺少基线` : ''}`
-          : c.uncoveredSteps > 0
-            ? `已对比 ${c.comparedSteps} 步未发现问题；另有 ${c.uncoveredSteps} 步缺少基线，未参与判定`
-            : `已对比 ${c.comparedSteps} 步，与验收基线一致`}</div>
+      <div class="verdict-foot">${esc(verdictFoot)}</div>
     </div>
 
     <div class="tabs">
