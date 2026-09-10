@@ -109,16 +109,22 @@ export class ApprovalListPage extends GenericListPage {
 
   /** Golden 快速判空：页签角标全 0 或空状态，无待审批数据 */
   async isPendingGoldenEmpty(): Promise<boolean> {
-    await this.switchToPending().catch(() => undefined);
+    await this.activateBestPendingSegment().catch(() => undefined);
     if (await this.hasDataRows()) return false;
 
     const cached = this.docNoFromCachedBodies();
     if (cached) return false;
 
-    const candidates = await this.collectPendingTabs();
-    const hasPositive = candidates.some((c) => (c.badge ?? 0) > 0);
-    if (hasPositive) return false;
-    if (candidates.length > 0 && candidates.every((c) => c.badge === 0)) return true;
+    const segments = await this.collectPendingSegments();
+    const hasPositive = segments.some((c) => (c.badge ?? 0) > 0);
+    if (hasPositive) {
+      for (const seg of segments) {
+        if (this.shouldSkipPendingTab(seg, hasPositive)) continue;
+        await this.clickPendingSegment(seg).catch(() => undefined);
+        if (await this.hasDataRows()) return false;
+      }
+    }
+    if (segments.length > 0 && segments.every((c) => c.badge === 0)) return true;
 
     const empty = await this.scope()
       .getByText(this.catalog.emptyTextRe!)
@@ -130,6 +136,7 @@ export class ApprovalListPage extends GenericListPage {
 
   /** Golden 取单号：不轮询全部待审批子页签 */
   async readPendingDocNoFast(): Promise<string> {
+    await this.activateBestPendingSegment().catch(() => undefined);
     const cached = this.docNoFromCachedBodies();
     if (cached) return cached;
     if (await this.hasDataRows()) {
@@ -190,11 +197,11 @@ export class ApprovalListPage extends GenericListPage {
         r.status() === 200,
       { timeout },
     );
-    const candidates = await this.collectPendingTabs();
-    const hasPositive = candidates.some((c) => (c.badge ?? 0) > 0);
-    const pick = candidates.find((c) => !this.shouldSkipPendingTab(c, hasPositive)) || candidates[0];
+    const segments = await this.collectPendingSegments();
+    const hasPositive = segments.some((c) => (c.badge ?? 0) > 0);
+    const pick = segments.find((c) => !this.shouldSkipPendingTab(c, hasPositive)) || segments[0];
     if (pick) {
-      await this.clickPendingSubTab(pick).catch(() => undefined);
+      await this.clickPendingSegment(pick).catch(() => undefined);
     } else {
       await this.lightClearFilters();
     }
@@ -256,11 +263,11 @@ export class ApprovalListPage extends GenericListPage {
     let docNo = await this.readDocNoFromListApi().catch(() => '');
     if (docNo) return docNo;
 
-    const candidates = await this.collectPendingTabs();
-    const hasPositive = candidates.some((c) => (c.badge ?? 0) > 0);
-    for (const entry of candidates) {
+    const segments = await this.collectPendingSegments();
+    const hasPositive = segments.some((c) => (c.badge ?? 0) > 0);
+    for (const entry of segments) {
       if (this.shouldSkipPendingTab(entry, hasPositive)) continue;
-      await this.clickPendingSubTab(entry).catch(() => undefined);
+      await this.clickPendingSegment(entry).catch(() => undefined);
       await this.lightClearFilters();
       docNo = this.docNoFromCachedBodies();
       if (docNo) return docNo;
@@ -323,6 +330,10 @@ export class ApprovalListPage extends GenericListPage {
     return m ? Number(m[1]) : null;
   }
 
+  private escapeRe(text: string): string {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
   private pendingTabPriority(label: string): number {
     if (/员工业务/.test(label)) return 4;
     if (/待审批-全部/.test(label) || label === '全部') return 3;
@@ -342,9 +353,38 @@ export class ApprovalListPage extends GenericListPage {
     entry: { label: string; badge: number | null },
     hasPositive: boolean,
   ): boolean {
+    if (/对公业务/.test(entry.label) && (entry.badge ?? 0) === 0) return true;
     if (entry.badge === 0) return true;
     if (hasPositive && /对公业务/.test(entry.label)) return true;
     return false;
+  }
+
+  private normalizePendingSegmentLabel(raw: string): string {
+    const s = String(raw || '').trim();
+    if (s === '全部') return '待审批-全部';
+    return s.replace(/\s*-\s*/g, '-');
+  }
+
+  /** UAT 等环境把多个待审批子页签嵌在一个 tab 内，从文案解析分段 */
+  private parsePendingSegmentsFromText(
+    text: string,
+  ): Array<{ label: string; badge: number | null }> {
+    const norm = String(text || '').replace(/\s+/g, ' ').trim();
+    const out: Array<{ label: string; badge: number | null }> = [];
+    const re = /(待审批[-·][^\s(]+|员工业务|对公业务|全部)\s*\((\d+)\)/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(norm))) {
+      out.push({ label: this.normalizePendingSegmentLabel(m[1]), badge: Number(m[2]) });
+    }
+    return out;
+  }
+
+  private sortPendingSegments<T extends { label: string; badge: number | null }>(hits: T[]): T[] {
+    return [...hits].sort((a, b) => {
+      const badgeDiff = (b.badge ?? -1) - (a.badge ?? -1);
+      if (badgeDiff !== 0) return badgeDiff;
+      return this.pendingTabPriority(b.label) - this.pendingTabPriority(a.label);
+    });
   }
 
   private async pendingSubTabBar(): Promise<Locator> {
@@ -358,22 +398,74 @@ export class ApprovalListPage extends GenericListPage {
     return this.scope().locator('.ant-tabs').last();
   }
 
-  private async activePendingSubTab(): Promise<{ label: string; badge: number | null } | null> {
+  private segmentClickTarget(host: Locator, label: string, badge: number | null): Locator {
+    const badgePart = badge == null ? '\\d+' : String(badge);
+    const pattern = new RegExp(`${this.escapeRe(label)}\\s*\\(\\s*${badgePart}\\s*\\)`);
+    return host.getByText(pattern).first();
+  }
+
+  private async collectPendingSegments(): Promise<
+    Array<{ label: string; badge: number | null; clickTarget: Locator }>
+  > {
     const bar = await this.pendingSubTabBar();
-    const active = bar.locator(`${TAB}.ant-tabs-tab-active`).first();
-    if (!(await active.isVisible({ timeout: 1_000 }).catch(() => false))) return null;
-    const raw = ((await active.innerText().catch(() => '')) || '').replace(/\s+/g, ' ');
-    const label = this.normalizeTabLabel(raw);
-    if (!this.isPendingSubTab(label)) return null;
-    return { label, badge: this.parseTabBadge(raw) };
+    const composite = bar.locator(TAB).filter({ hasText: /待审批|员工业务|对公业务/ });
+    if (await composite.count()) {
+      const tab = composite.first();
+      const parsed = this.parsePendingSegmentsFromText(await tab.innerText().catch(() => ''));
+      if (parsed.length >= 2) {
+        return this.sortPendingSegments(
+          parsed.map(({ label, badge }) => ({
+            label,
+            badge,
+            clickTarget: this.segmentClickTarget(tab, label, badge),
+          })),
+        );
+      }
+    }
+
+    const tabs = bar.locator(TAB);
+    const n = await tabs.count();
+    const hits: Array<{ label: string; badge: number | null; clickTarget: Locator }> = [];
+    for (let i = 0; i < n; i += 1) {
+      const tab = tabs.nth(i);
+      const raw = ((await tab.innerText().catch(() => '')) || '').replace(/\s+/g, ' ');
+      const normalized = this.normalizeTabLabel(raw);
+      if (!this.isPendingSubTab(normalized)) continue;
+      hits.push({ label: normalized, badge: this.parseTabBadge(raw), clickTarget: tab });
+    }
+    return this.sortPendingSegments(hits);
+  }
+
+  private async collectPendingTabs(): Promise<{ tab: Locator; label: string; badge: number | null }[]> {
+    const segments = await this.collectPendingSegments();
+    return segments.map((s) => ({ tab: s.clickTarget, label: s.label, badge: s.badge }));
+  }
+
+  private async clickPendingSegment(entry: {
+    label: string;
+    badge: number | null;
+    clickTarget: Locator;
+  }): Promise<void> {
+    await expect(entry.clickTarget).toBeVisible({ timeout: 8_000 }).catch(() => undefined);
+    const respP = this.page
+      .waitForResponse(
+        (r) =>
+          PENDING_LIST_API_RE.test(r.url()) &&
+          r.request().method() === 'POST' &&
+          r.status() === 200,
+        { timeout: 8_000 },
+      )
+      .catch(() => null);
+    await entry.clickTarget.click().catch(() => undefined);
+    await Promise.race([respP, this.waitListSettled()]);
+    await this.waitListSettled();
   }
 
   private async isOnSkippableEmptyPendingTab(): Promise<boolean> {
-    const active = await this.activePendingSubTab();
-    if (!active) return false;
-    const candidates = await this.collectPendingTabs();
-    const hasPositive = candidates.some((c) => (c.badge ?? 0) > 0);
-    return this.shouldSkipPendingTab(active, hasPositive);
+    if (await this.hasDataRows()) return false;
+    const segments = await this.collectPendingSegments();
+    const hasPositive = segments.some((c) => (c.badge ?? 0) > 0);
+    return segments.some((c) => !this.shouldSkipPendingTab(c, hasPositive) && (c.badge ?? 0) > 0);
   }
 
   /** 轻量清筛选：徽章 × + 外露，不打开筛选面板 */
@@ -385,33 +477,33 @@ export class ApprovalListPage extends GenericListPage {
     await this.waitListSettled();
   }
 
-  private async collectPendingTabs(): Promise<{ tab: Locator; label: string; badge: number | null }[]> {
-    const bar = await this.pendingSubTabBar();
-    const tabs = bar.locator(TAB);
-    const n = await tabs.count();
-    const hits: { tab: Locator; label: string; badge: number | null }[] = [];
-    for (let i = 0; i < n; i += 1) {
-      const tab = tabs.nth(i);
-      const raw = ((await tab.innerText().catch(() => '')) || '').replace(/\s+/g, ' ');
-      const normalized = this.normalizeTabLabel(raw);
-      if (!this.isPendingSubTab(normalized)) continue;
-      hits.push({ tab, label: normalized, badge: this.parseTabBadge(raw) });
-    }
-    hits.sort((a, b) => {
-      const badgeDiff = (b.badge ?? -1) - (a.badge ?? -1);
-      if (badgeDiff !== 0) return badgeDiff;
-      return this.pendingTabPriority(b.label) - this.pendingTabPriority(a.label);
-    });
-    return hits;
-  }
+  /**
+   * 待审批子页签就绪：点内层分段（避开空的「对公业务」），不抛错。
+   * UAT 把「待审批-全部 / 对公业务 / 员工业务」嵌在同一 tab 内，不能点整块。
+   */
+  async activateBestPendingSegment(): Promise<boolean> {
+    if (await this.hasDataRows()) return true;
+    await this.lightClearFilters();
+    if (await this.hasDataRows()) return true;
 
-  private async clickPendingSubTab(entry: { tab: Locator; label: string }): Promise<void> {
-    await this.clickTab(entry.tab, LIST_API);
-    const active = await this.activePendingSubTab();
-    if (active && !this.tabLabelMatches(active.label, entry.label)) {
-      await entry.tab.click({ force: true });
-      await this.waitListSettled();
+    const segments = await this.collectPendingSegments();
+    if (!segments.length) return false;
+
+    const hasPositive = segments.some((c) => (c.badge ?? 0) > 0);
+    const ordered = segments.filter((c) => !this.shouldSkipPendingTab(c, hasPositive));
+    const tryList = ordered.length ? ordered : segments.filter((c) => !/对公业务/.test(c.label));
+
+    for (const entry of tryList) {
+      await this.clickPendingSegment(entry).catch(() => undefined);
+      if (await this.hasDataRows()) return true;
+      await this.lightClearFilters();
+      if (await this.hasDataRows()) return true;
     }
+
+    if (tryList[0]) {
+      await this.clickPendingSegment(tryList[0]).catch(() => undefined);
+    }
+    return await this.hasDataRows();
   }
 
   /**
@@ -419,25 +511,17 @@ export class ApprovalListPage extends GenericListPage {
    * Golden / 读单号 / 空列表恢复统一入口。
    */
   async ensurePendingReady(): Promise<boolean> {
-    if (await this.hasDataRows()) return true;
-    await this.lightClearFilters();
-    if (await this.hasDataRows()) return true;
+    if (await this.activateBestPendingSegment()) return true;
 
-    const candidates = await this.collectPendingTabs();
-    const hasPositive = candidates.some((c) => (c.badge ?? 0) > 0);
-
-    for (const entry of candidates) {
+    const segments = await this.collectPendingSegments();
+    const hasPositive = segments.some((c) => (c.badge ?? 0) > 0);
+    for (const entry of segments) {
       if (this.shouldSkipPendingTab(entry, hasPositive)) continue;
-      await this.clickPendingSubTab(entry).catch(() => undefined);
-      if (await this.hasDataRows()) return true;
-      await this.lightClearFilters();
-      if (await this.hasDataRows()) return true;
-
       const needReset =
         (await this.hasActiveFilterTrigger().catch(() => false)) || (await this.hasExposedClear());
-      if (needReset) {
-        await this.resetFilterState().catch(() => undefined);
-      }
+      if (!needReset) continue;
+      await this.clickPendingSegment(entry).catch(() => undefined);
+      await this.resetFilterState().catch(() => undefined);
       if (await this.hasDataRows()) return true;
     }
     return false;
@@ -501,16 +585,19 @@ export class ApprovalListPage extends GenericListPage {
     throw new Error(`未找到页签「${want}」`);
   }
 
-  /** 回到待审批区：优先角标 > 0 且非对公业务的子页签 */
+  /** 回到待审批区：优先角标 > 0 且非对公业务的子页签内层分段 */
   private async findPendingTab(): Promise<Locator> {
-    const candidates = await this.collectPendingTabs();
-    const hasPositive = candidates.some((c) => (c.badge ?? 0) > 0);
-    const preferred = candidates.filter((c) => !this.shouldSkipPendingTab(c, hasPositive));
-    if (preferred.length) return preferred[0].tab;
+    const segments = await this.collectPendingSegments();
+    const hasPositive = segments.some((c) => (c.badge ?? 0) > 0);
+    const preferred = segments.filter((c) => !this.shouldSkipPendingTab(c, hasPositive));
+    if (preferred.length) return preferred[0].clickTarget;
+
+    const fallback = segments.find((c) => !/对公业务/.test(c.label)) || segments[0];
+    if (fallback) return fallback.clickTarget;
 
     let lastErr: unknown;
     for (const name of PENDING_TABS) {
-      if (/对公业务/.test(name) && hasPositive) continue;
+      if (/对公业务/.test(name)) continue;
       try {
         return await this.findTab(name);
       } catch (err) {
@@ -543,15 +630,24 @@ export class ApprovalListPage extends GenericListPage {
   /** 切换到指定页签（待审批 / 已审批 / 抄送我 / 操作历史） */
   async switchTab(tab: ApprovalTab | string): Promise<void> {
     const label = String(tab);
-    const tabEl = this.isPendingTabLabel(label) ? await this.findPendingTab() : await this.findTab(label);
     if (this.isPendingTabLabel(label)) {
-      await this.clickPendingSubTab({ tab: tabEl, label });
-    } else {
-      await this.clickTab(tabEl, this.tabApiHint(label));
+      const segments = await this.collectPendingSegments();
+      const hasPositive = segments.some((c) => (c.badge ?? 0) > 0);
+      const preferred = segments.filter((c) => !this.shouldSkipPendingTab(c, hasPositive));
+      const pick = preferred[0] || segments.find((c) => !/对公业务/.test(c.label));
+      if (pick) {
+        await this.clickPendingSegment(pick).catch(() => undefined);
+      } else {
+        const tabEl = await this.findPendingTab();
+        await this.clickTab(tabEl, LIST_API);
+      }
+      if (!(await this.hasDataRows())) {
+        await this.activateBestPendingSegment().catch(() => undefined);
+      }
+      return;
     }
-    if (this.isPendingTabLabel(label) && !(await this.hasDataRows())) {
-      await this.ensurePendingReady().catch(() => undefined);
-    }
+    const tabEl = await this.findTab(label);
+    await this.clickTab(tabEl, this.tabApiHint(label));
   }
 
   // ---------- 搜索 ----------
@@ -590,23 +686,21 @@ export class ApprovalListPage extends GenericListPage {
 
   /** Golden / 准备步骤：确保指定单号在待审批列表可见 */
   async ensureRowVisible(code: string): Promise<void> {
-    await this.ensurePendingReady();
+    await this.activateBestPendingSegment().catch(() => undefined);
     const row = this.rowByCode(code);
     if (await row.isVisible({ timeout: 2_000 }).catch(() => false)) return;
     await this.searchUntilRow(code);
   }
 
   /** 新建提交后审批列表偶发索引延迟：多次搜索直到行出现 */
-  async searchUntilRow(code: string, attempts = 4): Promise<void> {
+  async searchUntilRow(code: string, attempts = 2): Promise<void> {
     let lastErr: unknown;
     for (let i = 0; i < attempts; i += 1) {
       try {
         if (i > 0) {
-          await this.page.waitForTimeout(2_000 * i);
-          await this.goto();
-          await this.expectLoaded();
+          await this.page.waitForTimeout(1_500);
+          await this.activateBestPendingSegment().catch(() => undefined);
         }
-        await this.ensurePendingReady();
         await this.search(code);
         await this.expectRowContains(code);
         return;

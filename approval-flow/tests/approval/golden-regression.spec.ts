@@ -28,6 +28,8 @@ function configuredDocNo(): string {
 }
 
 async function prepareGolden(approval: ApprovalListPage) {
+  await approval.activateBestPendingSegment().catch(() => undefined);
+
   if (await approval.isPendingGoldenEmpty()) {
     test.skip(true, GOLDEN_SKIP_MSG);
   }
@@ -42,15 +44,12 @@ async function prepareGolden(approval: ApprovalListPage) {
 
   try {
     await approval.ensureRowVisible(goldenCtx.docNo);
-    return;
   } catch {
-    goldenCtx.docNo = '';
-    const docNo = await approval.readPendingDocNoFast();
-    if (!docNo) {
+    goldenCtx.docNo = await approval.readPendingDocNoFast();
+    if (!goldenCtx.docNo) {
       test.skip(true, GOLDEN_SKIP_MSG);
     }
-    goldenCtx.docNo = docNo;
-    await approval.ensureRowVisible(docNo);
+    await approval.ensureRowVisible(goldenCtx.docNo);
   }
 }
 
@@ -77,7 +76,6 @@ test.describe('审批列表 · Golden 回归', () => {
       await approval.expectListReady();
       await approval.switchTab(TABS.pending);
       await approval.expectListReady();
-      await prepareGolden(approval);
     }, { snapshot: 'approval-tabs', step: 2 });
 
     const docNo = goldenCtx.docNo;
@@ -92,7 +90,8 @@ test.describe('审批列表 · Golden 回归', () => {
     }, { snapshot: 'approval-filter', step: 3 });
 
     await flowStep('搜索并打开详情', async () => {
-      await prepareGolden(approval);
+      if (!docNo) test.skip(true, GOLDEN_SKIP_MSG);
+      await approval.switchTab(TABS.pending);
       await approval.search(docNo);
       await approval.openByCode(docNo);
       await approval.expectDetailVisible();
