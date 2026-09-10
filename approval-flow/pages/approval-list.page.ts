@@ -5,6 +5,7 @@ import {
   BUSINESS_TYPE_SELECT,
   COMBO_TRIGGER,
   DETAIL,
+  DETAIL_MARKERS,
   DOC_NO_RE,
   EXPOSED_FILTER_FIELDS,
   FILTER_LABELS,
@@ -1134,6 +1135,23 @@ export class ApprovalListPage extends GenericListPage {
     await expect(entrance, '未打开审批详情（.approve-entrance / full-screen）').toBeVisible({
       timeout: 20_000,
     });
+    await this.scope()
+      .locator('.ant-spin-spinning, .ant-skeleton-active, .page-loading-mask')
+      .first()
+      .waitFor({ state: 'hidden', timeout: 30_000 })
+      .catch(() => undefined);
+    const detail = this.scope().locator(DETAIL).filter({ visible: true }).first();
+    const content = detail.getByText(DETAIL_MARKERS).filter({ visible: true }).first();
+    const actions = detail
+      .getByRole('button', { name: /通\s*过|驳\s*回|返\s*回/ })
+      .filter({ visible: true })
+      .first();
+    await expect(async () => {
+      const ok =
+        (await content.isVisible().catch(() => false)) ||
+        (await actions.isVisible().catch(() => false));
+      expect(ok, '审批详情内容未加载完成').toBeTruthy();
+    }).toPass({ timeout: 30_000 });
   }
 
   async expectDetailVisible(): Promise<void> {

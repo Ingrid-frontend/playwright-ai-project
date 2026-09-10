@@ -13,6 +13,8 @@ export const TABLE = '.ant-table';
 export const ROW = '.ant-table-tbody tr.ant-table-row';
 export const TAB = '.ant-tabs-tab';
 export const DETAIL = '.approve-entrance';
+/** 详情区内容就绪特征（壳层 .approve-entrance 出现 ≠ 表单已加载） */
+export const DETAIL_MARKERS = /基本信息|审批意见|操作历史|单据信息|审批详情/;
 export const SEARCH_PLACEHOLDER = '申请人/事由/单号';
 
 export const BUSINESS_TYPE_SELECT = '.approve-business-filter-type-select';

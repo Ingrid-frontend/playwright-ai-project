@@ -1,4 +1,4 @@
-import { Page, expect } from '@playwright/test';
+import { Page } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -13,6 +13,7 @@ import {
 } from './screenshot-capture.js';
 import {
   getCurrentRoute,
+  waitForAppLoadingHidden,
   waitForContentReady,
   waitForRouteStable,
   waitForViewportStable,
@@ -20,6 +21,7 @@ import {
 
 export {
   waitForApiResponse,
+  waitForAppLoadingHidden,
   waitForElementHidden,
   waitForElementVisible,
   waitForPostInteractionPaint,
@@ -69,23 +71,7 @@ export async function screenshotWhenStable(
     console.log('⚠️  等待网络空闲超时，继续执行截图');
   }
 
-  const loadingSelectors = [
-    '.ant-spin',
-    '.ant-spin-spinning',
-    '.page-loading-mask',
-  ];
-
-  for (const sel of loadingSelectors) {
-    try {
-      const el = page.locator(sel);
-      const count = await el.count();
-      if (count > 0) {
-        await expect(el, `等待 ${sel} 消失`).toBeHidden({ timeout: 1500 });
-      }
-    } catch {
-      continue;
-    }
-  }
+  await waitForAppLoadingHidden(page, 20_000);
 
   await waitForContentReady(page);
   await waitForViewportStable(page);

@@ -1,8 +1,21 @@
-import { Page, expect } from '@playwright/test';
+import { type FrameLocator, Page, expect } from '@playwright/test';
+
+const SPIN_SEL = '.ant-spin-spinning, .ant-loading, .ant-skeleton-active, .page-loading-mask';
+
+async function waitSpinHidden(scope: Page | FrameLocator, timeout: number): Promise<void> {
+  await scope.locator(SPIN_SEL).first().waitFor({ state: 'hidden', timeout }).catch(() => undefined);
+}
+
+/** 顶层 + zoom iframe 内的 loading / skeleton 均消失后再截图 */
+export async function waitForAppLoadingHidden(page: Page, timeout = 15_000): Promise<void> {
+  await waitSpinHidden(page, timeout);
+  if (await page.locator('iframe[src*="openBySelf=zoom"]').count()) {
+    await waitSpinHidden(page.frameLocator('iframe[src*="openBySelf=zoom"]'), timeout);
+  }
+}
 
 export async function waitForPostInteractionPaint(page: Page): Promise<void> {
-  await page.locator('.ant-spin-spinning, .ant-loading').first().waitFor({ state: 'hidden', timeout: 8_000 }).catch(() => {});
-  await page.locator('.page-loading-mask').first().waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => {});
+  await waitForAppLoadingHidden(page, 8_000);
 
   const antdAnimationSelectors = [
     '.ant-drawer-open',
