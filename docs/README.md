@@ -78,6 +78,7 @@ npm run selector-drift:suggest
 | --- | --- |
 | [ui-regression-report-for-customer.md](./ui-regression-report-for-customer.md) | **要把报告发给客户前**。怎么读、分级口径（为什么「差异 1.23%」反而不用管）、刻意不放什么 |
 | [customer-report-implementation.md](./customer-report-implementation.md) | 要改报告代码时（内部）。模块职责、判定口径「性质优先而非差异率优先」、已知维护陷阱 |
+| [report-quality-review-2026-09-10.md](./report-quality-review-2026-09-10.md) | 要做报告质量整改时（内部）。首屏口径矛盾、AI 审计与像素报告结论冲突的完整问题清单 |
 | [page-change-detection-design.md](./page-change-detection-design.md) | 想扩展检测能力时。对标 PageWatch 的逆向分析 + 本项目缺口 + 不建议照搬的部分 |
 
 ```bash
@@ -117,6 +118,7 @@ npm run trust:report         # Intent 可信度
 | 文档 | 什么时候看 |
 | --- | --- |
 | [OPTIMIZATION-ROADMAP.md](./OPTIMIZATION-ROADMAP.md) | 想知道「某个能力做了没」。已落地清单 + 环境变量速查 |
+| [scripts-map.md](./scripts-map.md) | 想知道「有哪些命令可用」。146 条 npm scripts 按域分组的唯一索引 + 6 个孤儿工具 CLI 纳管清单 |
 
 ---
 
@@ -137,7 +139,7 @@ npm run trust:report         # Intent 可信度
 | 定时任务 + 失败通知 | [test-jobs.md](./test-jobs.md) |
 | 飞书权限报错 | [feishu-permissions-guide.md](./feishu-permissions-guide.md) |
 | 看失败 trace | `npm run trace:show` |
-| 忘了有哪些命令 | `npm run cli -- --help` |
+| 忘了有哪些命令 | `npm run cli -- --help` · [scripts-map.md](./scripts-map.md) |
 
 ## 维护约定
 
