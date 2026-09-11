@@ -18,13 +18,18 @@ import { isDateCategoryDirSegment } from '../../src/utils/date-category.js';
 import { isLoginLikeText, isLoginLikeUrl } from '../../src/utils/login-detection.js';
 import { parseSnapshotIdentity } from '../report/compare-screenshots-utils.js';
 import { clusterDiffRegions } from '../report/image-diff.js';
-import { classifyDifference, isProcessOnlyStep } from '../report/coverage-stats.js';
+import { classifyDifference, isProcessOnlyStep, impactTierOf, buildShipAdvice, type CoverageSlot } from '../report/coverage-stats.js';
 import { classifyRegionNature, isActionableNature } from '../report/change-nature.js';
 import {
   friendlyScriptLabel,
   friendlyStepLabel,
   regionZoneLabel,
 } from '../report/customer-report-naming.js';
+import { parseUiAuditSummary, matchAuditFinding } from '../report/customer-report-audit.js';
+import { buildCustomerIssueCopy, formatThreePartReason, stripCustomerJargon } from '../report/customer-report-copy.js';
+import { buildCustomerReportModel } from '../report/customer-report-model.js';
+import { buildCustomerReportSummary } from '../report/customer-report-summary.js';
+import { renderCustomerReportHtml } from '../report/customer-report-render.js';
 import { PNG } from 'pngjs';
 import * as uiIssuesMod from '../report/ui-issues-index.js';
 import * as feishuMod from '../feishu/index.js';
@@ -366,5 +371,169 @@ const unknownNature = classifyDifference(
 );
 assert.equal(unknownNature.status, 'regress');
 pass('性质未知时保守判为衰退');
+
+assert.equal(bigAndReal.evidence.impactTier, 'blocking');
+assert.equal(bigButShifted.evidence.impactTier, 'benign');
+assert.equal(impactTierOf({ status: 'minor', evidence: { actionableRegions: 1 } }), 'degraded');
+pass('impactTier 由性质回推');
+
+const threePart = formatThreePartReason({
+  where: '审批详情 · 页面中部',
+  change: '相对已验收画面新增了一块可见内容',
+  impact: '影响待确认',
+});
+assert.match(threePart, /【哪里】/);
+assert.match(threePart, /【变成什么】/);
+assert.match(threePart, /【影响】/);
+assert.equal(stripCustomerJargon('监控区域 Golden 样式回归'), '页面区域 样式变化');
+pass('三部分格式与黑话清洗');
+
+const auditIndex = parseUiAuditSummary({
+  steps: [
+    {
+      scriptKey: 'intent/dev/审批详情',
+      stepName: '审批详情-after · main approve',
+      stepNumber: 4,
+      verdict: 'fail',
+      issues: [
+        {
+          id: 'uia-1',
+          type: 'occlusion',
+          severity: 'blocker',
+          description: '审批操作按钮被新增模块挡住，通过/驳回点不到',
+          confidence: 0.92,
+        },
+      ],
+    },
+  ],
+});
+const matched = matchAuditFinding(
+  {
+    scriptKey: 'intent/dev/审批详情',
+    stepName: '审批详情-after__main_approve',
+    stepNumber: 4,
+    pageTitle: '审批详情',
+  },
+  auditIndex,
+);
+assert.ok(matched);
+assert.match(matched!.description, /审批操作按钮被新增模块挡住/);
+pass('ui-audit 按 script/step 匹配到像素卡');
+
+const blockingCopy = buildCustomerIssueCopy({
+  impactTier: 'blocking',
+  scriptLabel: '预发布环境 · 审批流程',
+  stepLabel: '审批详情',
+  pageTitle: '审批详情',
+  nature: 'content',
+  region: { x: 400, y: 280, w: 400, h: 120 },
+  imageWidth: 1280,
+  imageHeight: 720,
+  pixelReason: '页面中部有一块 400x120 的区域内容变化',
+  audit: matched,
+});
+assert.match(blockingCopy.reason, /【哪里】/);
+assert.match(blockingCopy.reason, /【变成什么】/);
+assert.match(blockingCopy.reason, /【影响】/);
+assert.ok(blockingCopy.reason.includes('审批操作按钮被新增模块挡住'));
+assert.ok(!/^页面中部有一块/.test(blockingCopy.reason));
+assert.ok(!blockingCopy.reason.includes('内容发生了变化') || blockingCopy.auditAttached);
+pass('需修复文案含三部分且注入审计描述');
+
+const pixelOnlyCopy = buildCustomerIssueCopy({
+  impactTier: 'blocking',
+  stepLabel: '审批详情',
+  nature: 'appeared',
+  region: { x: 400, y: 280, w: 400, h: 120 },
+  imageWidth: 1280,
+  imageHeight: 720,
+  pixelReason: '页面中部有一块 400x120 的区域新增内容',
+});
+assert.match(pixelOnlyCopy.change, /新增了一块可见内容/);
+assert.equal(pixelOnlyCopy.impact, '影响待确认');
+assert.ok(!pixelOnlyCopy.change.includes('内容变化') || pixelOnlyCopy.change.includes('新增'));
+pass('无审计时像素摘要不再只写内容变化');
+
+const blockingSlot: CoverageSlot = {
+  scriptKey: 'intent/dev/审批详情',
+  stepNumber: 4,
+  stepName: '审批详情-after__main_approve',
+  browser: 'chrome',
+  status: 'regress',
+  difference: 0.012,
+  pageTitle: '审批详情',
+  processOnly: false,
+  regionsWidth: 1280,
+  regionsHeight: 720,
+  impactTier: 'blocking',
+  evidence: {
+    reason: '页面中部有一块 400x120 的区域内容变化',
+    topRegionPixels: 9000,
+    topRegionWidth: 400,
+    topRegionHeight: 120,
+    significantRegions: 1,
+    actionableRegions: 1,
+    dominantNature: 'content',
+    impactTier: 'blocking',
+  },
+  regions: [
+    {
+      x: 400,
+      y: 280,
+      w: 400,
+      h: 120,
+      pixels: 9000,
+      ratio: 0.0098,
+      severity: 'high',
+      nature: 'content',
+    },
+  ],
+};
+const shipAdvice = buildShipAdvice({
+  regressSteps: 1,
+  degradedSteps: 0,
+  benignSteps: 0,
+  uncoveredSteps: 0,
+  passSteps: 0,
+  comparedSteps: 1,
+});
+const fixtureModel = buildCustomerReportModel(
+  {
+    expectedSteps: 1,
+    comparedSteps: 1,
+    uncoveredSteps: 0,
+    passSteps: 0,
+    minorSteps: 0,
+    degradedSteps: 0,
+    benignSteps: 0,
+    regressSteps: 1,
+    passRate: 0,
+    shipAdvice,
+    verdict: 'regress',
+    verdictLabel: '有 1 步需要修复',
+    slots: [blockingSlot],
+  },
+  '2026-09-11 16:00:00',
+  new Map(),
+  new Map(),
+  { auditIndex },
+);
+const blockingGroup = fixtureModel.regressionGroups[0];
+assert.ok(blockingGroup);
+assert.match(blockingGroup!.reason, /【哪里】/);
+assert.match(blockingGroup!.reason, /【变成什么】/);
+assert.match(blockingGroup!.reason, /【影响】/);
+assert.ok(blockingGroup!.reason.includes('审批操作按钮被新增模块挡住'));
+assert.ok(!/^页面中部/.test(blockingGroup!.reason.split('\n')[0] || ''));
+const summary = buildCustomerReportSummary(fixtureModel);
+assert.equal(summary.actionItems.length, 1);
+assert.match(summary.items[0]!.text, /【哪里】/);
+assert.match(summary.items[0]!.change, /审批操作按钮被新增模块挡住/);
+assert.equal(summary.actionItems[0]!.auditAttached, true);
+const fixtureHtml = renderCustomerReportHtml(fixtureModel);
+assert.match(fixtureHtml, /哪里/);
+assert.ok(fixtureHtml.includes('审批操作按钮被新增模块挡住'));
+assert.ok(!fixtureHtml.includes('无需处理'));
+pass('客户模型/摘要/HTML 共用三部分文案且审计注入同一张卡');
 
 console.log('\n✅ smoke-report-modules 通过');

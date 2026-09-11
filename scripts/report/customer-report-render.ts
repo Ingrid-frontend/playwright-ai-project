@@ -5,6 +5,7 @@ import type {
   CustomerReportModel,
 } from './customer-report-model.js';
 import { customerReportCss, customerReportClientJs } from './customer-report-assets.js';
+import { impactTierLabel } from './customer-report-copy.js';
 import { friendlyScriptLabel, friendlyStepLabel } from './customer-report-naming.js';
 import { formatDurationSec, formatScriptStartedAt, summarizeScriptRuns } from './customer-report-run-meta.js';
 import { totalRunCount } from './customer-report-run-history.js';
@@ -17,10 +18,11 @@ function esc(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function badgeClass(v: CustomerBrowserCard['verdict']): string {
+function badgeClass(v: CustomerBrowserCard['verdict'], tier?: CustomerBrowserCard['impactTier']): string {
+  if (tier === 'blocking' || v === 'regress') return 'badge-regress';
+  if (tier === 'degraded') return 'badge-minor';
+  if (tier === 'benign' || v === 'minor') return 'badge-minor';
   if (v === 'pass') return 'badge-pass';
-  if (v === 'minor') return 'badge-minor';
-  if (v === 'regress') return 'badge-regress';
   return 'badge-uncovered';
 }
 
@@ -74,8 +76,8 @@ function renderSlider(card: CustomerBrowserCard): string {
 function renderMarkedView(card: CustomerBrowserCard): string {
   const w = card.imageWidth || 0;
   const h = card.imageHeight || 0;
-  // 「轻微变化」按分级口径就是无需处理，卡内不允许出现红框，否则与结论自相矛盾。
-  const suppressReal = card.verdict !== 'regress';
+  // 红框只给「需修复」；影响体验/可忽略用灰框，避免和发版建议打架。
+  const suppressReal = card.impactTier !== 'blocking';
   const boxes =
     w > 0 && h > 0
       ? card.regions
@@ -120,21 +122,32 @@ function renderOverlayView(card: CustomerBrowserCard): string {
     <div class="view-hint">红色为逐像素差异点</div>`;
 }
 
+function renderCopyBlock(copy: CustomerBrowserCard['customerCopy'] | undefined, fallback: string): string {
+  if (copy && (copy.where || copy.change || copy.impact)) {
+    return `<div class="copy-3">
+      ${copy.where ? `<div><span class="copy-k">哪里</span>${esc(copy.where)}</div>` : ''}
+      ${copy.change ? `<div><span class="copy-k">变成什么</span>${esc(copy.change)}</div>` : ''}
+      ${copy.impact ? `<div><span class="copy-k">影响</span>${esc(copy.impact)}</div>` : ''}
+    </div>`;
+  }
+  return `<div class="plain">${esc(fallback)}</div>`;
+}
+
 function renderBrowserCard(card: CustomerBrowserCard): string {
   return `
-  <div class="browser-card ${esc(card.verdict)}">
+  <div class="browser-card ${esc(card.verdict)}" data-impact-tier="${esc(card.impactTier)}">
     <div class="bc-head">
       <strong>${esc(card.browserLabel)}</strong>
-      <span class="badge ${badgeClass(card.verdict)}">${esc(card.verdictLabel)} · ${esc(card.differenceLabel)}</span>
+      <span class="badge ${badgeClass(card.verdict, card.impactTier)}">${esc(card.verdictLabel)} · ${esc(card.differenceLabel)}</span>
     </div>
     ${renderSlider(card)}
-    <div class="plain">${esc(card.plainText)}</div>
+    ${renderCopyBlock(card.customerCopy, card.plainText)}
   </div>`;
 }
 
 function renderPageCard(page: CustomerPageCard, opts?: { compact?: boolean }): string {
   return `
-  <section class="page-card ${opts?.compact ? 'compact' : ''}" data-status="${esc(page.worstStatus)}">
+  <section class="page-card ${opts?.compact ? 'compact' : ''}" data-status="${esc(page.worstStatus)}" data-impact-tier="${esc(page.impactTier)}">
     <div class="page-head">
       <div>
         <div class="page-title">${esc(page.pageTitle)}${page.processOnly ? '<span class="tag-process">过程截图</span>' : ''}</div>
@@ -149,7 +162,8 @@ function renderPageCard(page: CustomerPageCard, opts?: { compact?: boolean }): s
 
 /** 一个根因一张卡：代表页给出证据，同源步骤折叠在下方 */
 function renderIssueGroup(group: CustomerIssueGroup, index: number): string {
-  const statusLabel = group.status === 'regress' ? '明显衰退' : '轻微变化';
+  const statusLabel = impactTierLabel(group.impactTier);
+  const copyHtml = renderCopyBlock(group.customerCopy, group.reason || '检测到与验收画面的差异');
   const others =
     group.others.length > 0
       ? `<details class="group-others">
@@ -158,14 +172,14 @@ function renderIssueGroup(group: CustomerIssueGroup, index: number): string {
          </details>`
       : '';
   return `
-  <article class="issue-group ${esc(group.status)}" id="${esc(group.anchorId)}">
+  <article class="issue-group ${esc(group.status)}" id="${esc(group.anchorId)}" data-impact-tier="${esc(group.impactTier)}">
     <header class="ig-head">
       <div class="ig-index">${index + 1}</div>
       <div class="ig-main">
         <div class="ig-title">${esc(group.title)}</div>
-        <div class="ig-reason">${esc(group.reason || '检测到与验收基线的差异')}</div>
+        <div class="ig-reason">${copyHtml}</div>
         <div class="ig-meta">
-          <span class="badge ${group.status === 'regress' ? 'badge-regress' : 'badge-minor'}">${statusLabel}</span>
+          <span class="badge ${badgeClass(group.status, group.impactTier)}">${statusLabel}</span>
           <span>最大差异 ${esc(group.maxDifferenceLabel)}</span>
           <span>影响 ${group.affectedSteps} 个步骤</span>
           <span>${esc(group.scriptLabels.join('、'))}</span>
@@ -184,12 +198,13 @@ function renderIssueGroup(group: CustomerIssueGroup, index: number): string {
 function renderIssueBrief(group: CustomerIssueGroup, index: number): string {
   const scope =
     group.affectedSteps > 1 ? `影响 ${group.affectedSteps} 个步骤` : '影响 1 个步骤';
+  const reason = group.customerCopy?.reason || group.reason || '检测到与验收画面的差异';
   return `
-  <li class="brief ${esc(group.status)}">
+  <li class="brief ${esc(group.status)}" data-impact-tier="${esc(group.impactTier)}">
     <span class="brief-no">${index + 1}</span>
     <span class="brief-main">
       <span class="brief-title">${esc(group.title)}</span>
-      <span class="brief-reason">${esc(group.reason || '检测到与验收基线的差异')}</span>
+      <span class="brief-reason">${esc(reason)}</span>
     </span>
     <span class="brief-meta">
       <span class="brief-diff">${esc(group.maxDifferenceLabel)}</span>
@@ -341,22 +356,35 @@ function renderConclusionBody(model: CustomerReportModel): string {
       ? `<h3 class="sec-title sec-regress">需要处理 · ${model.regressionGroups.length} 个问题</h3>
          <p class="sec-lead">按根因归并，同一变化影响多个步骤只算一个问题。点「看对比图」查看证据。</p>
          <ol class="brief-list">${model.regressionGroups.map((g, i) => renderIssueBrief(g, i)).join('')}</ol>`
-      : `<div class="empty ok">本次未发现需要处理的 UI 衰退</div>`;
+      : `<div class="empty ok">本次未发现需要修复的 UI 问题</div>`;
 
-  const minorBlock =
-    model.minorGroups.length > 0
+  const degradedBlock =
+    model.degradedGroups.length > 0
+      ? `<h3 class="sec-title sec-minor">影响体验 · ${model.degradedGroups.length} 项，建议确认</h3>
+         <p class="sec-lead">内容有小范围变化，建议确认是否接受后再发版。</p>
+         <ol class="brief-list">${model.degradedGroups.map((g, i) => renderIssueBrief(g, i)).join('')}</ol>`
+      : '';
+
+  const asksConfirm = Boolean(model.coverage.shipAdvice?.includes('确认'));
+  const benignLead = asksConfirm
+    ? '位移或渲染差异，内容与已验收画面一致；发版建议仍请对照上方确认口径。'
+    : '位移或渲染差异，内容与已验收画面一致。';
+  const benignBlock =
+    model.benignGroups.length > 0
       ? `<details class="minor-block">
            <summary>
-             <span class="badge badge-minor">无需处理</span>
-             ${model.minorGroups.length} 项轻微变化（共 ${model.minors.length} 个步骤）· 内容与基线一致，仅位置偏移或字体渲染差异
+             <span class="badge badge-minor">可忽略</span>
+             ${model.benignGroups.length} 项可忽略差异（共 ${model.coverage.benignSteps} 个步骤）
            </summary>
-           <ol class="brief-list">${model.minorGroups.map((g, i) => renderIssueBrief(g, i)).join('')}</ol>
+           <p class="sec-lead">${esc(benignLead)}</p>
+           <ol class="brief-list">${model.benignGroups.map((g, i) => renderIssueBrief(g, i)).join('')}</ol>
          </details>`
       : '';
 
   return `
     ${focus}
-    ${minorBlock}
+    ${degradedBlock}
+    ${benignBlock}
     ${renderUncoveredSummary(model)}
   `;
 }
@@ -368,29 +396,32 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
     model.regressionGroups.length > 0
       ? `<h3 class="sec-title sec-regress">需要处理 · ${model.regressionGroups.length} 个问题</h3>
          ${model.regressionGroups.map((g, i) => renderIssueGroup(g, i)).join('')}`
-      : `<div class="empty">本次未发现需要处理的 UI 衰退</div>`;
-  const minorList =
-    model.minorGroups.length > 0
-      ? `<h3 class="sec-title sec-minor">无需处理 · ${model.minorGroups.length} 项轻微变化</h3>
-         <p class="sec-lead">以下差异范围很小，多为位置偏移或字体渲染不同，不影响功能，可不处理。</p>
-         ${model.minorGroups.map((g, i) => renderIssueGroup(g, i)).join('')}`
+      : `<div class="empty">本次未发现需要修复的 UI 问题</div>`;
+  const degradedList =
+    model.degradedGroups.length > 0
+      ? `<h3 class="sec-title sec-minor">影响体验 · ${model.degradedGroups.length} 项</h3>
+         <p class="sec-lead">内容有小范围变化，建议确认是否接受。</p>
+         ${model.degradedGroups.map((g, i) => renderIssueGroup(g, i)).join('')}`
+      : '';
+  const benignList =
+    model.benignGroups.length > 0
+      ? `<h3 class="sec-title sec-minor">可忽略 · ${model.benignGroups.length} 项</h3>
+         <p class="sec-lead">以下多为位置偏移或字体渲染差异，内容与已验收画面一致。</p>
+         ${model.benignGroups.map((g, i) => renderIssueGroup(g, i)).join('')}`
       : '';
   const verdictClass =
-    c.regressSteps > 0 ? 'bad' : c.minorSteps > 0 ? 'watch' : c.comparedSteps === 0 ? 'unknown' : 'good';
+    c.regressSteps > 0 ? 'bad' : c.degradedSteps > 0 || c.minorSteps > 0 ? 'watch' : c.comparedSteps === 0 ? 'unknown' : 'good';
   const headline =
     c.regressSteps > 0
       ? `发现 ${model.regressionGroups.length} 个 UI 问题需要处理`
-      : c.minorSteps > 0
-        ? `存在 ${c.minorSteps} 处轻微变化，建议人工确认`
-        : c.comparedSteps === 0
-          ? '本次无有效对比，无法给出结论'
-          : '本次未发现 UI 衰退';
-  const subline =
-    c.regressSteps > 0
-      ? `影响 ${c.regressSteps} 个检测步骤${c.minorSteps > 0 ? `；另有 ${c.minorSteps} 步为位置偏移等无害差异，无需处理` : ''}`
-      : c.minorSteps > 0
-        ? `${c.minorSteps} 步存在位置偏移或字体渲染差异，已逐像素核对内容一致，建议人工确认是否接受`
-        : `已对比 ${c.comparedSteps} 个步骤，与验收基线一致`;
+      : c.degradedSteps > 0
+        ? `存在 ${c.degradedSteps} 处影响体验，建议人工确认`
+        : c.minorSteps > 0
+          ? `存在 ${c.minorSteps} 处轻微变化，建议人工确认`
+          : c.comparedSteps === 0
+            ? '本次无有效对比，无法给出结论'
+            : '本次未发现 UI 衰退';
+  const subline = c.shipAdvice;
 
   const runSummary = summarizeScriptRuns([...model.scriptRuns.values()]);
   const runTotal = totalRunCount(model.runHistory);
@@ -417,14 +448,14 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
   <div class="wrap">
     <div class="verdict ${verdictClass}">
       <div class="verdict-title">${esc(headline)}</div>
-      <div class="verdict-meta">${esc(subline)}</div>
+      <div class="verdict-meta ship-advice">${esc(subline)}</div>
       <div class="stats">
-        <div class="stat"><span class="n n-red">${c.regressSteps}</span><span class="l">明显衰退</span><span class="h">步骤级，需修复</span></div>
-        <div class="stat"><span class="n n-amber">${c.minorSteps}</span><span class="l">轻微变化</span><span class="h">内容一致，无需处理</span></div>
+        <div class="stat"><span class="n n-red">${c.regressSteps}</span><span class="l">需修复</span><span class="h">步骤级，发版前处理</span></div>
+        <div class="stat"><span class="n n-amber">${c.degradedSteps}</span><span class="l">影响体验</span><span class="h">建议确认</span></div>
         <div class="stat"><span class="n n-green">${c.passSteps}</span><span class="l">完全一致</span><span class="h">与基线零差异</span></div>
-        <div class="stat"><span class="n">${c.comparedSteps}</span><span class="l">已对比步骤</span><span class="h">${esc(stepsHint)}</span></div>
+        <div class="stat"><span class="n">${c.benignSteps}</span><span class="l">可忽略</span><span class="h">${c.shipAdvice.includes('确认') ? '建议扫一眼' : '内容一致'}</span></div>
       </div>
-      <div class="verdict-foot">合格率 ${passPct}%（已对比步骤中无明显衰退的占比）${c.uncoveredSteps > 0 ? ` · ${c.uncoveredSteps} 步尚无验收基线，未参与判定` : ''}</div>
+      <div class="verdict-foot">合格率 ${passPct}%（已对比步骤中无明显衰退的占比）${c.uncoveredSteps > 0 ? ` · ${c.uncoveredSteps} 步尚无验收基线，未参与判定` : ''} · ${esc(stepsHint)}</div>
     </div>
 
     <div class="tabs">
@@ -439,7 +470,8 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
     </div>
     <div id="panel-regress" class="panel">
       ${regressList}
-      ${minorList}
+      ${degradedList}
+      ${benignList}
     </div>
     <div id="panel-scope" class="panel">
       <p class="sec-lead">下表为<strong>最新一轮</strong> run 的全部检测项。「未检测」表示该步骤有截图但尚无可配对的验收基线；标记「过程」的是操作中间态截图，不作为验收结论。历次 run 见「运行历史」。</p>

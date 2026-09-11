@@ -18,6 +18,7 @@ import { buildCustomerReportModel } from './customer-report-model.js';
 import { renderCustomerReportHtml } from './customer-report-render.js';
 import { resolveScriptRunMeta, resolveScriptRunHistory } from './customer-report-run-meta.js';
 import { enrichRunHistoryComparisons } from './customer-report-run-history.js';
+import { writeCustomerReportSummary } from './customer-report-summary.js';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
@@ -92,8 +93,10 @@ async function main() {
   const outAbs = path.resolve(outputPath);
   fs.mkdirSync(path.dirname(outAbs), { recursive: true });
   fs.writeFileSync(outAbs, html, 'utf-8');
+  const summaryRel = writeCustomerReportSummary(model, outputPath);
 
   console.log(`\n✅ 客户报告: ${outputPath}`);
+  console.log(`   摘要: ${summaryRel.replaceAll(path.sep, '/')}`);
   console.log(
     `   ${coverage.verdictLabel} · 已检测 ${coverage.comparedSteps}/${coverage.expectedSteps} · 衰退 ${coverage.regressSteps}`,
   );

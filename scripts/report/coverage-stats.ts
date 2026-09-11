@@ -7,13 +7,21 @@ import { resolveCustomerReportConfig } from './ui-regression-config.js';
 import { regionZoneLabel } from './customer-report-naming.js';
 
 /**
- * 客户口径的四档判定：
+ * 客户口径的步骤状态（兼容旧字段）：
  * - pass      与验收基线一致（含可忽略的渲染抖动）
- * - minor     有变化但范围很小，通常是字体渲染/滚动条/时间戳，仅告知
- * - regress   明显衰退，需要处理
+ * - minor     有变化但未到需修复；再按 impactTier 拆成「影响体验 / 可忽略」
+ * - regress   需修复
  * - uncovered 无验收基线，未做对比
+ *
+ * 对外四档（impactTier，客户文案/摘要只认这一套）：
+ * - blocking  需修复
+ * - degraded  影响体验（小范围内容变化）
+ * - benign    可忽略（位移/渲染/分散噪声）
+ * - pass      完全一致
+ * - uncovered 未判定
  */
 export type CoverageStatus = 'pass' | 'minor' | 'regress' | 'uncovered';
+export type ImpactTier = 'blocking' | 'degraded' | 'benign' | 'pass' | 'uncovered';
 
 export interface DiffEvidence {
   /** 触发当前判定的原因，用于报告直接展示 */
@@ -29,6 +37,8 @@ export interface DiffEvidence {
   dominantNature?: ChangeNature;
   /** 位移量描述，如 `6px`，仅当主导性质为位移时有值 */
   shiftLabel?: string;
+  /** 对外四档；缺省时由 status + actionableRegions 回推 */
+  impactTier?: ImpactTier;
 }
 
 export interface CoverageSlot {
@@ -52,6 +62,8 @@ export interface CoverageSlot {
   /** before / skipped 等过程截图，不作为验收结论 */
   processOnly: boolean;
   evidence?: DiffEvidence;
+  /** 对外四档；与 evidence.impactTier 一致 */
+  impactTier?: ImpactTier;
 }
 
 export interface CoverageStats {
@@ -60,12 +72,58 @@ export interface CoverageStats {
   uncoveredSteps: number;
   passSteps: number;
   minorSteps: number;
+  /** 影响体验：小范围内容变化（原 minor 中 actionable 的部分） */
+  degradedSteps: number;
+  /** 可忽略：位移/渲染/分散噪声（原 minor 中非 actionable 的部分） */
+  benignSteps: number;
   regressSteps: number;
-  /** (passSteps + minorSteps) / comparedSteps；无对比项时为 0 */
+  /** (passSteps + minorSteps) / comparedSteps；无对比项时为 0。本 PR 不改公式。 */
   passRate: number;
+  /** 给客户的一句发版建议，不含百分比粉饰 */
+  shipAdvice: string;
   verdict: 'pass' | 'attention' | 'regress' | 'insufficient_coverage';
   verdictLabel: string;
   slots: CoverageSlot[];
+}
+
+export function impactTierOf(slot: {
+  status: CoverageStatus;
+  evidence?: Pick<DiffEvidence, 'actionableRegions' | 'impactTier'>;
+  impactTier?: ImpactTier;
+}): ImpactTier {
+  if (slot.impactTier) return slot.impactTier;
+  if (slot.evidence?.impactTier) return slot.evidence.impactTier;
+  if (slot.status === 'uncovered') return 'uncovered';
+  if (slot.status === 'pass') return 'pass';
+  if (slot.status === 'regress') return 'blocking';
+  return (slot.evidence?.actionableRegions ?? 0) > 0 ? 'degraded' : 'benign';
+}
+
+export function buildShipAdvice(c: {
+  regressSteps: number;
+  degradedSteps: number;
+  benignSteps: number;
+  uncoveredSteps: number;
+  passSteps: number;
+  comparedSteps: number;
+}): string {
+  if (c.comparedSteps === 0) {
+    return c.uncoveredSteps > 0
+      ? `本次 ${c.uncoveredSteps} 步均无验收基线，无法给出发版建议。请先为关键页面建立基线。`
+      : '本次无有效对比，无法给出发版建议。';
+  }
+  const identical = `已对比 ${c.comparedSteps} 步，其中 ${c.passSteps} 步完全一致`;
+  if (c.regressSteps > 0) {
+    const extra = c.degradedSteps > 0 ? `；另有 ${c.degradedSteps} 步影响体验，建议一并确认` : '';
+    return `有 ${c.regressSteps} 步需要修复后再发版${extra}。${identical}。`;
+  }
+  if (c.degradedSteps > 0) {
+    return `无需要修复的项，但有 ${c.degradedSteps} 步影响体验，建议确认后再发版。${identical}。`;
+  }
+  if (c.benignSteps > 0) {
+    return `无需要修复或影响体验的项。另有 ${c.benignSteps} 步为可忽略差异，建议扫一眼确认是否接受。${identical}。`;
+  }
+  return '已对比步骤均与验收基线完全一致。';
 }
 
 function isBaselineKind(kind?: string): boolean {
@@ -157,6 +215,7 @@ export function classifyDifference(
 
   if (difference <= 0) {
     evidence.reason = '与验收基线完全一致';
+    evidence.impactTier = 'pass';
     return { status: 'pass', evidence };
   }
   // 没有区域数据（旧缓存 / 仅算了占比的对比）时无法做证据判定，退回占比口径，
@@ -164,20 +223,25 @@ export function classifyDifference(
   if (!regions) {
     if (difference >= cfg.majorRatio) {
       evidence.reason = `整页差异 ${(difference * 100).toFixed(2)}%（无区域明细）`;
+      evidence.impactTier = 'blocking';
       return { status: 'regress', evidence };
     }
     evidence.reason =
       difference < cfg.identicalRatio
         ? '仅有可忽略的渲染抖动'
         : `整页差异 ${(difference * 100).toFixed(2)}%，范围很小`;
-    return { status: difference < cfg.identicalRatio ? 'pass' : 'minor', evidence };
+    const tiny = difference < cfg.identicalRatio;
+    evidence.impactTier = tiny ? 'pass' : 'benign';
+    return { status: tiny ? 'pass' : 'minor', evidence };
   }
   if (significant.length === 0) {
     evidence.reason =
       difference < cfg.identicalRatio
         ? '仅有可忽略的渲染抖动'
         : `差异 ${(difference * 100).toFixed(2)}% 全部分散在文字边缘或滚动条，未发现成块变化`;
-    return { status: difference < cfg.identicalRatio ? 'pass' : 'minor', evidence };
+    const tiny = difference < cfg.identicalRatio;
+    evidence.impactTier = tiny ? 'pass' : 'benign';
+    return { status: tiny ? 'pass' : 'minor', evidence };
   }
 
   // 所有成块变化都只是位移或渲染差异：内容本身没变，客户无需处理
@@ -188,6 +252,7 @@ export function classifyDifference(
     evidence.reason = shift
       ? `${where}内容整体平移 ${shift}，逐像素比对后内容完全一致，不是功能问题`
       : `${where}仅有字体渲染/抗锯齿级别的差异，内容未发生变化`;
+    evidence.impactTier = 'benign';
     return { status: 'minor', evidence };
   }
 
@@ -197,18 +262,22 @@ export function classifyDifference(
   const what = top.nature ? natureLabel(top.nature) : '内容变化';
   if (bigBlock) {
     evidence.reason = `${where}有一块 ${top.w}x${top.h} 的区域${what}`;
+    evidence.impactTier = 'blocking';
     return { status: 'regress', evidence };
   }
   if (wideBlock) {
     evidence.reason = `${where}整块区域（${top.w}x${top.h}）${what}`;
+    evidence.impactTier = 'blocking';
     return { status: 'regress', evidence };
   }
   if (difference >= cfg.majorRatio && actionable.length >= 3) {
     evidence.reason = `页面有 ${actionable.length} 处内容变化，最大一处在${where}（整页差异 ${(difference * 100).toFixed(2)}%）`;
+    evidence.impactTier = 'blocking';
     return { status: 'regress', evidence };
   }
 
   evidence.reason = `仅 ${actionable.length} 处小范围${what}，最大一处在${where}（${top.w}x${top.h}），不影响整体布局`;
+  evidence.impactTier = 'degraded';
   return { status: 'minor', evidence };
 }
 
@@ -284,6 +353,7 @@ export function buildCoverageStats(
             currentPath: shot.relativePath,
             pageTitle,
             processOnly,
+            impactTier: 'uncovered',
           });
           continue;
         }
@@ -311,18 +381,29 @@ export function buildCoverageStats(
           regionsHeight: hit.height,
           processOnly,
           evidence,
+          impactTier: evidence.impactTier ?? (status === 'regress' ? 'blocking' : status === 'pass' ? 'pass' : undefined),
         });
       }
     }
   }
 
   const expectedSteps = slots.length;
-  const uncoveredSteps = slots.filter((s) => s.status === 'uncovered').length;
-  const passSteps = slots.filter((s) => s.status === 'pass').length;
-  const minorSteps = slots.filter((s) => s.status === 'minor').length;
-  const regressSteps = slots.filter((s) => s.status === 'regress').length;
+  const uncoveredSteps = slots.filter((s) => impactTierOf(s) === 'uncovered').length;
+  const passSteps = slots.filter((s) => impactTierOf(s) === 'pass').length;
+  const degradedSteps = slots.filter((s) => impactTierOf(s) === 'degraded').length;
+  const benignSteps = slots.filter((s) => impactTierOf(s) === 'benign').length;
+  const regressSteps = slots.filter((s) => impactTierOf(s) === 'blocking').length;
+  const minorSteps = degradedSteps + benignSteps;
   const comparedSteps = passSteps + minorSteps + regressSteps;
   const passRate = comparedSteps > 0 ? (passSteps + minorSteps) / comparedSteps : 0;
+  const shipAdvice = buildShipAdvice({
+    regressSteps,
+    degradedSteps,
+    benignSteps,
+    uncoveredSteps,
+    passSteps,
+    comparedSteps,
+  });
 
   let verdict: CoverageStats['verdict'];
   let verdictLabel: string;
@@ -335,6 +416,9 @@ export function buildCoverageStats(
   } else if (expectedSteps === 0) {
     verdict = 'insufficient_coverage';
     verdictLabel = '无可检测步骤';
+  } else if (degradedSteps > 0) {
+    verdict = 'attention';
+    verdictLabel = `存在 ${degradedSteps} 处影响体验，建议人工确认`;
   } else if (minorSteps > 0) {
     verdict = 'attention';
     verdictLabel = `存在 ${minorSteps} 处轻微变化，建议人工确认`;
@@ -349,8 +433,11 @@ export function buildCoverageStats(
     uncoveredSteps,
     passSteps,
     minorSteps,
+    degradedSteps,
+    benignSteps,
     regressSteps,
     passRate,
+    shipAdvice,
     verdict,
     verdictLabel,
     slots,

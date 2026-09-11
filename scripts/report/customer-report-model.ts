@@ -1,13 +1,20 @@
 import {
+  impactTierOf,
   significantRegions,
   type CoverageSlot,
   type CoverageStats,
   type CoverageStatus,
+  type ImpactTier,
 } from './coverage-stats.js';
 import { isActionableNature, natureLabel, type ChangeNature } from './change-nature.js';
 import { buildPlainDescription } from './customer-report-plain.js';
 import { friendlyScriptLabel, friendlyStepLabel } from './customer-report-naming.js';
 import type { ScriptRunMeta, ScriptRunHistoryEntry } from './customer-report-run-meta.js';
+import { loadUiAuditIndex, matchAuditFinding, type UiAuditIndex } from './customer-report-audit.js';
+import {
+  buildCustomerIssueCopy,
+  type CustomerThreePartCopy,
+} from './customer-report-copy.js';
 
 export type CustomerStatus = CoverageStatus;
 
@@ -38,6 +45,8 @@ export type CustomerBrowserCard = {
   plainText: string;
   /** 判定依据，直接展示给客户，避免「为什么这算衰退」的疑问 */
   reason: string;
+  /** 哪里 / 变成什么 / 影响 */
+  customerCopy?: CustomerThreePartCopy;
   regions: CustomerRegion[];
   /** 需要处理的区域数，用于图例与「仅位移」提示 */
   actionableRegions: number;
@@ -47,6 +56,7 @@ export type CustomerBrowserCard = {
   shiftLabel?: string;
   imageWidth?: number;
   imageHeight?: number;
+  impactTier: ImpactTier;
 };
 
 export type CustomerPageCard = {
@@ -66,6 +76,7 @@ export type CustomerPageCard = {
   /** 同源变化的聚合键，用于把同一根因的多个步骤合成一组 */
   clusterKey: string;
   maxDifference: number;
+  impactTier: ImpactTier;
 };
 
 /** 同一根因在多个步骤重复出现时聚成一组，首屏只显示代表页 */
@@ -82,11 +93,14 @@ export type CustomerIssueGroup = {
   /** 客户可读的业务流程名列表 */
   scriptLabels: string[];
   reason: string;
+  /** 哪里 / 变成什么 / 影响 */
+  customerCopy?: CustomerThreePartCopy;
   maxDifferenceLabel: string;
   /** 该组内需要处理的区域总数；为 0 表示只有位移/渲染差异 */
   actionableRegions: number;
   /** 位移量描述，如 `9px`，仅位移类差异有值 */
   shiftLabel?: string;
+  impactTier: ImpactTier;
 };
 
 export type CustomerReportModel = {
@@ -103,8 +117,12 @@ export type CustomerReportModel = {
   uncovered: CustomerPageCard[];
   /** 需要处理的问题：按根因聚合，首屏速览与明细共用同一份 */
   regressionGroups: CustomerIssueGroup[];
-  /** 轻微变化分组，默认折叠 */
+  /** 轻微变化分组（影响体验 + 可忽略），兼容旧调用 */
   minorGroups: CustomerIssueGroup[];
+  /** 影响体验：小范围内容变化，建议确认 */
+  degradedGroups: CustomerIssueGroup[];
+  /** 可忽略：位移/渲染差异 */
+  benignGroups: CustomerIssueGroup[];
 };
 
 function browserLabel(browser: string): string {
@@ -114,18 +132,66 @@ function browserLabel(browser: string): string {
   return 'Chrome';
 }
 
-function verdictLabel(status: CustomerStatus): string {
-  if (status === 'pass') return '通过';
-  if (status === 'minor') return '轻微变化';
-  if (status === 'regress') return '明显衰退';
-  return '未检测';
+function verdictLabel(status: CustomerStatus, tier: ImpactTier): string {
+  if (tier === 'blocking' || status === 'regress') return '需修复';
+  if (tier === 'degraded') return '影响体验';
+  if (tier === 'benign') return '可忽略';
+  if (status === 'pass' || tier === 'pass') return '完全一致';
+  return '未判定';
 }
+
+const TIER_RANK: Record<ImpactTier, number> = {
+  blocking: 5,
+  degraded: 4,
+  benign: 3,
+  uncovered: 2,
+  pass: 1,
+};
 
 function worstStatus(statuses: CustomerStatus[]): CustomerStatus {
   if (statuses.includes('regress')) return 'regress';
   if (statuses.includes('minor')) return 'minor';
   if (statuses.includes('uncovered')) return 'uncovered';
   return 'pass';
+}
+
+function worstImpactTier(tiers: ImpactTier[]): ImpactTier {
+  return tiers.reduce((worst, t) => (TIER_RANK[t] > TIER_RANK[worst] ? t : worst), 'pass');
+}
+
+function topActionableRegion(card: Pick<CustomerBrowserCard, 'regions'>) {
+  return card.regions.find((r) => r.actionable) || card.regions[0];
+}
+
+function copyForCard(
+  slot: CoverageSlot,
+  card: CustomerBrowserCard,
+  labels: { scriptLabel: string; stepLabel: string; pageTitle: string },
+  auditIndex: UiAuditIndex | null,
+): CustomerThreePartCopy {
+  const region = topActionableRegion(card);
+  const audit = matchAuditFinding(
+    {
+      scriptKey: slot.scriptKey,
+      stepName: slot.stepName,
+      stepNumber: slot.stepNumber,
+      pageTitle: slot.pageTitle,
+    },
+    auditIndex,
+  );
+  return buildCustomerIssueCopy({
+    impactTier: card.impactTier,
+    scriptLabel: labels.scriptLabel,
+    stepLabel: labels.stepLabel,
+    pageTitle: labels.pageTitle,
+    nature: region?.nature ?? slot.evidence?.dominantNature,
+    region,
+    imageWidth: card.imageWidth,
+    imageHeight: card.imageHeight,
+    shiftLabel: card.shiftLabel,
+    pixelReason: slot.evidence?.reason,
+    audit,
+  });
 }
 
 function toBrowserCard(slot: CoverageSlot): CustomerBrowserCard {
@@ -153,11 +219,12 @@ function toBrowserCard(slot: CoverageSlot): CustomerBrowserCard {
     };
   });
   const actionableCount = regions.filter((r) => r.actionable).length;
+  const impactTier = impactTierOf(slot);
   return {
     browser: slot.browser,
     browserLabel: browserLabel(slot.browser),
     verdict: slot.status,
-    verdictLabel: verdictLabel(slot.status),
+    verdictLabel: verdictLabel(slot.status, impactTier),
     difference,
     differenceLabel: `${(difference * 100).toFixed(2)}%`,
     baselinePath: slot.baselinePath,
@@ -171,6 +238,7 @@ function toBrowserCard(slot: CoverageSlot): CustomerBrowserCard {
     shiftLabel: slot.evidence?.shiftLabel,
     imageWidth: slot.regionsWidth,
     imageHeight: slot.regionsHeight,
+    impactTier,
   };
 }
 
@@ -202,7 +270,10 @@ function groupIssues(pages: CustomerPageCard[], anchorPrefix: string): CustomerI
       return a.stepNumber - b.stepNumber;
     });
     const representative = sorted[0]!;
-    const primary = representative.browsers.find((b) => b.verdict === representative.worstStatus);
+    const primary =
+      representative.browsers.find((b) => b.impactTier === representative.impactTier) ||
+      representative.browsers.find((b) => b.verdict === representative.worstStatus);
+    const copy = primary?.customerCopy;
     groups.push({
       groupKey,
       anchorId: '',
@@ -213,7 +284,8 @@ function groupIssues(pages: CustomerPageCard[], anchorPrefix: string): CustomerI
       affectedSteps: sorted.length,
       scriptKeys: [...new Set(sorted.map((p) => p.scriptKey))],
       scriptLabels: [...new Set(sorted.map((p) => p.scriptLabel))],
-      reason: primary?.reason || '',
+      reason: copy?.reason || primary?.reason || '',
+      customerCopy: copy,
       maxDifferenceLabel: `${(Math.max(...sorted.map((p) => p.maxDifference)) * 100).toFixed(2)}%`,
       actionableRegions: Math.max(
         0,
@@ -222,6 +294,7 @@ function groupIssues(pages: CustomerPageCard[], anchorPrefix: string): CustomerI
       shiftLabel: sorted
         .flatMap((p) => p.browsers.map((b) => b.shiftLabel))
         .find((s): s is string => Boolean(s)),
+      impactTier: worstImpactTier(sorted.map((p) => p.impactTier)),
     });
   }
 
@@ -237,12 +310,25 @@ function groupIssues(pages: CustomerPageCard[], anchorPrefix: string): CustomerI
   return groups;
 }
 
+export type BuildCustomerReportModelOptions = {
+  auditIndex?: UiAuditIndex | null;
+  /** 默认尝试读取 results/ui-audit/summary.json；测试可关 */
+  loadAudit?: boolean;
+};
+
 export function buildCustomerReportModel(
   coverage: CoverageStats,
   generatedAt?: string,
   scriptRuns: Map<string, ScriptRunMeta> = new Map(),
   runHistory: Map<string, ScriptRunHistoryEntry[]> = new Map(),
+  opts?: BuildCustomerReportModelOptions,
 ): CustomerReportModel {
+  const auditIndex =
+    opts?.auditIndex !== undefined
+      ? opts.auditIndex
+      : opts?.loadAudit === false
+        ? null
+        : loadUiAuditIndex();
   const groups = new Map<string, CoverageSlot[]>();
   for (const slot of coverage.slots) {
     const pageKey = `${slot.scriptKey}::${slot.stepNumber}::${slot.stepName}`;
@@ -253,15 +339,29 @@ export function buildCustomerReportModel(
   const pages: CustomerPageCard[] = [];
   for (const [pageKey, slots] of groups) {
     const first = slots[0]!;
+    const scriptLabel = friendlyScriptLabel(first.scriptKey);
+    const stepLabel = friendlyStepLabel(first.stepName);
+    const pageTitle = friendlyStepLabel(first.pageTitle);
     const browsers = slots
-      .map(toBrowserCard)
+      .map((slot) => {
+        const card = toBrowserCard(slot);
+        const copy = copyForCard(slot, card, { scriptLabel, stepLabel, pageTitle }, auditIndex);
+        if (card.impactTier === 'blocking' || card.impactTier === 'degraded' || card.impactTier === 'benign') {
+          card.reason = copy.reason;
+          card.plainText = copy.reason;
+          card.customerCopy = copy;
+        } else {
+          card.customerCopy = copy;
+        }
+        return card;
+      })
       .sort((a, b) => a.browserLabel.localeCompare(b.browserLabel));
     pages.push({
       pageKey,
-      pageTitle: friendlyStepLabel(first.pageTitle),
+      pageTitle,
       scriptKey: first.scriptKey,
-      scriptLabel: friendlyScriptLabel(first.scriptKey),
-      stepLabel: friendlyStepLabel(first.stepName),
+      scriptLabel,
+      stepLabel,
       stepNumber: first.stepNumber,
       stepName: first.stepName,
       browsers,
@@ -271,6 +371,7 @@ export function buildCustomerReportModel(
         slots.reduce((worst, s) => ((s.difference ?? 0) > (worst.difference ?? 0) ? s : worst), first),
       ),
       maxDifference: Math.max(...slots.map((s) => s.difference ?? 0)),
+      impactTier: worstImpactTier(slots.map((s) => impactTierOf(s))),
     });
   }
 
@@ -279,10 +380,14 @@ export function buildCustomerReportModel(
     return a.stepNumber - b.stepNumber;
   });
 
-  const regressions = pages.filter((p) => p.worstStatus === 'regress');
+  const regressions = pages.filter((p) => p.impactTier === 'blocking');
+  const degraded = pages.filter((p) => p.impactTier === 'degraded');
+  const benign = pages.filter((p) => p.impactTier === 'benign');
   const minors = pages.filter((p) => p.worstStatus === 'minor');
-  const passes = pages.filter((p) => p.worstStatus === 'pass');
-  const uncovered = pages.filter((p) => p.worstStatus === 'uncovered');
+  const passes = pages.filter((p) => p.impactTier === 'pass');
+  const uncovered = pages.filter((p) => p.impactTier === 'uncovered');
+  const degradedGroups = groupIssues(degraded, 'degraded');
+  const benignGroups = groupIssues(benign, 'benign');
   return {
     generatedAt: generatedAt ?? new Date().toLocaleString('zh-CN', { hour12: false }),
     scriptRuns,
@@ -294,6 +399,8 @@ export function buildCustomerReportModel(
     passes,
     uncovered,
     regressionGroups: groupIssues(regressions, 'issue'),
-    minorGroups: groupIssues(minors, 'minor'),
+    minorGroups: [...degradedGroups, ...benignGroups],
+    degradedGroups,
+    benignGroups,
   };
 }
