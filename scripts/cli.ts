@@ -57,6 +57,8 @@ const groups: Record<string, { desc: string; cmds: Array<{ name: string; hint: s
       { name: 'heal:suggest', hint: 'Intent 自愈建议写回' },
       { name: 'trust:report', hint: '可信度告警' },
       { name: 'mine:cases', hint: '失败包用例挖掘' },
+      { name: 'prune:flow-batches', hint: '预览/清理 results/flow-report-batches（默认 dry-run）' },
+      { name: 'prune:standalone-reports', hint: '预览/清理 *.standalone.html（默认 dry-run）' },
     ],
   },
 };
