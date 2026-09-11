@@ -158,6 +158,52 @@ export class RequestListPage {
     return text;
   }
 
+  /**
+   * 只读取样：从当前可见首行读单号，没有则返回空串（不超时红灯）。
+   * Golden 必须走这里，而不是先信 REQUEST_DOC_NO。
+   */
+  async readFirstDocNo(): Promise<string> {
+    if (!(await this.hasDataRows())) return '';
+    try {
+      return (await this.pickFirstRowCell(FILTER_LABELS.docNo)).replace(/\s+/g, '');
+    } catch {
+      /* fallback */
+    }
+    try {
+      const row = this.dataRows().first();
+      if (!(await row.isVisible().catch(() => false))) return '';
+      const text = ((await row.innerText()) || '').replace(/\s+/g, ' ');
+      const match = text.match(DOC_NO_RE) || text.match(/[A-Za-z0-9]{8,}/);
+      return match ? match[0] : '';
+    } catch {
+      return '';
+    }
+  }
+
+  async pickKeywordFromList(): Promise<string> {
+    if (!(await this.hasDataRows())) return '';
+    try {
+      const reason = await this.pickFirstRowCell(FILTER_LABELS.reason);
+      const text = (reason || '').replace(/\s+/g, ' ').trim();
+      if (!text || text === '-') return '';
+      return text;
+    } catch {
+      return '';
+    }
+  }
+
+  async docNoVisibleInList(code: string): Promise<boolean> {
+    const t = String(code || '').replace(/\s+/g, '').trim();
+    if (!t) return false;
+    return (await this.rowByCode(t).count().catch(() => 0)) > 0;
+  }
+
+  async keywordVisibleInList(keyword: string): Promise<boolean> {
+    const t = String(keyword || '').replace(/\s+/g, ' ').trim();
+    if (!t) return false;
+    return this.reasonKeywordExists(t);
+  }
+
   async pickFirstDocNo(): Promise<string> {
     await this.clearListQuery();
     await expect
@@ -166,20 +212,11 @@ export class RequestListPage {
         message: '列表没有可解析单号的数据行',
       })
       .toBeGreaterThan(0);
-
-    try {
-      return (await this.pickFirstRowCell(FILTER_LABELS.docNo)).replace(/\s+/g, '');
-    } catch {
-      /* fallback */
+    const live = await this.readFirstDocNo();
+    if (!live) {
+      throw new Error('列表没有可解析单号的数据行');
     }
-    const row = this.dataRows().first();
-    await expect(row, '列表没有可解析单号的数据行').toBeVisible({ timeout: 5_000 });
-    const text = (await row.innerText()).replace(/\s+/g, ' ');
-    const match = text.match(DOC_NO_RE) || text.match(/[A-Za-z0-9]{8,}/);
-    if (!match) {
-      throw new Error(`首行未解析到单号：${text.slice(0, 120)}`);
-    }
-    return match[0];
+    return live;
   }
 
   async expectRowsGreaterThan(n: number) {

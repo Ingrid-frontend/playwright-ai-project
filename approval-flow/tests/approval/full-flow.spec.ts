@@ -3,7 +3,7 @@ import { ApprovalListPage } from '../../pages/approval-list.page';
 import { TABS } from '../../utils/approval-catalog';
 import { env } from '../../utils/env';
 import { bindFlowStepCapture, flowStep } from '../../../src/utils/flow-step';
-import { probeApprovalLiveDocNo, useLiveSeed } from '../../utils/golden-seed';
+import { trySeedGoldenContext, useLiveSeed } from '../../utils/golden-seed';
 
 /**
  * 审批列表全流程（serial，共享登录会话）：
@@ -75,7 +75,7 @@ test.describe('审批列表 · 全流程', () => {
     const approval = new ApprovalListPage(page);
     await approval.goto();
     await approval.expectLoaded();
-    const docNo = useLiveSeed(await probeApprovalLiveDocNo(approval));
+    const docNo = useLiveSeed(await trySeedGoldenContext(approval));
     await flowStep('搜索并打开详情', async () => {
       await approval.search(docNo);
       await approval.openByCode(docNo);

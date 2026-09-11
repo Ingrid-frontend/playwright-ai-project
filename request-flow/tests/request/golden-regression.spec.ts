@@ -3,16 +3,17 @@ import { RequestListPage } from '../../pages/request-list.page';
 import { RequestEditPage } from '../../pages/request-edit.page';
 import { bindFlowStepCapture, flowStep } from '../../../src/utils/flow-step';
 import {
-  probeRequestLiveDocNo,
-  probeRequestLiveFilterKeyword,
+  trySeedGoldenContext,
   useLiveSeed,
 } from '../../utils/golden-seed';
 
 /**
  * Golden 固定回归（只读）：
- * 供像素基线对比。单号/筛选用当前列表可见行现场取样；
- * REQUEST_DOC_NO / REQUEST_FILTER_KEYWORD 仅作对照，过期则忽略并 skip（无可用种子时），
- * 不把历史单据号当搜索词。须使用 golden* 账号档案，勿与 write 档案混跑造单用例。
+ * 种子顺序（trySeedGoldenContext，GOLDEN_FORCE_SEED=1 除外）：
+ *   1) 当前列表 readFirstDocNo / pickKeywordFromList
+ *   2) REQUEST_* / resolveGoldenSeed 仅对照；过期则 annotation golden-seed-stale-ignored
+ *   3) 无现场值则 skip，不搜索历史常量
+ * 须使用 golden* 账号档案，勿与 write 档案混跑造单用例。
  * 多角色时基线按登录账号 slug 分目录（by-account/<slug>）。
  */
 test.describe.configure({ mode: 'serial' });
@@ -38,7 +39,8 @@ test.describe('申请单 · Golden 回归', () => {
     await flowStep('准备列表', async () => {
       await list.ensureOnList();
     }, { capture: false });
-    const docNo = useLiveSeed(await probeRequestLiveDocNo(list));
+    const seed = await trySeedGoldenContext(list);
+    const docNo = useLiveSeed(seed.docNo);
     await flowStep('按单号搜索', async () => {
       await list.search(docNo);
       await list.expectRowContains(docNo);
@@ -49,7 +51,8 @@ test.describe('申请单 · Golden 回归', () => {
     bindFlowStepCapture({ page, runDir: flowRunDir });
     const list = new RequestListPage(page);
     await list.ensureOnList();
-    const keyword = useLiveSeed(await probeRequestLiveFilterKeyword(list));
+    const seed = await trySeedGoldenContext(list);
+    const keyword = useLiveSeed(seed.keyword);
     await flowStep('按事由筛选', async () => {
       await list.filterByReason(keyword);
       await list.expectReasonFilterResult(keyword);
@@ -62,7 +65,8 @@ test.describe('申请单 · Golden 回归', () => {
     bindFlowStepCapture({ page, runDir: flowRunDir });
     const list = new RequestListPage(page);
     await list.ensureOnList();
-    const docNo = useLiveSeed(await probeRequestLiveDocNo(list));
+    const seed = await trySeedGoldenContext(list);
+    const docNo = useLiveSeed(seed.docNo);
     await flowStep('搜索并打开详情', async () => {
       await list.search(docNo);
       await list.openByCode(docNo);

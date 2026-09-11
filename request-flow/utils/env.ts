@@ -9,6 +9,8 @@ export const env = {
   requestFormName: process.env.REQUEST_FORM_NAME || '',
   /** 可选对照关键字；Golden / 只读筛选优先用列表现场事由，过期配置会被忽略 */
   requestFilterKeyword: process.env.REQUEST_FILTER_KEYWORD || '',
+  /** 为 1 时 Golden 才允许 REQUEST_DOC_NO / 静态种子排在列表现场值之前 */
+  goldenForceSeed: process.env.GOLDEN_FORCE_SEED || '',
   /** 固定事由；不设则用例用 randomReason() */
   requestReason: process.env.REQUEST_REASON || '',
   /** 自选审批人关键字；默认 97dev（登录人） */

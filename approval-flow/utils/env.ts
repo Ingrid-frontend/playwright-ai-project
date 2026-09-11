@@ -7,6 +7,8 @@ export const env = {
 
   /** 写操作用单号；只读搜索/详情改为列表现场取样，过期值会被忽略 */
   approvalDocNo: process.env.APPROVAL_DOC_NO || '',
+  /** 为 1 时只读搜索才允许 APPROVAL_DOC_NO 排在列表现场值之前 */
+  goldenForceSeed: process.env.GOLDEN_FORCE_SEED || '',
   /** 指定一条用于「驳回」的单号；不填则用通过操作后的下一条待审批 */
   rejectDocNo: process.env.REJECT_DOC_NO || '',
 
