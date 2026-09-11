@@ -5,7 +5,7 @@ export const env = {
   loginPath: process.env.LOGIN_PATH || '/login',
   storageState: process.env.STORAGE_STATE || '',
 
-  /** 指定一条「待审批」单号用于搜索 + 打开 / 审批；不填则用列表第一条 */
+  /** 写操作用单号；只读搜索/详情改为列表现场取样，过期值会被忽略 */
   approvalDocNo: process.env.APPROVAL_DOC_NO || '',
   /** 指定一条用于「驳回」的单号；不填则用通过操作后的下一条待审批 */
   rejectDocNo: process.env.REJECT_DOC_NO || '',

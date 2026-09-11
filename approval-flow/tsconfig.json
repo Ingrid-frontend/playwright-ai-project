@@ -15,6 +15,7 @@
     "pages/**/*.ts",
     "fixtures/**/*.ts",
     "utils/**/*.ts",
+    "../src/utils/live-list-seed.ts",
     "../request-flow/utils/request-fields.ts",
     "../request-flow/utils/feishu-api-failure.ts"
   ]

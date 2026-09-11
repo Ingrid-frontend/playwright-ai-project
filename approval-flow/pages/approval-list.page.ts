@@ -155,6 +155,10 @@ export class ApprovalListPage {
     return this.scope().locator(ROW).filter({ visible: true });
   }
 
+  async hasDataRows(): Promise<boolean> {
+    return (await this.dataRows().count().catch(() => 0)) > 0;
+  }
+
   /** 从当前列表首行解析单号；优先读「单号」列 */
   async pickFirstDocNo(): Promise<string> {
     try {

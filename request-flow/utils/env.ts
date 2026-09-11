@@ -7,7 +7,7 @@ export const env = {
 
   requestDocNo: process.env.REQUEST_DOC_NO || '',
   requestFormName: process.env.REQUEST_FORM_NAME || '',
-  /** Golden 筛选用固定关键字 */
+  /** 可选对照关键字；Golden / 只读筛选优先用列表现场事由，过期配置会被忽略 */
   requestFilterKeyword: process.env.REQUEST_FILTER_KEYWORD || '',
   /** 固定事由；不设则用例用 randomReason() */
   requestReason: process.env.REQUEST_REASON || '',

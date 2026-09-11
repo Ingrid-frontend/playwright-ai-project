@@ -1222,7 +1222,7 @@
                   </p>
                   <div>
                     <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">Golden 筛选关键字（REQUEST_FILTER_KEYWORD）</label>
-                    <input type="text" class="url-input" id="requestFilterKeyword" spellcheck="false" placeholder="留空默认「测试」；填环境中稳定存在的事由关键字"
+                    <input type="text" class="url-input" id="requestFilterKeyword" spellcheck="false" placeholder="留空则从列表首行事由取样；无可用关键字则跳过"
                       style="width:100%;color:var(--text);margin-bottom:8px">
                   </div>
                   <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;flex-wrap:wrap">
@@ -7603,8 +7603,6 @@ function runRequestFlowGolden() {
     return;
   }
   applyRequestFlowPreset('golden');
-  const filterEl = document.getElementById('requestFilterKeyword');
-  if (filterEl && !filterEl.value.trim()) filterEl.value = '测试';
   runSelectedRequestFlow('headless', {
     preset: 'golden',
     pipeline: 'golden',
@@ -7622,12 +7620,11 @@ function runRequestFlowGoldenAll() {
   }
   applyRequestFlowPreset('golden');
   const filterEl = document.getElementById('requestFilterKeyword');
-  if (filterEl && !filterEl.value.trim()) filterEl.value = '测试';
   setRequestFlowBusy(true);
   if (!send('request-flow:run', {
     goldenAll: true,
     env: envState.current,
-    filterKeyword: filterEl?.value?.trim() || '测试',
+    filterKeyword: filterEl?.value?.trim() || '',
   })) {
     setRequestFlowBusy(false);
   }
