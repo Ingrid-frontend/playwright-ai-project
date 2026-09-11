@@ -13,6 +13,9 @@
 | `change-nature.ts` | 判定单个差异区的变化性质（位移/渲染/新增/缺失/内容变化），误判治理的核心 |
 | `coverage-stats.ts` | 四档状态分级（pass/minor/regress/uncovered）+ 判定理由文本 |
 | `customer-report-model.ts` | 组装展示模型，按根因聚类成 issue group，生成锚点 id |
+| `customer-report-copy.ts` | 客户三部分文案：哪里 → 变成什么 → 影响；清洗内部黑话 |
+| `customer-report-audit.ts` | 读取 `results/ui-audit/summary.json`，按 script/step 匹配到像素卡 |
+| `customer-report-summary.ts` | 写出 `customer-report-summary.json`（actionItems / items，供飞书） |
 | `customer-report-plain.ts` | 大白话描述文案 |
 | `customer-report-naming.ts` | 展示名清洗：环境名、步骤 slug、方位描述 |
 | `customer-report-render.ts` | HTML 结构：结论速览 + 对比明细 + 检测范围 |
@@ -55,7 +58,7 @@
 npx tsc --noEmit -p tsconfig.json
 npx tsx scripts/verify/smoke-report-modules.ts        # 单元级，含 6 项性质判定断言
 npm run report:customer
-npx tsx scripts/verify/verify-customer-report-html.ts # 结构级，10 项
+npx tsx scripts/verify/verify-customer-report-html.ts # 结构级
 npx tsx scripts/verify/dump-customer-model.ts         # 判定明细核对
 npx tsx scripts/verify/probe-change-nature.ts         # 逐区域性质探针
 ```
@@ -66,6 +69,9 @@ npx tsx scripts/verify/probe-change-nature.ts         # 逐区域性质探针
 - 标注框按性质着色：`mark-real` 红实线 / `mark-benign` 灰虚线，配 `mark-legend` 图例
 - 统计四格为**步骤级**，问题清单为**根因级**，二者数字不同是预期的，首屏文案已分别说明
 - 步骤 slug 词典在 `customer-report-naming.ts` 的 `STEP_SLUG_LABELS`；新项目接入时按需扩充，未命中的 `step-N` 回落为「第 N 步页面」
+- **需修复 / 影响体验**卡片必须写出三部分：`【哪里】` 页面/流程/区域、`【变成什么】` 视觉变化（有匹配的 AI 审计 `description` 时注入同一张卡）、`【影响】` 谁被挡住或体验变差；写不清就写「影响待确认」
+- 可忽略卡片可以更短，但若 `shipAdvice` 仍要求确认，禁止写「无需处理」
+- 审计产物缺失时安静降级，报告期不再调模型
 
 ## 6. 已知维护陷阱
 

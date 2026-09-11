@@ -22,7 +22,7 @@ check('首屏有一句话结论', () => {
 });
 
 check('统计四格为客户口径', () => {
-  for (const label of ['明显衰退', '轻微变化', '完全一致', '已对比步骤']) {
+  for (const label of ['需修复', '影响体验', '完全一致', '可忽略']) {
     assert.ok(html.includes(label), `缺少统计项: ${label}`);
   }
   assert.match(html, /合格率 [\d.]+%/);
@@ -109,6 +109,13 @@ check('过程截图被标记，不当作验收结论', () => {
   if (html.includes('tag-process')) {
     assert.match(html, /tag-process/);
   }
+});
+
+check('需修复项使用三部分文案', () => {
+  if (!html.includes('data-impact-tier="blocking"')) return;
+  assert.match(html, /哪里/);
+  assert.match(html, /变成什么/);
+  assert.match(html, /影响/);
 });
 
 console.log('\n✅ verify-customer-report-html 通过');

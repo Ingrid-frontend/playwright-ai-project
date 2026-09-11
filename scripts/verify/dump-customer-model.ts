@@ -34,6 +34,7 @@ async function main() {
     `明显衰退 ${coverage.regressSteps} · 轻微变化 ${coverage.minorSteps} · 一致 ${coverage.passSteps} · 未检测 ${coverage.uncoveredSteps} · 已对比 ${coverage.comparedSteps}`,
   );
   console.log(`verdict: ${coverage.verdictLabel}`);
+  console.log(`shipAdvice: ${coverage.shipAdvice}`);
 
   console.log(`\n=== 明显衰退分组 (${model.regressionGroups.length}) ===`);
   for (const g of model.regressionGroups) {
@@ -41,6 +42,11 @@ async function main() {
     console.log(`  理由: ${g.reason}`);
     const b = g.representative.browsers[0];
     console.log(`  文案: ${b?.plainText}`);
+    if (g.customerCopy) {
+      console.log(
+        `  三部分: 哪里=${g.customerCopy.where} | 变成什么=${g.customerCopy.change} | 影响=${g.customerCopy.impact}`,
+      );
+    }
     console.log(`  区域: ${b?.regions.map((r) => `${r.w}x${r.h}@${r.x},${r.y}`).join(' ') || '无'}`);
   }
 

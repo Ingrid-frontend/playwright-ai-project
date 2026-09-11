@@ -337,7 +337,7 @@ AI 把「设计如此 / 规范允许」报成 `truncation` / `layout` / `overflo
 - **P1**：把 `selectors` 检查项覆盖到更多脚本，减少 ⚪ 未审计占比（当前 94/100 缺依据）
 - **P2**：把 Layer 2 的 `changedBox` 作为 bbox 提示注入 prompt，提升定位精度
 - **P3**：Test Intent → 动态生成 Playwright 脚本
-- **P4**：把审计结论接入飞书通知与 CI 卡口
+- **P4**：把审计结论接入飞书通知与 CI 卡口。客户报告已会读取 `results/ui-audit/summary.json`，按 script/step 把 `description` 注入**同一张**像素问题卡的「变成什么 / 影响」；缺产物时降级为像素摘要 +「影响待确认」，报告期不再调模型。
 
 ## Change Log
 

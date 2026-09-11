@@ -194,7 +194,7 @@ body {
   display: block;
   background: #111;
 }
-.plain { margin-top: 8px; font-size: 13px; color: var(--muted); }
+.plain { margin-top: 8px; font-size: 13px; color: var(--text); white-space: pre-line; }
 .empty {
   background: var(--card);
   border: 1px solid var(--line);
@@ -264,6 +264,7 @@ body {
   margin-top: 2px;
   font-size: 12px;
   color: var(--muted);
+  white-space: pre-line;
 }
 .brief-meta {
   display: flex;
@@ -400,6 +401,21 @@ body {
 .ig-main { flex: 1 1 auto; min-width: 0; }
 .ig-title { font-size: 16px; font-weight: 650; }
 .ig-reason { margin-top: 4px; font-size: 13px; color: var(--text); }
+.copy-3 {
+  display: grid;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.copy-3 .copy-k {
+  display: inline-block;
+  min-width: 4.5em;
+  margin-right: 8px;
+  color: var(--muted);
+  font-weight: 650;
+  font-size: 12px;
+}
 .ig-meta {
   display: flex;
   flex-wrap: wrap;

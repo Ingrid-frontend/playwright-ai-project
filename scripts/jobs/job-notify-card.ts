@@ -6,6 +6,7 @@ import {
   buildChartCardElements,
   isChartCardEnabled,
 } from '../feishu/index.js';
+import { readCustomerReportSummary } from '../report/customer-report-summary.js';
 
 type BitableRecordFile = {
   runRecordUrl?: string;
@@ -57,6 +58,8 @@ export function buildResultMarkdown(summary: JobNotifySummary): string {
       : '📎 完整差异报告已生成，请联系测试团队获取详情';
     lines.push(reportHint);
   }
+  const customerLines = formatCustomerActionItemsMarkdown();
+  if (customerLines) lines.push('', customerLines);
   if (summary.errorSummary) {
     lines.push(summary.errorSummary);
   }
@@ -82,6 +85,20 @@ export function buildResultMarkdown(summary: JobNotifySummary): string {
   if (process.env.GITHUB_RUN_ID) {
     lines.push('**报告**：Actions 下载 Artifact `full-report-*`，解压后打开 `public-reports/index.html`');
   }
+  return lines.join('\n');
+}
+
+function formatCustomerActionItemsMarkdown(): string | null {
+  const summary = readCustomerReportSummary();
+  if (!summary) return null;
+  const items = summary.actionItems?.length ? summary.actionItems : summary.items || [];
+  if (!items.length) return null;
+  const lines = ['**客户待办**：'];
+  for (const item of items.slice(0, 8)) {
+    const body = (item.text || item.reason || '').replace(/\n/g, ' / ');
+    lines.push(`• ${body}`);
+  }
+  if (items.length > 8) lines.push(`… 另有 ${items.length - 8} 项，见客户报告摘要`);
   return lines.join('\n');
 }
 
