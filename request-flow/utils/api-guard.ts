@@ -1,18 +1,16 @@
 import type { Page, Request, Response } from '@playwright/test';
+import {
+  assertNoBlockingApiFailures,
+  classifyApiFailure,
+  type ClassifiedApiFailure,
+} from '../../src/utils/api-guard-classify.js';
 import { sendApiFailuresToFeishu } from './feishu-api-failure';
-import { extractRequestFields, formatRequestFields } from './request-fields';
+import { extractRequestFields } from './request-fields';
 
 export type ApiFailureKind = 'http' | 'business' | 'requestfailed';
 
-export type ApiFailure = {
+export type ApiFailure = ClassifiedApiFailure & {
   kind: ApiFailureKind;
-  url: string;
-  fullUrl?: string;
-  method: string;
-  status?: number;
-  bodySummary?: string;
-  errorText?: string;
-  fields?: Record<string, string>;
 };
 
 export type ApiGuardOptions = {
@@ -34,6 +32,7 @@ const DEFAULT_URL_INCLUDES: RegExp[] = [
   /\/oauth\b/i,
 ];
 
+/** 完全不监听（不写入 api-failures.json）。仍记录但不阻断的路径见 src/utils/api-guard-classify.ts */
 const DEFAULT_URL_IGNORES: RegExp[] = [
   /\.(?:js|css|mjs|map|png|jpe?g|gif|svg|webp|ico|woff2?|ttf|eot|mp4|webm)(?:\?|$)/i,
   /(?:sensorsdata|google-analytics|googletagmanager|gtag\/|hm\.baidu|sentry\.io|browser-intake)/i,
@@ -137,14 +136,16 @@ export class ApiGuard {
     const failure: string | null = request.failure()?.errorText ?? 'requestfailed';
     // 切页签会 abort 上一次列表请求，不算业务失败
     if (failure && /ERR_ABORTED|NS_BINDING_ABORTED/i.test(failure)) return;
-    this.failures.push({
-      kind: 'requestfailed',
-      url: pathnameOf(url),
-      fullUrl: url,
-      method: request.method(),
-      errorText: failure,
-      fields: extractRequestFields(request),
-    });
+    this.failures.push(
+      classifyApiFailure({
+        kind: 'requestfailed',
+        url: pathnameOf(url),
+        fullUrl: url,
+        method: request.method(),
+        errorText: failure,
+        fields: extractRequestFields(request),
+      }),
+    );
   };
 
   constructor(
@@ -211,28 +212,22 @@ export class ApiGuard {
     await this.flush();
     if (this.failures.length === 0) return;
 
-    await sendApiFailuresToFeishu(this.failures, label);
+    const blocking = this.failures.filter((f) => f.blocking !== false);
+    if (blocking.length) {
+      await sendApiFailuresToFeishu(blocking, label);
+    }
 
-    const lines = this.failures.map((f, i) => {
-      const status = f.status != null ? ` status=${f.status}` : '';
-      const body = f.bodySummary ? ` body=${f.bodySummary}` : '';
-      const err = f.errorText ? ` error=${f.errorText}` : '';
-      const fields = formatRequestFields(f.fields);
-      const fieldBlock = fields ? `\n     ${fields.split('\n').join('\n     ')}` : '';
-      return `  ${i + 1}. [${f.kind}] ${f.method} ${f.url}${status}${err}${body}${fieldBlock}`;
-    });
-
-    throw new Error(
-      `${label} 监听发现 ${this.failures.length} 个失败接口：\n${lines.join('\n')}`
-    );
+    assertNoBlockingApiFailures(label, this.failures, console.warn);
   }
 
-  private pushFailure(request: Request, failure: ApiFailure, response?: Response): void {
-    this.failures.push({
-      ...failure,
-      fullUrl: request.url(),
-      fields: extractRequestFields(request, response),
-    });
+  private pushFailure(request: Request, failure: Omit<ApiFailure, 'blocking'>, response?: Response): void {
+    this.failures.push(
+      classifyApiFailure({
+        ...failure,
+        fullUrl: request.url(),
+        fields: extractRequestFields(request, response),
+      }),
+    );
   }
 
   private shouldWatch(url: string): boolean {

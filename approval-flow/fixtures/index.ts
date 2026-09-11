@@ -141,6 +141,8 @@ export const test = base.extend<AppFixtures, WorkerFixtures>({
               status: f.status,
               bodySummary: f.bodySummary,
               errorText: f.errorText,
+              blocking: f.blocking,
+              ignoreReason: f.ignoreReason,
             })),
           );
         }
