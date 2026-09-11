@@ -18,6 +18,7 @@ import { buildCustomerReportModel } from './customer-report-model.js';
 import { renderCustomerReportHtml } from './customer-report-render.js';
 import { resolveScriptRunMeta, resolveScriptRunHistory } from './customer-report-run-meta.js';
 import { enrichRunHistoryComparisons } from './customer-report-run-history.js';
+import { writeCustomerReportSummary } from './customer-report-summary.js';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
@@ -92,11 +93,14 @@ async function main() {
   const outAbs = path.resolve(outputPath);
   fs.mkdirSync(path.dirname(outAbs), { recursive: true });
   fs.writeFileSync(outAbs, html, 'utf-8');
+  const summaryPath = writeCustomerReportSummary(model, outputPath);
 
   console.log(`\n✅ 客户报告: ${outputPath}`);
+  console.log(`   摘要: ${path.relative(process.cwd(), summaryPath)}`);
   console.log(
-    `   ${coverage.verdictLabel} · 已检测 ${coverage.comparedSteps}/${coverage.expectedSteps} · 衰退 ${coverage.regressSteps}`,
+    `   ${coverage.verdictLabel} · 已对比 ${coverage.comparedSteps}/${coverage.expectedSteps} · 需修复 ${coverage.regressSteps} · 影响体验 ${coverage.degradedSteps} · 可忽略 ${coverage.benignSteps} · 未判定 ${coverage.uncoveredSteps}`,
   );
+  console.log(`   ${coverage.shipAdvice}`);
   console.log(`   并行 ${COMPARE_CONCURRENCY} · 增量 ${COMPARE_INCREMENTAL ? '开' : '关'}`);
 }
 

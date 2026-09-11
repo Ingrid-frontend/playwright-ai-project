@@ -18,13 +18,16 @@ import { isDateCategoryDirSegment } from '../../src/utils/date-category.js';
 import { isLoginLikeText, isLoginLikeUrl } from '../../src/utils/login-detection.js';
 import { parseSnapshotIdentity } from '../report/compare-screenshots-utils.js';
 import { clusterDiffRegions } from '../report/image-diff.js';
-import { classifyDifference, isProcessOnlyStep } from '../report/coverage-stats.js';
+import { classifyDifference, isProcessOnlyStep, assembleCoverageStats, type CoverageSlot, type CoverageStatus, type ImpactTier } from '../report/coverage-stats.js';
 import { classifyRegionNature, isActionableNature } from '../report/change-nature.js';
 import {
   friendlyScriptLabel,
   friendlyStepLabel,
   regionZoneLabel,
 } from '../report/customer-report-naming.js';
+import { buildCustomerReportModel } from '../report/customer-report-model.js';
+import { renderCustomerReportHtml } from '../report/customer-report-render.js';
+import { buildCustomerReportSummary } from '../report/customer-report-summary.js';
 import { PNG } from 'pngjs';
 import * as uiIssuesMod from '../report/ui-issues-index.js';
 import * as feishuMod from '../feishu/index.js';
@@ -219,6 +222,7 @@ const minor = classifyDifference(0.0012, [
   { x: 10, y: 10, w: 24, h: 12, pixels: 180, ratio: 0.0002, severity: 'medium' },
 ]);
 assert.equal(minor.status, 'minor');
+assert.equal(minor.evidence.impactTier, 'degraded');
 const major = classifyDifference(0.0012, [
   { x: 0, y: 0, w: 400, h: 120, pixels: 9000, ratio: 0.0098, severity: 'high' },
 ]);
@@ -244,6 +248,7 @@ const scrollbarOnly = classifyDifference(
   { width: 1280, height: 720 },
 );
 assert.equal(scrollbarOnly.status, 'minor');
+assert.equal(scrollbarOnly.evidence.impactTier, 'benign');
 pass('滚动条条带不判为衰退');
 
 // 展示名清洗：客户看不到内部 stepName / 带时间戳的目录
@@ -331,6 +336,7 @@ const bigButShifted = classifyDifference(
   { width: 1280, height: 720 },
 );
 assert.equal(bigButShifted.status, 'minor');
+assert.equal(bigButShifted.evidence.impactTier, 'benign');
 assert.equal(bigButShifted.evidence.actionableRegions, 0);
 assert.match(bigButShifted.evidence.reason, /平移 9px|内容完全一致/);
 pass('大面积位移不判为衰退');
@@ -354,6 +360,7 @@ const bigAndReal = classifyDifference(
   { width: 1280, height: 720 },
 );
 assert.equal(bigAndReal.status, 'regress');
+assert.equal(bigAndReal.evidence.impactTier, 'blocking');
 assert.ok(bigAndReal.evidence.actionableRegions > 0);
 pass('大面积新增内容仍判为衰退');
 
@@ -365,6 +372,67 @@ const unknownNature = classifyDifference(
   { width: 1280, height: 720 },
 );
 assert.equal(unknownNature.status, 'regress');
+assert.equal(unknownNature.evidence.impactTier, 'blocking');
 pass('性质未知时保守判为衰退');
+
+function fakeSlot(i: number, status: CoverageStatus, tier: ImpactTier): CoverageSlot {
+  return {
+    scriptKey: 'demo',
+    stepNumber: i,
+    stepName: `step-${i}`,
+    browser: 'chrome',
+    status,
+    pageTitle: `page-${i}`,
+    processOnly: false,
+    difference: status === 'pass' ? 0 : 0.01,
+    impactTier: tier,
+    evidence: {
+      reason: String(tier),
+      topRegionPixels: 0,
+      topRegionWidth: 0,
+      topRegionHeight: 0,
+      significantRegions: 0,
+      actionableRegions: tier === 'degraded' || tier === 'blocking' ? 1 : 0,
+      impactTier: tier,
+    },
+  };
+}
+
+// Stage9084 口径：pass=4 / benign=15 / compared=28 不得把可忽略算进通过率
+const stage9084Slots = [
+  ...Array.from({ length: 4 }, (_, i) => fakeSlot(i + 1, 'pass', 'pass')),
+  ...Array.from({ length: 15 }, (_, i) => fakeSlot(i + 5, 'minor', 'benign')),
+  ...Array.from({ length: 9 }, (_, i) => fakeSlot(i + 20, 'regress', 'blocking')),
+];
+const stage9084 = assembleCoverageStats(stage9084Slots);
+assert.equal(stage9084.passSteps, 4);
+assert.equal(stage9084.benignSteps, 15);
+assert.equal(stage9084.comparedSteps, 28);
+assert.equal(stage9084.passRate, 4 / 28);
+assert.equal(stage9084.nonBlockingRate, 19 / 28);
+assert.ok(Math.abs(stage9084.passRate - 19 / 28) > 0.4, 'passRate 不得再等于 (pass+benign)/compared');
+assert.match(stage9084.shipAdvice, /需要修复后再发版/);
+pass('assembleCoverageStats 完全一致占比不含可忽略');
+
+const stage9084Model = buildCustomerReportModel(stage9084, '2026-09-11 00:00:00');
+const stage9084Html = renderCustomerReportHtml(stage9084Model);
+const stage9084Summary = buildCustomerReportSummary(stage9084Model);
+assert.doesNotMatch(stage9084Html, /合格率/);
+assert.doesNotMatch(stage9084Html, /通过率/);
+assert.doesNotMatch(stage9084Html, /67\.8\s*%/);
+assert.doesNotMatch(stage9084Html, /67\.9\s*%/);
+assert.ok(stage9084Html.includes('需修复'));
+assert.ok(stage9084Html.includes('影响体验'));
+assert.ok(stage9084Html.includes('可忽略'));
+assert.ok(stage9084Html.includes('未判定'));
+assert.ok(stage9084Html.includes('ship-advice'));
+assert.ok(stage9084Html.includes('data-impact-tier="blocking"'));
+assert.equal(stage9084Summary.passRate, 4 / 28);
+assert.equal(stage9084Summary.passRateLabel, '完全一致占比');
+assert.equal(stage9084Summary.nonBlockingRate, 19 / 28);
+assert.equal(stage9084Summary.buckets.blocking.steps, 9);
+assert.equal(stage9084Summary.buckets.benign.steps, 15);
+assert.ok(Math.abs(stage9084Summary.passRate - 0.678) > 0.4);
+pass('客户首屏与摘要不再把可忽略算进合格率');
 
 console.log('\n✅ smoke-report-modules 通过');

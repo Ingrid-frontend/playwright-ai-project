@@ -16,16 +16,19 @@ function check(name: string, fn: () => void) {
 }
 
 check('首屏有一句话结论', () => {
-  assert.match(html, /class="verdict (bad|good|unknown)"/);
+  assert.match(html, /class="verdict (bad|good|unknown|watch)"/);
   assert.match(html, /class="verdict-title">[^<]+/);
-  assert.match(html, /(个 UI 问题需要处理|本次未发现 UI 衰退)/);
+  assert.match(html, /(需修复 \d+ 步|有 \d+ 步影响体验|本次无有效对比|本次没有需要修复的项|完全一致)/);
 });
 
 check('统计四格为客户口径', () => {
-  for (const label of ['明显衰退', '轻微变化', '完全一致', '已对比步骤']) {
-    assert.ok(html.includes(label), `缺少统计项: ${label}`);
+  for (const label of ['需修复', '影响体验', '可忽略', '未判定']) {
+    assert.ok(html.includes(`>${label}<`) || html.includes(label), `缺少统计项: ${label}`);
   }
-  assert.match(html, /合格率 [\d.]+%/);
+  assert.match(html, /完全一致占比/);
+  assert.doesNotMatch(html, /合格率/);
+  assert.ok(html.includes('data-impact-tier="blocking"'));
+  assert.ok(html.includes('ship-advice'));
 });
 
 check('按根因分组展示问题卡', () => {
@@ -56,17 +59,17 @@ check('轻微变化默认折叠，不与衰退混在一起', () => {
   }
 });
 
-check('轻微变化分组内不出现红框', () => {
+check('可忽略分组内不出现红框', () => {
   const parts = html.split('<article class="issue-group ');
   for (const part of parts.slice(1)) {
-    const status = part.slice(0, 20).split('"')[0];
-    if (status !== 'minor' && status !== 'pass') continue;
     const end = part.indexOf('</article>');
     const seg = end > 0 ? part.slice(0, end) : part;
-    const id = (/id="([^"]+)"/.exec(seg) || [])[1] ?? status;
+    const tier = (/data-impact-tier="([^"]+)"/.exec(seg) || [])[1];
+    if (tier !== 'benign' && tier !== 'pass') continue;
+    const id = (/id="([^"]+)"/.exec(seg) || [])[1] ?? tier;
     assert.ok(
       !seg.includes('mark-real'),
-      `分组 ${id} 结论为「${status}」却画了红框，与分级口径矛盾`,
+      `分组 ${id} 结论为「${tier}」却画了红框，与分级口径矛盾`,
     );
   }
 });

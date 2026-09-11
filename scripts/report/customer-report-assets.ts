@@ -68,6 +68,11 @@ body {
 .n-green { color: var(--green); }
 .n-red { color: var(--red); }
 .n-amber { color: var(--amber); }
+.n-gray { color: #868e96; }
+.ship-advice { white-space: pre-wrap; }
+@media (max-width: 720px) {
+  .stats { grid-template-columns: repeat(2, 1fr); }
+}
 .tabs {
   display: flex;
   gap: 8px;
@@ -137,6 +142,8 @@ body {
 .badge-pass { background: #d3f9d8; color: #2b8a3e; }
 .badge-regress { background: #ffe3e3; color: #c92a2a; }
 .badge-minor { background: #fff3bf; color: #a37200; }
+.badge-degraded { background: #fff3bf; color: #a37200; }
+.badge-benign { background: #f1f3f5; color: #495057; }
 .badge-uncovered { background: #fff3bf; color: #e67700; }
 .slider-compare {
   position: relative;
@@ -222,6 +229,12 @@ body {
 .sec-title.sec-regress { color: var(--red); }
 .sec-title.sec-pass { color: var(--green); }
 .sec-title.sec-minor { color: #a37200; margin-top: 26px; }
+.sec-title.sec-degraded { color: #a37200; margin-top: 26px; }
+.sec-title.sec-benign { color: #495057; margin-top: 26px; }
+.brief.degraded { border-left-color: var(--amber); }
+.brief.benign { border-left-color: #adb5bd; }
+.issue-group[data-impact-tier="degraded"] { border-left: 4px solid var(--amber); }
+.issue-group[data-impact-tier="benign"] { border-left: 4px solid #adb5bd; }
 /* 首屏速览清单：一行一个问题，不放大图，客户一眼扫完全部结论 */
 .brief-list {
   list-style: none;
