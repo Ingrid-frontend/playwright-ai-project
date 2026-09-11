@@ -45,6 +45,9 @@ export type ApiFailureLogEntry = {
     status?: number;
     bodySummary?: string;
     errorText?: string;
+    /** false：基础设施/旁路噪声，已记录但不阻断步骤 */
+    blocking?: boolean;
+    ignoreReason?: string;
   }>;
 };
 
