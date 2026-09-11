@@ -3,13 +3,14 @@ import { ApprovalListPage } from '../../pages/approval-list.page';
 import { TABS } from '../../utils/approval-catalog';
 import { env } from '../../utils/env';
 import { bindFlowStepCapture, flowStep } from '../../../src/utils/flow-step';
+import { trySeedGoldenContext, useLiveSeed } from '../../utils/golden-seed';
 
 /**
  * 审批列表全流程（serial，共享登录会话）：
  *  1) 待审批列表加载（等 pendingApproval）
  *  2) 按实机页签切换：我的已办 / 抄送我
  *  3) 筛选：业务类型 / 筛选面板 / 外露单号
- *  4) 回到待审批，用 pickFirstDocNo() 取现场单号再搜索打开
+ *  4) 回到待审批，用列表现场单号搜索打开（忽略过期 APPROVAL_DOC_NO）
  *  5) 写操作默认跳过，APPROVAL_ENABLE_WRITE=1 才通过/驳回
  */
 test.describe.configure({ mode: 'serial' });
@@ -74,7 +75,7 @@ test.describe('审批列表 · 全流程', () => {
     const approval = new ApprovalListPage(page);
     await approval.goto();
     await approval.expectLoaded();
-    const docNo = env.approvalDocNo || (await approval.pickFirstDocNo());
+    const docNo = useLiveSeed(await trySeedGoldenContext(approval));
     await flowStep('搜索并打开详情', async () => {
       await approval.search(docNo);
       await approval.openByCode(docNo);

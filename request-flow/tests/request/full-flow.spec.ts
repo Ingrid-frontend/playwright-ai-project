@@ -4,6 +4,11 @@ import { RequestEditPage } from '../../pages/request-edit.page';
 import { env } from '../../utils/env';
 import { randomReason } from '../../utils/random';
 import { bindFlowStepCapture, flowStep } from '../../../src/utils/flow-step';
+import {
+  probeRequestLiveDocNo,
+  probeRequestLiveFilterKeyword,
+  useLiveSeed,
+} from '../../utils/golden-seed';
 
 /**
  * 申请单全流程（serial，共享登录会话）：
@@ -35,7 +40,7 @@ test.describe('申请单 · 全流程', () => {
     await flowStep('准备列表', async () => {
       await list.ensureOnList();
     }, { capture: false });
-    const docNo = env.requestDocNo || (await list.pickFirstDocNo());
+    const docNo = useLiveSeed(await probeRequestLiveDocNo(list));
     await flowStep('按单号搜索', async () => {
       await list.search(docNo);
       await list.expectRowContains(docNo);
@@ -46,16 +51,7 @@ test.describe('申请单 · 全流程', () => {
     bindFlowStepCapture({ page, runDir: flowRunDir });
     const list = new RequestListPage(page);
     await list.ensureOnList();
-    let reason = '';
-    try {
-      reason = await list.pickFirstRowCell('事由');
-    } catch {
-      test.skip(true, '列表首行事由为空，跳过筛选');
-    }
-    if (!reason || reason === '-') {
-      test.skip(true, '列表首行事由为空，跳过筛选');
-    }
-    const keyword = reason.slice(0, Math.min(8, reason.length));
+    const keyword = useLiveSeed(await probeRequestLiveFilterKeyword(list));
     await flowStep('按事由筛选', async () => {
       await list.filterByReason(keyword);
       await list.expectRowContains(keyword);
@@ -68,7 +64,7 @@ test.describe('申请单 · 全流程', () => {
     bindFlowStepCapture({ page, runDir: flowRunDir });
     const list = new RequestListPage(page);
     await list.ensureOnList();
-    const docNo = env.requestDocNo || (await list.pickFirstDocNo());
+    const docNo = useLiveSeed(await probeRequestLiveDocNo(list));
     await flowStep('搜索并打开详情', async () => {
       await list.search(docNo);
       await list.openByCode(docNo);

@@ -155,13 +155,41 @@ export class ApprovalListPage {
     return this.scope().locator(ROW).filter({ visible: true });
   }
 
-  /** 从当前列表首行解析单号；优先读「单号」列 */
-  async pickFirstDocNo(): Promise<string> {
+  async hasDataRows(): Promise<boolean> {
+    return (await this.dataRows().count().catch(() => 0)) > 0;
+  }
+
+  /**
+   * 只读取样：当前可见首行单号；没有则空串。Golden 不得先信 APPROVAL_DOC_NO。
+   */
+  async readFirstDocNo(): Promise<string> {
+    if (!(await this.hasDataRows())) return '';
     try {
       return (await this.pickFirstRowCell(FILTER_LABELS.docNo)).replace(/\s+/g, '');
     } catch {
       /* fallback regex */
     }
+    try {
+      const row = this.dataRows().first();
+      if (!(await row.isVisible().catch(() => false))) return '';
+      const text = ((await row.innerText()) || '').replace(/\s+/g, ' ');
+      const match = text.match(DOC_NO_RE) || text.match(/[A-Za-z0-9]{8,}/);
+      return match ? match[0] : '';
+    } catch {
+      return '';
+    }
+  }
+
+  async docNoVisibleInList(code: string): Promise<boolean> {
+    const t = String(code || '').replace(/\s+/g, '').trim();
+    if (!t) return false;
+    return (await this.rowByCode(t).count().catch(() => 0)) > 0;
+  }
+
+  /** 从当前列表首行解析单号；优先读「单号」列。无行时超时失败（写操作用）。 */
+  async pickFirstDocNo(): Promise<string> {
+    const live = await this.readFirstDocNo();
+    if (live) return live;
     const row = this.dataRows().first();
     await expect(row, '列表没有可解析单号的数据行').toBeVisible({ timeout: 20_000 });
     const text = (await row.innerText()).replace(/\s+/g, ' ');

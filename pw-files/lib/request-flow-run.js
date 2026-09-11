@@ -527,7 +527,7 @@ async function runRequestFlowGoldenAll(ws, session, msg, deps) {
       spec,
       pipeline: 'golden',
       writeEnabled: false,
-      filterKeyword: filterKeyword || '测试',
+      filterKeyword,
       mode: 'headless',
     }, deps);
     results.push({

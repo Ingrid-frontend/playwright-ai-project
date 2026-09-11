@@ -15,6 +15,7 @@
     "pages/**/*.ts",
     "fixtures/**/*.ts",
     "utils/**/*.ts",
+    "../src/utils/live-list-seed.ts",
     "../approval-flow/pages/approval-list.page.ts",
     "../approval-flow/utils/**/*.ts"
   ]
