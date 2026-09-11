@@ -3,7 +3,7 @@ const path = require('path');
 const { send, logLine, stripAnsi } = require('./ws-safe');
 const {
   COMPARE_REPORT_REL,
-  CUSTOMER_REPORT_REL,
+  customerReportRelForEnv,
   repoHasScreenshotPng,
   sendCompareReportReady,
   sendCustomerReportReady,
@@ -94,7 +94,7 @@ async function runRepoCompareReport(ws, session, deps) {
 }
 
 async function openRepoCustomerReport(ws, session, { regenerate = false } = {}, deps) {
-  const { resolveRepoRoot } = deps;
+  const { resolveRepoRoot, getSessionPlaywrightEnv } = deps;
   const repoRoot = resolveRepoRoot();
   if (!fs.existsSync(path.join(repoRoot, 'playwright.config.ts'))) {
     send(ws, 'error', { message: '未找到项目根，无法打开客户报告' });
@@ -102,9 +102,23 @@ async function openRepoCustomerReport(ws, session, { regenerate = false } = {}, 
     return;
   }
 
-  const absReport = path.join(repoRoot, CUSTOMER_REPORT_REL);
+  const envId = String(getSessionPlaywrightEnv?.(session) || '').trim();
+  if (!envId) {
+    send(ws, 'error', {
+      message: '客户报告必须指定环境。请先在 Studio 选择环境，或执行 npm run report:customer -- --env=<环境>',
+    });
+    send(ws, 'repo:customer-report:done', { ok: false });
+    return;
+  }
+
+  const reportRel = customerReportRelForEnv(envId);
+  const absReport = path.join(repoRoot, reportRel);
   if (!regenerate && fs.existsSync(absReport)) {
-    sendCustomerReportReady(ws, { openedExisting: true });
+    sendCustomerReportReady(ws, {
+      openedExisting: true,
+      envId,
+      openPath: `/repo-report/${reportRel.split(path.sep).join('/')}`,
+    });
     return;
   }
 
@@ -120,7 +134,7 @@ async function openRepoCustomerReport(ws, session, { regenerate = false } = {}, 
 }
 
 async function runRepoCustomerReport(ws, session, deps) {
-  const { resolveRepoRoot, spawn, buildRepoSpawnEnv } = deps;
+  const { resolveRepoRoot, spawn, buildRepoSpawnEnv, getSessionPlaywrightEnv } = deps;
   const repoRoot = resolveRepoRoot();
   if (!fs.existsSync(path.join(repoRoot, 'playwright.config.ts'))) {
     send(ws, 'error', { message: '未找到项目根，无法生成客户报告' });
@@ -128,12 +142,21 @@ async function runRepoCustomerReport(ws, session, deps) {
     return;
   }
 
+  const envId = String(getSessionPlaywrightEnv?.(session) || '').trim();
+  if (!envId) {
+    send(ws, 'error', {
+      message: '客户报告必须指定环境。请先在 Studio 选择环境，或执行 npm run report:customer -- --env=<环境>',
+    });
+    send(ws, 'repo:customer-report:done', { ok: false });
+    return;
+  }
+
   session.repoCompareCancelled = false;
   send(ws, 'repo:customer-report:start', {});
-  logLine(ws, '[repo] 运行 report:customer…', 'info');
+  logLine(ws, `[repo] 运行 report:customer -- --env=${envId}…`, 'info');
 
   const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  const proc = spawn(npmCmd, ['run', 'report:customer'], {
+  const proc = spawn(npmCmd, ['run', 'report:customer', '--', `--env=${envId}`], {
     cwd: repoRoot,
     env: buildRepoSpawnEnv(session),
     shell: false,
@@ -159,21 +182,26 @@ async function runRepoCustomerReport(ws, session, deps) {
     return;
   }
   if (exitCode !== 0) {
-    send(ws, 'error', { message: `report:customer 退出码 ${exitCode}` });
+    send(ws, 'error', { message: `report:customer 退出码 ${exitCode}（环境 ${envId}）` });
     send(ws, 'repo:customer-report:done', { ok: false, exitCode });
     return;
   }
 
-  const absReport = path.join(repoRoot, CUSTOMER_REPORT_REL);
+  const reportRel = customerReportRelForEnv(envId);
+  const absReport = path.join(repoRoot, reportRel);
   if (!fs.existsSync(absReport)) {
     send(ws, 'error', {
-      message: '未生成 results/ui-regression-customer.html',
+      message: `未生成 ${reportRel.split(path.sep).join('/')}。客户报告已改为必须 --env，不再写无后缀的 ui-regression-customer.html`,
     });
     send(ws, 'repo:customer-report:done', { ok: false });
     return;
   }
 
-  sendCustomerReportReady(ws, { openedExisting: false });
+  sendCustomerReportReady(ws, {
+    openedExisting: false,
+    envId,
+    openPath: `/repo-report/${reportRel.split(path.sep).join('/')}`,
+  });
 }
 
 module.exports = {

@@ -1,13 +1,31 @@
 /**
  * 客户报告结构化验收：直接检查生成的 HTML 是否满足「客户可直观理解」的要求。
- * 用法: npx tsx scripts/verify/verify-customer-report-html.ts
+ * 用法: npx tsx scripts/verify/verify-customer-report-html.ts --env=<环境>
+ *      npx tsx scripts/verify/verify-customer-report-html.ts -- results/ui-regression-customer-stage9084.html
  */
 import fs from 'fs';
 import path from 'path';
 import assert from 'node:assert/strict';
+import {
+  customerReportHtmlRel,
+  missingCustomerEnvError,
+  parseCustomerEnvArgs,
+} from '../report/customer-report-env.js';
 
-const reportPath = path.resolve('results/ui-regression-customer.html');
-assert.ok(fs.existsSync(reportPath), `报告不存在，请先执行 npm run report:customer: ${reportPath}`);
+const args = parseCustomerEnvArgs(process.argv.slice(2));
+const reportPath = args.positional[0]
+  ? path.resolve(args.positional[0])
+  : args.env
+    ? path.resolve(customerReportHtmlRel(args.env))
+    : null;
+if (!reportPath) {
+  console.error(missingCustomerEnvError());
+  process.exit(1);
+}
+assert.ok(
+  fs.existsSync(reportPath),
+  `报告不存在，请先执行 npm run report:customer -- --env=<环境>: ${reportPath}`,
+);
 const html = fs.readFileSync(reportPath, 'utf8');
 
 function check(name: string, fn: () => void) {

@@ -1,8 +1,9 @@
 # 客户版 UI 衰退报告 · 实现说明（内部）
 
 > 客户可见的交付文档见 `ui-regression-report-for-customer.md`。本文只记实现口径与维护要点。
-> 入口：`npm run report:customer` → `scripts/report/compare-screenshots-customer.ts` → `results/ui-regression-customer.html`
+> 入口：`npm run report:customer -- --env=<环境>` → `scripts/report/compare-screenshots-customer.ts` → `results/ui-regression-customer-<环境>.html`
 > 工程师报告 `npm run compare-screenshots` 与 CI `--gate` 逻辑均未改动。
+> **必须显式 `--env`**。不再生成无后缀的混环境 `results/ui-regression-customer.html`（历史文件可保留，但不作为默认交付）。
 
 ---
 
@@ -10,6 +11,7 @@
 
 | 文件 | 职责 |
 |---|---|
+| `customer-report-env.ts` | 强制 `--env`、按环境过滤扫描目标、环境后缀路径、打包时改写图片 |
 | `change-nature.ts` | 判定单个差异区的变化性质（位移/渲染/新增/缺失/内容变化），误判治理的核心 |
 | `coverage-stats.ts` | 四档状态分级（pass/minor/regress/uncovered）+ 判定理由文本 |
 | `customer-report-model.ts` | 组装展示模型，按根因聚类成 issue group，生成锚点 id |
@@ -54,10 +56,12 @@
 ```bash
 npx tsc --noEmit -p tsconfig.json
 npx tsx scripts/verify/smoke-report-modules.ts        # 单元级，含 6 项性质判定断言
-npm run report:customer
-npx tsx scripts/verify/verify-customer-report-html.ts # 结构级，10 项
-npx tsx scripts/verify/dump-customer-model.ts         # 判定明细核对
+npx tsx scripts/verify/verify-customer-report-env.ts  # 缺 --env 必须失败
+npm run report:customer -- --env=stage9084
+npx tsx scripts/verify/verify-customer-report-html.ts --env=stage9084
+npx tsx scripts/verify/dump-customer-model.ts --env=stage9084
 npx tsx scripts/verify/probe-change-nature.ts         # 逐区域性质探针
+npm run report:bundle -- --env=stage9084              # 打包到 public-reports/customer-report/
 ```
 
 ## 5. 展示层要点

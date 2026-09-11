@@ -125,7 +125,7 @@ ${compareReportCss()}
 <body>
   <div class="header">
     <h1>截图对比报告（工程师）</h1>
-    <p style="margin:8px 0 0;opacity:.85;font-size:13px">调试用：对比一览 / 分析摘要 / 问题明细。客户交付请用 <code>npm run report:customer</code>。</p>
+    <p style="margin:8px 0 0;opacity:.85;font-size:13px">调试用：对比一览 / 分析摘要 / 问题明细。客户交付请用 <code>npm run report:customer -- --env=&lt;环境&gt;</code>。</p>
   </div>
 
   ${overviewHtml}

@@ -91,6 +91,10 @@ export type CustomerIssueGroup = {
 
 export type CustomerReportModel = {
   generatedAt: string;
+  /** 单一环境代号，如 stage9084；客户报告禁止混环境 */
+  envId?: string;
+  /** 客户可读环境名，如 Stage9084环境 */
+  envLabel?: string;
   /** 各业务流程脚本最近一次运行元信息（开始时间等） */
   scriptRuns: Map<string, ScriptRunMeta>;
   /** 各脚本历次 run 与验收基线的对比汇总 */

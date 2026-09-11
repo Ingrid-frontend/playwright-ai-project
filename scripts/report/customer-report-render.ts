@@ -396,6 +396,8 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
   const runTotal = totalRunCount(model.runHistory);
   const runMetaLine = runSummary ? ` · 最新一轮 ${esc(runSummary)}` : '';
   const runCountLine = runTotal > 0 ? ` · 共 ${runTotal} 次 run` : '';
+  const envLine = model.envLabel ? ` · ${esc(model.envLabel)}` : '';
+  const titleEnv = model.envLabel ? ` · ${esc(model.envLabel)}` : '';
   const stepsHint =
     runTotal > 1
       ? `最新一轮 ${c.expectedSteps} 步 · 共 ${runTotal} 次 run`
@@ -406,13 +408,13 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>UI 衰退检测报告</title>
+  <title>UI 衰退检测报告${titleEnv}</title>
   <style>${customerReportCss()}</style>
 </head>
 <body>
   <div class="header">
     <h1>UI 衰退检测报告</h1>
-    <div class="sub">生成时间 ${esc(model.generatedAt)}${runCountLine}${runMetaLine} · 与验收基线逐像素比对</div>
+    <div class="sub">生成时间 ${esc(model.generatedAt)}${envLine}${runCountLine}${runMetaLine} · 与验收基线逐像素比对</div>
   </div>
   <div class="wrap">
     <div class="verdict ${verdictClass}">

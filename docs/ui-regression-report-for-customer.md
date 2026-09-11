@@ -1,8 +1,10 @@
 # UI 衰退检测报告 · 交付说明
 
 > 面向对象：验收方 / 项目负责人。
-> 交付物：`results/ui-regression-customer.html`（单文件，双击即可在浏览器打开，无需安装任何东西）。
-> 生成命令：`npm run report:customer`
+> 交付物：`results/ui-regression-customer-<环境>.html`（单文件，双击即可在浏览器打开，无需安装任何东西）。
+> 生成命令：`npm run report:customer -- --env=<环境>`（例如 `--env=stage9084`）。**必须指定单一环境**，不再把 Stage / UAT / DEV 混进同一份报告。
+> 查看可用环境：`npm run report:customer -- --list-envs`
+> 离线打包：`npm run report:bundle -- --env=<环境>` → `public-reports/customer-report/`
 
 ---
 
@@ -119,10 +121,10 @@
 
 ## 6. 使用建议
 
-1. **每次发版前跑一次**，把 HTML 作为验收附件归档。
+1. **每次发版前对目标环境跑一次**（`npm run report:customer -- --env=stage9084`），把 HTML 作为验收附件归档。
 2. 报告显示「未检测」的步骤，说明该页面还没建立验收基线。确认页面长相正确后，由我们执行基线固化，下次即纳入比对。
 3. 若某处变化是**本次需求内的预期改动**，确认后固化为新基线，后续不再报出。
-4. 报告为单文件 HTML，图片以相对路径引用 `results/` 目录，归档时请连同该目录一起保留。
+4. 报告为单文件 HTML，图片以相对路径引用 `screenshots/` 与 `screenshots-baseline/`；归档时请连同这些目录一起保留，或使用 `npm run report:bundle -- --env=<环境>` 得到可离线打开的 `public-reports/customer-report/`。
 
 ---
 
