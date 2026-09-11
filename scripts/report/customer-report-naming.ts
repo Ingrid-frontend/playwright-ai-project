@@ -9,12 +9,23 @@
 /** 环境代号 -> 客户可读环境名 */
 const ENV_LABELS: Record<string, string> = {
   dev: '开发环境',
+  uat: 'UAT环境',
   stage: '预发布环境',
   staging: '预发布环境',
+  stage9084: 'Stage9084环境',
   test: '测试环境',
   prod: '生产环境',
   production: '生产环境',
 };
+
+/** 环境代号 -> 客户可读名；未知代号回落为「<id>环境」 */
+export function friendlyEnvLabel(envId: string): string {
+  const raw = String(envId || '').trim();
+  if (!raw) return '';
+  const mapped = ENV_LABELS[raw.toLowerCase()];
+  if (mapped) return mapped;
+  return `${raw}环境`;
+}
 
 /** 纯日期目录段，如 260911 / 2026-09-11 */
 function isDateSegment(seg: string): boolean {

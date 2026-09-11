@@ -5,6 +5,7 @@
 import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import { parseCustomerEnvArgs } from './customer-report-env.js';
 
 const root = process.cwd();
 const outDir = path.join(root, 'ci-artifacts');
@@ -27,7 +28,11 @@ function copyFile(src: string, dest: string): void {
 }
 
 function main(): void {
-  execSync('npm run report:bundle', { stdio: 'inherit', cwd: root });
+  const args = parseCustomerEnvArgs(process.argv.slice(2));
+  const bundleCmd = args.env
+    ? `npm run report:bundle -- --env=${args.env}`
+    : 'npm run report:bundle';
+  execSync(bundleCmd, { stdio: 'inherit', cwd: root });
 
   if (fs.existsSync(outDir)) fs.rmSync(outDir, { recursive: true, force: true });
   fs.mkdirSync(outDir, { recursive: true });

@@ -617,7 +617,7 @@ function createRepoHandlers(ctx) {
         ws,
         session,
         { regenerate: Boolean(msg.regenerate) },
-        { resolveRepoRoot, spawn, buildRepoSpawnEnv },
+        { resolveRepoRoot, spawn, buildRepoSpawnEnv, getSessionPlaywrightEnv },
       );
     },
 
@@ -626,11 +626,12 @@ function createRepoHandlers(ctx) {
         resolveRepoRoot,
         spawn,
         buildRepoSpawnEnv,
+        getSessionPlaywrightEnv,
       });
     },
 
-    'repo:compare-report:status': async (ws) => {
-      sendCompareReportStatus(ws, resolveRepoRoot());
+    'repo:compare-report:status': async (ws, session) => {
+      sendCompareReportStatus(ws, resolveRepoRoot(), getSessionPlaywrightEnv(session));
     },
 
     'repo:promote-baseline': async (ws, session, _sessionId, msg) => {

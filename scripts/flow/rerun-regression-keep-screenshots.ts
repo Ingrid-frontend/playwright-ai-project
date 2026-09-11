@@ -121,7 +121,16 @@ async function main(): Promise<void> {
     },
   );
 
-  const bundleOk = runCommand('npm run report:bundle', '打包 public-reports');
+  const customerHtml = path.join(process.cwd(), 'results', `ui-regression-customer-${playwrightEnv}.html`);
+  const bundleCmd = fs.existsSync(customerHtml)
+    ? `npm run report:bundle -- --env=${playwrightEnv}`
+    : 'npm run report:bundle';
+  if (!fs.existsSync(customerHtml)) {
+    console.log(
+      `ℹ️  未找到 ${path.relative(process.cwd(), customerHtml)}，打包时跳过客户报告。请先执行 npm run report:customer -- --env=${playwrightEnv}`,
+    );
+  }
+  const bundleOk = runCommand(bundleCmd, '打包 public-reports');
   if (!bundleOk || result.exitCode !== 0) process.exit(1);
 }
 

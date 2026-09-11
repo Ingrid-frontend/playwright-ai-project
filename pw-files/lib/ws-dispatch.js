@@ -82,11 +82,14 @@ function createWsDispatcher(rawCtx) {
         anthropic: Boolean(ANTHROPIC_API_KEY),
         deepseek: Boolean(DEEPSEEK_API_KEY),
       },
-      compareReport: repoReady ? getCompareReportStatus(root) : {
+      compareReport: repoReady ? getCompareReportStatus(root, getSessionPlaywrightEnv(session)) : {
         hasReport: false,
+        hasCustomerReport: false,
         hasScreenshots: false,
         openPath: null,
+        customerOpenPath: null,
         reportRel: COMPARE_REPORT_REL,
+        customerReportRel: null,
       },
     });
     sendEnvInfo(ws, session, root, repoReady);

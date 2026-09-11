@@ -21,10 +21,19 @@ import { clusterDiffRegions } from '../report/image-diff.js';
 import { classifyDifference, isProcessOnlyStep } from '../report/coverage-stats.js';
 import { classifyRegionNature, isActionableNature } from '../report/change-nature.js';
 import {
+  friendlyEnvLabel,
   friendlyScriptLabel,
   friendlyStepLabel,
   regionZoneLabel,
 } from '../report/customer-report-naming.js';
+import {
+  customerReportHtmlRel,
+  filterScanTargetsByEnv,
+  missingCustomerEnvError,
+  parseCustomerEnvArgs,
+  rewriteCustomerHtmlAssets,
+  assertSafeEnvId,
+} from '../report/customer-report-env.js';
 import { PNG } from 'pngjs';
 import * as uiIssuesMod from '../report/ui-issues-index.js';
 import * as feishuMod from '../feishu/index.js';
@@ -253,8 +262,60 @@ assert.equal(friendlyStepLabel('action-before'), '操作（操作前）');
 assert.equal(friendlyStepLabel('导航到页面'), '导航到页面');
 assert.equal(friendlyScriptLabel('dev/260911/工作台_2026-08-20_19-29-59'), '开发环境 · 工作台');
 assert.equal(friendlyScriptLabel('intent/dev/审批列表页可见'), '开发环境 · 审批列表页可见');
+assert.equal(friendlyEnvLabel('stage9084'), 'Stage9084环境');
+assert.equal(friendlyEnvLabel('uat'), 'UAT环境');
 assert.equal(regionZoneLabel({ x: 0, y: 0, w: 40, h: 20 }, 1280, 720), '页面上部左侧');
 pass('客户报告展示名清洗');
+
+assert.equal(parseCustomerEnvArgs([]).env, undefined);
+assert.equal(parseCustomerEnvArgs(['--env=stage9084']).env, 'stage9084');
+assert.equal(parseCustomerEnvArgs(['--env', 'uat']).env, 'uat');
+assert.equal(customerReportHtmlRel('stage9084').replaceAll('\\', '/'), 'results/ui-regression-customer-stage9084.html');
+assert.match(missingCustomerEnvError(), /必须指定单一环境/);
+assert.throws(() => assertSafeEnvId('../etc'), /环境代号无效/);
+assert.throws(() => assertSafeEnvId(''), /环境代号无效/);
+const filtered = filterScanTargetsByEnv(
+  [
+    { testDir: 'dev/260911/工作台', scriptPath: 'a' },
+    { testDir: 'stage9084/260911/工作台', scriptPath: 'b' },
+    { testDir: 'intent/dev/审批列表', scriptPath: 'c' },
+    { testDir: 'uat/1/x', scriptPath: 'd' },
+  ],
+  'stage9084',
+  ['dev', 'uat', 'stage', 'stage9084'],
+);
+assert.equal(filtered.length, 1);
+assert.equal(filtered[0]?.testDir, 'stage9084/260911/工作台');
+pass('客户报告必须 --env 且按环境过滤');
+
+{
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'customer-bundle-'));
+  const repo = path.join(tmp, 'repo');
+  const shot = path.join(repo, 'screenshots', 'stage9084', 'step.png');
+  const htmlAbs = path.join(repo, 'results', 'ui-regression-customer-stage9084.html');
+  const destDir = path.join(repo, 'public-reports', 'customer-report');
+  fs.mkdirSync(path.dirname(shot), { recursive: true });
+  fs.mkdirSync(path.dirname(htmlAbs), { recursive: true });
+  fs.writeFileSync(shot, 'png');
+  fs.writeFileSync(
+    htmlAbs,
+    '<img src="../screenshots/stage9084/step.png" alt="x"><img src="diffs/overlay.png" alt="y">',
+  );
+  const rewritten = rewriteCustomerHtmlAssets({
+    html: fs.readFileSync(htmlAbs, 'utf8'),
+    htmlAbs,
+    repoRoot: repo,
+    destDir,
+  });
+  assert.ok(rewritten.html.includes('assets/screenshots/stage9084/step.png'));
+  assert.ok(!rewritten.html.includes('../screenshots/'));
+  assert.ok(fs.existsSync(path.join(destDir, 'assets/screenshots/stage9084/step.png')));
+  assert.equal(
+    rewritten.keys.find((k) => k.original.includes('step.png'))?.copied,
+    true,
+  );
+  pass('客户报告打包改写图片到 customer-report/assets');
+}
 
 // ---- 变化性质识别：这是「差异不大却标红」的治理核心 ----
 

@@ -1,6 +1,6 @@
 /**
  * 打印客户报告模型的判定明细，用于核对分级口径是否符合人的直觉。
- * 用法: npx tsx scripts/verify/dump-customer-model.ts
+ * 用法: npx tsx scripts/verify/dump-customer-model.ts --env=<环境>
  */
 import fs from 'fs';
 import {
@@ -11,11 +11,46 @@ import {
 import { discoverScriptScanTargets } from '../report/compare-screenshots-scan.js';
 import { buildCoverageStats } from '../report/coverage-stats.js';
 import { buildCustomerReportModel } from '../report/customer-report-model.js';
+import {
+  assertSafeEnvId,
+  customerReportHelpText,
+  filterScanTargetsByEnv,
+  formatListEnvsText,
+  knownCustomerEnvIds,
+  listAvailableCustomerEnvs,
+  missingCustomerEnvError,
+  parseCustomerEnvArgs,
+} from '../report/customer-report-env.js';
 
 async function main() {
+  const args = parseCustomerEnvArgs(process.argv.slice(2));
+  if (args.help) {
+    console.log('用法: npx tsx scripts/verify/dump-customer-model.ts --env=<环境>\n');
+    console.log(customerReportHelpText());
+    return;
+  }
+  const discovered = listAvailableCustomerEnvs();
+  if (args.listEnvs) {
+    console.log(formatListEnvsText(discovered, knownCustomerEnvIds()));
+    return;
+  }
+  if (!args.env) {
+    console.error(missingCustomerEnvError(discovered));
+    process.exit(1);
+  }
+  const envId = assertSafeEnvId(args.env);
+
   const screenshotsDir = 'screenshots';
   if (!fs.existsSync(screenshotsDir)) throw new Error('缺少 screenshots 目录');
-  const targets = discoverScriptScanTargets(screenshotsDir);
+  const targets = filterScanTargetsByEnv(
+    discoverScriptScanTargets(screenshotsDir),
+    envId,
+    knownCustomerEnvIds(),
+  );
+  if (targets.length === 0) {
+    console.error(`未找到环境「${envId}」的脚本截图`);
+    process.exit(1);
+  }
   const testDirComparisons: TestDirComparisons[] = [];
   for (const { testDir, scriptPath } of targets) {
     const shots = getAllScreenshots(scriptPath, 'optimized', 'results/tmp.html');
@@ -28,8 +63,10 @@ async function main() {
 
   const coverage = buildCoverageStats(testDirComparisons);
   const model = buildCustomerReportModel(coverage);
+  model.envId = envId;
 
   console.log('\n=== 判定汇总 ===');
+  console.log(`环境: ${envId}`);
   console.log(
     `明显衰退 ${coverage.regressSteps} · 轻微变化 ${coverage.minorSteps} · 一致 ${coverage.passSteps} · 未检测 ${coverage.uncoveredSteps} · 已对比 ${coverage.comparedSteps}`,
   );

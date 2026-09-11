@@ -2133,8 +2133,8 @@ function applyCompareReportStatus(msg) {
   const customerHint = document.getElementById('customerHubHint');
   if (customerHint) {
     customerHint.textContent = msg.hasCustomerReport
-      ? '客户版 UI 衰退检测报告已生成，可直接打开。'
-      : '客户版 UI 衰退检测报告（结论 / 衰退明细 / 检测范围）。';
+      ? `客户版 UI 衰退检测报告已生成（${msg.customerEnv || envState.current || '当前环境'}），可直接打开。`
+      : '客户版报告必须指定单一环境。请确认 Studio 已选环境后再生成。';
   }
   syncCompareHubButtons();
 }
@@ -2161,13 +2161,13 @@ function syncCompareHubButtons() {
   if (openCustomerBtn) {
     openCustomerBtn.disabled = busy;
     openCustomerBtn.title = repoState.compareHasCustomerReport
-      ? '打开 results/ui-regression-customer.html'
-      : '暂无客户报告，请先重新生成';
+      ? `打开 results/ui-regression-customer-${envState.current || '<env>'}.html`
+      : '暂无该环境客户报告，请先重新生成（必须指定环境）';
   }
   if (regenCustomerBtn) {
     regenCustomerBtn.disabled = busy;
     regenCustomerBtn.title = repoState.compareHasScreenshots
-      ? '运行 report:customer 并打开客户报告'
+      ? `运行 report:customer -- --env=${envState.current || '<env>'} 并打开客户报告`
       : 'screenshots/ 下未检测到 PNG';
   }
   if (cancelBtn) cancelBtn.disabled = !busy;
