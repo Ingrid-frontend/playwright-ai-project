@@ -14,6 +14,7 @@ import { buildCustomerReportModel } from './customer-report-model.js';
 import { renderCustomerReportHtml } from './customer-report-render.js';
 import { resolveScriptRunMeta, resolveScriptRunHistory } from './customer-report-run-meta.js';
 import { enrichRunHistoryComparisons } from './customer-report-run-history.js';
+import { writeCustomerReportSummary } from './customer-report-summary.js';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
@@ -76,10 +77,16 @@ async function main() {
   const outAbs = path.resolve(outputPath);
   fs.mkdirSync(path.dirname(outAbs), { recursive: true });
   fs.writeFileSync(outAbs, html, 'utf-8');
+  const summaryPath = writeCustomerReportSummary(model, outputPath);
 
   console.log(`\n客户报告已生成: ${outputPath}`);
+  console.log(`  摘要: ${path.relative(process.cwd(), summaryPath)}`);
   console.log(
-    `  判定: ${coverage.verdictLabel} · 已检测 ${coverage.comparedSteps}/${coverage.expectedSteps} · 衰退 ${coverage.regressSteps} · 未检测 ${coverage.uncoveredSteps}`,
+    `  判定: ${coverage.verdictLabel} · 已对比 ${coverage.comparedSteps}/${coverage.expectedSteps} · 需修复 ${coverage.regressSteps} · 影响体验 ${coverage.degradedSteps} · 可忽略 ${coverage.benignSteps} · 未判定 ${coverage.uncoveredSteps}`,
+  );
+  console.log(`  ${coverage.shipAdvice}`);
+  console.log(
+    `  完全一致占比 ${(coverage.passRate * 100).toFixed(1)}%（${coverage.passSteps}/${coverage.comparedSteps}，不含可忽略）`,
   );
 }
 

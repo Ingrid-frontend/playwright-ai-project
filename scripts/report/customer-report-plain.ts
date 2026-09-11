@@ -1,4 +1,4 @@
-import { significantRegions, type CoverageSlot } from './coverage-stats.js';
+import { impactTierOf, significantRegions, type CoverageSlot } from './coverage-stats.js';
 import { isActionableNature, natureLabel } from './change-nature.js';
 import { regionZoneLabel } from './customer-report-naming.js';
 
@@ -44,6 +44,11 @@ export function buildPlainDescription(slot: CoverageSlot, width?: number, height
     const what = r.nature ? natureLabel(r.nature) : '内容变化';
     return `${zone} ${r.w}x${r.h}（${what}）`;
   });
-  const lead = slot.status === 'regress' ? '需要处理' : '轻微变化';
+  const lead =
+    slot.status === 'regress'
+      ? '需修复'
+      : impactTierOf(slot) === 'degraded'
+        ? '影响体验'
+        : '可忽略';
   return `${lead}：${parts.join('、')}（整页差异 ${pct}%）`;
 }

@@ -329,9 +329,7 @@ export function generateOverviewPanel(data: OverviewData): string {
   const ringLabel =
     cov?.verdict === 'insufficient_coverage'
       ? '覆盖率'
-      : cov?.verdict === 'regress'
-        ? '通过率'
-        : '通过率';
+      : '完全一致';
 
   const distRows = data.distribution
     .map(
@@ -356,7 +354,7 @@ export function generateOverviewPanel(data: OverviewData): string {
     </div>
     <div style="display:flex;gap:24px;flex-wrap:wrap;width:100%">
     <div class="ov-left">
-      <div class="ov-ring-wrap" title="通过 ${passCount} · 衰退 ${regress} · 未检测 ${uncovered}（分母=应检测 ${total}）">
+      <div class="ov-ring-wrap" title="完全一致 ${passCount} · 衰退 ${regress} · 未检测 ${uncovered}（分母=应检测 ${total}）">
         <div class="ov-ring" style="background:${ringBg}">
           <span class="ov-ring-pct">${passPct}%</span>
           <span class="ov-ring-label">${ringLabel}</span>
@@ -365,7 +363,7 @@ export function generateOverviewPanel(data: OverviewData): string {
       <div class="ov-stat-grid">
         <div class="ov-stat"><span class="ov-stat-num ov-red">${regress}</span><span class="ov-stat-lbl">衰退</span><span class="ov-stat-sub">${blockPct}%</span></div>
         <div class="ov-stat"><span class="ov-stat-num ov-yellow">${uncovered}</span><span class="ov-stat-lbl">未检测</span><span class="ov-stat-sub">${warnPct}%</span></div>
-        <div class="ov-stat"><span class="ov-stat-num ov-green">${passCount}</span><span class="ov-stat-lbl">通过</span><span class="ov-stat-sub">${passPct}%</span></div>
+        <div class="ov-stat"><span class="ov-stat-num ov-green">${passCount}</span><span class="ov-stat-lbl">完全一致</span><span class="ov-stat-sub">${passPct}%</span></div>
         <div class="ov-stat"><span class="ov-stat-num">${total}</span><span class="ov-stat-lbl">应检测</span></div>
       </div>
     </div>

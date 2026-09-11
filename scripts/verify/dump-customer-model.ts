@@ -31,11 +31,13 @@ async function main() {
 
   console.log('\n=== 判定汇总 ===');
   console.log(
-    `明显衰退 ${coverage.regressSteps} · 轻微变化 ${coverage.minorSteps} · 一致 ${coverage.passSteps} · 未检测 ${coverage.uncoveredSteps} · 已对比 ${coverage.comparedSteps}`,
+    `需修复 ${coverage.regressSteps} · 影响体验 ${coverage.degradedSteps} · 可忽略 ${coverage.benignSteps} · 完全一致 ${coverage.passSteps} · 未判定 ${coverage.uncoveredSteps} · 已对比 ${coverage.comparedSteps}`,
   );
+  console.log(`完全一致占比 ${(coverage.passRate * 100).toFixed(1)}%（${coverage.passSteps}/${coverage.comparedSteps}，不含可忽略）`);
   console.log(`verdict: ${coverage.verdictLabel}`);
+  console.log(`shipAdvice: ${coverage.shipAdvice}`);
 
-  console.log(`\n=== 明显衰退分组 (${model.regressionGroups.length}) ===`);
+  console.log(`\n=== 需修复分组 (${model.regressionGroups.length}) ===`);
   for (const g of model.regressionGroups) {
     console.log(`- ${g.title} | 最大差异 ${g.maxDifferenceLabel} | 影响 ${g.affectedSteps} 步`);
     console.log(`  理由: ${g.reason}`);
@@ -44,8 +46,13 @@ async function main() {
     console.log(`  区域: ${b?.regions.map((r) => `${r.w}x${r.h}@${r.x},${r.y}`).join(' ') || '无'}`);
   }
 
-  console.log(`\n=== 轻微变化分组 (${model.minorGroups.length}) ===`);
-  for (const g of model.minorGroups) {
+  console.log(`\n=== 影响体验分组 (${model.degradedGroups.length}) ===`);
+  for (const g of model.degradedGroups) {
+    console.log(`- ${g.title} | ${g.maxDifferenceLabel} | ${g.affectedSteps} 步 | ${g.reason}`);
+  }
+
+  console.log(`\n=== 可忽略分组 (${model.benignGroups.length}) ===`);
+  for (const g of model.benignGroups) {
     console.log(`- ${g.title} | ${g.maxDifferenceLabel} | ${g.affectedSteps} 步 | ${g.reason}`);
   }
 }
