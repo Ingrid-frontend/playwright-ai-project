@@ -3,7 +3,7 @@ name: Scheduled Test Jobs
 on:
   schedule:
     - cron: '0 2 * * 1-5'
-    - cron: '0 1 * * 1'
+    - cron: '0 1 * * *'
     - cron: '0 3 * * 2,4'
     - cron: '0 4 * * 3'
     - cron: '0 22 * * *'
@@ -65,7 +65,7 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "schedule" ]; then
             case "${{ github.event.schedule }}" in
-              "0 1 * * 1") JOB_ID=catalog-drift-check ;;
+              "0 1 * * *") JOB_ID=catalog-drift-check ;;
               "0 3 * * 2,4") JOB_ID=request-flow-write ;;
               "0 4 * * 3") JOB_ID=approval-flow-write ;;
               "0 22 * * *") JOB_ID=request-flow-golden-all-envs ;;
@@ -102,7 +102,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-job-results-${{ github.event_name == 'schedule' && (github.event.schedule == '0 3 * * 2,4' && 'request-flow-write' || (github.event.schedule == '0 4 * * 3' && 'approval-flow-write' || (github.event.schedule == '0 22 * * *' && 'request-flow-golden-all-envs' || 'request-flow-golden'))) || (inputs.job_id || 'request-flow-golden') }}
+          name: test-job-results-${{ github.event_name == 'schedule' && (github.event.schedule == '0 1 * * *' && 'catalog-drift-check' || (github.event.schedule == '0 3 * * 2,4' && 'request-flow-write' || (github.event.schedule == '0 4 * * 3' && 'approval-flow-write' || (github.event.schedule == '0 22 * * *' && 'request-flow-golden-all-envs' || 'request-flow-golden')))) || (inputs.job_id || 'request-flow-golden') }}
           path: results/jobs/
           retention-days: 30
           if-no-files-found: ignore

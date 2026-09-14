@@ -431,6 +431,27 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     startedAt,
   });
 
+  // 失败路径选择器诊断：run 失败时自动把失败定位链放到当前页面复算一遍，
+  // 回答「是选择器漂移还是数据问题」。best-effort，诊断失败不影响主流程结论。
+  if (!runOk && !payload.cancelled && !fastDebug && !configTryRun && (payload.failures || []).length > 0) {
+    const auditRel = `results/flow-runs/${flowId}/${runId}/selector-audit.json`;
+    runNpmScript(repoRoot, 'flow:selector-audit', [`--flow=${flowId}`, `--run=${runId}`]);
+    const auditJson = readJsonSafe(path.join(repoRoot, auditRel));
+    if (auditJson) {
+      manifest.selectorAuditRel = auditRel;
+      manifest.selectorAuditSummary = {
+        missing: auditJson.summary?.missing ?? 0,
+        ambiguous: auditJson.summary?.ambiguous ?? 0,
+        driftCount: Array.isArray(auditJson.catalogDrift) ? auditJson.catalogDrift.length : 0,
+        loginRedirect: Boolean(auditJson.loginRedirect),
+      };
+      writeFlowManifest(repoRoot, manifest);
+      console.log(
+        `[flow] 选择器诊断: 断裂 ${manifest.selectorAuditSummary.missing} · 漂移 ${manifest.selectorAuditSummary.driftCount} · ${auditRel}`,
+      );
+    }
+  }
+
   if (!fastDebug) {
     const probe = runNpmScript(repoRoot, 'report:flow-probe');
     if (probe.ok && fs.existsSync(path.join(repoRoot, FLOW_PROBE_REL))) {
@@ -511,6 +532,7 @@ function readLastFlowRun(repoRoot, flowId) {
     replayReportOpenPath: href(manifest.replayReportRel),
     videoReportOpenPath: href(manifest.videoReportRel),
     uiAuditReportOpenPath: href(manifest.uiAuditReportRel),
+    selectorAuditOpenPath: href(manifest.selectorAuditRel),
     apiFailureCount: manifest.apiFailureCount || 0,
   };
 }

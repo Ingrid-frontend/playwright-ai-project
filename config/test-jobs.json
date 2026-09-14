@@ -144,10 +144,10 @@
     {
       "id": "catalog-drift-check",
       "enabled": true,
-      "description": "L2 catalog 漂移检测（dev，对比实机快照与 catalog 定义）",
+      "description": "L2 catalog 漂移检测（dev，每日 01:00 UTC=09:00 北京，先于 10:00 golden 发现 UI 变更）",
       "runner": "catalog-drift-check",
       "tier": "L2",
-      "schedule": "0 1 * * 1",
+      "schedule": "0 1 * * *",
       "timezone": "Asia/Shanghai",
       "playwrightEnv": "dev",
       "accountProfile": null,

@@ -47,6 +47,14 @@ export type FlowRunManifest = {
   videoReportRel?: string;
   traceMode?: string;
   failures?: Array<{ title?: string; message?: string }>;
+  /** 失败路径选择器诊断报告（run 失败时自动生成，见 flow:selector-audit） */
+  selectorAuditRel?: string;
+  selectorAuditSummary?: {
+    missing: number;
+    ambiguous: number;
+    driftCount: number;
+    loginRedirect?: boolean;
+  };
   skipped?: number;
   skips?: Array<{ title?: string; reason?: string }>;
   /** 通过数≠总数时丢弃本次截图，仅保留回放 */

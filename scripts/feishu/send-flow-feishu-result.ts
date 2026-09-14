@@ -67,6 +67,11 @@ async function main(): Promise<void> {
     reportBase && run.playwrightReportRel
       ? `${reportBase}/repo-report/${run.playwrightReportRel}`
       : '';
+  const audit = ok ? undefined : run.selectorAuditSummary;
+  const auditUrl =
+    reportBase && run.selectorAuditRel
+      ? `${reportBase}/repo-report/${run.selectorAuditRel.replace(/\.json$/, '.md')}`
+      : '';
 
   const elements: object[] = [
     {
@@ -78,6 +83,13 @@ async function main(): Promise<void> {
           `状态：${ok ? '✅ 通过' : '❌ 失败'}`,
           `通过/失败：${run.passed ?? 0}/${run.failed ?? 0}`,
           `耗时：${run.durationSec ?? '-'}s`,
+          ...(audit
+            ? [
+                `选择器诊断：断裂 ${audit.missing} · 漂移 ${audit.driftCount}${
+                  audit.loginRedirect ? '（登录态失效，未复算）' : ''
+                }`,
+              ]
+            : []),
         ].join('\n'),
       },
     },
@@ -98,6 +110,14 @@ async function main(): Promise<void> {
       text: { tag: 'plain_text', content: '📊 Playwright' },
       type: 'default',
       url: pwUrl,
+    });
+  }
+  if (auditUrl) {
+    actions.push({
+      tag: 'button',
+      text: { tag: 'plain_text', content: '🔍 选择器诊断' },
+      type: 'default',
+      url: auditUrl,
     });
   }
   if (actions.length) elements.push({ tag: 'action', actions });
