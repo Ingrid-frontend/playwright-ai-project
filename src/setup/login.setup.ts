@@ -56,7 +56,9 @@ setup('🔐 全局登录并持久化状态', async ({ page, browser }) => {
     .filter({ hasText: '我已阅读并同意《用户协议》和《隐私协议》' })
     .click({ timeout: 30_000 });
 
-  await iframeContent.getByRole('button', { name: '登 录' }).click({ timeout: 30_000 });
+  await iframeContent
+    .getByRole('button', { name: /^登\s*录$/ })
+    .click({ timeout: 30_000 });
   await expect
     .poll(async () => !(await isLoginLikePage(page)), { timeout: 60_000 })
     .toBe(true);

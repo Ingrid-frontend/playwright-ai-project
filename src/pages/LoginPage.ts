@@ -17,7 +17,7 @@ export class LoginPage {
         this.agreementCheckbox = page.locator('label').filter({ 
             hasText: '我已阅读并同意《用户协议》和《隐私协议》' 
         });
-        this.loginButton = page.getByRole('button', { name: '登 录' });
+        this.loginButton = page.getByRole('button', { name: /^登\s*录$/ });
     }
 
     async goto(url: string = '/') {
