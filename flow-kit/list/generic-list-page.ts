@@ -60,6 +60,10 @@ export type ListCatalog = {
   resetFiltersOnLoad?: boolean;
   /** 列表为空时自动清筛选并重搜 */
   recoverEmptyOnLoad?: boolean;
+  /** 行点击后详情容器选择器（openByCode 事件驱动等待；无则退化为等 loading 消失） */
+  detailSelectors?: string;
+  /** 行点击后详情内容文案特征（与 detailSelectors 二选一或组合） */
+  detailTextRe?: RegExp;
 };
 
 export type Scope = FrameLocator | Page;
@@ -101,14 +105,14 @@ export class GenericListPage {
   /** 关掉顶部用户菜单、快捷键提示等遮挡层，避免 click 被 intercept */
   protected async dismissChrome(): Promise<void> {
     await this.page.keyboard.press('Escape').catch(() => undefined);
-    await this.page.waitForTimeout(150);
-    await this.page.keyboard.press('Escape').catch(() => undefined);
     const openMenu = this.scope()
       .locator('.ant-dropdown-menu:visible, .ant-select-dropdown:visible')
       .first();
+    await openMenu.waitFor({ state: 'hidden', timeout: 1_000 }).catch(() => undefined);
+    await this.page.keyboard.press('Escape').catch(() => undefined);
     if (await openMenu.isVisible({ timeout: 300 }).catch(() => false)) {
       await this.page.keyboard.press('Escape').catch(() => undefined);
-      await this.page.waitForTimeout(150);
+      await openMenu.waitFor({ state: 'hidden', timeout: 1_000 }).catch(() => undefined);
     }
   }
 
@@ -119,11 +123,16 @@ export class GenericListPage {
       await this.expectLoaded();
       return;
     }
+    await this.ensureRootLoaded();
+    await this.waitListSettled();
+    await this.expectListReady();
+  }
+
+  /** 子类可用的 root 懒加载入口（子类不应直接访问 private root） */
+  protected async ensureRootLoaded(): Promise<void> {
     if (!this.root) {
       this.root = await waitForAppRoot(this.page);
     }
-    await this.waitListSettled();
-    await this.expectListReady();
   }
 
   async expectLoaded(): Promise<void> {
@@ -315,7 +324,34 @@ export class GenericListPage {
     const row = this.rowByCode(code);
     await expect(row, `未找到单据「${code}」`).toBeVisible({ timeout: 20_000 });
     await row.getByText(code).first().click();
-    await this.page.waitForTimeout(1_000);
+    await this.waitForDetailOpen();
+  }
+
+  /**
+   * 行点击后等详情就绪（事件驱动，替代旧版 1s 盲等）：
+   * - catalog 提供 detailSelectors → 等详情容器可见
+   * - catalog 提供 detailTextRe → 等详情内容特征出现
+   * - 都没有 → 退化为等列表 loading 消失（旧行为的合理子集）
+   */
+  protected async waitForDetailOpen(): Promise<void> {
+    const c = this.catalog;
+    if (c.detailSelectors || c.detailTextRe) {
+      if (c.detailSelectors) {
+        const container = this.scope().locator(c.detailSelectors).first();
+        await expect(container, '点击行后未打开详情容器').toBeVisible({ timeout: 20_000 });
+      }
+      if (c.detailTextRe) {
+        const content = this.scope()
+          .getByText(c.detailTextRe)
+          .filter({ visible: true })
+          .first();
+        await expect(content, '详情内容特征未出现（可能仍在加载）').toBeVisible({
+          timeout: 20_000,
+        });
+      }
+      return;
+    }
+    await this.waitListSettled();
   }
 
   // ---------- 单号 / 关键字 ----------
@@ -534,7 +570,8 @@ export class GenericListPage {
     for (const label of c.clearLabels || []) {
       for (let i = 0; i < 3; i += 1) {
         if (!(await this.clearExposedComboByLabel(label))) break;
-        await this.page.waitForTimeout(350);
+        // 等列表 loading 消失（替代旧版 350ms 盲等）
+        await this.waitListSettled();
       }
     }
 
@@ -551,11 +588,11 @@ export class GenericListPage {
           .filter({ visible: true })
           .first();
         if (!(await clear.isVisible({ timeout: 300 }).catch(() => false))) break;
-      const respP = this.waitListApi(3_000);
-      await clear.click({ force: true });
-      await respP.catch(() => null);
+        const respP = this.waitListApi(3_000);
+        await clear.click({ force: true });
+        await respP.catch(() => null);
+        // 接口响应 + loading 消失已是完整事件信号，末尾盲等删去
         await this.waitListSettled();
-        await this.page.waitForTimeout(350);
       }
     }
   }

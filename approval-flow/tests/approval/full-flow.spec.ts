@@ -35,7 +35,7 @@ test.describe('审批列表 · 全流程', () => {
     await flowStep('页签切换', async () => {
       await approval.goto();
       await approval.expectLoaded();
-      await page.waitForTimeout(2_000);
+      // switchTab → clickTab 内部已等列表接口 + loading 消失，无需固定 sleep
       await approval.switchTab(TABS.approved);
       await approval.expectListReady();
       await approval.switchTab(TABS.cc);

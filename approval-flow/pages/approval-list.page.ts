@@ -1,6 +1,5 @@
 import { type Locator, type Page, expect } from '@playwright/test';
 import { GenericListPage, type ListCatalog } from '../../flow-kit/list/generic-list-page';
-import { waitForAppRoot } from '../../flow-kit/utils/app-frame';
 import {
   BUSINESS_TYPE_SELECT,
   COMBO_TRIGGER,
@@ -100,9 +99,7 @@ export class ApprovalListPage extends GenericListPage {
   async expectGoldenLoaded(): Promise<void> {
     const c = this.catalog;
     await expect(this.page).toHaveURL(c.urlPattern, { timeout: 60_000 });
-    if (!this.root) {
-      this.root = await waitForAppRoot(this.page);
-    }
+    await this.ensureRootLoaded();
     await this.waitListSettled();
     await expect(this.scope().locator(c.table).first()).toBeVisible({ timeout: 60_000 });
     await this.expectListReady();
@@ -699,7 +696,8 @@ export class ApprovalListPage extends GenericListPage {
     for (let i = 0; i < attempts; i += 1) {
       try {
         if (i > 0) {
-          await this.page.waitForTimeout(1_500);
+          // 等待审批主数据接口真实刷新（替代旧版 1.5s 盲等）
+          await this.lightClearFilters();
           await this.activateBestPendingSegment().catch(() => undefined);
         }
         await this.search(code);

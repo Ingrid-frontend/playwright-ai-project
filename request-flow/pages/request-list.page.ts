@@ -4,6 +4,7 @@ import { RequestEditPage } from './request-edit.page';
 import {
   COMBO_CLEAR,
   COMBO_TRIGGER,
+  DETAIL,
   DETAIL_MARKERS,
   DOC_NO_RE,
   FILTER_LABELS,
@@ -51,6 +52,8 @@ export const REQUEST_LIST_CATALOG: ListCatalog = {
   searchActionClear: SEARCH_ACTION_CLEAR,
   comboTrigger: COMBO_TRIGGER,
   comboClear: COMBO_CLEAR,
+  detailSelectors: DETAIL,
+  detailTextRe: DETAIL_MARKERS,
   clearLabels: [
     FILTER_LABELS.createdDate,
     FILTER_LABELS.status,
@@ -197,14 +200,8 @@ export class RequestListPage extends GenericListPage {
       .toBe(true);
   }
 
-  override async openByCode(code: string): Promise<void> {
-    const row = this.rowByCode(code);
-    await expect(row, `未找到单据「${code}」`).toBeVisible({ timeout: 20_000 });
-    await row.getByText(code).first().click();
-    await expect(
-      this.scope().getByText(DETAIL_MARKERS).filter({ visible: true }).first(),
-    ).toBeVisible({ timeout: 20_000 });
-  }
+  // openByCode 不再 override：基类已按 catalog 的 detailSelectors/detailTextRe
+  // 做事件驱动等待（等 DETAIL 容器 + DETAIL_MARKERS 文案），行为与本类旧实现等价。
 
   /** 先清筛选再取首行单号（申请单列表默认筛选常导致列表为空） */
   override async pickFirstDocNo(): Promise<string> {
@@ -270,7 +267,9 @@ export class RequestListPage extends GenericListPage {
       if (!docNo) return edit;
       if (!(await edit.deleteDraftIfPresent())) {
         await this.closeDetailIfOpen();
-        await this.page.waitForTimeout(800);
+        // 等列表真正就绪后再重试（替代旧版 800ms 盲等）
+        await this.waitListSettled();
+        await this.expectListReady();
         continue;
       }
       await this.goto();
@@ -303,7 +302,7 @@ export class RequestListPage extends GenericListPage {
         throw new Error('新建申请单：暂无可创建的单据（模板列表为空或 available 接口异常）');
       }
 
-      await this.page.waitForTimeout(2_000);
+      // available 接口刚报空，重新进列表触发刷新（替代旧版 2s 盲等）
       await this.goto();
       await this.expectLoaded();
     }

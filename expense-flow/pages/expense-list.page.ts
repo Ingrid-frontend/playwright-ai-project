@@ -3,6 +3,7 @@ import { GenericListPage, type ListCatalog } from '../../flow-kit/list/generic-l
 import { ExpenseEditPage } from './expense-edit.page';
 import {
   COMBO_TRIGGER,
+  DETAIL,
   DOC_NO_COLUMN,
   DOC_NO_RE,
   EMPTY_TEXT_RE,
@@ -42,6 +43,7 @@ export const EXPENSE_LIST_CATALOG: ListCatalog = {
   comboTrigger: COMBO_TRIGGER,
   comboClear: '.combo-trigger__clear',
   clearLabels: [...EXPOSED_FILTER_FIELDS],
+  detailSelectors: DETAIL,
   ...LIST_LOAD_OPTS,
 };
 
