@@ -58,7 +58,8 @@ async function createTravelAndSubmit(
       if (attempt === 2) break;
       const list = new RequestListPage(page);
       await list.goto().catch(() => undefined);
-      await page.waitForTimeout(1_500);
+      // 事件驱动替代 1.5s 盲等：等列表数据重新就绪
+      await list.expectListReady().catch(() => undefined);
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));

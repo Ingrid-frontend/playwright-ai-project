@@ -36,8 +36,10 @@ async function recoverSubmitRetry(page: Page, kind: SubmitFailKind): Promise<voi
     await list.goto().catch(() => undefined);
     await list.closeDetailIfOpen().catch(() => undefined);
   }
-  const waitMs = kind === 'timeout' ? 5_000 : 2_000;
-  await page.waitForTimeout(waitMs);
+  // 事件驱动替代盲等：等列表重新就绪（goto 后数据加载完成）
+  await list.expectListReady().catch(() => undefined);
+  // timeout 类失败保留 3s 额外退避（避免立即重试再次超时）
+  if (kind === 'timeout') await page.waitForTimeout(3_000);
 }
 
 async function createAndSubmit(page: Page, apiGuard: ApiGuard): Promise<string> {
