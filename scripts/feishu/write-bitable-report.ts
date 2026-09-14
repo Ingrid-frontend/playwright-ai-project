@@ -55,6 +55,40 @@ const REPORT_FILE = 'results/screenshot-comparison.html';
 const FLOW_REPORT_FILE = 'results/flow-screenshot-comparison.html';
 const MAX_ISSUES_TO_WRITE = Number.parseInt(process.env.FEISHU_BITABLE_MAX_ISSUES || '500', 10);
 
+/**
+ * 数据新鲜度守卫：issues 报告缺文件 / 解析失败 / 过期时拒绝写入，
+ * 杜绝「跑完不重新生成 → 多维表静默写旧数据」的口径漂移。
+ * 过期阈值默认 24h，可用 FEISHU_BITABLE_MAX_STALE_HOURS 调整（'0' 关闭守卫）。
+ */
+const MAX_STALE_HOURS = Number.parseFloat(process.env.FEISHU_BITABLE_MAX_STALE_HOURS || '24');
+
+export function guardIssuesFreshness(
+  issuesReport: UiIssuesReport | null,
+  issuesSource: string | null,
+  summary: JobSummaryFile | undefined,
+): string | null {
+  if (!Number.isFinite(MAX_STALE_HOURS) || MAX_STALE_HOURS <= 0) return null;
+  if (summary) {
+    // job runner 显式传了 summary（本次运行的真实结果），不依赖静态文件
+    return null;
+  }
+  if (!issuesSource) {
+    return '未找到 issues 报告（results/ui-issues.json / flow-ui-issues.json 均不存在），拒绝写入占位记录';
+  }
+  if (!issuesReport) {
+    return `issues 报告解析失败（${issuesSource}），拒绝写入不可信数据`;
+  }
+  const generatedAt = Date.parse(issuesReport.generatedAt || '');
+  if (!Number.isFinite(generatedAt)) {
+    return `issues 报告缺 generatedAt（${issuesSource}），无法校验新鲜度`;
+  }
+  const staleHours = (Date.now() - generatedAt) / 3_600_000;
+  if (staleHours > MAX_STALE_HOURS) {
+    return `issues 报告已过期 ${staleHours.toFixed(1)}h > ${MAX_STALE_HOURS}h（${issuesSource} @ ${issuesReport.generatedAt}），请先重跑对比再同步多维表`;
+  }
+  return null;
+}
+
 export async function writeBitableReport(input: BitableWriteInput = {}): Promise<BitableWriteResult> {
   const config = loadBitableRuntimeConfig();
   if (!config) {
@@ -66,6 +100,14 @@ export async function writeBitableReport(input: BitableWriteInput = {}): Promise
   const issuesSource = resolveIssuesSource();
   const issuesReport = readIssuesReport();
   const summary = input.summary ?? buildFallbackSummary(issuesReport);
+
+  // 新鲜度守卫：未显式传 summary 时，静态 issues 报告缺失/过期 → 拒写，不写旧数据
+  const staleReason = guardIssuesFreshness(issuesReport, issuesSource, input.summary);
+  if (staleReason) {
+    console.warn(`⚠️  跳过飞书多维表写入：${staleReason}`);
+    return { skipped: true, reason: staleReason };
+  }
+
   const env = input.env || process.env.PLAYWRIGHT_ENV || 'stage';
   const generatedAt = issuesReport?.generatedAt || new Date().toISOString();
   const executionId = summary.runId || buildExecutionId(generatedAt, env, summary.specPaths);
