@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const lockfile = require('proper-lockfile');
 const { makeRunMarker, writeRunMarkerFile, readRunMarkerFile } = require('./flow-run-marker.js');
 
 const FLOW_COMPARE_REL = 'results/flow-screenshot-comparison.html';
@@ -18,22 +19,63 @@ function readJsonSafe(p) {
   }
 }
 
-function writeFlowManifest(repoRoot, manifest) {
-  const dir = path.join(repoRoot, 'results', 'flow-runs', manifest.flowId, manifest.runId);
+function writeFileAtomic(filePath, content) {
+  const dir = path.dirname(filePath);
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf-8');
-  fs.writeFileSync(
-    path.join(repoRoot, 'results', 'flow-runs', manifest.flowId, 'last-run.json'),
-    JSON.stringify(manifest, null, 2),
-    'utf-8',
-  );
+  const tmp = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(tmp, content, 'utf-8');
+  fs.renameSync(tmp, filePath);
+}
+
+function appendHistoryManifest(repoRoot, manifest) {
   const day = (manifest.finishedAt || manifest.startedAt || new Date().toISOString()).slice(0, 10);
   const histDir = path.join(repoRoot, 'results', 'flow-runs', manifest.flowId, 'history');
   fs.mkdirSync(histDir, { recursive: true });
   const histPath = path.join(histDir, `${day}.json`);
-  let rows = readJsonSafe(histPath) || [];
-  rows.push(manifest);
-  fs.writeFileSync(histPath, JSON.stringify(rows, null, 2), 'utf-8');
+  if (!fs.existsSync(histPath)) writeFileAtomic(histPath, '[]');
+
+  const lockOpts = { stale: 30000 };
+  let release;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try {
+      release = lockfile.lockSync(histPath, lockOpts);
+      break;
+    } catch (err) {
+      if (attempt === 5) {
+        console.warn(`[flow] history lock failed for ${histPath}: ${err.message}`);
+        return;
+      }
+      const waitMs = 200 * Math.pow(2, attempt);
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, waitMs);
+    }
+  }
+  try {
+    let rows = readJsonSafe(histPath) || [];
+    const last = rows[rows.length - 1];
+    if (last && last.runId === manifest.runId && last.finishedAt === manifest.finishedAt) {
+      rows[rows.length - 1] = manifest;
+    } else {
+      rows.push(manifest);
+    }
+    writeFileAtomic(histPath, JSON.stringify(rows, null, 2));
+  } finally {
+    try { release(); } catch { /* best-effort unlock */ }
+  }
+}
+
+function flushManifestRun(repoRoot, manifest) {
+  const body = JSON.stringify(manifest, null, 2);
+  const runDir = path.join(repoRoot, 'results', 'flow-runs', manifest.flowId, manifest.runId);
+  fs.mkdirSync(runDir, { recursive: true });
+  const runTmp = path.join(runDir, 'manifest.json.tmp');
+  fs.writeFileSync(runTmp, body, 'utf-8');
+  fs.renameSync(runTmp, path.join(runDir, 'manifest.json'));
+  const lastRunPath = path.join(repoRoot, 'results', 'flow-runs', manifest.flowId, 'last-run.json');
+  fs.mkdirSync(path.dirname(lastRunPath), { recursive: true });
+  const lastTmp = `${lastRunPath}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(lastTmp, body, 'utf-8');
+  fs.renameSync(lastTmp, lastRunPath);
+  appendHistoryManifest(repoRoot, manifest);
 }
 
 function readApiFailures(repoRoot, flowId, runId) {
@@ -41,13 +83,31 @@ function readApiFailures(repoRoot, flowId, runId) {
   return readJsonSafe(p) || [];
 }
 
-function runNpmScript(repoRoot, script, extraArgs = []) {
+function runNpmScript(repoRoot, script, extraArgs = [], opts = {}) {
+  const timeoutMs = opts.timeoutMs ?? 10 * 60 * 1000;
   const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const isWindows = process.platform === 'win32';
   const proc = spawnSync(npmCmd, ['run', script, '--', ...extraArgs], {
     cwd: repoRoot,
     encoding: 'utf8',
     maxBuffer: 8 * 1024 * 1024,
+    timeout: timeoutMs,
+    killSignal: 'SIGTERM',
+    ...(isWindows ? {} : { detached: true }),
   });
+
+  const timedOut = !!(proc.error && proc.error.code === 'ETIMEDOUT');
+  if (timedOut && !isWindows && proc.pid) {
+    try { process.kill(-proc.pid, 'SIGKILL'); } catch { /* tree already exited */ }
+  }
+
+  if (timedOut) {
+    return {
+      ok: false,
+      exitCode: 124,
+      out: `${proc.stdout || ''}${proc.stderr || ''}\n[flow] npm run ${script} 超时 (${Math.round(timeoutMs / 1000)}s)，已终止`,
+    };
+  }
   return { ok: proc.status === 0, exitCode: proc.status ?? 1, out: `${proc.stdout || ''}${proc.stderr || ''}` };
 }
 
@@ -423,7 +483,6 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     failures: payload.failures || [],
   };
 
-  writeFlowManifest(repoRoot, manifest);
   writeRunMarkerFile(flowScreenshotRunAbs(repoRoot, flowId, payload, runId), manifest.runMarker, {
     runId,
     flowId,
@@ -446,7 +505,6 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
         driftCount: Array.isArray(auditJson.catalogDrift) ? auditJson.catalogDrift.length : 0,
         loginRedirect: Boolean(auditJson.loginRedirect),
       };
-      writeFlowManifest(repoRoot, manifest);
       console.log(
         `[flow] 选择器诊断: 断裂 ${manifest.selectorAuditSummary.missing} · 漂移 ${manifest.selectorAuditSummary.driftCount} · ${auditRel}`,
       );
@@ -458,9 +516,10 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
     if (probe.ok && fs.existsSync(path.join(repoRoot, FLOW_PROBE_REL))) {
       probeReportRel = FLOW_PROBE_REL;
       manifest.probeReportRel = probeReportRel;
-      writeFlowManifest(repoRoot, manifest);
     }
   }
+
+  flushManifestRun(repoRoot, manifest);
 
   if (!fastDebug) runNpmScript(repoRoot, 'report:flow-summary');
 
@@ -544,6 +603,7 @@ module.exports = {
   FLOW_PROBE_REL,
   FLOW_SUMMARY_REL,
   finalizeFlowRun,
+  flushManifestRun,
   hasFlowScreenshots,
   detectPipeline,
   flowScriptKey,
