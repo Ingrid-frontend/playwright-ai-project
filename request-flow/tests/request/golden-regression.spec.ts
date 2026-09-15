@@ -180,7 +180,9 @@ test.describe('申请单 · Golden 回归', () => {
   test('用现场单号搜索并打开详情', async ({ page, flowRunDir }) => {
     bindFlowStepCapture({ page, flowRunDir });
     const list = new RequestListPage(page);
-    await ensureGoldenCtxReady(list);
+    // 用带空列表恢复的准备（ensureGoldenList）：前序用例 skip/筛选残留可能
+    // 让列表处于空状态，recoverIfEmptyList 会清筛选重搜兜底
+    await ensureGoldenList(list);
     const docNo = goldenCtx.docNo;
     await flowStep('搜索并打开详情', async () => {
       await list.search(docNo, keepFilters);

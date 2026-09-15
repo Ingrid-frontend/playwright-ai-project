@@ -433,7 +433,8 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
 
   // 失败路径选择器诊断：run 失败时自动把失败定位链放到当前页面复算一遍，
   // 回答「是选择器漂移还是数据问题」。best-effort，诊断失败不影响主流程结论。
-  if (!runOk && !payload.cancelled && !fastDebug && !configTryRun && (payload.failures || []).length > 0) {
+  // 注意：fastDebug 只跳过飞书/对比报告等重流程，诊断保留（flake-check 也需要它）。
+  if (!runOk && !payload.cancelled && !configTryRun && (payload.failures || []).length > 0) {
     const auditRel = `results/flow-runs/${flowId}/${runId}/selector-audit.json`;
     runNpmScript(repoRoot, 'flow:selector-audit', [`--flow=${flowId}`, `--run=${runId}`]);
     const auditJson = readJsonSafe(path.join(repoRoot, auditRel));
