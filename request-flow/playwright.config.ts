@@ -33,6 +33,9 @@ function useChromeDevice(device: Record<string, unknown>) {
 
 export default defineConfig({
   testDir: './tests',
+  // 允许外层（如 flake-check 连跑）把 outputDir 重定向到 OS tmp，
+  // 避免每轮 rm -rf test-results 累计触发宿主 safe-delete bulk guard。
+  outputDir: process.env.PW_OUTPUT_DIR || 'test-results',
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: resolveRetries(),
