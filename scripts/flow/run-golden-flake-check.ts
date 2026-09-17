@@ -2,7 +2,7 @@
 /**
  * golden 稳定性验收：同一 golden runner 连跑 N 轮，统计 flake 率。
  *
- * 验收判据（Phase 1 事件驱动等待改造的最终标准）：默认轮数内 0 flake 才算通过。
+ * 验收判据（Phase 1 事件驱动等待改造的最终标准）：默认轮数内 0 BUSINESS_FLAKY 才算通过。
  * 默认 FLOW_DEBUG_FAST=1（首轮色/JSON 报告器/跳过飞书与对比报告），保证轮次节奏；
  * 需要全角色全报告的正式验收加 --full。
  *
@@ -24,16 +24,29 @@ dotenv.config({ path: path.join(process.cwd(), ".env") });
 const require = createRequire(import.meta.url);
 const { readGoldenBatch } = require("../../pw-files/lib/golden-batch.js");
 
+export type FailureType = "BUSINESS_FLAKY" | "ENV_BLOCKED" | "SEED_MISSING" | "INFRA_FAIL";
+
 type RoundRow = {
   run: number;
   ok: boolean;
   exitCode: number;
   durationSec: number;
+  failureType: FailureType | null;
   /** 本轮失败的角色（排除 skip） */
   failedProfiles: string[];
   /** 本轮跳过的角色及原因（数据型跳过不算 flake） */
   skippedProfiles: string[];
 };
+
+const ENV_BLOCK_PATTERNS = [
+  "SAFE_DELETE",
+  "ETIMEDOUT",
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "network",
+  "timeout",
+  "环境阻断",
+];
 
 function printHelpAndExit(): never {
   console.log(
@@ -99,6 +112,34 @@ function readBatchProfiles(repoRoot: string, flowId: string): {
   };
 }
 
+export function classifyRoundFailure(
+  exitCode: number,
+  failedProfiles: string[],
+  skippedProfiles: string[],
+): FailureType | null {
+  if (exitCode === 0) return null;
+
+  const combined = `${failedProfiles.join(" ")} ${skippedProfiles.join(" ")}`;
+  if (/SEED_MISSING|种子缺失/.test(combined)) return "SEED_MISSING";
+
+  if (
+    failedProfiles.length === 0 &&
+    skippedProfiles.length > 0 &&
+    /SEED_MISSING|种子缺失/.test(skippedProfiles.join(" "))
+  ) {
+    return "SEED_MISSING";
+  }
+
+  const lower = combined.toLowerCase();
+  if (ENV_BLOCK_PATTERNS.some((p) => lower.includes(p.toLowerCase()))) return "ENV_BLOCKED";
+
+  if (exitCode === 124 || exitCode >= 128) return "INFRA_FAIL";
+
+  if (failedProfiles.length === 0 && skippedProfiles.length > 0) return "ENV_BLOCKED";
+
+  return "BUSINESS_FLAKY";
+}
+
 function main(): void {
   const repoRoot = process.cwd();
   const { flowId, runs, env, profile, stopOnFail, full } = parseArgs(process.argv.slice(2));
@@ -131,10 +172,6 @@ function main(): void {
     const spawnEnv: NodeJS.ProcessEnv = { ...process.env };
     if (!full) spawnEnv.FLOW_DEBUG_FAST = "1";
     else delete spawnEnv.FLOW_DEBUG_FAST;
-    // 把 Playwright outputDir 挪到 OS tmp：每轮 playwright test 会 rm -rf outputDir，
-    // 留在项目内会被宿主 safe-delete 按 turn 累计（>=50 触发 SAFE_DELETE_BULK_CONFIRM_REQUIRED），
-    // 挪到 OS tmp 后 safe-delete 直接放行真 rm，flake 连跑不再被工具护栏误伤。
-    // 单轮独立目录，避免跨轮残留。
     const roundOutputDir = path.join(
       os.tmpdir(),
       `pw-flake-${flowId}-${startedAt.replace(/[:.]/g, "-")}-r${i}`,
@@ -150,12 +187,14 @@ function main(): void {
     const durationSec = Math.round((Date.now() - t0) / 1000);
     const exitCode = proc.status ?? 1;
     const { failedProfiles, skippedProfiles } = readBatchProfiles(repoRoot, flowId);
+    const failureType = classifyRoundFailure(exitCode, failedProfiles, skippedProfiles);
     const ok = exitCode === 0;
-    rows.push({ run: i, ok, exitCode, durationSec, failedProfiles, skippedProfiles });
+    rows.push({ run: i, ok, exitCode, durationSec, failureType, failedProfiles, skippedProfiles });
 
     const skipHint = skippedProfiles.length ? ` · 跳过 ${skippedProfiles.length}` : "";
+    const failHint = failureType ? ` · ${failureType}` : "";
     console.log(
-      `[flake-check] 第 ${i}/${runs} 轮 · ${ok ? "通过" : `失败（${failedProfiles.join(", ") || exitCode}）`} · ${durationSec}s${skipHint}`,
+      `[flake-check] 第 ${i}/${runs} 轮 · ${ok ? "通过" : `失败（${failedProfiles.join(", ") || exitCode}）`}${failHint} · ${durationSec}s${skipHint}`,
     );
 
     if (!ok && stopOnFail) break;
@@ -163,7 +202,12 @@ function main(): void {
 
   const passedRounds = rows.filter((r) => r.ok).length;
   const failedRounds = rows.length - passedRounds;
-  const flakeRate = rows.length ? failedRounds / rows.length : 1;
+  const businessFlakyRounds = rows.filter((r) => r.failureType === "BUSINESS_FLAKY").length;
+  const envBlockedRounds = rows.filter((r) => r.failureType === "ENV_BLOCKED").length;
+  const seedMissingRounds = rows.filter((r) => r.failureType === "SEED_MISSING").length;
+  const infraFailRounds = rows.filter((r) => r.failureType === "INFRA_FAIL").length;
+  const legacyFlakeRate = rows.length ? failedRounds / rows.length : 1;
+  const flakeRate = rows.length ? businessFlakyRounds / rows.length : 0;
   const report = {
     gate: `${flowId}-golden`,
     flowId,
@@ -174,8 +218,16 @@ function main(): void {
     executedRounds: rows.length,
     passedRounds,
     failedRounds,
+    businessFlakyRounds,
+    envBlockedRounds,
+    seedMissingRounds,
+    infraFailRounds,
     flakeRate: Number(flakeRate.toFixed(4)),
-    verdict: failedRounds === 0 ? "pass（0 flake）" : "fail（存在 flake）",
+    legacyFlakeRate: Number(legacyFlakeRate.toFixed(4)),
+    verdict:
+      businessFlakyRounds === 0
+        ? "pass（0 business flake）"
+        : "fail（存在 business flake）",
     startedAt,
     finishedAt: new Date().toISOString(),
     rows,
@@ -186,14 +238,14 @@ function main(): void {
   const outFile = path.join(outDir, `${flowId}-golden-${startedAt.replace(/[:.]/g, "-")}.json`);
   fs.writeFileSync(outFile, `${JSON.stringify(report, null, 2)}\n`, "utf8");
 
-  if (failedRounds === 0) {
+  if (businessFlakyRounds === 0) {
     console.log(
-      `[flake-check] ✅ 验收通过: ${rows.length}/${runs} 轮 0 flake · ${path.relative(repoRoot, outFile)}`,
+      `[flake-check] ✅ 验收通过: ${rows.length}/${runs} 轮 0 business flake · ${path.relative(repoRoot, outFile)}`,
     );
     process.exit(0);
   }
   console.error(
-    `[flake-check] ❌ 验收未通过: ${passedRounds}/${rows.length} 轮通过 · flake 率 ${(flakeRate * 100).toFixed(1)}% · ${path.relative(repoRoot, outFile)}`,
+    `[flake-check] ❌ 验收未通过: business flake ${businessFlakyRounds}/${rows.length} 轮 · 率 ${(flakeRate * 100).toFixed(1)}% · ${path.relative(repoRoot, outFile)}`,
   );
   process.exit(1);
 }

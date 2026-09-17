@@ -14,13 +14,12 @@ npm run login
 # 2. 跑通 Golden（~15 min）
 npm run request-flow:golden
 
-# 3. 生成报告（~5 min）
-npm run report:customer -- --list-envs     # 先看有哪些环境
-npm run report:customer -- --env=uat       # 一次只出一个环境的报告
+# 3. 生成交付预览包（~5 min）
+npm run report:customer -- --list-envs              # 先看有哪些环境
+npm run deliver:ready -- --env=stage9084            # 报告 + 校验 + 飞书预览（不写入）
 
-# 4. 交付给客户（飞书）
-npm run deliver:preview -- --env=uat       # 本地预览，确认口径与内容
-npm run deliver:feishu -- --env=uat        # 写入飞书文档 + 多维表明细
+# 4. 交付给客户（飞书，需人工确认）
+npm run deliver:feishu -- --env=stage9084          # 写入飞书文档 + 多维表明细
 ```
 
 Studio 可视化控制台：`npm run studio` → http://localhost:3001（详见 [pw-files/README.md](pw-files/README.md)）

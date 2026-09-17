@@ -1,0 +1,11 @@
+# 关键路径：交付链路与 golden 变更需审查（见 docs/COLLABORATION.md DoD）
+# 账号：Ingrid-frontend（xing.hong.frontend@gmail.com）
+# 双人审查：在 GitHub 分支保护里设 Required approving reviews = 2
+
+/scripts/feishu/ @Ingrid-frontend
+/scripts/report/customer-delivery-payload.ts @Ingrid-frontend
+/scripts/report/compare-screenshots-customer.ts @Ingrid-frontend
+/scripts/flow/run-golden-flake-check.ts @Ingrid-frontend
+/config/env-profiles.json @Ingrid-frontend
+
+**/datasource/golden-seeds.json @Ingrid-frontend

@@ -76,6 +76,7 @@ export function buildDeliveryRecord(
   const fields: BitableRecordFields = {
     页面: item.title,
     [DELIVERY_FIELDS.itemKey]: hashItemKey(item.key),
+    [DELIVERY_FIELDS.runId]: payload.runId || '',
     [DELIVERY_FIELDS.generatedAt]: payload.generatedAt,
     [DELIVERY_FIELDS.env]: payload.envLabel || '',
     [DELIVERY_FIELDS.releaseTag]: payload.releaseTag || '',

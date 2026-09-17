@@ -16,6 +16,13 @@ const {
   runRequestFlowTests,
   cancelRequestFlow,
 } = require('./request-flow-run');
+const {
+  sendExpenseFlowStatus,
+  sendExpenseFlowTestList,
+  runExpenseFlowProbe,
+  runExpenseFlowTests,
+  cancelExpenseFlow,
+} = require('./expense-flow-run');
 const { flowSearchRuns, flowDeleteRuns } = require('./flow-run-marker-actions');
 const {
   sendFlowConfigList,
@@ -556,6 +563,49 @@ function createRepoHandlers(ctx) {
       send(ws, 'request-flow:cancel:ack', {});
     },
 
+    'expense-flow:status': async (ws, session, _sessionId, msg) => {
+      sendExpenseFlowStatus(ws, session, {
+        resolveRepoRoot,
+        getSessionPlaywrightEnv,
+        getSessionAccountProfile,
+        buildRepoSpawnEnv,
+      }, msg);
+    },
+
+    'expense-flow:list-tests': async (ws, session, _sessionId, msg) => {
+      sendExpenseFlowTestList(ws, session, {
+        resolveRepoRoot,
+        getSessionPlaywrightEnv,
+        getSessionAccountProfile,
+        buildRepoSpawnEnv,
+      }, msg);
+    },
+
+    'expense-flow:probe': async (ws, session, _sessionId, msg) => {
+      await runExpenseFlowProbe(ws, session, msg, {
+        resolveRepoRoot,
+        spawn,
+        getSessionPlaywrightEnv,
+        getSessionAccountProfile,
+        buildRepoSpawnEnv,
+      });
+    },
+
+    'expense-flow:run': async (ws, session, _sessionId, msg) => {
+      await runExpenseFlowTests(ws, session, msg, {
+        resolveRepoRoot,
+        spawn,
+        getSessionPlaywrightEnv,
+        getSessionAccountProfile,
+        buildRepoSpawnEnv,
+      });
+    },
+
+    'cancel:expense-flow': async (ws, session) => {
+      cancelExpenseFlow(session, ws);
+      send(ws, 'expense-flow:cancel:ack', {});
+    },
+
     'flow:search-runs': async (ws, _session, _sessionId, msg) => {
       await flowSearchRuns(ws, msg, resolveRepoRoot());
     },
@@ -697,8 +747,18 @@ function createRepoHandlers(ctx) {
       });
     },
 
-    'repo:compare-report:status': async (ws) => {
-      sendCompareReportStatus(ws, resolveRepoRoot());
+    'repo:compare-report:status': async (ws, session) => {
+      const envId = buildRepoSpawnEnv(session).PLAYWRIGHT_ENV || '';
+      sendCompareReportStatus(ws, resolveRepoRoot(), envId);
+    },
+
+    'repo:deliver-feishu': async (ws, session) => {
+      const { runRepoDeliverFeishu } = require('./compare-report-actions.js');
+      await runRepoDeliverFeishu(ws, session, {
+        resolveRepoRoot,
+        spawn,
+        buildRepoSpawnEnv,
+      });
     },
 
     'repo:promote-baseline': async (ws, session, _sessionId, msg) => {

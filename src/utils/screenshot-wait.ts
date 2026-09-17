@@ -33,8 +33,15 @@ export async function waitForPostInteractionPaint(page: Page): Promise<void> {
     '.ant-collapse > .ant-collapse-item.ant-collapse-item-active',
   ];
 
-  for (const sel of antdAnimationSelectors) {
-    await page.locator(sel).first().waitFor({ state: 'attached', timeout: 1_500 }).catch(() => {});
+  const parallel = process.env.SCREENSHOT_WAIT_SERIAL !== '1';
+  const animTimeout = parallel ? 3_000 : 1_500;
+  const waits = antdAnimationSelectors.map((sel) =>
+    page.locator(sel).first().waitFor({ state: 'attached', timeout: animTimeout }).catch(() => undefined),
+  );
+  if (parallel) {
+    await Promise.all(waits);
+  } else {
+    for (const wait of waits) await wait;
   }
 
   await page.waitForTimeout(150);

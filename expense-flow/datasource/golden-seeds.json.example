@@ -2,11 +2,22 @@
   "_comment": "报销流程 golden 档案。复制为 golden-seeds.json 后填真实值；该文件不入库。",
   "_shape": "<envId>.<roleSlug>.expenseDocNo，roleSlug 用 * 表示该环境所有角色共用",
   "dev": {
+    "menma_comic_com": {
+      "expenseDocNo": ""
+    },
+    "menma03_comic_com": {
+      "expenseDocNo": ""
+    },
     "*": {
       "expenseDocNo": ""
     }
   },
   "uat": {
+    "*": {
+      "expenseDocNo": ""
+    }
+  },
+  "stage9084": {
     "*": {
       "expenseDocNo": ""
     }

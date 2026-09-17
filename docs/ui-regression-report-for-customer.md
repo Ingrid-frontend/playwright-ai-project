@@ -3,9 +3,10 @@
 > 索引：[docs/README.md](./README.md)
 
 > 面向对象：验收方 / 项目负责人。
-> 交付物：`results/ui-regression-customer.html`（单文件，双击即可在浏览器打开，无需安装任何东西）。
-> 生成命令：`npm run report:customer`
-> 最近一次交付：**Stage9084** · 2026-09-10 · [飞书文档](https://feishu.cn/docx/DsZ6dI03Aoeztnxek5mc46rgn4K)（`npm run deliver:feishu -- --env=stage9084`）
+> **客户主交付物**：飞书文档链接 +「UI 验收明细」多维表（见 [feishu-customer-delivery.md](./feishu-customer-delivery.md)）。
+> 本地 HTML（`results/ui-regression-customer-<env>.html`）仅供内部核对，**不要直接发给客户**。
+> 生成预览包：`npm run deliver:ready -- --env=stage9084`；确认后写入：`npm run deliver:feishu -- --env=stage9084`
+> 最近一次交付：**Stage9084** · 2026-09-10 · [飞书文档](https://feishu.cn/docx/DsZ6dI03Aoeztnxek5mc46rgn4K)
 
 ---
 

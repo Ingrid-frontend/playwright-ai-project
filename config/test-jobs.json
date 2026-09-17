@@ -41,7 +41,8 @@
         "createFeishuDoc": false,
         "writeFeishuBitable": true,
         "refreshLogin": true,
-        "promoteBaselineIfClean": false
+        "promoteBaselineIfClean": false,
+        "deliveryPreview": true
       },
       "notifyOn": ["failure", "success"]
     },
@@ -65,7 +66,8 @@
         "createFeishuDoc": false,
         "writeFeishuBitable": true,
         "refreshLogin": true,
-        "promoteBaselineIfClean": false
+        "promoteBaselineIfClean": false,
+        "deliveryPreview": true
       },
       "notifyOn": ["failure", "success"]
     },
@@ -113,7 +115,8 @@
         "createFeishuDoc": false,
         "writeFeishuBitable": true,
         "refreshLogin": true,
-        "promoteBaselineIfClean": false
+        "promoteBaselineIfClean": false,
+        "deliveryPreview": true
       },
       "notifyOn": ["failure", "success"]
     },
@@ -140,6 +143,31 @@
         "uiAuditGate": true
       },
       "notifyOn": ["failure"]
+    },
+    {
+      "id": "expense-flow-golden",
+      "enabled": false,
+      "description": "L1 报销 Golden 回归（dev，复制 golden-seeds.json.example 为 golden-seeds.json 并填 expenseDocNo 后设 enabled:true）",
+      "runner": "expense-flow-golden",
+      "tier": "L1",
+      "schedule": null,
+      "timezone": "Asia/Shanghai",
+      "playwrightEnv": "dev",
+      "accountProfile": null,
+      "specs": "expense/golden-regression.spec.ts",
+      "steps": {
+        "login": true,
+        "compare": true,
+        "compareGate": true,
+        "recordLastGreen": false,
+        "feishuNotify": true,
+        "createFeishuDoc": false,
+        "writeFeishuBitable": true,
+        "refreshLogin": true,
+        "promoteBaselineIfClean": false,
+        "deliveryPreview": true
+      },
+      "notifyOn": ["failure", "success"]
     },
     {
       "id": "catalog-drift-check",

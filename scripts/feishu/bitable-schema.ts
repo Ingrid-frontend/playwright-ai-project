@@ -221,6 +221,7 @@ export function buildIssueLinkFieldSpec(runTableId: string): {
 /** 客户验收交付明细表：一行一个检测项，含证据图附件 */
 export const DELIVERY_FIELDS = {
   itemKey: 'item_key',
+  runId: 'run_id',
   generatedAt: 'generated_at',
   env: 'env',
   releaseTag: 'release_tag',
@@ -250,6 +251,7 @@ export const DELIVERY_FIELD_SPECS: Array<{
 }> = [
   { name: '页面', type: BITABLE_FIELD_TYPE.text },
   { name: DELIVERY_FIELDS.itemKey, type: BITABLE_FIELD_TYPE.text },
+  { name: DELIVERY_FIELDS.runId, type: BITABLE_FIELD_TYPE.text },
   { name: DELIVERY_FIELDS.generatedAt, type: BITABLE_FIELD_TYPE.text },
   { name: DELIVERY_FIELDS.env, type: BITABLE_FIELD_TYPE.text },
   { name: DELIVERY_FIELDS.releaseTag, type: BITABLE_FIELD_TYPE.text },

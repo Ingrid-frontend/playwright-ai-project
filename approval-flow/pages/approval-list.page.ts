@@ -1,4 +1,4 @@
-import { type Locator, type Page, expect } from '@playwright/test';
+import { type Locator, type Page, type Response, expect } from '@playwright/test';
 import { GenericListPage, type ListCatalog } from '../../flow-kit/list/generic-list-page';
 import {
   BUSINESS_TYPE_SELECT,
@@ -72,6 +72,7 @@ export const APPROVAL_LIST_CATALOG: ListCatalog = {
 export class ApprovalListPage extends GenericListPage {
   private pendingBodies: unknown[] = [];
   private pendingHooked = false;
+  private pendingResponseHandler?: (res: Response) => void;
 
   constructor(page: Page) {
     super(page, APPROVAL_LIST_CATALOG);
@@ -81,7 +82,7 @@ export class ApprovalListPage extends GenericListPage {
   private hookPendingResponses(): void {
     if (this.pendingHooked) return;
     this.pendingHooked = true;
-    this.page.on('response', (res) => {
+    this.pendingResponseHandler = (res) => {
       if (!PENDING_LIST_API_RE.test(res.url()) || res.request().method() !== 'POST' || res.status() !== 200) {
         return;
       }
@@ -92,7 +93,17 @@ export class ApprovalListPage extends GenericListPage {
           if (this.pendingBodies.length > 12) this.pendingBodies.length = 12;
         })
         .catch(() => undefined);
-    });
+    };
+    this.page.on('response', this.pendingResponseHandler);
+  }
+
+  dispose(): void {
+    if (this.pendingResponseHandler) {
+      this.page.off('response', this.pendingResponseHandler);
+      this.pendingResponseHandler = undefined;
+    }
+    this.pendingHooked = false;
+    this.pendingBodies = [];
   }
 
   /** Golden 用轻量加载：不走 recoverEmptyOnLoad，避免无数据账号长时间轮询页签 */

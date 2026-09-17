@@ -33,6 +33,7 @@ import { assertSpecEnvMatch, listKnownEnvs } from '../../src/utils/test-env-path
 import { executeTests, runCommandBool, type DirectRunOptions } from './job-runner-execute.js';
 import { isFlowRunner, runFlowJob } from './job-runner-flow.js';
 import { runCatalogDriftJob } from './job-runner-catalog.js';
+import { listReportEnvs } from '../feishu/deliver-ready.js';
 
 export type { DirectRunOptions } from './job-runner-execute.js';
 
@@ -305,8 +306,18 @@ export async function runDirect(opts: DirectRunOptions, ctx: JobRunContext): Pro
   }
 
   if (opts.steps.compare && !skipCompare) {
-    runCommandBool('npm run report:customer -- --reuse-compare', '生成客户版验收报告');
-    runCommandBool('npm run feishu:customer-notify', '客户版飞书通知（周报/提醒）');
+    if (opts.steps.deliveryPreview && runtimeEnv && runtimeEnv !== 'all') {
+      runCommandBool(`npm run deliver:ready -- --env=${runtimeEnv}`, '生成交付预览包');
+    } else if (opts.steps.deliveryPreview && runtimeEnv === 'all') {
+      for (const envId of listReportEnvs()) {
+        runCommandBool(`npm run deliver:ready -- --env=${envId}`, `交付预览 (${envId})`);
+      }
+    } else {
+      runCommandBool('npm run report:customer -- --reuse-compare', '生成客户版验收报告');
+      if (opts.steps.feishuNotify) {
+        runCommandBool('npm run feishu:customer-notify', '客户版飞书通知（周报/提醒）');
+      }
+    }
   }
 
   const createDoc = opts.alwaysCreateFeishuDoc || opts.steps.createFeishuDoc;

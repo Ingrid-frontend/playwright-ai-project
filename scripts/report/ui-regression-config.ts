@@ -1,5 +1,10 @@
 import fs from 'fs';
 import path from 'path';
+import {
+  resolveCompareCrossBrowserForEnv,
+  resolveDefaultBrowsersForEnv,
+  resolveActiveEnvId,
+} from '../../src/utils/env-profile.js';
 
 export type BaselineStrategy = 'hybrid' | 'golden' | 'last-green' | 'oldest';
 
@@ -430,13 +435,15 @@ export function resolveCrossBrowserPixelmatch(): PixelmatchOptions {
   return { threshold, includeAA };
 }
 
-export function resolveCompareCrossBrowser(): boolean {
+export function resolveCompareCrossBrowser(envId?: string): boolean {
   const env = process.env.PLAYWRIGHT_COMPARE_CROSS_BROWSER?.trim();
   if (env) {
     const v = env.toLowerCase();
     if (v === '0' || v === 'false' || v === 'no') return false;
     if (v === '1' || v === 'true' || v === 'yes') return true;
   }
+  const fromProfile = resolveCompareCrossBrowserForEnv(envId || resolveActiveEnvId());
+  if (fromProfile !== undefined) return fromProfile;
   return loadUiRegressionConfig().compareCrossBrowser !== false;
 }
 
@@ -458,7 +465,9 @@ export function scriptKeyMatches(regionScript: string | undefined, scriptKey: st
   return sk.includes(`/${rs}/`);
 }
 
-export function resolveDefaultBrowsers(): string[] {
+export function resolveDefaultBrowsers(envId?: string): string[] {
+  const fromProfile = resolveDefaultBrowsersForEnv(envId || resolveActiveEnvId());
+  if (fromProfile?.length) return fromProfile;
   return loadUiRegressionConfig().defaultBrowsers;
 }
 

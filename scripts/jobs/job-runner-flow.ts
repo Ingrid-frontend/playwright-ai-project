@@ -24,6 +24,8 @@ import {
   resolveFlowRunnerKey,
   type FlowRunnerKey,
 } from "./flow-runner-registry.js";
+import { getFlow } from "../flow/flow-registry.js";
+import { listReportEnvs } from "../feishu/deliver-ready.js";
 
 const require = createRequire(import.meta.url);
 const repoEnv = require("../../pw-files/repo-env.js");
@@ -55,7 +57,7 @@ function listFlowLoginProfiles(
   profile: string,
   job: ResolvedTestJob,
 ): string[] {
-  if (runnerKey === "request-flow-write" || runnerKey === "approval-flow-write") {
+  if (runnerKey.endsWith("-write")) {
     if (profile) return [profile];
     const raw = job.accountProfile;
     if (Array.isArray(raw)) return raw.length ? [String(raw[0])] : ["write"];
@@ -65,17 +67,24 @@ function listFlowLoginProfiles(
   return repoEnv.listGoldenProfileIds(repoRoot, env);
 }
 
+function parseFlowRunnerKey(runnerKey: FlowRunnerKey): { flowId: string; kind: "golden" | "write" } | null {
+  const m = runnerKey.match(/^(.+)-(golden|write)$/);
+  if (!m) return null;
+  return { flowId: m[1]!, kind: m[2] as "golden" | "write" };
+}
+
 function resolveFlowSpecPaths(runnerKey: FlowRunnerKey, job: ResolvedTestJob): string[] {
-  if (runnerKey === "request-flow-write" && Array.isArray(job.specs)) {
-    return job.specs.map((s) => `request-flow/tests/${s}`);
+  const parsed = parseFlowRunnerKey(runnerKey);
+  if (!parsed) return [];
+  const flow = getFlow(parsed.flowId);
+  if (!flow) return [];
+  if (parsed.kind === "write" && Array.isArray(job.specs)) {
+    return job.specs.map((s) => `${flow.id}/tests/${s}`);
   }
-  if (runnerKey === "approval-flow-write" && Array.isArray(job.specs)) {
-    return job.specs.map((s) => `approval-flow/tests/${s}`);
+  if (parsed.kind === "golden") {
+    return [`${flow.id}/tests/${flow.goldenSpec}`];
   }
-  if (runnerKey === "approval-flow-golden") {
-    return ["approval-flow/tests/approval/golden-regression.spec.ts"];
-  }
-  return ["request-flow/tests/request/golden-regression.spec.ts"];
+  return [];
 }
 
 function buildFlowScriptArgs(
@@ -92,14 +101,7 @@ function buildFlowScriptArgs(
     args.push(`--env=${effectiveEnv}`);
   }
   if (profile) args.push(`--profile=${profile}`);
-  if (runnerKey === "request-flow-write" && Array.isArray(job.specs)) {
-    for (const spec of job.specs) {
-      args.push(`--spec=${spec}`);
-    }
-    args.push("--clean-runs");
-    if (job.steps.resetFlowArtifacts) args.push("--reset-artifacts");
-  }
-  if (runnerKey === "approval-flow-write" && Array.isArray(job.specs)) {
+  if (runnerKey.endsWith("-write") && Array.isArray(job.specs)) {
     for (const spec of job.specs) {
       args.push(`--spec=${spec}`);
     }
@@ -272,10 +274,14 @@ export async function runFlowJob(
 
   const compareSkipped =
     !job.steps.compare ||
-    (runnerKey !== "request-flow-golden" && runnerKey !== "approval-flow-golden");
+    (runnerKey !== "request-flow-golden"
+      && runnerKey !== "approval-flow-golden"
+      && runnerKey !== "expense-flow-golden");
   let comparePassed = true;
   const isGoldenRunner =
-    runnerKey === "request-flow-golden" || runnerKey === "approval-flow-golden";
+    runnerKey === "request-flow-golden"
+    || runnerKey === "approval-flow-golden"
+    || runnerKey === "expense-flow-golden";
 
   if (!compareSkipped && isGoldenRunner) {
     try {
@@ -292,9 +298,35 @@ export async function runFlowJob(
     }
   }
 
-  const flowAllOk = testPassed && (compareSkipped || comparePassed);
+  let deliveryPreviewPassed = true;
+  let deliveryPreviewAttempted = false;
+  if (
+    !compareSkipped &&
+    comparePassed &&
+    isGoldenRunner &&
+    job.steps.deliveryPreview
+  ) {
+    deliveryPreviewAttempted = true;
+    const envs =
+      effectiveEnv === "all" ? listReportEnvs(repoRoot) : [effectiveEnv];
+    for (const envId of envs) {
+      if (!envId) continue;
+      try {
+        console.log(`\n📦 deliver:ready --env=${envId}`);
+        execSync(`npm run deliver:ready -- --env=${envId}`, {
+          stdio: "inherit",
+          cwd: repoRoot,
+          env: process.env,
+        });
+      } catch {
+        deliveryPreviewPassed = false;
+        console.error(`❌ deliver:ready --env=${envId} 失败`);
+      }
+    }
+  }
+
   const uiIssues = readUiIssuesSummaryCounts();
-  const failReasons = buildJobFailReasons({
+  let failReasons = buildJobFailReasons({
     testPassed,
     comparePassed,
     compareSkipped,
@@ -306,6 +338,14 @@ export async function runFlowJob(
     feishuDocAttempted: false,
     uiIssuesBlocker: uiIssues?.blocker,
   });
+  if (deliveryPreviewAttempted && !deliveryPreviewPassed) {
+    failReasons = [...failReasons, "交付预览 deliver:ready 失败"];
+  }
+
+  const flowAllOk =
+    testPassed &&
+    (compareSkipped || comparePassed) &&
+    (!deliveryPreviewAttempted || deliveryPreviewPassed);
 
   const summary: JobSummaryFile = {
     jobId: job.id,

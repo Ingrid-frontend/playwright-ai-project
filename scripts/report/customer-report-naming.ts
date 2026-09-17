@@ -1,3 +1,10 @@
+import {
+  envIdSortKey as profileEnvSortKey,
+  envLabelFromProfile,
+  isKnownEnvProfile,
+  loadEnvProfiles,
+} from '../../src/utils/env-profile.js';
+
 /**
  * 客户报告展示名清洗。
  *
@@ -6,12 +13,7 @@
  * 这里只做展示层转换，不改判定口径。
  */
 
-/** 环境代号 -> 客户可读环境名 */
-const ENV_LABELS: Record<string, string> = {
-  dev: 'DEV环境',
-  uat: 'UAT环境',
-  stage9084: 'Stage9084环境',
-  stage: '预发布环境',
+const LEGACY_ENV_LABELS: Record<string, string> = {
   staging: '预发布环境',
   test: '测试环境',
   prod: '生产环境',
@@ -20,8 +22,9 @@ const ENV_LABELS: Record<string, string> = {
 
 function envLabelForSegment(seg: string): string | undefined {
   const key = seg.toLowerCase();
-  const hit = ENV_LABELS[key];
-  if (hit) return hit;
+  if (isKnownEnvProfile(key)) return envLabelFromProfile(key);
+  const legacy = LEGACY_ENV_LABELS[key];
+  if (legacy) return legacy;
   const stageNum = /^stage(\d+)$/i.exec(key);
   if (stageNum) return `Stage${stageNum[1]}环境`;
   return undefined;
@@ -40,7 +43,7 @@ function isInternalSegment(seg: string): boolean {
 }
 
 function isEnvSegment(seg: string): boolean {
-  return Boolean(envLabelForSegment(seg));
+  return isKnownEnvProfile(seg) || Boolean(envLabelForSegment(seg));
 }
 
 /**
@@ -149,8 +152,8 @@ export function friendlyScriptLabel(scriptKey: string): string {
   return scriptKey;
 }
 
-/** 技术附录环境分组顺序 */
-export const RUN_HISTORY_ENV_ORDER = ['stage', 'stage9084', 'uat', 'dev'] as const;
+/** 技术附录环境分组顺序（来自 config/env-profiles.json） */
+export const RUN_HISTORY_ENV_ORDER = loadEnvProfiles().runHistoryOrder;
 
 /** 从 scriptKey 提取环境段，如 flows/request-flow/dev/... -> dev */
 export function extractEnvId(scriptKey: string): string {
@@ -161,16 +164,12 @@ export function extractEnvId(scriptKey: string): string {
 }
 
 export function envIdSortKey(envId: string): number {
-  const key = String(envId || '').toLowerCase();
-  const i = RUN_HISTORY_ENV_ORDER.indexOf(key as (typeof RUN_HISTORY_ENV_ORDER)[number]);
-  if (i >= 0) return i;
-  if (!key) return RUN_HISTORY_ENV_ORDER.length + 1;
-  return RUN_HISTORY_ENV_ORDER.length;
+  return profileEnvSortKey(envId);
 }
 
 export function envLabelFromId(envId: string): string {
   if (!envId) return '';
-  return envLabelForSegment(envId) || envId;
+  return envLabelForSegment(envId) || envLabelFromProfile(envId) || envId;
 }
 
 /** 从 scriptKeys 收集去重环境段，按 RUN_HISTORY_ENV_ORDER 排序 */

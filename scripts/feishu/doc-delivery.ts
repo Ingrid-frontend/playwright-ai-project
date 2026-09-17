@@ -83,6 +83,7 @@ export function buildCustomerDocBlocks(
   blocks.push(heading(1, buildCustomerDocTitle(payload)));
   const metaLine = [
     `生成时间：${payload.generatedAt}`,
+    payload.runId ? `运行 ID：${payload.runId}` : '',
     payload.envLabel ? `环境：${payload.envLabel}` : '',
     payload.releaseTag ? `版本：v${payload.releaseTag}` : '',
   ]
@@ -290,13 +291,16 @@ async function tryRequest<T>(url: string, token: string, init: RequestInit = {})
  *  3. 未公开则尝试 PUT 设为「组织内可阅读」，再读一次。
  *  4. 应用未开通 drive:drive / docs:doc 等权限时全部失败 → 返回基础 URL 并在结果中标注需手动授权。
  */
-export async function shareDocxDocument(token: string, documentId: string): Promise<string> {
+export async function shareDocxDocument(
+  token: string,
+  documentId: string,
+): Promise<{ url: string; shareDegraded: boolean }> {
   const base = `https://open.feishu.cn/open-apis/drive/v1/permissions/${documentId}/public?type=docx`;
   const fallback = `https://feishu.cn/docx/${documentId}`;
 
   const existing = await tryRequest<PublicPerm>(base, token, { method: 'GET' });
   const link = existing?.permission_public?.link || existing?.permission_public?.url;
-  if (link) return link;
+  if (link) return { url: link, shareDegraded: false };
 
   await tryRequest(base, token, {
     method: 'PUT',
@@ -311,9 +315,9 @@ export async function shareDocxDocument(token: string, documentId: string): Prom
 
   const after = await tryRequest<PublicPerm>(base, token, { method: 'GET' });
   const afterLink = after?.permission_public?.link || after?.permission_public?.url;
-  if (afterLink) return afterLink;
+  if (afterLink) return { url: afterLink, shareDegraded: false };
 
   console.warn(`  ⚠️  文档未取得公开分享链接（应用需开通 drive:drive / drive:file / docs:doc 之一）。`);
-  console.warn(`     document_id=${documentId}，请在飞书内手动「分享」后使用 fallback 链接。`);
-  return fallback;
+  console.warn(`     document_id=${documentId}，请在飞书内手动「分享」后再发给客户。`);
+  return { url: fallback, shareDegraded: true };
 }

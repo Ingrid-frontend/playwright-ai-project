@@ -53,7 +53,12 @@ export type DeliveryUncoveredStep = {
 
 export type DeliveryPayload = {
   version: 1;
+  runId: string;
   generatedAt: string;
+  /** 交付环境 id（与 --env= 一致） */
+  envId?: string;
+  /** 是否允许 deliver:feishu --apply（单环境、显式 --env= 时为 true） */
+  deliveryReady?: boolean;
   releaseTag?: string;
   envLabel?: string;
   headline: string;
@@ -161,12 +166,29 @@ export function collectDeliveryPages(model: CustomerReportModel, maxItems: numbe
   return { issues: [], samples };
 }
 
+function resolveDeliveryRunId(model: CustomerReportModel, override?: string): string {
+  if (override?.trim()) return override.trim();
+  if (process.env.TEST_RUN_ID?.trim()) return process.env.TEST_RUN_ID.trim();
+  if (process.env.FLOW_REPORT_BATCH_ID?.trim()) return process.env.FLOW_REPORT_BATCH_ID.trim();
+  for (const run of model.scriptRuns.values()) {
+    if (run.runId) return run.runId;
+  }
+  return '';
+}
+
 export function buildCustomerDeliveryPayload(
   model: CustomerReportModel,
-  opts?: { maxItems?: number; summary?: CustomerReportSummary },
+  opts?: {
+    maxItems?: number;
+    summary?: CustomerReportSummary;
+    runId?: string;
+    envId?: string;
+    deliveryReady?: boolean;
+  },
 ): DeliveryPayload {
   const maxItems = opts?.maxItems ?? 20;
   const s = opts?.summary ?? buildCustomerReportSummary(model);
+  const runId = resolveDeliveryRunId(model, opts?.runId);
   const c = model.coverage;
   const coveragePct = c.expectedSteps > 0 ? Math.round((c.comparedSteps / c.expectedSteps) * 100) : 0;
 
@@ -201,7 +223,10 @@ export function buildCustomerDeliveryPayload(
 
   return {
     version: 1,
+    runId,
     generatedAt: s.generatedAt,
+    envId: opts?.envId || undefined,
+    deliveryReady: opts?.deliveryReady === true,
     releaseTag: s.releaseTag,
     envLabel: s.envLabel,
     headline: s.headline,
@@ -247,7 +272,11 @@ export function readCustomerDeliveryPayload(
   const abs = path.resolve(filePath);
   if (!fs.existsSync(abs)) return null;
   try {
-    return JSON.parse(fs.readFileSync(abs, 'utf-8')) as DeliveryPayload;
+    const parsed = JSON.parse(fs.readFileSync(abs, 'utf-8')) as DeliveryPayload;
+    if (!parsed.runId) parsed.runId = '';
+    if (parsed.deliveryReady === undefined) parsed.deliveryReady = false;
+    if (!parsed.envId) parsed.envId = '';
+    return parsed;
   } catch {
     return null;
   }

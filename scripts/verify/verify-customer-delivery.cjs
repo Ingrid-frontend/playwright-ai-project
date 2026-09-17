@@ -21,7 +21,9 @@ const previewMod = tsxRequire(
 const docMod = tsxRequire(path.join(__dirname, '../feishu/doc-delivery.ts'), __filename);
 const bitableMod = tsxRequire(path.join(__dirname, '../feishu/bitable-delivery.ts'), __filename);
 
+const envProfileMod = tsxRequire(path.join(__dirname, '../../src/utils/env-profile.ts'), __filename);
 const { sanitizeScriptLabel, readCustomerDeliveryPayload, resolveDeliveryImagePath } = payloadMod;
+const { resolveDeliveryPayloadPath } = envProfileMod;
 const { renderDeliveryPreview } = previewMod;
 const { buildCustomerDocBlocks, buildCustomerDocTitle } = docMod;
 const { buildDeliveryRecord, hashItemKey } = bitableMod;
@@ -29,8 +31,21 @@ const { buildDeliveryRecord, hashItemKey } = bitableMod;
 const ACCOUNT_LIKE = /(?:^|\s)(?:[\w.+-]+@[\w.-]+|\d{6,}|[a-z0-9]+(?:[_-][a-z0-9]+)+)(?=\s|$)/i;
 const HASH_ITEM_KEY = /^[0-9a-f]{16}$/;
 
+function isBenignOutgoingToken(seg) {
+  const s = String(seg || '').trim();
+  if (!s) return true;
+  if (/^\d{4}-\d{2}-\d{2}T[\d-]+Z$/i.test(s)) return true;
+  if (/^\d{4}\/\d{1,2}\/\d{1,2}/.test(s)) return true;
+  return false;
+}
+
 function assertNoAccountLeak(label, where) {
-  const hit = String(label).split('·').map((s) => s.trim()).filter((s) => ACCOUNT_LIKE.test(s));
+  const raw = String(label).trim();
+  if (isBenignOutgoingToken(raw)) return;
+  const hit = raw
+    .split('·')
+    .map((s) => s.trim())
+    .filter((s) => !isBenignOutgoingToken(s) && ACCOUNT_LIKE.test(s));
   assert.deepStrictEqual(hit, [], `${where} 泄漏内部账号: ${label}`);
 }
 
@@ -61,11 +76,15 @@ function main() {
   );
   assert.strictEqual(sanitizeScriptLabel('申请单流程'), '申请单流程');
 
-  const env = process.argv.find((a) => a.startsWith('--env='))?.slice('--env='.length) || '';
-  const payloadFile = env ? `results/customer-delivery-${env}.json` : 'results/customer-delivery.json';
+  const env = process.argv.find((a) => a.startsWith('--env='))?.slice('--env='.length).trim().toLowerCase() || '';
+  const payloadFile = env ? resolveDeliveryPayloadPath(env) : 'results/customer-delivery.json';
   const payload = readCustomerDeliveryPayload(payloadFile);
   if (!payload) {
-    console.log(`⚠️  未找到 ${payloadFile}，跳过集成断言（先跑 npm run report:customer${env ? ` -- --env=${env}` : ''}）`);
+    if (env) {
+      console.error(`❌ 未找到 ${payloadFile}，请先执行 npm run deliver:ready -- --env=${env}`);
+      process.exit(1);
+    }
+    console.log(`⚠️  未找到 ${payloadFile}，跳过集成断言（先跑 npm run report:customer）`);
     console.log('✅ 客户交付链路校验通过（仅单元断言）');
     return;
   }
@@ -75,6 +94,10 @@ function main() {
   assert.ok(payload.items.length > 0, '交付条目不能为空，否则客户会收到空报告');
   assert.ok(payload.headline, '缺少结论标题');
   assert.strictEqual(typeof payload.stats.coveragePct, 'number');
+  if (env) {
+    assert.strictEqual(payload.deliveryReady, true, '按环境交付时 deliveryReady 须为 true');
+    assert.strictEqual(payload.envId, env, 'envId 与 --env 不一致');
+  }
 
   for (const item of payload.items) {
     assert.ok(item.key && item.dedupeKey, '每条交付项都要有 key / dedupeKey');

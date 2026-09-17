@@ -6,9 +6,10 @@ import {
   resolveDeliveryImagePath,
   type DeliveryPayload,
 } from '../report/customer-delivery-payload.js';
+import { resolveDeliveryPayloadPath } from '../../src/utils/env-profile.js';
 import { renderDeliveryPreview } from '../report/customer-delivery-preview.js';
 import { loadFeishuAppConfig, getFeishuAccessToken, sendFeishuNotify } from './feishu-app.js';
-import { uploadImages } from './feishu-media.js';
+import { uploadImages, type UploadBatchResult, type UploaderOptions } from './feishu-media.js';
 import { BitableClient } from './bitable-client.js';
 import { loadBitableRuntimeConfig, explainMissingBitableConfig } from './bitable-schema.js';
 import { ensureDeliveryTable, hashItemKey, writeDeliveryRecords } from './bitable-delivery.js';
@@ -49,10 +50,7 @@ export function parseArgs(argv: string[]): CliOptions {
   const env = argv.find((a) => a.startsWith('--env='))?.slice('--env='.length).trim().toLowerCase();
   return {
     apply: flags.has('--apply'),
-    payloadPath: value(
-      'payload',
-      env ? `results/customer-delivery-${env}.json` : 'results/customer-delivery.json',
-    ),
+    payloadPath: value('payload', env ? resolveDeliveryPayloadPath(env) : 'results/customer-delivery.json'),
     env,
     withBitable: !flags.has('--no-bitable'),
     withDoc: !flags.has('--no-doc'),
@@ -70,6 +68,29 @@ export function collectImagePaths(payload: DeliveryPayload): string[] {
   return [...out];
 }
 
+export async function uploadImagesWithRetry(
+  token: string,
+  absPaths: string[],
+  opts: UploaderOptions = {},
+  maxAttempts = 3,
+): Promise<UploadBatchResult> {
+  let result = await uploadImages(token, absPaths, opts);
+  for (let attempt = 2; attempt <= maxAttempts && result.failed.length > 0; attempt += 1) {
+    const delayMs = 1000 * 2 ** (attempt - 2);
+    console.log(`  图片上传重试 ${attempt}/${maxAttempts}（${result.failed.length} 张，${delayMs}ms 后）...`);
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    const retryPaths = result.failed.map((f) => f.absPath);
+    const retry = await uploadImages(token, retryPaths, opts);
+    result = {
+      tokens: new Map([...result.tokens, ...retry.tokens]),
+      uploaded: result.uploaded + retry.uploaded,
+      reused: result.reused + retry.reused,
+      failed: retry.failed,
+    };
+  }
+  return result;
+}
+
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   const payload = readCustomerDeliveryPayload(opts.payloadPath);
@@ -77,11 +98,29 @@ async function main() {
     console.error(`未找到交付载荷 ${opts.payloadPath}，请先执行 npm run report:customer`);
     process.exit(1);
   }
+  if (!payload.generatedAt) {
+    console.error('交付载荷缺少 generatedAt，无法校验新鲜度');
+    process.exit(1);
+  }
+  if (opts.apply) {
+    if (!opts.env) {
+      console.error('正式交付必须指定 --env=<id>，例如: npm run deliver:feishu -- --env=stage9084');
+      process.exit(1);
+    }
+    if (payload.deliveryReady !== true) {
+      console.error(
+        '交付载荷 deliveryReady 不为 true，禁止写入飞书。请用 npm run deliver:ready -- --env=<id> 按环境重新生成。',
+      );
+      process.exit(1);
+    }
+  }
 
   const imagePaths = collectImagePaths(payload);
   const existingImages = imagePaths.filter((p) => fs.existsSync(p));
   console.log(`交付载荷：${opts.payloadPath}`);
-  console.log(`  条目 ${payload.items.length} 个 · 图片 ${existingImages.length}/${imagePaths.length} 张可读`);
+  console.log(
+    `  runId=${payload.runId || '(未绑定)'} · generatedAt=${payload.generatedAt} · 条目 ${payload.items.length} 个 · 图片 ${existingImages.length}/${imagePaths.length} 张可读`,
+  );
 
   const title = buildCustomerDocTitle(payload);
   const previewHtml = renderDeliveryPreview(payload, title);
@@ -129,14 +168,20 @@ async function main() {
   const token = await getFeishuAccessToken(app);
 
   let docUrl: string | undefined;
+  let shareDegraded = false;
   if (opts.withDoc) {
     console.log('\n[1/3] 创建飞书文档...');
     const documentId = await createDocxDocument(token, title);
     console.log(`  document_id: ${documentId}`);
     const blocks = buildCustomerDocBlocks(payload);
     const written = await addBlocksBatched(token, documentId, blocks);
-    docUrl = await shareDocxDocument(token, documentId);
+    const share = await shareDocxDocument(token, documentId);
+    docUrl = share.url;
+    shareDegraded = share.shareDegraded;
     console.log(`  文档已生成（${written} 个内容块）：${docUrl}`);
+    if (shareDegraded) {
+      console.warn('  ⚠️  分享链接未自动公开，请在飞书内手动「分享」后再发给客户。');
+    }
   } else {
     console.log('\n[1/3] 跳过文档（--no-doc）');
   }
@@ -157,9 +202,13 @@ async function main() {
         `  明细表 ${created ? '已创建' : '已存在'}${addedFields.length ? `，补建字段 ${addedFields.length} 个` : ''}`,
       );
       console.log('  上传证据图（作为多维表附件）...');
-      const upload = await uploadImages(token, existingImages, { concurrency: opts.concurrency });
+      const upload = await uploadImagesWithRetry(token, existingImages, { concurrency: opts.concurrency });
       console.log(`  新传 ${upload.uploaded} 张 · 复用缓存 ${upload.reused} 张 · 失败 ${upload.failed.length} 张`);
       for (const f of upload.failed) console.log(`  ⚠️  ${path.basename(f.absPath)}: ${f.error}`);
+      if (upload.failed.length > 0) {
+        console.error('图片上传失败，阻断交付（请检查网络或飞书凭证后重试）');
+        process.exit(1);
+      }
       uploadSummary = { uploaded: upload.uploaded, reused: upload.reused, failed: upload.failed.length };
       const written = await writeDeliveryRecords(
         client,
@@ -188,9 +237,13 @@ async function main() {
     path.resolve(DELIVERY_RESULT_FILE),
     JSON.stringify(
       {
-        generatedAt: new Date().toISOString(),
+        runId: payload.runId || '',
+        envId: payload.envId || opts.env || '',
+        generatedAt: payload.generatedAt,
+        deliveredAt: new Date().toISOString(),
         title,
         docUrl,
+        shareDegraded,
         bitable: bitableInfo,
         upload: uploadSummary,
       },

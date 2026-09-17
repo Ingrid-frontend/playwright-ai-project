@@ -2,8 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import { isKnownEnv, listKnownEnvs } from '../../src/utils/test-env-path.js';
 import { countResolvedSpecs, type AccountProfileFilter } from './job-utils.js';
-import { countRequestFlowGoldenProfiles, countApprovalFlowGoldenProfiles } from './flow-golden-count.js';
-import { countRequestFlowWriteSpecs, countApprovalFlowWriteSpecs, resolveFlowRunnerKey } from './flow-runner-registry.js';
+import { countRequestFlowGoldenProfiles } from './flow-golden-count.js';
+import { countFlowWriteSpecs, resolveFlowRunnerKey } from './flow-runner-registry.js';
 
 export type { AccountProfileFilter };
 
@@ -26,6 +26,8 @@ export type JobSteps = {
   promoteBaselineIfClean: boolean;
   /** full-flow probe 跑 ui-audit 且 --gate 失败时阻断 */
   uiAuditGate: boolean;
+  /** golden compare 后跑 deliver:ready（预览，不 apply） */
+  deliveryPreview: boolean;
 };
 
 export type TestJobDefaults = {
@@ -93,6 +95,7 @@ const DEFAULT_STEPS: JobSteps = {
   resetFlowArtifacts: false,
   promoteBaselineIfClean: false,
   uiAuditGate: false,
+  deliveryPreview: false,
 };
 
 const DEFAULT_CONFIG: TestJobsConfig = {
@@ -202,31 +205,33 @@ export function listJobRunEnvs(job: ResolvedTestJob, override?: string): string[
   return env === 'all' ? listKnownEnvs() : [env];
 }
 
+function countFlowGoldenProfilesForJob(
+  runnerKey: string,
+  playwrightEnv: string,
+  filter?: AccountProfileFilter,
+): number {
+  if (!runnerKey.endsWith('-golden')) return 0;
+  const repoRoot = process.cwd();
+  if (playwrightEnv === 'all') {
+    return listKnownEnvs().reduce(
+      (sum, envId) => sum + countRequestFlowGoldenProfiles(repoRoot, envId, filter),
+      0,
+    );
+  }
+  return countRequestFlowGoldenProfiles(repoRoot, playwrightEnv, filter);
+}
+
 export function countJobSpecsForEnv(
   job: ResolvedTestJob,
   playwrightEnv: string,
   accountProfile?: AccountProfileFilter,
 ): number {
   const runnerKey = resolveFlowRunnerKey(job.runner, job.id);
-  if (runnerKey === 'request-flow-write') {
-    return countRequestFlowWriteSpecs(job);
+  if (runnerKey?.endsWith('-write')) {
+    return countFlowWriteSpecs(runnerKey.replace(/-write$/, ''), job);
   }
-  if (runnerKey === 'approval-flow-write') {
-    return countApprovalFlowWriteSpecs(job);
-  }
-  if (runnerKey === 'request-flow-golden') {
-    const filter = accountProfile ?? job.accountProfile;
-    if (playwrightEnv === 'all') {
-      return listKnownEnvs().reduce(
-        (sum, envId) => sum + countRequestFlowGoldenProfiles(process.cwd(), envId, filter),
-        0,
-      );
-    }
-    return countRequestFlowGoldenProfiles(process.cwd(), playwrightEnv, filter);
-  }
-  if (runnerKey === 'approval-flow-golden') {
-    const filter = accountProfile ?? job.accountProfile;
-    return countApprovalFlowGoldenProfiles(process.cwd(), playwrightEnv, filter);
+  if (runnerKey?.endsWith('-golden')) {
+    return countFlowGoldenProfilesForJob(runnerKey, playwrightEnv, accountProfile ?? job.accountProfile);
   }
   const filter = accountProfile ?? job.accountProfile;
   return countResolvedSpecs(job.specs, job.optimizedDir, playwrightEnv, filter);
@@ -234,25 +239,11 @@ export function countJobSpecsForEnv(
 
 export function countJobSpecs(job: ResolvedTestJob, accountProfile?: AccountProfileFilter): number {
   const runnerKey = resolveFlowRunnerKey(job.runner, job.id);
-  if (runnerKey === 'request-flow-write') {
-    return countRequestFlowWriteSpecs(job);
+  if (runnerKey?.endsWith('-write')) {
+    return countFlowWriteSpecs(runnerKey.replace(/-write$/, ''), job);
   }
-  if (runnerKey === 'approval-flow-write') {
-    return countApprovalFlowWriteSpecs(job);
-  }
-  if (runnerKey === 'request-flow-golden') {
-    const filter = accountProfile ?? job.accountProfile;
-    if (job.playwrightEnv === 'all') {
-      return listKnownEnvs().reduce(
-        (sum, envId) => sum + countRequestFlowGoldenProfiles(process.cwd(), envId, filter),
-        0,
-      );
-    }
-    return countRequestFlowGoldenProfiles(process.cwd(), job.playwrightEnv, filter);
-  }
-  if (runnerKey === 'approval-flow-golden') {
-    const filter = accountProfile ?? job.accountProfile;
-    return countApprovalFlowGoldenProfiles(process.cwd(), job.playwrightEnv, filter);
+  if (runnerKey?.endsWith('-golden')) {
+    return countFlowGoldenProfilesForJob(runnerKey, job.playwrightEnv, accountProfile ?? job.accountProfile);
   }
   const filter = accountProfile ?? job.accountProfile;
   return countResolvedSpecs(job.specs, job.optimizedDir, job.playwrightEnv, filter);

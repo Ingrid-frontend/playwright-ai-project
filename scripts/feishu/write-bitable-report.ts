@@ -65,13 +65,9 @@ const MAX_STALE_HOURS = Number.parseFloat(process.env.FEISHU_BITABLE_MAX_STALE_H
 export function guardIssuesFreshness(
   issuesReport: UiIssuesReport | null,
   issuesSource: string | null,
-  summary: JobSummaryFile | undefined,
+  _summary: JobSummaryFile | undefined,
 ): string | null {
   if (!Number.isFinite(MAX_STALE_HOURS) || MAX_STALE_HOURS <= 0) return null;
-  if (summary) {
-    // job runner 显式传了 summary（本次运行的真实结果），不依赖静态文件
-    return null;
-  }
   if (!issuesSource) {
     return '未找到 issues 报告（results/ui-issues.json / flow-ui-issues.json 均不存在），拒绝写入占位记录';
   }

@@ -4,6 +4,13 @@ const { send, logLine } = require('./ws-safe');
 
 const COMPARE_REPORT_REL = path.join('results', 'screenshot-comparison.html');
 const CUSTOMER_REPORT_REL = path.join('results', 'ui-regression-customer.html');
+const DELIVERY_PREVIEW_REL = path.join('results', 'feishu-delivery-preview.html');
+
+function resolveCustomerReportRel(envId) {
+  const id = String(envId || '').trim().toLowerCase();
+  if (id) return path.join('results', `ui-regression-customer-${id}.html`);
+  return CUSTOMER_REPORT_REL;
+}
 
 function repoHasScreenshotPng(dir) {
   if (!fs.existsSync(dir)) return false;
@@ -35,8 +42,13 @@ function compareReportOpenPath() {
   return `/repo-report/${COMPARE_REPORT_REL.split(path.sep).join('/')}`;
 }
 
-function customerReportOpenPath() {
-  return `/repo-report/${CUSTOMER_REPORT_REL.split(path.sep).join('/')}`;
+function customerReportOpenPath(envId) {
+  const rel = resolveCustomerReportRel(envId);
+  return `/repo-report/${rel.split(path.sep).join('/')}`;
+}
+
+function deliveryPreviewOpenPath() {
+  return `/repo-report/${DELIVERY_PREVIEW_REL.split(path.sep).join('/')}`;
 }
 
 function sendCompareReportReady(ws, extra = {}) {
@@ -45,8 +57,9 @@ function sendCompareReportReady(ws, extra = {}) {
 }
 
 function sendCustomerReportReady(ws, extra = {}) {
-  send(ws, 'repo:customer-report:done', { ok: true, openPath: customerReportOpenPath(), ...extra });
-  logLine(ws, `[repo] 客户报告就绪: ${customerReportOpenPath()}`, 'ok');
+  const openPath = extra.openPath || customerReportOpenPath(extra.envId);
+  send(ws, 'repo:customer-report:done', { ok: true, openPath, ...extra });
+  logLine(ws, `[repo] 客户报告就绪: ${openPath}`, 'ok');
 }
 
 function readUiIssuesSummary(repoRoot) {
@@ -60,20 +73,27 @@ function readUiIssuesSummary(repoRoot) {
   }
 }
 
-function getCompareReportStatus(repoRoot) {
+function getCompareReportStatus(repoRoot, envId) {
+  const customerRel = resolveCustomerReportRel(envId);
   const absReport = path.join(repoRoot, COMPARE_REPORT_REL);
-  const absCustomer = path.join(repoRoot, CUSTOMER_REPORT_REL);
+  const absCustomer = path.join(repoRoot, customerRel);
+  const absPreview = path.join(repoRoot, DELIVERY_PREVIEW_REL);
   const hasReport = fs.existsSync(absReport);
   const hasCustomerReport = fs.existsSync(absCustomer);
+  const hasDeliveryPreview = fs.existsSync(absPreview);
   const hasScreenshots = repoHasScreenshotPng(path.join(repoRoot, 'screenshots'));
   return {
     hasReport,
     hasCustomerReport,
+    hasDeliveryPreview,
     hasScreenshots,
+    envId: envId || '',
     openPath: hasReport ? compareReportOpenPath() : null,
-    customerOpenPath: hasCustomerReport ? customerReportOpenPath() : null,
+    customerOpenPath: hasCustomerReport ? customerReportOpenPath(envId) : null,
+    previewOpenPath: hasDeliveryPreview ? deliveryPreviewOpenPath() : null,
     reportRel: COMPARE_REPORT_REL,
-    customerReportRel: CUSTOMER_REPORT_REL,
+    customerReportRel: customerRel,
+    previewReportRel: DELIVERY_PREVIEW_REL,
     uiIssues: readUiIssuesSummary(repoRoot),
   };
 }
@@ -115,16 +135,19 @@ async function sendRepoUiIssues(ws, resolveRepoRoot) {
   }
 }
 
-function sendCompareReportStatus(ws, repoRoot) {
-  send(ws, 'repo:compare-report:status', getCompareReportStatus(repoRoot));
+function sendCompareReportStatus(ws, repoRoot, envId) {
+  send(ws, 'repo:compare-report:status', getCompareReportStatus(repoRoot, envId));
 }
 
 module.exports = {
   COMPARE_REPORT_REL,
   CUSTOMER_REPORT_REL,
+  DELIVERY_PREVIEW_REL,
+  resolveCustomerReportRel,
   repoHasScreenshotPng,
   compareReportOpenPath,
   customerReportOpenPath,
+  deliveryPreviewOpenPath,
   readUiIssuesSummary,
   getCompareReportStatus,
   sendCompareReportReady,

@@ -33,7 +33,15 @@ import {
   friendlyScriptLabel,
   friendlyStepLabel,
   regionZoneLabel,
+  envLabelFromId,
 } from '../report/customer-report-naming.js';
+import {
+  getEnvProfile,
+  primaryCustomerDeliveryEnv,
+  resolveCompareCrossBrowserForEnv,
+  resolveDeliveryPayloadPath,
+} from '../../src/utils/env-profile.js';
+import { resolveCompareCrossBrowser } from '../report/ui-regression-config.js';
 import { resolveScriptRunHistory } from '../report/customer-report-run-meta.js';
 import { PNG } from 'pngjs';
 import * as uiIssuesMod from '../report/ui-issues-index.js';
@@ -686,5 +694,18 @@ assert.equal(fullKey!.verdict, 'review', '步骤级审计结论应保留');
 assert.equal(auditMap.get('request-flow/dev/golden-regression/demo::request-search')?.verdict, 'pass');
 fs.rmSync(auditTmp, { recursive: true, force: true });
 pass('readAuditInsights 双格式 stepName 匹配 + 过滤降级说明');
+
+assert.equal(envLabelFromId('stage9084'), 'Stage9084环境');
+assert.equal(resolveDeliveryPayloadPath('stage9084'), 'results/customer-delivery-stage9084.json');
+assert.equal(primaryCustomerDeliveryEnv(), 'stage9084');
+assert.equal(getEnvProfile('dev')?.compareCrossBrowser, true);
+assert.equal(getEnvProfile('stage9084')?.compareCrossBrowser, false);
+assert.equal(resolveCompareCrossBrowserForEnv('dev'), true);
+assert.equal(resolveCompareCrossBrowserForEnv('stage9084'), false);
+const prevCross = process.env.PLAYWRIGHT_COMPARE_CROSS_BROWSER;
+process.env.PLAYWRIGHT_COMPARE_CROSS_BROWSER = '0';
+assert.equal(resolveCompareCrossBrowser('dev'), false);
+process.env.PLAYWRIGHT_COMPARE_CROSS_BROWSER = prevCross;
+pass('env-profile 与跨浏览器开关优先级');
 
 console.log('\n✅ smoke-report-modules 通过');

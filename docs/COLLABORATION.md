@@ -220,6 +220,27 @@ tests/raw-recordings/approve-reimbursement.spec.ts
 - 删除过时的测试
 - 优化测试性能
 
+## ✅ Definition of Done（DoD）
+
+PR 合并前须满足：
+
+1. `npm run typecheck` 全量通过（含 `request-flow` / `approval-flow` / `expense-flow`）
+2. `npm run lint` 无新增 warning
+3. 改动涉及 flow 时，相关 golden / write 用例本地运行通过
+4. 涉及交付链路时，交付载荷含 `runId` + `generatedAt` 绑定
+
+关键路径（交付、golden 种子、flake 门禁）变更需 **2 人审查**；紧急修复可标 `hotfix` 先合并后补审。
+
+关键路径文件范围（见 `.github/CODEOWNERS`，owner：`@Ingrid-frontend`）：
+
+- `scripts/feishu/`（交付写入）
+- `scripts/report/customer-delivery-payload.ts`、`compare-screenshots-customer.ts`
+- `scripts/flow/run-golden-flake-check.ts`
+- `*/datasource/golden-seeds.json`
+- `config/env-profiles.json`
+
+GitHub 分支保护建议：`Settings → Branches → main` → Required approving reviews = **2**（CODEOWNERS 只指定审查人，人数在分支保护里配）。
+
 ## 🎯 总结
 
 通过 **"本地录制 + 版本控制"** 的协作模式，我们可以：

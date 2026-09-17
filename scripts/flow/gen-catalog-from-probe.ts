@@ -385,7 +385,7 @@ function printHelp(): void {
 }
 
 /** --check：把实机探到的表头/接口/placeholder 与现有 catalog 对一遍 */
-function runCheck(snapshot: ProbeSnapshot, catalogPath: string): number {
+function runCheck(snapshot: ProbeSnapshot, catalogPath: string, tabbed = false): number {
   if (!fs.existsSync(catalogPath)) {
     process.stderr.write(`[check] 现有 catalog 不存在：${catalogPath}\n`);
     return 1;
@@ -410,10 +410,12 @@ function runCheck(snapshot: ProbeSnapshot, catalogPath: string): number {
     drift.push(`表头：实机有 ${missing.length} 个列名未出现在 catalog：${missing.join(' / ')}`);
   }
 
-  const tabs = Array.from(new Set((dom.tabs || []).map(cleanTabLabel).filter(Boolean)));
-  const missingTabs = tabs.filter((t) => !src.includes(t));
-  if (missingTabs.length) {
-    drift.push(`页签：实机有 ${missingTabs.join(' / ')} 未出现在 catalog`);
+  if (tabbed) {
+    const tabs = Array.from(new Set((dom.tabs || []).map(cleanTabLabel).filter(Boolean)));
+    const missingTabs = tabs.filter((t) => !src.includes(t));
+    if (missingTabs.length) {
+      drift.push(`页签：实机有 ${missingTabs.join(' / ')} 未出现在 catalog`);
+    }
   }
 
   if (!drift.length) {
@@ -481,7 +483,7 @@ function main(): void {
   out ||= `${domain}-catalog.ts`;
 
   if (args.check) {
-    process.exit(runCheck(snapshot, path.resolve(out)));
+    process.exit(runCheck(snapshot, path.resolve(out), tabbed));
   }
 
   const { code, warnings } = buildCatalogCode({ snapshot, domain, label, entry, tabbed });

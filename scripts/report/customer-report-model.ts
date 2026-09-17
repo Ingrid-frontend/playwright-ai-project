@@ -10,7 +10,7 @@ import { isActionableNature, natureLabel, type ChangeNature } from './change-nat
 import { buildActionItems, buildPlainDescription, deriveShipAdvice, type ShipAdvice } from './customer-report-plain.js';
 import { friendlyScriptLabel, friendlyStepLabel, extractEnvLabel, extractEnvId, envLabelFromId, envIdSortKey } from './customer-report-naming.js';
 import type { ScriptRunMeta, ScriptRunHistoryEntry } from './customer-report-run-meta.js';
-import type { AuditInsight, AuditInjection } from './customer-report-audit-inject.js';
+import { auditVerdictToImpactTier, type AuditInsight, type AuditInjection } from './customer-report-audit-inject.js';
 import {
   buildRegressionDisplay,
   type CustomerRegressionDisplayItem,
@@ -265,6 +265,12 @@ function worstStatus(statuses: CustomerStatus[]): CustomerStatus {
   return 'pass';
 }
 
+const TIER_RANK: Record<ImpactTier, number> = { benign: 1, degraded: 2, blocking: 3 };
+
+function mergeImpactTier(a: ImpactTier, b: ImpactTier): ImpactTier {
+  return TIER_RANK[b] > TIER_RANK[a] ? b : a;
+}
+
 function toBrowserCard(slot: CoverageSlot): CustomerBrowserCard {
   const difference = slot.difference ?? 0;
   const all = displayRegions(slot.regions, slot.regionsWidth, slot.regionsHeight, difference);
@@ -365,6 +371,9 @@ function groupIssues(pages: CustomerPageCard[], anchorPrefix: string): CustomerI
       .map((p) => p.auditVerdict)
       .filter(Boolean)
       .sort((a, b) => (auditVerdictRank[String(b)] ?? 0) - (auditVerdictRank[String(a)] ?? 0))[0];
+    const groupImpactTier = auditVerdict
+      ? mergeImpactTier(impactTier, auditVerdictToImpactTier(String(auditVerdict)))
+      : impactTier;
     groups.push({
       groupKey,
       anchorId: '',
@@ -378,7 +387,7 @@ function groupIssues(pages: CustomerPageCard[], anchorPrefix: string): CustomerI
       reason: primary?.reason || '',
       maxDifferenceLabel: `${(Math.max(...sorted.map((p) => p.maxDifference)) * 100).toFixed(2)}%`,
       actionableRegions,
-      impactTier,
+      impactTier: groupImpactTier,
       natureLabel,
       shiftLabel,
       auditInsights: auditSource?.auditInsights,
@@ -512,7 +521,14 @@ export function buildCustomerReportModel(
     const hit = auditLookup.get(`${normalizeKey(page.scriptKey)}::${page.stepName}`);
     if (!hit) continue;
     if (hit.insights.length > 0) page.auditInsights = hit.insights;
-    if (hit.verdict) page.auditVerdict = hit.verdict;
+    if (hit.verdict) {
+      page.auditVerdict = hit.verdict;
+      const auditTier = auditVerdictToImpactTier(hit.verdict);
+      page.impactTier = mergeImpactTier(page.impactTier, auditTier);
+      for (const browser of page.browsers) {
+        browser.impactTier = mergeImpactTier(browser.impactTier, auditTier);
+      }
+    }
   }
 
   const regressions = pages.filter((p) => p.worstStatus === 'regress');

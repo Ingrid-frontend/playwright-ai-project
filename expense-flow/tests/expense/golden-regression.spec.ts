@@ -1,6 +1,20 @@
 import { test, expect } from '../../fixtures/index';
 import { ExpenseListPage } from '../../pages/expense-list.page';
+import { env } from '../../utils/env';
+import { resolveGoldenSeed } from '../../utils/golden-seed';
 import { bindFlowStepCapture, flowStep } from '../../../src/utils/flow-step.js';
+
+const SEED_MISSING_MSG = 'Golden 种子缺失（SEED_MISSING）';
+
+function configuredDocNo(): string {
+  const fromEnv = env.expenseDocNo.trim();
+  if (fromEnv) return fromEnv;
+  const seed = resolveGoldenSeed(
+    process.env.PLAYWRIGHT_ENV || 'dev',
+    process.env.FLOW_ACCOUNT_SLUG || '',
+  );
+  return seed.docNo;
+}
 
 /**
  * 报销流程 golden 回归。
@@ -34,9 +48,8 @@ test.describe('报销流程 golden 回归', () => {
     await list.goto();
     await list.expectLoaded();
 
-    // 列表可能为空：先拿 UI 行，拿不到就从列表接口兜底
-    const docNo = await list.pickFirstDocNo().catch(() => list.readDocNoFromListApi());
-    test.skip(!docNo, '列表无数据，跳过搜索用例');
+    const docNo = configuredDocNo();
+    test.skip(!docNo, SEED_MISSING_MSG);
 
     await flowStep('搜索单号', async () => {
       await list.search(docNo);

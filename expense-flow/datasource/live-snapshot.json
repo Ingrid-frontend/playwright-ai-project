@@ -116,7 +116,13 @@
     ]
   },
   "detail": null,
-  "listApis": [],
+  "listApis": [
+    {
+      "method": "POST",
+      "status": 200,
+      "url": "/api/expense/queryPage"
+    }
+  ],
   "listApiCandidates": [],
   "apiCalls": [
     "GET 200 /api/department/opt/tenant?hlyRequestID=rwebYeHfpY-1FPrMW1788403543",

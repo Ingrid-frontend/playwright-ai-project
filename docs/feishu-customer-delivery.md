@@ -30,19 +30,22 @@
 ## 2. 三步跑通
 
 ```bash
-# 0. 前置：先生成报告，它会顺带写出交付载荷
-npm run report:customer
-
-# 1. 预览（不碰飞书，没配凭证也能跑）
-npm run deliver:preview
+# 0. 一键生成交付预览包（报告 + 校验 + 预览，不写入飞书）
+npm run deliver:ready -- --env=stage9084
 open results/feishu-delivery-preview.html
 
-# 2. 确认内容没问题后真正写入飞书
-npm run deliver:feishu
+# 1. 或分步执行
+npm run report:customer -- --env=stage9084
+npm run deliver:preview -- --env=stage9084
+
+# 2. 确认预览无误后写入飞书（必须带 --env=）
+npm run deliver:feishu -- --env=stage9084
 
 # 3. 要顺带发群通知
-npm run deliver:feishu:notify
+npm run deliver:feishu:notify -- --env=stage9084
 ```
+
+Golden Job / Studio 在 `deliveryPreview: true` 时会自动跑到 `deliver:ready`，**不会**自动 `deliver:feishu --apply`。
 
 `deliver:preview` 产出两个文件，用来在写进飞书之前核对：
 

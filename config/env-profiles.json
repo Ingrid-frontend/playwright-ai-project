@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "defaultProfile": "stage",
+  "runHistoryOrder": ["stage", "stage9084", "uat", "dev"],
+  "profiles": {
+    "dev": {
+      "label": "DEV环境",
+      "compareCrossBrowser": true,
+      "defaultBrowsers": ["chrome", "webkit"],
+      "deliverySuffix": "dev"
+    },
+    "uat": {
+      "label": "UAT环境",
+      "compareCrossBrowser": false,
+      "defaultBrowsers": ["chrome"],
+      "deliverySuffix": "uat"
+    },
+    "stage9084": {
+      "label": "Stage9084环境",
+      "compareCrossBrowser": false,
+      "defaultBrowsers": ["chrome"],
+      "deliverySuffix": "stage9084",
+      "customerDeliveryPrimary": true
+    },
+    "stage": {
+      "label": "预发布环境",
+      "compareCrossBrowser": false,
+      "defaultBrowsers": ["chrome"],
+      "deliverySuffix": "stage"
+    }
+  }
+}

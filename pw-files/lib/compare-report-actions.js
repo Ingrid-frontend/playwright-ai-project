@@ -3,11 +3,20 @@ const path = require('path');
 const { send, logLine, stripAnsi } = require('./ws-safe');
 const {
   COMPARE_REPORT_REL,
-  CUSTOMER_REPORT_REL,
+  resolveCustomerReportRel,
   repoHasScreenshotPng,
   sendCompareReportReady,
   sendCustomerReportReady,
+  deliveryPreviewOpenPath,
+  customerReportOpenPath,
+  DELIVERY_PREVIEW_REL,
 } = require('./compare-report-status');
+
+function resolveEnvId(session, buildRepoSpawnEnv) {
+  const envId = buildRepoSpawnEnv(session).PLAYWRIGHT_ENV;
+  if (!envId) return '';
+  return String(envId).trim().toLowerCase();
+}
 
 async function openRepoCompareReport(ws, session, { regenerate = false } = {}, deps) {
   const { resolveRepoRoot } = deps;
@@ -94,17 +103,27 @@ async function runRepoCompareReport(ws, session, deps) {
 }
 
 async function openRepoCustomerReport(ws, session, { regenerate = false } = {}, deps) {
-  const { resolveRepoRoot } = deps;
+  const { resolveRepoRoot, buildRepoSpawnEnv } = deps;
   const repoRoot = resolveRepoRoot();
+  const envId = resolveEnvId(session, buildRepoSpawnEnv);
+  if (!envId) {
+    send(ws, 'error', { message: '请先选择运行环境，再生成客户交付包' });
+    send(ws, 'repo:customer-report:done', { ok: false });
+    return;
+  }
   if (!fs.existsSync(path.join(repoRoot, 'playwright.config.ts'))) {
     send(ws, 'error', { message: '未找到项目根，无法打开客户报告' });
     send(ws, 'repo:customer-report:done', { ok: false });
     return;
   }
 
-  const absReport = path.join(repoRoot, CUSTOMER_REPORT_REL);
+  const absReport = path.join(repoRoot, resolveCustomerReportRel(envId));
   if (!regenerate && fs.existsSync(absReport)) {
-    sendCustomerReportReady(ws, { openedExisting: true });
+    sendCustomerReportReady(ws, {
+      openedExisting: true,
+      envId,
+      previewOpenPath: deliveryPreviewOpenPath(),
+    });
     return;
   }
 
@@ -122,6 +141,12 @@ async function openRepoCustomerReport(ws, session, { regenerate = false } = {}, 
 async function runRepoCustomerReport(ws, session, deps) {
   const { resolveRepoRoot, spawn, buildRepoSpawnEnv } = deps;
   const repoRoot = resolveRepoRoot();
+  const envId = resolveEnvId(session, buildRepoSpawnEnv);
+  if (!envId) {
+    send(ws, 'error', { message: '请先选择运行环境，再生成客户交付包' });
+    send(ws, 'repo:customer-report:done', { ok: false });
+    return;
+  }
   if (!fs.existsSync(path.join(repoRoot, 'playwright.config.ts'))) {
     send(ws, 'error', { message: '未找到项目根，无法生成客户报告' });
     send(ws, 'repo:customer-report:done', { ok: false });
@@ -129,11 +154,11 @@ async function runRepoCustomerReport(ws, session, deps) {
   }
 
   session.repoCompareCancelled = false;
-  send(ws, 'repo:customer-report:start', {});
-  logLine(ws, '[repo] 运行 report:customer…', 'info');
+  send(ws, 'repo:customer-report:start', { envId });
+  logLine(ws, `[repo] 运行 deliver:ready --env=${envId}…`, 'info');
 
   const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  const proc = spawn(npmCmd, ['run', 'report:customer'], {
+  const proc = spawn(npmCmd, ['run', 'deliver:ready', '--', `--env=${envId}`], {
     cwd: repoRoot,
     env: buildRepoSpawnEnv(session),
     shell: false,
@@ -159,21 +184,94 @@ async function runRepoCustomerReport(ws, session, deps) {
     return;
   }
   if (exitCode !== 0) {
-    send(ws, 'error', { message: `report:customer 退出码 ${exitCode}` });
+    send(ws, 'error', { message: `deliver:ready 退出码 ${exitCode}` });
     send(ws, 'repo:customer-report:done', { ok: false, exitCode });
     return;
   }
 
-  const absReport = path.join(repoRoot, CUSTOMER_REPORT_REL);
+  const absReport = path.join(repoRoot, resolveCustomerReportRel(envId));
   if (!fs.existsSync(absReport)) {
     send(ws, 'error', {
-      message: '未生成 results/ui-regression-customer.html',
+      message: `未生成 ${resolveCustomerReportRel(envId)}`,
     });
     send(ws, 'repo:customer-report:done', { ok: false });
     return;
   }
 
-  sendCustomerReportReady(ws, { openedExisting: false });
+  sendCustomerReportReady(ws, {
+    openedExisting: false,
+    envId,
+    openPath: customerReportOpenPath(envId),
+    previewOpenPath: deliveryPreviewOpenPath(),
+  });
+}
+
+async function runRepoDeliverFeishu(ws, session, deps) {
+  const { resolveRepoRoot, spawn, buildRepoSpawnEnv } = deps;
+  const repoRoot = resolveRepoRoot();
+  const envId = resolveEnvId(session, buildRepoSpawnEnv);
+  if (!envId) {
+    send(ws, 'error', { message: '请先选择运行环境，再写入飞书' });
+    send(ws, 'repo:deliver-feishu:done', { ok: false });
+    return;
+  }
+
+  session.repoCompareCancelled = false;
+  send(ws, 'repo:deliver-feishu:start', { envId });
+  logLine(ws, `[repo] 运行 deliver:feishu --env=${envId}…`, 'info');
+
+  const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const proc = spawn(
+    npmCmd,
+    ['run', 'deliver:feishu', '--', `--env=${envId}`],
+    {
+      cwd: repoRoot,
+      env: { ...buildRepoSpawnEnv(session), NODE_OPTIONS: '--dns-result-order=ipv4first' },
+      shell: false,
+    },
+  );
+  session.repoCompareProc = proc;
+  proc.stdout.on('data', (d) => {
+    const t = stripAnsi(d.toString());
+    if (t.trim()) logLine(ws, t.trimEnd(), 'dim');
+  });
+  proc.stderr.on('data', (d) => {
+    const t = stripAnsi(d.toString());
+    if (t.trim()) logLine(ws, t.trimEnd(), 'warn');
+  });
+
+  const exitCode = await new Promise((resolve) => {
+    proc.on('close', resolve);
+  });
+  session.repoCompareProc = null;
+
+  if (exitCode !== 0) {
+    send(ws, 'error', { message: `deliver:feishu 退出码 ${exitCode}` });
+    send(ws, 'repo:deliver-feishu:done', { ok: false, exitCode });
+    return;
+  }
+
+  const resultPath = path.join(repoRoot, 'results/feishu-delivery-result.json');
+  let docUrl = '';
+  let shareDegraded = false;
+  if (fs.existsSync(resultPath)) {
+    try {
+      const result = JSON.parse(fs.readFileSync(resultPath, 'utf-8'));
+      docUrl = result.docUrl || '';
+      shareDegraded = Boolean(result.shareDegraded);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  send(ws, 'repo:deliver-feishu:done', { ok: true, envId, docUrl, shareDegraded });
+  if (shareDegraded) {
+    logLine(ws, '[repo] 飞书文档已写入，但分享链接需手动公开', 'warn');
+  } else if (docUrl) {
+    logLine(ws, `[repo] 飞书交付完成: ${docUrl}`, 'ok');
+  } else {
+    logLine(ws, '[repo] 飞书交付完成', 'ok');
+  }
 }
 
 module.exports = {
@@ -181,4 +279,5 @@ module.exports = {
   runRepoCompareReport,
   openRepoCustomerReport,
   runRepoCustomerReport,
+  runRepoDeliverFeishu,
 };

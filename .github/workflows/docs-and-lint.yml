@@ -27,7 +27,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
           cache: 'npm'
 
       - run: npm ci
@@ -38,7 +38,7 @@ jobs:
         run: npm run docs:check
 
   lint:
-    name: Lint (report only)
+    name: Lint
     timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
@@ -46,21 +46,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
           cache: 'npm'
 
       - run: npm ci
 
-      # 非阻塞。截至接入时全仓有 194 个既有 error（scripts 102 / pw-files 52 /
-      # custom-reporters 30 / 其他 10），大多是 no-undef 与 no-unused-vars。
-      # 设成硬门禁会立刻变成永久红灯，红灯久了就没人看了——那比没有门禁更糟。
-      #
-      # 收敛路径：按目录逐步清零，某个目录清干净后，把它加进下面的「已清零」
-      # 硬门禁步骤。全清完再把本步骤的 continue-on-error 去掉。
-      - name: Lint (full, non-blocking)
+      - name: Lint
         run: npm run lint
-        continue-on-error: true
-
-      # 已清零的目录做硬门禁，防止回退。新目录清干净后往这里加。
-      - name: Lint (clean dirs, blocking)
-        run: npx eslint flow-kit/ scripts/verify/check-docs-index.ts --ext .ts

@@ -23,6 +23,8 @@ import { buildCustomerDeliveryPayload, writeCustomerDeliveryPayload } from './cu
 import { resolveScriptRunMeta, resolveScriptRunHistory } from './customer-report-run-meta.js';
 import { enrichRunHistoryComparisons, screenshotsForMainReport } from './customer-report-run-history.js';
 import { extractEnvId, envLabelFromId, envIdSortKey } from './customer-report-naming.js';
+import { resolveDeliveryPayloadPath } from '../../src/utils/env-profile.js';
+import { resolveCompareCrossBrowser } from './ui-regression-config.js';
 import { readIssuesReport } from './issues-source.js';
 import {
   normDir,
@@ -88,9 +90,15 @@ async function main() {
     }
   }
 
+  const activeEnv = envFilter || process.env.PLAYWRIGHT_ENV?.trim() || '';
   console.log('正在生成客户版 UI 衰退检测报告...');
   console.log(`  范围: ${allScripts ? '全部脚本' : 'Golden 回归'}`);
   console.log(`  脚本数: ${scanTargets.length}`);
+  if (activeEnv) {
+    console.log(
+      `  跨浏览器对比: ${resolveCompareCrossBrowser(activeEnv) ? '开启' : '关闭'}（env=${activeEnv}，可用 PLAYWRIGHT_COMPARE_CROSS_BROWSER 覆盖）`,
+    );
+  }
   if (envFilter) {
     console.log(
       `  环境: ${envLabelFromId(envFilter) || envFilter}（${envFilter}）· 命中 ${scanTargets.length}/${discovered.length} 个脚本`,
@@ -168,8 +176,18 @@ async function main() {
   const summary = writeCustomerReportSummary(model);
   // 交付载荷供飞书多维表 / 飞书文档链路消费，避免它们为了拿数据再跑一遍像素比对
   const maxItems = Number(process.env.DELIVERY_MAX_ITEMS || 20);
-  const deliveryFile = `results/customer-delivery${suffix}.json`;
-  writeCustomerDeliveryPayload(buildCustomerDeliveryPayload(model, { summary, maxItems }), deliveryFile);
+  const deliveryFile = envFilter ? resolveDeliveryPayloadPath(envFilter) : 'results/customer-delivery.json';
+  const envCount = model.envSummaries?.length ?? 0;
+  const deliveryReady = Boolean(envFilter && envCount <= 1);
+  writeCustomerDeliveryPayload(
+    buildCustomerDeliveryPayload(model, {
+      summary,
+      maxItems,
+      envId: envFilter || undefined,
+      deliveryReady,
+    }),
+    deliveryFile,
+  );
   const html = sanitizeCustomerReportHtml(renderCustomerReportHtml(model), outputPath).html;
 
   const outAbs = path.resolve(outputPath);

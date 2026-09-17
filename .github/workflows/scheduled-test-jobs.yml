@@ -20,6 +20,7 @@ on:
           - request-flow-write
           - approval-flow-golden
           - approval-flow-write
+          - expense-flow-golden
           - catalog-drift-check
       playwright_env:
         description: 覆盖 Job 的 playwrightEnv（留空则用 Job 配置）
@@ -44,7 +45,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
           cache: 'npm'
 
       - name: Cache Playwright Browsers

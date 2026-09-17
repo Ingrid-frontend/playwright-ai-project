@@ -4,7 +4,7 @@
   "description": "Playwright AI 驱动的自动化测试项目",
   "type": "module",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "scripts": {
     "test": "playwright test",
@@ -85,6 +85,7 @@
     "figma:sync-baselines": "tsx scripts/figma/sync-figma-baselines.ts",
     "report:customer": "tsx scripts/report/compare-screenshots-customer.ts",
     "report:customer:standalone": "tsx scripts/report/compare-screenshots-customer.ts --inline-assets",
+    "deliver:ready": "tsx scripts/feishu/deliver-ready.ts",
     "deliver:preview": "NODE_OPTIONS=--dns-result-order=ipv4first tsx scripts/feishu/deliver-customer-report.ts",
     "deliver:feishu": "NODE_OPTIONS=--dns-result-order=ipv4first tsx scripts/feishu/deliver-customer-report.ts --apply",
     "deliver:feishu:notify": "NODE_OPTIONS=--dns-result-order=ipv4first tsx scripts/feishu/deliver-customer-report.ts --apply --notify",
@@ -151,6 +152,7 @@
     "approval:test:write": "APPROVAL_ENABLE_WRITE=1 playwright test --config approval-flow/playwright.config.ts approval/approve-reject.spec.ts",
     "docs:check": "tsx scripts/verify/check-docs-index.ts",
     "hooks:install": "git config core.hooksPath .githooks",
+    "expense:verify-catalog": "node scripts/verify/verify-expense-catalog.cjs",
     "expense-flow:golden": "tsx scripts/flow/run-expense-flow-golden.ts",
     "expense-flow:debug-fast": "tsx scripts/flow/flow-debug-fast.ts --flow=expense-flow",
     "expense-flow:write": "tsx scripts/flow/run-expense-flow-write.ts",

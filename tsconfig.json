@@ -23,7 +23,10 @@
     "utils/**/*",
     "scripts/**/*",
     "flow-kit/**/*",
-    "custom-reporters/**/*"
+    "custom-reporters/**/*",
+    "request-flow/**/*",
+    "approval-flow/**/*",
+    "expense-flow/**/*"
   ],
   "exclude": [
     "node_modules",

@@ -75,6 +75,7 @@ const {
   runRequestFlowTests,
   cancelRequestFlow,
 } = require('./lib/request-flow-run');
+const { cancelExpenseFlow } = require('./lib/expense-flow-run');
 const { runEgoAudit } = require('./lib/ego-audit');
 const { runEgoNlFlow } = require('./lib/ego-nl-run');
 const { runEgoExplore } = require('./lib/ego-explore');
@@ -301,6 +302,7 @@ function cancelAllSessionTasks(allSessions, ws) {
   for (const session of allSessions.values()) {
     cancelRequestFlow(session, ws);
     cancelApprovalFlow(session, ws);
+    cancelExpenseFlow(session, ws);
     cancelRun(session);
     cancelOptimize(session);
     cancelRepoPipeline(session);

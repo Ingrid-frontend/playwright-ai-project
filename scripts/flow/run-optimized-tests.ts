@@ -124,6 +124,7 @@ async function main(): Promise<void> {
         resetFlowArtifacts: false,
         promoteBaselineIfClean: false,
         uiAuditGate: false,
+        deliveryPreview: false,
       },
       feishuMode: 'interactive',
       notifyOn: ['failure', 'success'],

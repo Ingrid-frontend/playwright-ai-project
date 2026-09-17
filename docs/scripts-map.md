@@ -24,8 +24,8 @@
 
 - **跑测试**：`test:dev / test:stage / test:uat / test:stage9084`（按环境）、`test`（默认）
 - **跑流程**：`flow:run`（交互式）、`flow:debug-fast`（快速调试单 flow）、`{flow}:golden`（金数据回归）
-- **看报告**：`report:customer`（客户报告）、`report:customer:standalone`（单文件内嵌版）、`report`（Playwright 原生）
-- **交付**：`deliver:feishu`（飞书文档+多维表）、`feishu:customer-card`（卡片通知）
+- **看报告**：`report:customer`（客户报告，内部核对）、`report`（Playwright 原生）
+- **交付**：`deliver:ready`（预览包）→ `deliver:feishu -- --env=`（人工写入飞书）
 - **日常维护**：`smoke`（模块冒烟）、`typecheck`、`lint`、`prune:flow-videos`、`prune:flow-history`
 
 ---
@@ -224,13 +224,14 @@
 | `figma:export-helios` | `tsx scripts/figma/export-helios-spec.ts` |
 | `figma:sync-baselines` | `tsx scripts/figma/sync-figma-baselines.ts` |
 
-### deliver — 报告交付（3）
+### deliver — 报告交付（4）
 
 | 命令 | 内容 |
 |---|---|
-| `deliver:feishu` | `NODE_OPTIONS=--dns-result-order=ipv4first tsx scripts/feishu/deliver-customer-report.ts --apply` |
-| `deliver:feishu:notify` | `NODE_OPTIONS=--dns-result-order=ipv4first tsx scripts/feishu/deliver-customer-report.ts --apply --notify` |
-| `deliver:preview` | `NODE_OPTIONS=--dns-result-order=ipv4first tsx scripts/feishu/deliver-customer-report.ts` |
+| `deliver:ready` | `tsx scripts/feishu/deliver-ready.ts`（report + verify + preview，`--env=` 必填） |
+| `deliver:feishu` | `NODE_OPTIONS=--dns-result-order=ipv4first tsx scripts/feishu/deliver-customer-report.ts --apply`（`--env=` 必填） |
+| `deliver:feishu:notify` | 同上 + `--notify` |
+| `deliver:preview` | 仅生成 `feishu-delivery-preview.html`（通常由 `deliver:ready` 调用） |
 
 ### verify — 校验（1）
 

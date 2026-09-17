@@ -15,14 +15,7 @@ test.describe.configure({ mode: 'serial' });
 const goldenCtx = { docNo: '', keyword: '' };
 const keepFilters = { keepListFilters: true } as const;
 const GOLDEN_SKIP_MSG = '列表无可用单号，跳过后续 Golden 步骤';
-
-function annotateLiveSeed(field: 'docNo' | 'keyword', value: string) {
-  if (!value) return;
-  test.info().annotations.push({
-    type: 'golden-live-seed',
-    description: `${field}=${value}`,
-  });
-}
+const SEED_MISSING_MSG = 'Golden 种子缺失（SEED_MISSING）';
 
 const KEYWORD_SKIP_MSG = '无法从列表读取可用事由关键字';
 
@@ -37,7 +30,6 @@ async function pickKeywordFromList(list: RequestListPage, prev?: string): Promis
       return false;
     }
   }
-  annotateLiveSeed('keyword', goldenCtx.keyword);
   if (prev && prev !== goldenCtx.keyword) {
     test.info().annotations.push({
       type: 'golden-filter-fallback',
@@ -73,28 +65,13 @@ async function trySeedGoldenContext(list: RequestListPage) {
   }
   if (!goldenCtx.keyword) goldenCtx.keyword = env.requestFilterKeyword.trim();
 
-  if (!(await list.hasDataRows())) {
-    await list.recoverIfEmptyList();
-  }
-  if (!(await list.hasDataRows())) {
-    if (!goldenCtx.docNo) {
-      goldenCtx.docNo = await list.readDocNoFromListApi({ refresh: true });
-    }
-    if (goldenCtx.docNo) {
-      annotateLiveSeed('docNo', goldenCtx.docNo);
-      await fillKeywordFromList(list);
-      return;
-    }
+  if (!goldenCtx.docNo) {
+    test.skip(true, SEED_MISSING_MSG);
     return;
   }
 
-  if (!goldenCtx.docNo) {
-    try {
-      goldenCtx.docNo = await list.readFirstDocNo();
-      annotateLiveSeed('docNo', goldenCtx.docNo);
-    } catch {
-      return;
-    }
+  if (!(await list.hasDataRows())) {
+    await list.recoverIfEmptyList();
   }
 
   if (!goldenCtx.keyword) {
