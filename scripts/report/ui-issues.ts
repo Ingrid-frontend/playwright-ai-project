@@ -6,6 +6,7 @@ import { parseRunMetaFromScreenshotPath, parseSnapshotIdentity } from './compare
 import { detectPageStateDrift, readStepMeta } from './page-state-drift.js';
 import type { PlainLanguageAnalysis } from './ui-issues-analysis.js';
 import type { UiIssueReview, ReviewSummary } from './ui-issue-review.js';
+import type { CustomerCoverageMetrics } from './coverage-stats.js';
 
 export type UiIssueCompareKind = 'golden' | 'last-green' | 'cross-browser' | 'run-drift' | 'structure' | 'style-drift';
 export type UiIssueSeverity = 'blocker' | 'warning' | 'noise' | 'info';
@@ -76,12 +77,43 @@ export interface UiIssuesReport {
     comparisonBlocker?: number;
     comparisonWarning?: number;
     comparisonNoise?: number;
+    /** 全部对比项 difference 之和（含无差异=0），除以 comparisonTotal 得平均差异 */
+    comparisonDiffSum?: number;
   };
   issues: UiIssue[];
   /** 规则化中文摘要（合并重复行） */
   plainLanguageAnalysis?: PlainLanguageAnalysis;
   /** 对比时 Golden 基线 revision（来自 .baseline-meta.json） */
   baselineRevision?: number;
+  /** 报告上下文：env、issuesSource、生成时间等，供下游消费方绑定事实 */
+  context?: ReportContext;
+  /** 客户视角覆盖率指标（空样本时 passRate 为 null） */
+  customerStats?: CustomerCoverageMetrics;
+}
+
+export interface ReportContext {
+  env?: string;
+  issuesSource?: string | null;
+  generatedAt: string;
+}
+
+/**
+ * 将运行上下文和客户指标附加到 issues report。
+ * 调用方在写入 issues JSON 前调用，确保下游消费方可追溯数据来源。
+ */
+export function attachReportContext(
+  report: UiIssuesReport,
+  opts: { env?: string; issuesSource?: string | null; customerStats?: CustomerCoverageMetrics },
+): UiIssuesReport {
+  report.context = {
+    env: opts.env,
+    issuesSource: opts.issuesSource ?? null,
+    generatedAt: report.generatedAt,
+  };
+  if (opts.customerStats) {
+    report.customerStats = opts.customerStats;
+  }
+  return report;
 }
 
 export function severityForDifference(
@@ -183,6 +215,7 @@ export interface ComparisonSeverityCounts {
   warning: number;
   noise: number;
   diffs: number[];
+  diffSum: number;
 }
 
 export function countComparisonSeverities(
@@ -197,11 +230,13 @@ export function countComparisonSeverities(
   let blocker = 0;
   let warning = 0;
   let noise = 0;
+  let diffSum = 0;
   for (const tdc of testDirComparisons) {
     for (const comp of tdc.comparisons) {
       for (const c of [...(comp.optimizedComparisons || []), ...(comp.crossBrowserComparisons || [])]) {
         const d = c.difference ?? 0;
         diffs.push(d);
+        diffSum += d;
         const severity = classifyComparisonSeverity(d, c.compareKind);
         if (severity === 'blocker') blocker++;
         else if (severity === 'warning') warning++;
@@ -209,7 +244,7 @@ export function countComparisonSeverities(
       }
     }
   }
-  return { total: diffs.length, blocker, warning, noise, diffs };
+  return { total: diffs.length, blocker, warning, noise, diffs, diffSum };
 }
 
 export function comparisonToUiIssue(

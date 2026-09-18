@@ -5,6 +5,14 @@ import {
   getCustomerReportUrl,
   type CustomerReportSummary,
 } from './customer-report-summary.js';
+import {
+  appendNotificationRecord,
+  buildDedupKey,
+  buildNotificationId,
+  findLatestRecord,
+  type NotificationKind,
+  type NotificationRecord,
+} from './notification-history.js';
 
 export type CustomerNotifyKind = 'weekly' | 'alert' | 'skip';
 
@@ -54,39 +62,52 @@ export function writeNotifyState(state: CustomerNotifyState, filePath = STATE_FI
   fs.writeFileSync(abs, JSON.stringify(state, null, 2), 'utf-8');
 }
 
-export function shouldSendWeekly(state: CustomerNotifyState, now = new Date()): boolean {
+export function shouldSendWeekly(state: CustomerNotifyState, now = new Date(), env?: string): boolean {
   const week = currentIsoWeek(now);
-  return state.lastWeeklyWeek !== week;
+  if (state.lastWeeklyWeek === week) return false;
+  if (env) {
+    const dedupKey = buildDedupKey(env, 'weekly', week);
+    const latest = findLatestRecord(dedupKey);
+    if (latest?.status === 'sent') return false;
+  }
+  return true;
 }
 
 export function shouldSendAlert(
   summary: CustomerReportSummary,
   state: CustomerNotifyState,
+  env?: string,
 ): boolean {
   if (!needsAttention(summary)) return false;
   const fp = alertFingerprint(summary);
-  return state.lastAlertFingerprint !== fp;
+  if (state.lastAlertFingerprint === fp) return false;
+  if (env) {
+    const dedupKey = buildDedupKey(env, 'alert', fp);
+    const latest = findLatestRecord(dedupKey);
+    if (latest?.status === 'sent') return false;
+  }
+  return true;
 }
 
 export function resolveCustomerNotifyKind(
   summary: CustomerReportSummary,
-  opts: { mode?: 'auto' | 'weekly' | 'alert'; force?: boolean } = {},
+  opts: { mode?: 'auto' | 'weekly' | 'alert'; force?: boolean; env?: string } = {},
 ): CustomerNotifyKind {
   const mode = opts.mode || 'auto';
   const state = readNotifyState();
 
   if (mode === 'weekly') {
-    return opts.force || shouldSendWeekly(state) ? 'weekly' : 'skip';
+    return opts.force || shouldSendWeekly(state, new Date(), opts.env) ? 'weekly' : 'skip';
   }
   if (mode === 'alert') {
     if (!needsAttention(summary)) return 'skip';
-    return opts.force || shouldSendAlert(summary, state) ? 'alert' : 'skip';
+    return opts.force || shouldSendAlert(summary, state, opts.env) ? 'alert' : 'skip';
   }
 
-  if (needsAttention(summary) && (opts.force || shouldSendAlert(summary, state))) {
+  if (needsAttention(summary) && (opts.force || shouldSendAlert(summary, state, opts.env))) {
     return 'alert';
   }
-  if (opts.force || shouldSendWeekly(state)) {
+  if (opts.force || shouldSendWeekly(state, new Date(), opts.env)) {
     return 'weekly';
   }
   if (isBaselineOnly(summary)) return 'skip';
@@ -129,7 +150,14 @@ export function alertCardHeader(summary: CustomerReportSummary): {
   };
 }
 
-export function formatWeeklyMarkdown(summary: CustomerReportSummary): string {
+export function formatWeeklyMarkdown(
+  summary: CustomerReportSummary,
+  digest?: {
+    runCount: number;
+    successCount: number;
+    failedCount: number;
+  },
+): string {
   const ctx = [summary.envLabel, summary.releaseTag ? `v${summary.releaseTag}` : '']
     .filter(Boolean)
     .join(' · ');
@@ -139,6 +167,11 @@ export function formatWeeklyMarkdown(summary: CustomerReportSummary): string {
     `检测覆盖：${summary.coveragePct}%（已对比 ${summary.comparedSteps}/${summary.expectedSteps} 步）`,
     `需要修复 ${summary.regressSteps} 步 · 无需处理 ${summary.minorSteps} 步 · 通过率 ${(summary.passRate * 100).toFixed(1)}%`,
   ];
+  if (digest) {
+    lines.push(
+      `本周运行 ${digest.runCount} 次（成功 ${digest.successCount}，失败 ${digest.failedCount}）`,
+    );
+  }
   if (summary.uncoveredSteps > 0) {
     lines.push(`待建基线 ${summary.uncoveredSteps} 步（未参与判定，周报统计用）`);
   }
@@ -237,7 +270,11 @@ export function skipNotifyReason(summary: CustomerReportSummary, state = readNot
   if (isBaselineOnly(summary)) return '仅检测覆盖不足，不推送即时通知';
   return '无需要推送的内容';
 }
-export function markNotifySent(kind: CustomerNotifyKind, summary: CustomerReportSummary): void {
+export function markNotifySent(
+  kind: CustomerNotifyKind,
+  summary: CustomerReportSummary,
+  env?: string,
+): void {
   const state = readNotifyState();
   if (kind === 'weekly') {
     state.lastWeeklyWeek = currentIsoWeek();
@@ -247,6 +284,25 @@ export function markNotifySent(kind: CustomerNotifyKind, summary: CustomerReport
     state.lastAlertAt = new Date().toISOString();
   }
   writeNotifyState(state);
+
+  if (env) {
+    const periodOrEventId = kind === 'weekly' ? currentIsoWeek() : alertFingerprint(summary);
+    const dedupKey = buildDedupKey(env, kind as NotificationKind, periodOrEventId);
+    const record: NotificationRecord = {
+      id: buildNotificationId(dedupKey),
+      dedupKey,
+      env,
+      kind: kind as NotificationKind,
+      periodOrEventId,
+      revision: 0,
+      recipientTarget: '',
+      status: 'sent',
+      sentAt: new Date().toISOString(),
+      attempt: 1,
+      payloadSummary: kind === 'weekly' ? weeklyCardHeader(summary).title : alertCardHeader(summary).title,
+    };
+    appendNotificationRecord(record);
+  }
 }
 
 export type SendCustomerNotifyResult = {
@@ -257,7 +313,7 @@ export type SendCustomerNotifyResult = {
 
 export async function sendCustomerFeishuNotify(
   summary: CustomerReportSummary,
-  opts: { mode?: 'auto' | 'weekly' | 'alert'; force?: boolean } = {},
+  opts: { mode?: 'auto' | 'weekly' | 'alert'; force?: boolean; env?: string } = {},
 ): Promise<SendCustomerNotifyResult> {
   const kind = resolveCustomerNotifyKind(summary, opts);
   if (kind === 'skip') {
@@ -278,6 +334,27 @@ export async function sendCustomerFeishuNotify(
       elements,
     },
   });
-  if (ok) markNotifySent(kind, summary);
+
+  if (ok) {
+    markNotifySent(kind, summary, opts.env);
+  } else if (opts.env) {
+    const periodOrEventId = kind === 'weekly' ? currentIsoWeek() : alertFingerprint(summary);
+    const dedupKey = buildDedupKey(opts.env, kind as NotificationKind, periodOrEventId);
+    const record: NotificationRecord = {
+      id: buildNotificationId(dedupKey),
+      dedupKey,
+      env: opts.env,
+      kind: kind as NotificationKind,
+      periodOrEventId,
+      revision: 0,
+      recipientTarget: '',
+      status: 'unknown',
+      attempt: 1,
+      error: '飞书发送失败，结果未知',
+      payloadSummary: header.title,
+    };
+    appendNotificationRecord(record);
+  }
+
   return { kind, sent: ok, reason: ok ? undefined : '飞书发送失败' };
 }

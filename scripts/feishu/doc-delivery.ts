@@ -69,13 +69,13 @@ export function buildCustomerDocTitle(payload: DeliveryPayload): string {
 
 /**
  * 构建客户验收文档的正文块。
- * 顺序：结论 → 问题清单（文字结论）→ 建议操作 → 检测范围。
+ * 顺序：结论 → 问题清单（文字结论）→ 建议操作 → 范围与限制。
  * 证据截图不上传文档：docx descendant 不支持 image/divider 块（1770029/1770001），
- * 图片以附件形式存放在「UI 验收明细」多维表对应记录中，正文用文字指向明细。
+ * 图片以附件形式存放在「UI 验收明细」多维表对应记录中，正文用链接指向明细。
  */
 export function buildCustomerDocBlocks(
   payload: DeliveryPayload,
-  _tokens?: Map<string, string>,
+  recordUrls?: Map<string, string>,
 ): DocBlock[] {
   const s = payload.stats;
   const blocks: DocBlock[] = [];
@@ -83,12 +83,13 @@ export function buildCustomerDocBlocks(
   blocks.push(heading(1, buildCustomerDocTitle(payload)));
   const metaLine = [
     `生成时间：${payload.generatedAt}`,
+    payload.deliveryId ? `交付批次：${payload.deliveryId}` : '',
     payload.runId ? `运行 ID：${payload.runId}` : '',
     payload.envLabel ? `环境：${payload.envLabel}` : '',
     payload.releaseTag ? `版本：v${payload.releaseTag}` : '',
   ]
     .filter(Boolean)
-    .join('　|　');
+    .join(' | ');
   blocks.push(text(metaLine));
 
   const issues = payload.items.filter((i) => i.kind === 'regress' || i.kind === 'minor');
@@ -108,7 +109,7 @@ export function buildCustomerDocBlocks(
   blocks.push(text(coverageLine));
   blocks.push(
     text(
-      `已检测项判定：需要修复 ${s.regressSteps} 步　·　无需处理 ${s.minorSteps} 步　·　完全一致 ${s.passSteps} 步`,
+      `已检测项判定：需要修复 ${s.regressSteps} 步 · 无需处理 ${s.minorSteps} 步 · 完全一致 ${s.passSteps} 步`,
     ),
   );
   // 覆盖率不足时不输出独立通过率：24/24=100% 与「覆盖 65%」并排，客户会误读成整体验收通过
@@ -122,6 +123,10 @@ export function buildCustomerDocBlocks(
   if (issues.length === 0) {
     blocks.push(text('本次未发现需要修复的 UI 衰退，已检测步骤与验收基线一致。'));
   } else {
+    // 标注展示数量与总数
+    if (payload.totalIssueCount > issues.length) {
+      blocks.push(text(`展示 ${issues.length} / 共 ${payload.totalIssueCount} 项问题，完整明细见「UI 验收明细」表。`));
+    }
     for (const [i, item] of issues.entries()) {
       blocks.push(spacer());
       blocks.push(
@@ -130,16 +135,30 @@ export function buildCustomerDocBlocks(
           `${i + 1}. [${KIND_PREFIX[item.kind]}] ${item.title}（${item.differenceLabel}${item.affectedSteps > 1 ? `，影响 ${item.affectedSteps} 步` : ''}）`,
         ),
       );
-      blocks.push(text(`流程：${item.scriptLabel}　·　步骤：${item.stepLabel}　·　浏览器：${item.browserLabel}`));
+      blocks.push(text(`流程：${item.scriptLabel} · 步骤：${item.stepLabel} · 浏览器：${item.browserLabel}`));
       if (item.plainText) blocks.push(text(item.plainText));
       else if (item.reason) blocks.push(text(item.reason));
-      blocks.push(text(`（基线 / 本次 / 差异证据截图见「UI 验收明细」表该页对应记录）`));
+      // 证据链接：优先使用多维表记录链接，否则降级为文字提示
+      const recordUrl = recordUrls?.get(item.key);
+      if (recordUrl) {
+        blocks.push(text(`证据截图：${recordUrl}`));
+      } else {
+        blocks.push(text(`（基线 / 本次 / 差异证据截图见「UI 验收明细」表该页对应记录）`));
+      }
     }
   }
 
   // 抽样只在无问题项时生成，作为「本次确实验过」的凭证，不冒充问题
   if (samples.length > 0) {
     blocks.push(h2('已验证抽样'));
+    // 标注展示数量与总数
+    if (payload.totalSampleCount > samples.length) {
+      blocks.push(
+        text(
+          `展示 ${samples.length} / 共 ${payload.totalSampleCount} 项抽样，完整列表见「UI 验收明细」表。`,
+        ),
+      );
+    }
     blocks.push(
       text(
         `本次无衰退项，以下为已比对且确认一致的代表性页面（共 ${s.passSteps} 步完全一致），用于说明本次检测确实覆盖并核验过：`,
@@ -147,7 +166,7 @@ export function buildCustomerDocBlocks(
     );
     for (const item of samples) {
       blocks.push(
-        bullet(`${item.title}　·　${item.scriptLabel}　·　${item.stepLabel}　·　差异 ${item.differenceLabel}`),
+        bullet(`${item.title} · ${item.scriptLabel} · ${item.stepLabel} · 差异 ${item.differenceLabel}`),
       );
     }
   }
@@ -160,7 +179,7 @@ export function buildCustomerDocBlocks(
       ),
     );
     for (const u of uncovered) {
-      blocks.push(bullet(`${u.title}　·　${u.scriptLabel}　·　${u.stepLabel}`));
+      blocks.push(bullet(`${u.title} · ${u.scriptLabel} · ${u.stepLabel}`));
     }
   }
 
@@ -172,7 +191,7 @@ export function buildCustomerDocBlocks(
     for (const item of payload.actionItems) blocks.push(bullet(item));
   }
 
-  blocks.push(h2('检测范围'));
+  blocks.push(h2('范围与限制'));
   blocks.push(
     text(
       `本次共 ${s.expectedSteps} 个检测步骤，其中 ${s.comparedSteps} 步与验收基线做了比对，${s.uncoveredSteps} 步尚无验收基线。`,
@@ -185,6 +204,12 @@ export function buildCustomerDocBlocks(
       ),
     );
   }
+  // 明确说明检测限制
+  blocks.push(
+    text(
+      `检测范围说明：仅比对已建立验收基线的页面；未执行、失败或跳过的步骤不计入覆盖率；差异判定基于像素比对与语义分析，可能存在误判。`,
+    ),
+  );
 
   return blocks;
 }

@@ -262,6 +262,25 @@ export class BitableClient {
     return data.items?.[0]?.record_id ?? null;
   }
 
+  async findRecord(tableId: string, uniqueField: string, uniqueValue: string): Promise<SearchRecordItem | null> {
+    const data = await this.request<SearchRecordsData>(this.tableUrl(tableId, '/records/search?page_size=1'), {
+      method: 'POST',
+      body: JSON.stringify({
+        filter: {
+          conjunction: 'and',
+          conditions: [
+            {
+              field_name: uniqueField,
+              operator: 'is',
+              value: [uniqueValue],
+            },
+          ],
+        },
+      }),
+    });
+    return data.items?.[0] ?? null;
+  }
+
   private async createRecord(tableId: string, fields: BitableRecordFields): Promise<string> {
     const data = await this.request<CreateRecordData>(this.tableUrl(tableId, '/records'), {
       method: 'POST',

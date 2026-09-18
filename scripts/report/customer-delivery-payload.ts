@@ -1,8 +1,10 @@
 import fs from 'fs';
 import path from 'path';
+import { createHash } from 'node:crypto';
 import type { CustomerReportModel, CustomerBrowserCard, CustomerPageCard } from './customer-report-model.js';
 import { hasVisibleDifference } from './customer-report-model.js';
 import { buildCustomerReportSummary, type CustomerReportSummary } from './customer-report-summary.js';
+import { parseRunMetaFromScreenshotPath } from './compare-screenshots-utils.js';
 
 /**
  * 交付载荷：把 CustomerReportModel 压平成可 JSON 序列化的结构，
@@ -55,6 +57,8 @@ export type DeliveryPayload = {
   version: 1;
   runId: string;
   generatedAt: string;
+  /** 稳定交付身份：envId|runId|releaseTag，重试不变，正式修订新建 */
+  deliveryId: string;
   /** 交付环境 id（与 --env= 一致） */
   envId?: string;
   /** 是否允许 deliver:feishu --apply（单环境、显式 --env= 时为 true） */
@@ -80,6 +84,10 @@ export type DeliveryPayload = {
   };
   actionItems: string[];
   items: DeliveryItem[];
+  /** 截断前的问题总数（regress + minor），用于文档标注「展示 X / 共 Y 项」 */
+  totalIssueCount: number;
+  /** 截断前的抽样总数（pass），用于文档标注「展示 X / 共 Y 项」 */
+  totalSampleCount: number;
   /** 未建基线、未参与判定的步骤（覆盖率不足时客户最该知道的部分） */
   uncoveredList: DeliveryUncoveredStep[];
 };
@@ -192,8 +200,13 @@ export function buildCustomerDeliveryPayload(
   const c = model.coverage;
   const coveragePct = c.expectedSteps > 0 ? Math.round((c.comparedSteps / c.expectedSteps) * 100) : 0;
 
+  const envId = opts?.envId || '';
+  const deliveryId = [envId, runId, s.releaseTag || ''].filter(Boolean).join('|');
+
   const { issues, samples } = collectDeliveryPages(model, maxItems);
   const pages = [...issues, ...samples];
+  const totalIssueCount = issues.length;
+  const totalSampleCount = samples.length;
   const items: DeliveryItem[] = pages.map((page) => {
     const card = pickCard(page);
     const kind = kindOf(page);
@@ -202,8 +215,8 @@ export function buildCustomerDeliveryPayload(
         ? model.regressionGroups.find((g) => g.representative.pageKey === page.pageKey)
         : model.minorGroups.find((g) => g.representative.pageKey === page.pageKey);
     return {
-      key: `${page.pageKey}::${s.generatedAt}`,
-      dedupeKey: page.pageKey,
+      key: `${deliveryId}::${page.pageKey}`,
+      dedupeKey: `${deliveryId}::${page.pageKey}`,
       kind,
       verdictLabel: VERDICT_LABEL[kind],
       title: page.pageTitle,
@@ -225,6 +238,7 @@ export function buildCustomerDeliveryPayload(
     version: 1,
     runId,
     generatedAt: s.generatedAt,
+    deliveryId,
     envId: opts?.envId || undefined,
     deliveryReady: opts?.deliveryReady === true,
     releaseTag: s.releaseTag,
@@ -246,6 +260,8 @@ export function buildCustomerDeliveryPayload(
     },
     actionItems: model.actionItems,
     items,
+    totalIssueCount,
+    totalSampleCount,
     uncoveredList: model.uncovered
       .filter((p) => !p.processOnly)
       .map((p) => ({
@@ -276,6 +292,13 @@ export function readCustomerDeliveryPayload(
     if (!parsed.runId) parsed.runId = '';
     if (parsed.deliveryReady === undefined) parsed.deliveryReady = false;
     if (!parsed.envId) parsed.envId = '';
+    if (!parsed.deliveryId) parsed.deliveryId = [parsed.envId, parsed.runId, parsed.releaseTag || ''].filter(Boolean).join('|') || `legacy-${parsed.generatedAt}`;
+    if (parsed.totalIssueCount === undefined) {
+      parsed.totalIssueCount = parsed.items.filter((i) => i.kind === 'regress' || i.kind === 'minor').length;
+    }
+    if (parsed.totalSampleCount === undefined) {
+      parsed.totalSampleCount = parsed.items.filter((i) => i.kind === 'pass').length;
+    }
     return parsed;
   } catch {
     return null;

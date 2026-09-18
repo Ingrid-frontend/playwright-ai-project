@@ -104,7 +104,7 @@ function recalcPassRateFromDailyFields(fields: Record<string, unknown>): number 
     comparisonTotal: total,
     comparisonBlocker: blocker,
     comparisonWarning: warning,
-  });
+  }) ?? 0;
 }
 
 function dailyKeeperScore(fields: Record<string, unknown>): number {

@@ -33,7 +33,9 @@ import {
   buildUiIssuesReport,
   writeUiIssuesReport,
   attachIssueReviews,
+  attachReportContext,
 } from './ui-issues-index.js';
+import { buildCoverageStats, toCustomerCoverageMetrics } from './coverage-stats.js';
 import { gateShouldFail } from './ui-issues.js';
 import { applyTriageToReport } from './issue-triage.js';
 import { isCompareCrossBrowserEnabled } from './compare-screenshots-engine.js';
@@ -122,6 +124,15 @@ async function main() {
   issuesReport.summary.comparisonBlocker = counts.blocker;
   issuesReport.summary.comparisonWarning = counts.warning;
   issuesReport.summary.comparisonNoise = counts.noise;
+  issuesReport.summary.comparisonDiffSum = counts.diffSum;
+
+  const coverage = buildCoverageStats(testDirComparisons);
+  const customerStats = toCustomerCoverageMetrics(coverage);
+  attachReportContext(issuesReport, {
+    env: process.env.PLAYWRIGHT_ENV,
+    issuesSource: issuesOut,
+    customerStats,
+  });
 
   writeUiIssuesReport(issuesReport, issuesOut);
 
@@ -203,6 +214,7 @@ async function main() {
     await writeBitableIfAuto({
       env: process.env.PLAYWRIGHT_ENV,
       status: blocker > 0 ? 'failed' : 'success',
+      issuesSource: issuesOut,
     });
   } catch (err) {
     console.warn(`   飞书多维表同步跳过: ${(err as Error).message}`);

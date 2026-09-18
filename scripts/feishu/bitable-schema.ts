@@ -160,6 +160,7 @@ export const ISSUE_DEPRECATED_FIELDS = [
 /** 中控 UI 采集反馈表字段（手动登记，与自动化 issue 表可分开） */
 export const FEEDBACK_FIELDS = {
   feedbackId: '反馈ID',
+  stableIssueId: '稳定问题ID',
   reporter: '登记人',
   description: '问题描述',
   env: '环境',
@@ -172,11 +173,19 @@ export const FEEDBACK_FIELDS = {
   aiDocUrl: 'AI分析',
   assignees: '处理人',
   status: '状态',
+  severity: '严重度',
   createdAt: '登记时间',
+  firstFoundAt: '首次发现',
+  lastFoundAt: '最近发现',
+  deadline: '截止时间',
+  closedAt: '关闭时间',
+  acceptReason: '接受差异原因',
+  retestRunLink: '复测运行',
 } as const;
 
 export const FEEDBACK_FIELD_RENAMES: Record<string, string> = {
   feedback_id: FEEDBACK_FIELDS.feedbackId,
+  stable_issue_id: FEEDBACK_FIELDS.stableIssueId,
   reporter: FEEDBACK_FIELDS.reporter,
   description: FEEDBACK_FIELDS.description,
   env: FEEDBACK_FIELDS.env,
@@ -189,7 +198,14 @@ export const FEEDBACK_FIELD_RENAMES: Record<string, string> = {
   ai_doc_url: FEEDBACK_FIELDS.aiDocUrl,
   assignees: FEEDBACK_FIELDS.assignees,
   status: FEEDBACK_FIELDS.status,
+  severity: FEEDBACK_FIELDS.severity,
   created_at: FEEDBACK_FIELDS.createdAt,
+  first_found_at: FEEDBACK_FIELDS.firstFoundAt,
+  last_found_at: FEEDBACK_FIELDS.lastFoundAt,
+  deadline: FEEDBACK_FIELDS.deadline,
+  closed_at: FEEDBACK_FIELDS.closedAt,
+  accept_reason: FEEDBACK_FIELDS.acceptReason,
+  retest_run_link: FEEDBACK_FIELDS.retestRunLink,
 };
 
 /** 多维表字段类型（飞书官方枚举） */
@@ -221,6 +237,8 @@ export function buildIssueLinkFieldSpec(runTableId: string): {
 /** 客户验收交付明细表：一行一个检测项，含证据图附件 */
 export const DELIVERY_FIELDS = {
   itemKey: 'item_key',
+  deliveryId: 'delivery_id',
+  batchId: 'batch_id',
   runId: 'run_id',
   generatedAt: 'generated_at',
   env: 'env',
@@ -251,6 +269,8 @@ export const DELIVERY_FIELD_SPECS: Array<{
 }> = [
   { name: '页面', type: BITABLE_FIELD_TYPE.text },
   { name: DELIVERY_FIELDS.itemKey, type: BITABLE_FIELD_TYPE.text },
+  { name: DELIVERY_FIELDS.deliveryId, type: BITABLE_FIELD_TYPE.text },
+  { name: DELIVERY_FIELDS.batchId, type: BITABLE_FIELD_TYPE.text },
   { name: DELIVERY_FIELDS.runId, type: BITABLE_FIELD_TYPE.text },
   { name: DELIVERY_FIELDS.generatedAt, type: BITABLE_FIELD_TYPE.text },
   { name: DELIVERY_FIELDS.env, type: BITABLE_FIELD_TYPE.text },
@@ -283,6 +303,7 @@ export const FEEDBACK_FIELD_SPECS: Array<{
   property?: Record<string, unknown>;
 }> = [
   { name: FEEDBACK_FIELDS.feedbackId, type: BITABLE_FIELD_TYPE.text },
+  { name: FEEDBACK_FIELDS.stableIssueId, type: BITABLE_FIELD_TYPE.text },
   { name: FEEDBACK_FIELDS.reporter, type: BITABLE_FIELD_TYPE.text },
   { name: FEEDBACK_FIELDS.description, type: BITABLE_FIELD_TYPE.text },
   {
@@ -301,13 +322,48 @@ export const FEEDBACK_FIELD_SPECS: Array<{
   {
     name: FEEDBACK_FIELDS.status,
     type: BITABLE_FIELD_TYPE.singleSelect,
-    property: { options: [{ name: '待处理' }, { name: '处理中' }, { name: '已修复' }, { name: '忽略' }] },
+    property: {
+      options: [
+        { name: '待确认' },
+        { name: '处理中' },
+        { name: '待复测' },
+        { name: '已关闭' },
+        { name: '忽略' },
+      ],
+    },
+  },
+  {
+    name: FEEDBACK_FIELDS.severity,
+    type: BITABLE_FIELD_TYPE.singleSelect,
+    property: { options: [{ name: '阻断' }, { name: '警告' }, { name: '噪声' }] },
   },
   {
     name: FEEDBACK_FIELDS.createdAt,
     type: BITABLE_FIELD_TYPE.dateTime,
     property: { date_formatter: 'yyyy/MM/dd HH:mm', auto_fill: false },
   },
+  {
+    name: FEEDBACK_FIELDS.firstFoundAt,
+    type: BITABLE_FIELD_TYPE.dateTime,
+    property: { date_formatter: 'yyyy/MM/dd HH:mm', auto_fill: false },
+  },
+  {
+    name: FEEDBACK_FIELDS.lastFoundAt,
+    type: BITABLE_FIELD_TYPE.dateTime,
+    property: { date_formatter: 'yyyy/MM/dd HH:mm', auto_fill: false },
+  },
+  {
+    name: FEEDBACK_FIELDS.deadline,
+    type: BITABLE_FIELD_TYPE.dateTime,
+    property: { date_formatter: 'yyyy/MM/dd HH:mm', auto_fill: false },
+  },
+  {
+    name: FEEDBACK_FIELDS.closedAt,
+    type: BITABLE_FIELD_TYPE.dateTime,
+    property: { date_formatter: 'yyyy/MM/dd HH:mm', auto_fill: false },
+  },
+  { name: FEEDBACK_FIELDS.acceptReason, type: BITABLE_FIELD_TYPE.text },
+  { name: FEEDBACK_FIELDS.retestRunLink, type: BITABLE_FIELD_TYPE.url },
 ];
 
 export const DAILY_FIELDS = {
@@ -329,6 +385,14 @@ export const DAILY_FIELDS = {
   avgDifference: '平均差异',
   worstScript: '最差脚本',
   worstRoute: '最差路由',
+  cutoffTime: '数据截止',
+  coveragePct: '覆盖率',
+  newIssues: '新增问题',
+  closedIssues: '关闭问题',
+  remainingIssues: '遗留问题',
+  overdueIssues: '逾期问题',
+  dataIntegrity: '数据完整性',
+  countedExecutions: '已统计运行ID',
 } as const;
 
 export const DAILY_FIELD_RENAMES: Record<string, string> = {
@@ -350,6 +414,13 @@ export const DAILY_FIELD_RENAMES: Record<string, string> = {
   avg_difference: DAILY_FIELDS.avgDifference,
   worst_script: DAILY_FIELDS.worstScript,
   worst_route: DAILY_FIELDS.worstRoute,
+  cutoff_time: DAILY_FIELDS.cutoffTime,
+  coverage_pct: DAILY_FIELDS.coveragePct,
+  new_issues: DAILY_FIELDS.newIssues,
+  closed_issues: DAILY_FIELDS.closedIssues,
+  remaining_issues: DAILY_FIELDS.remainingIssues,
+  overdue_issues: DAILY_FIELDS.overdueIssues,
+  data_integrity: DAILY_FIELDS.dataIntegrity,
 };
 
 function readConfigFile(): FeishuConfigFile {

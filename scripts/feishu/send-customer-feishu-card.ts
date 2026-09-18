@@ -25,6 +25,11 @@ function parseMode(): 'auto' | 'weekly' | 'alert' {
   return 'auto';
 }
 
+function parseEnv(): string | undefined {
+  const arg = process.argv.slice(2).find((a) => a.startsWith('--env='));
+  return arg ? arg.slice('--env='.length) : undefined;
+}
+
 async function main(): Promise<void> {
   const summary = readCustomerReportSummary();
   if (!summary) {
@@ -34,7 +39,8 @@ async function main(): Promise<void> {
 
   const force = process.argv.includes('--force');
   const mode = parseMode();
-  const result = await sendCustomerFeishuNotify(summary, { mode, force });
+  const env = parseEnv();
+  const result = await sendCustomerFeishuNotify(summary, { mode, force, env });
 
   if (result.sent) {
     console.log(`OK · ${result.kind}`);

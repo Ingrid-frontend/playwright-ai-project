@@ -37,6 +37,8 @@ export type BitableWriteInput = {
   summary?: JobSummaryFile;
   env?: string;
   status?: 'success' | 'failed' | 'aborted' | 'skipped';
+  /** 显式绑定 issues 来源文件，防止跨报告数据混合 */
+  issuesSource?: string;
 };
 
 export type BitableWriteResult = {
@@ -93,8 +95,8 @@ export async function writeBitableReport(input: BitableWriteInput = {}): Promise
     return { skipped: true, reason };
   }
 
-  const issuesSource = resolveIssuesSource();
-  const issuesReport = readIssuesReport();
+  const issuesSource = resolveIssuesSource(input.issuesSource);
+  const issuesReport = readIssuesReport(input.issuesSource);
   const summary = input.summary ?? buildFallbackSummary(issuesReport);
 
   // 新鲜度守卫：未显式传 summary 时，静态 issues 报告缺失/过期 → 拒写，不写旧数据
@@ -147,7 +149,7 @@ export async function writeBitableReport(input: BitableWriteInput = {}): Promise
 
   let dailySummaryRecordId: string | undefined;
   if (config.dailySummaryTableId) {
-    const dailyFields = buildDailySummaryFields({ summary, issuesReport, env, generatedAt });
+    const dailyFields = await buildDailySummaryFields({ client, config, summary, issuesReport, env, generatedAt, executionId });
     const dailyResult = await client.upsertRecord(
       config.dailySummaryTableId,
       DAILY_FIELDS.summaryKey,
@@ -184,13 +186,26 @@ type UiPassRateSummary = {
   comparisonWarning?: number;
 };
 
-export function calcUiPassRate(summary?: UiPassRateSummary): number {
-  if (!summary) return 100;
+export function calcUiPassRate(summary?: UiPassRateSummary): number | null {
+  if (!summary) return null;
   const cmpTotal = summary.comparisonTotal ?? summary.total ?? 0;
   const cmpBlocker = summary.comparisonBlocker ?? summary.blocker ?? 0;
   const cmpWarning = summary.comparisonWarning ?? summary.warning ?? 0;
-  if (cmpTotal <= 0) return 100;
+  if (cmpTotal <= 0) return null;
   return Number((((cmpTotal - cmpBlocker - cmpWarning) / cmpTotal) * 100).toFixed(1));
+}
+
+type MeanDifferenceSummary = {
+  comparisonTotal?: number;
+  comparisonDiffSum?: number;
+};
+
+/** 全部有效对比项（含无差异=0）的平均差异；源数据缺失或空样本时返回 null，不以最差脚本值替代 */
+export function calcMeanDifference(summary?: MeanDifferenceSummary): number | null {
+  const cmpTotal = summary?.comparisonTotal ?? 0;
+  const diffSum = summary?.comparisonDiffSum;
+  if (diffSum == null || cmpTotal <= 0) return null;
+  return Number((diffSum / cmpTotal).toFixed(4));
 }
 
 function buildFallbackSummary(report: UiIssuesReport | null): JobSummaryFile {
@@ -325,17 +340,72 @@ async function resolveIssueLinkField(
   return hit ? ISSUE_FIELDS.runRecordLink : null;
 }
 
-function buildDailySummaryFields(input: {
+async function buildDailySummaryFields(input: {
+  client: BitableClient;
+  config: BitableRuntimeConfig;
   summary: JobSummaryFile;
   issuesReport: UiIssuesReport | null;
   env: string;
   generatedAt: string;
+  executionId: string;
 }) {
-  const { summary, issuesReport, env, generatedAt } = input;
+  const { client, config, summary, issuesReport, env, generatedAt, executionId } = input;
   const date = generatedAt.slice(0, 10);
   const history = readHistorySnapshotForDate(date);
   const previous = readPreviousHistorySnapshot(date);
   const currentSummary = issuesReport?.summary ?? history?.summary;
+
+  // 读取现有日汇总记录，按 executionId 去重累计运行次数
+  const summaryKey = buildDailySummaryKey(date, env);
+  const status = resolveStatus(summary);
+  let runCount = 1;
+  let successCount = status === 'success' ? 1 : 0;
+  let failedCount = status === 'failed' || status === 'aborted' ? 1 : 0;
+  let countedExecutions = executionId;
+
+  if (config.dailySummaryTableId) {
+    const existingRecord = await client.findRecord(config.dailySummaryTableId, DAILY_FIELDS.summaryKey, summaryKey);
+    if (existingRecord?.fields) {
+      const fields = existingRecord.fields;
+      const readNum = (key: string): number => {
+        const raw = fields[key];
+        return typeof raw === 'number' && Number.isFinite(raw) ? raw : 0;
+      };
+      const readText = (key: string): string => {
+        const raw = fields[key];
+        if (typeof raw === 'string') return raw;
+        if (Array.isArray(raw)) {
+          return raw
+            .map((seg) =>
+              seg && typeof seg === 'object' && 'text' in seg
+                ? String((seg as { text?: unknown }).text ?? '')
+                : String(seg ?? ''),
+            )
+            .join('');
+        }
+        return '';
+      };
+
+      const countedRaw = readText(DAILY_FIELDS.countedExecutions);
+      const countedList = countedRaw.split(',').filter(Boolean);
+      runCount = readNum(DAILY_FIELDS.runCount);
+      successCount = readNum(DAILY_FIELDS.successCount);
+      failedCount = readNum(DAILY_FIELDS.failedCount);
+      countedExecutions = countedRaw || executionId;
+
+      if (countedList.length === 0 && runCount > 0) {
+        // 旧记录（countedExecutions 列上线前）：以本次执行锚定既有计数，不重复累加
+        countedExecutions = executionId;
+      } else if (!countedList.includes(executionId)) {
+        // 新的 executionId 才累加；同一次运行重试不重复计数
+        runCount += 1;
+        if (status === 'success') successCount += 1;
+        if (status === 'failed' || status === 'aborted') failedCount += 1;
+        countedExecutions = [...countedList, executionId].join(',');
+      }
+    }
+  }
+
   return buildDailySummaryFromSnapshot({
     date,
     env,
@@ -344,6 +414,10 @@ function buildDailySummaryFields(input: {
     currentSummary,
     previousSummary: previous?.summary,
     byScript: history?.byScript ?? buildScriptSummaryFromIssues(issuesReport?.issues ?? []),
+    runCount,
+    successCount,
+    failedCount,
+    countedExecutions,
   });
 }
 
@@ -355,12 +429,16 @@ export function buildDailySummaryFromSnapshot(input: {
   currentSummary?: UiIssuesReport['summary'];
   previousSummary?: UiIssuesReport['summary'];
   byScript?: HistorySnapshot['byScript'];
+  runCount?: number;
+  successCount?: number;
+  failedCount?: number;
+  countedExecutions?: string;
 }) {
-  const { date, env, jobId, status, currentSummary, previousSummary, byScript = {} } = input;
+  const { date, env, jobId, status, currentSummary, previousSummary, byScript = {}, runCount = 1, successCount, failedCount, countedExecutions } = input;
   const worstScript = Object.entries(byScript).sort((a, b) => b[1].avgDifference - a[1].avgDifference)[0];
   const worstRoute = topEntry(currentSummary?.byRoute);
-  const successCount = status === 'success' ? 1 : 0;
-  const failedCount = status === 'failed' || status === 'aborted' ? 1 : 0;
+  const actualSuccessCount = successCount ?? (status === 'success' ? 1 : 0);
+  const actualFailedCount = failedCount ?? (status === 'failed' || status === 'aborted' ? 1 : 0);
   const blockerCount = currentSummary?.comparisonBlocker ?? currentSummary?.blocker ?? 0;
   const warningCount = currentSummary?.comparisonWarning ?? currentSummary?.warning ?? 0;
   const totalIssues = currentSummary?.comparisonTotal ?? currentSummary?.total ?? 0;
@@ -373,19 +451,20 @@ export function buildDailySummaryFromSnapshot(input: {
     [DAILY_FIELDS.dateText]: date,
     [DAILY_FIELDS.env]: env,
     [DAILY_FIELDS.jobId]: jobId,
-    [DAILY_FIELDS.runCount]: 1,
-    [DAILY_FIELDS.successCount]: successCount,
-    [DAILY_FIELDS.failedCount]: failedCount,
-    [DAILY_FIELDS.passRate]: calcUiPassRate(currentSummary),
+    [DAILY_FIELDS.runCount]: runCount,
+    [DAILY_FIELDS.successCount]: actualSuccessCount,
+    [DAILY_FIELDS.failedCount]: actualFailedCount,
+    [DAILY_FIELDS.passRate]: calcUiPassRate(currentSummary) ?? 0,
     [DAILY_FIELDS.blockerCount]: blockerCount,
     [DAILY_FIELDS.warningCount]: warningCount,
     [DAILY_FIELDS.totalIssues]: totalIssues,
     [DAILY_FIELDS.blockerDelta]: blockerCount - prevBlocker,
     [DAILY_FIELDS.warningDelta]: warningCount - prevWarning,
     [DAILY_FIELDS.totalDelta]: totalIssues - prevTotal,
-    [DAILY_FIELDS.avgDifference]: worstScript?.[1]?.avgDifference ?? 0,
+    [DAILY_FIELDS.avgDifference]: calcMeanDifference(currentSummary),
     [DAILY_FIELDS.worstScript]: worstScript ? `${worstScript[0]} (${(worstScript[1].avgDifference * 100).toFixed(2)}%)` : '',
     [DAILY_FIELDS.worstRoute]: worstRoute,
+    [DAILY_FIELDS.countedExecutions]: countedExecutions || '',
   };
 }
 

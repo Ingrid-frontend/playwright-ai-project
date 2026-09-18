@@ -13,6 +13,18 @@ import { uploadImages, type UploadBatchResult, type UploaderOptions } from './fe
 import { BitableClient } from './bitable-client.js';
 import { loadBitableRuntimeConfig, explainMissingBitableConfig } from './bitable-schema.js';
 import { ensureDeliveryTable, hashItemKey, writeDeliveryRecords } from './bitable-delivery.js';
+import { syncDeliveryFeedback } from './sync-delivery-feedback.js';
+import {
+  createReceipt,
+  readReceipt,
+  writeReceipt,
+  startStage,
+  completeStage,
+  failStage,
+  type DeliveryReceipt,
+} from './delivery-receipt.js';
+import { runDeliveryGate, formatGateResult } from './delivery-gate.js';
+import { checkReview } from './delivery-review.js';
 import {
   buildCustomerDocBlocks,
   buildCustomerDocTitle,
@@ -26,6 +38,10 @@ dotenv.config({ path: path.join(process.cwd(), '.env') });
 export const DELIVERY_RESULT_FILE = 'results/feishu-delivery-result.json';
 export const DELIVERY_PREVIEW_FILE = 'results/feishu-delivery-preview.html';
 const PLAN_FILE = 'results/feishu-delivery-plan.json';
+
+function buildBitableRecordUrl(appToken: string, tableId: string, recordId: string): string {
+  return `https://feishu.cn/base/${appToken}?table=${tableId}&record=${recordId}`;
+}
 
 export type CliOptions = {
   apply: boolean;
@@ -113,6 +129,46 @@ async function main() {
       );
       process.exit(1);
     }
+    if (payload.envId && payload.envId !== opts.env) {
+      console.error(
+        `交付载荷环境不匹配：payload.envId=${payload.envId}，但 --env=${opts.env}。请用对应环境重新生成载荷。`,
+      );
+      process.exit(1);
+    }
+
+    const gate = runDeliveryGate(payload);
+    if (!gate.passed) {
+      console.error('交付门控未通过：');
+      console.error(formatGateResult(gate));
+      process.exit(1);
+    }
+    console.log('交付门控通过：');
+    console.log(formatGateResult(gate));
+
+    const skipReview = new Set(process.argv.filter((a) => a.startsWith('--')).map((a) => a.slice(2).split('=')[0])).has('skip-review');
+    if (!skipReview && payload.deliveryId) {
+      const reviewCheck = checkReview(payload.deliveryId);
+      if (!reviewCheck.approved) {
+        console.error(`审核未通过：${reviewCheck.reason}`);
+        console.error('使用 --skip-review 跳过审核检查（不推荐，会记录告警）');
+        process.exit(1);
+      }
+      console.log(`审核状态：${reviewCheck.reason}`);
+    }
+  }
+
+  let receipt: DeliveryReceipt | null = null;
+  if (opts.apply && payload.deliveryId) {
+    receipt = readReceipt(payload.deliveryId) || createReceipt(payload.deliveryId, payload.envId || opts.env || '', opts.payloadPath);
+    startStage(receipt, 'payload-loaded');
+    completeStage(receipt, 'payload-loaded');
+    const prev = readReceipt(payload.deliveryId);
+    if (prev) {
+      const doneStages = (Object.keys(prev.stages) as Array<keyof typeof prev.stages>)
+        .filter((s) => s !== 'failed' && prev.stages[s].status === 'done')
+        .join(', ');
+      if (doneStages) console.log(`  恢复回执：已完成阶段 [${doneStages}]`);
+    }
   }
 
   const imagePaths = collectImagePaths(payload);
@@ -169,27 +225,16 @@ async function main() {
 
   let docUrl: string | undefined;
   let shareDegraded = false;
-  if (opts.withDoc) {
-    console.log('\n[1/3] 创建飞书文档...');
-    const documentId = await createDocxDocument(token, title);
-    console.log(`  document_id: ${documentId}`);
-    const blocks = buildCustomerDocBlocks(payload);
-    const written = await addBlocksBatched(token, documentId, blocks);
-    const share = await shareDocxDocument(token, documentId);
-    docUrl = share.url;
-    shareDegraded = share.shareDegraded;
-    console.log(`  文档已生成（${written} 个内容块）：${docUrl}`);
-    if (shareDegraded) {
-      console.warn('  ⚠️  分享链接未自动公开，请在飞书内手动「分享」后再发给客户。');
-    }
-  } else {
-    console.log('\n[1/3] 跳过文档（--no-doc）');
-  }
-
   let bitableInfo: unknown = null;
   let uploadSummary = { uploaded: 0, reused: 0, failed: 0 };
+  const recordUrls = new Map<string, string>();
+  let bitableClient: BitableClient | null = null;
+  let bitableTableId = '';
+  let bitableRecordIds: Array<{ recordId: string; key: string }> = [];
+
+  // [1/3] 先写多维表明细，获取 recordId 用于文档证据链接
   if (opts.withBitable) {
-    console.log('[2/3] 写入多维表明细...');
+    console.log('\n[1/3] 写入多维表明细...');
     const bitableConfig = loadBitableRuntimeConfig();
     if (!bitableConfig) {
       console.log(`  ⚠️  ${explainMissingBitableConfig()}`);
@@ -207,21 +252,84 @@ async function main() {
       for (const f of upload.failed) console.log(`  ⚠️  ${path.basename(f.absPath)}: ${f.error}`);
       if (upload.failed.length > 0) {
         console.error('图片上传失败，阻断交付（请检查网络或飞书凭证后重试）');
+        if (receipt) failStage(receipt, 'images-uploaded', `${upload.failed.length} 张图片上传失败`);
         process.exit(1);
       }
       uploadSummary = { uploaded: upload.uploaded, reused: upload.reused, failed: upload.failed.length };
+      if (receipt) {
+        completeStage(receipt, 'images-uploaded', { uploaded: upload.uploaded, reused: upload.reused });
+        const tokenMap: Record<string, string> = {};
+        for (const [k, v] of upload.tokens) tokenMap[k] = v;
+        receipt.artifacts.imageTokens = tokenMap;
+        writeReceipt(receipt);
+      }
+      bitableClient = client;
+      bitableTableId = tableId;
+      // 注意：此时 docUrl 尚未生成，多维表的 doc_url 字段将为空，文档创建后回填
       const written = await writeDeliveryRecords(
         client,
         tableId,
         payload,
-        { tokens: upload.tokens, docUrl },
+        { tokens: upload.tokens },
         { dedupe: opts.dedupe, resolvePath: resolveDeliveryImagePath },
       );
       console.log(`  新增 ${written.created} 条 · 更新 ${written.updated} 条`);
+      bitableRecordIds = written.records.map((r) => ({ recordId: r.recordId, key: r.key }));
+      // 构建 recordUrls Map 供文档引用
+      for (const rec of written.records) {
+        recordUrls.set(rec.key, buildBitableRecordUrl(bitableConfig.appToken, tableId, rec.recordId));
+      }
       bitableInfo = { tableId, ...written };
+
+      // 同步问题到反馈表（UI采集反馈），只更新检测事实，不覆盖人工字段
+      if (bitableConfig.feedbackTableId) {
+        const feedbackResult = await syncDeliveryFeedback(client, bitableConfig.feedbackTableId, payload);
+        console.log(`  反馈表同步：新增 ${feedbackResult.created} 条 · 更新 ${feedbackResult.updated} 条`);
+      }
+      if (receipt) {
+        completeStage(receipt, 'bitable-written', { tableId, created: written.created, updated: written.updated });
+        receipt.artifacts.tableId = tableId;
+        receipt.artifacts.recordIds = written.records.map((r) => ({ recordId: r.recordId, key: r.key }));
+        writeReceipt(receipt);
+      }
     }
   } else {
-    console.log('[2/3] 跳过多维表（--no-bitable）');
+    console.log('\n[1/3] 跳过多维表（--no-bitable）');
+  }
+
+  // [2/3] 创建飞书文档，传入 recordUrls 用于证据链接
+  if (opts.withDoc) {
+    console.log('\n[2/3] 创建飞书文档...');
+    const documentId = await createDocxDocument(token, title);
+    console.log(`  document_id: ${documentId}`);
+    const blocks = buildCustomerDocBlocks(payload, recordUrls);
+    const writtenBlocks = await addBlocksBatched(token, documentId, blocks);
+    const share = await shareDocxDocument(token, documentId);
+    docUrl = share.url;
+    shareDegraded = share.shareDegraded;
+    console.log(`  文档已生成（${writtenBlocks} 个内容块）：${docUrl}`);
+    if (receipt) {
+      completeStage(receipt, 'doc-created', { documentId, blocks: writtenBlocks, url: docUrl });
+      receipt.artifacts.documentId = documentId;
+      receipt.artifacts.docUrl = docUrl;
+      writeReceipt(receipt);
+    }
+    if (shareDegraded) {
+      console.warn('  ⚠️  分享链接未自动公开，请在飞书内手动「分享」后再发给客户。');
+    }
+    // 回填多维表记录的 doc_url（写多维表时 docUrl 尚未生成）
+    if (bitableClient && bitableTableId && bitableRecordIds.length > 0 && docUrl) {
+      const DELIVERY_DOC_URL_FIELD = 'doc_url';
+      for (const rec of bitableRecordIds) {
+        await bitableClient.updateRecord(bitableTableId, rec.recordId, {
+          [DELIVERY_DOC_URL_FIELD]: { link: docUrl, text: '验收报告' },
+        });
+      }
+      console.log(`  已回填 ${bitableRecordIds.length} 条多维表记录的报告链接`);
+      if (receipt) completeStage(receipt, 'doc-linked', { backfilledRecords: bitableRecordIds.length });
+    }
+  } else {
+    console.log('\n[2/3] 跳过文档（--no-doc）');
   }
 
   if (opts.notify) {
@@ -229,6 +337,7 @@ async function main() {
     const lines = [payload.headline, `发版建议：${payload.shipAdviceLabel}`, `检测覆盖 ${payload.stats.coveragePct}%`];
     if (docUrl) lines.push(`验收报告：${docUrl}`);
     await sendFeishuNotify({ msg_type: 'text', content: { text: lines.join('\n') } });
+    if (receipt) completeStage(receipt, 'notified');
   } else {
     console.log('[3/3] 跳过通知（加 --notify 开启）');
   }

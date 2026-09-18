@@ -104,6 +104,98 @@ export interface CoverageStats {
   slots: CoverageSlot[];
 }
 
+/**
+ * 客户视角覆盖率指标。
+ * 所有比例都保留分子/分母，空样本时 passRate 为 null（不显示 100%）。
+ */
+export interface CustomerCoverageMetrics {
+  expectedSteps: number;
+  comparedSteps: number;
+  uncoveredSteps: number;
+  passSteps: number;
+  benignSteps: number;
+  degradedSteps: number;
+  regressSteps: number;
+  /** null = 无有效对比，不应显示为 100% */
+  passRate: number | null;
+  /** null = 无应检项，不应显示覆盖条 */
+  coverageRate: number | null;
+  verdict: CoverageStats['verdict'];
+  verdictLabel: string;
+}
+
+export function toCustomerCoverageMetrics(coverage: CoverageStats): CustomerCoverageMetrics {
+  const { expectedSteps, comparedSteps, uncoveredSteps, passSteps, benignSteps, degradedSteps, regressSteps } = coverage;
+  return {
+    expectedSteps,
+    comparedSteps,
+    uncoveredSteps,
+    passSteps,
+    benignSteps,
+    degradedSteps,
+    regressSteps,
+    passRate: comparedSteps > 0 ? (passSteps + benignSteps) / comparedSteps : null,
+    coverageRate: expectedSteps > 0 ? comparedSteps / expectedSteps : null,
+    verdict: coverage.verdict,
+    verdictLabel: coverage.verdictLabel,
+  };
+}
+
+/**
+ * 合并多个 CustomerCoverageMetrics（跨流程/跨浏览器汇总）。
+ * 先加分子分母再除，避免 1/1 + 1/9 = 55% 的加权错误。
+ */
+export function mergeCustomerCoverageMetrics(items: CustomerCoverageMetrics[]): CustomerCoverageMetrics {
+  if (items.length === 0) {
+    return {
+      expectedSteps: 0, comparedSteps: 0, uncoveredSteps: 0,
+      passSteps: 0, benignSteps: 0, degradedSteps: 0, regressSteps: 0,
+      passRate: null, coverageRate: null,
+      verdict: 'insufficient_coverage', verdictLabel: '无可检测步骤',
+    };
+  }
+  if (items.length === 1) return items[0];
+
+  const sum = items.reduce((acc, m) => ({
+    expectedSteps: acc.expectedSteps + m.expectedSteps,
+    comparedSteps: acc.comparedSteps + m.comparedSteps,
+    uncoveredSteps: acc.uncoveredSteps + m.uncoveredSteps,
+    passSteps: acc.passSteps + m.passSteps,
+    benignSteps: acc.benignSteps + m.benignSteps,
+    degradedSteps: acc.degradedSteps + m.degradedSteps,
+    regressSteps: acc.regressSteps + m.regressSteps,
+  }), { expectedSteps: 0, comparedSteps: 0, uncoveredSteps: 0, passSteps: 0, benignSteps: 0, degradedSteps: 0, regressSteps: 0 });
+
+  const passRate = sum.comparedSteps > 0 ? (sum.passSteps + sum.benignSteps) / sum.comparedSteps : null;
+  const coverageRate = sum.expectedSteps > 0 ? sum.comparedSteps / sum.expectedSteps : null;
+
+  let verdict: CoverageStats['verdict'];
+  let verdictLabel: string;
+  if (sum.regressSteps > 0) {
+    verdict = 'regress';
+    verdictLabel = `发现 ${sum.regressSteps} 处需要处理的 UI 衰退`;
+  } else if (sum.comparedSteps === 0) {
+    verdict = 'insufficient_coverage';
+    verdictLabel = '覆盖不足，无法判定全部通过';
+  } else if (sum.expectedSteps === 0) {
+    verdict = 'insufficient_coverage';
+    verdictLabel = '无可检测步骤';
+  } else {
+    const minorSteps = sum.degradedSteps + sum.benignSteps;
+    if (minorSteps > 0) {
+      verdict = 'attention';
+      verdictLabel = sum.degradedSteps > 0
+        ? `存在 ${minorSteps} 处差异（${sum.degradedSteps} 处内容确实有变化），建议人工确认`
+        : `存在 ${minorSteps} 处可忽略差异（内容未变），建议人工确认`;
+    } else {
+      verdict = 'pass';
+      verdictLabel = '未发现 UI 衰退';
+    }
+  }
+
+  return { ...sum, passRate, coverageRate, verdict, verdictLabel };
+}
+
 /** 从 slot 取业务影响档位；无证据数据时按 status 保守回落 */
 export function impactTierOf(slot: CoverageSlot): ImpactTier {
   if (slot.evidence?.impactTier) return slot.evidence.impactTier;

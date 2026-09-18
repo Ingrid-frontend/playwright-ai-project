@@ -47,20 +47,29 @@ export function renderDeliveryPreview(payload: DeliveryPayload, title?: string):
     </section>`;
   };
 
+  // 问题章节：标注展示数量与总数
+  const issueCountNote =
+    payload.totalIssueCount > issues.length
+      ? `<p class="meta">展示 ${issues.length} / 共 ${payload.totalIssueCount} 项问题，完整明细见「UI 验收明细」表。</p>`
+      : '';
   const issueHtml =
     issues.map((item, i) => renderItem(item, i)).join('') ||
     '<div class="card"><p class="empty">本次未发现需要修复的 UI 衰退，已检测步骤与验收基线一致。</p></div>';
 
   // 章节标题留到主体模板里调用，保证编号按渲染顺序递增
+  const sampleCountNote =
+    payload.totalSampleCount > samples.length
+      ? `<p class="meta">展示 ${samples.length} / 共 ${payload.totalSampleCount} 项抽样，完整列表见「UI 验收明细」表。</p>`
+      : '';
   const sampleBody = samples.length
-    ? `<p class="meta">本次无衰退项，以下为已比对且确认一致的代表性页面（共 ${s.passSteps} 步完全一致），用于说明本次检测确实覆盖并核验过：</p>
+    ? `${sampleCountNote}<p class="meta">本次无衰退项，以下为已比对且确认一致的代表性页面（共 ${s.passSteps} 步完全一致），用于说明本次检测确实覆盖并核验过：</p>
   ${samples.map((item, i) => renderItem(item, i)).join('')}`
     : '';
 
   const uncoveredBody = uncovered.length
     ? `<div class="card">
     <p class="meta">以下 ${uncovered.length} 个步骤尚无验收基线，未参与本次判定。确认页面样式正确后固化基线，下次即可纳入比对：</p>
-    <ul>${uncovered.map((u) => `<li>${esc(u.title)}　·　${esc(u.scriptLabel)}　·　${esc(u.stepLabel)}</li>`).join('')}</ul>
+    <ul>${uncovered.map((u) => `<li>${esc(u.title)} · ${esc(u.scriptLabel)} · ${esc(u.stepLabel)}</li>`).join('')}</ul>
   </div>`
     : '';
 
@@ -98,7 +107,7 @@ export function renderDeliveryPreview(payload: DeliveryPayload, title?: string):
 <body>
 <div class="wrap">
   <h1>${esc(title || 'UI 验收检测报告')}</h1>
-  <p class="meta">生成时间 ${esc(payload.generatedAt)}${payload.envLabel ? ` · 环境 ${esc(payload.envLabel)}` : ''}${payload.releaseTag ? ` · 版本 v${esc(payload.releaseTag)}` : ''} <span class="mode">本地预览</span></p>
+  <p class="meta">生成时间 ${esc(payload.generatedAt)}${payload.deliveryId ? ` · 交付批次 ${esc(payload.deliveryId)}` : ''}${payload.envLabel ? ` · 环境 ${esc(payload.envLabel)}` : ''}${payload.releaseTag ? ` · 版本 v${esc(payload.releaseTag)}` : ''} <span class="mode">本地预览</span></p>
 
   ${h2('结论')}
   <div class="card">
@@ -119,6 +128,7 @@ export function renderDeliveryPreview(payload: DeliveryPayload, title?: string):
   </div>
 
   ${h2('问题与证据')}
+  ${issueCountNote}
   ${issueHtml}
   ${sampleBody ? h2('已验证抽样') + sampleBody : ''}
   ${uncoveredBody ? h2('待补基线') + uncoveredBody : ''}
@@ -128,9 +138,11 @@ export function renderDeliveryPreview(payload: DeliveryPayload, title?: string):
     ${payload.actionItems.length ? `<ol>${payload.actionItems.map((a) => `<li>${esc(a)}</li>`).join('')}</ol>` : '<p class="empty">无额外操作建议。</p>'}
   </div>
 
-  ${h2('检测范围')}
+  ${h2('范围与限制')}
   <div class="card">
     <p>本次共 ${s.expectedSteps} 个检测步骤，其中 ${s.comparedSteps} 步与验收基线做了比对，${s.uncoveredSteps} 步尚无验收基线。</p>
+    ${s.uncoveredSteps > 0 ? '<p class="meta">未建基线的步骤不参与通过率计算。确认页面样式正确后固化基线，下次即可纳入比对。</p>' : ''}
+    <p class="meta">检测范围说明：仅比对已建立验收基线的页面；未执行、失败或跳过的步骤不计入覆盖率；差异判定基于像素比对与语义分析，可能存在误判。</p>
   </div>
 </div>
 </body>

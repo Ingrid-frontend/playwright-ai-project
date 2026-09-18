@@ -94,9 +94,18 @@ function main() {
   assert.ok(payload.items.length > 0, '交付条目不能为空，否则客户会收到空报告');
   assert.ok(payload.headline, '缺少结论标题');
   assert.strictEqual(typeof payload.stats.coveragePct, 'number');
+  assert.ok(payload.deliveryId, '缺少稳定交付身份 deliveryId');
+  assert.strictEqual(typeof payload.totalIssueCount, 'number', '缺少 totalIssueCount');
+  assert.strictEqual(typeof payload.totalSampleCount, 'number', '缺少 totalSampleCount');
+  // totalIssueCount 应 >= 实际 issues 数量（可能被截断）
+  const actualIssues = payload.items.filter((i) => i.kind === 'regress' || i.kind === 'minor').length;
+  assert.ok(payload.totalIssueCount >= actualIssues, 'totalIssueCount 不应小于实际问题数');
+  const actualSamples = payload.items.filter((i) => i.kind === 'pass').length;
+  assert.ok(payload.totalSampleCount >= actualSamples, 'totalSampleCount 不应小于实际抽样数');
   if (env) {
     assert.strictEqual(payload.deliveryReady, true, '按环境交付时 deliveryReady 须为 true');
     assert.strictEqual(payload.envId, env, 'envId 与 --env 不一致');
+    assert.ok(payload.deliveryId.includes(env), 'deliveryId 应包含环境标识');
   }
 
   for (const item of payload.items) {
@@ -131,6 +140,20 @@ function main() {
     if (b.block_type === docMod.DOC_BLOCK_TYPE.image) {
       assert.ok(b.image && b.image.token, '图片块缺少 token');
     }
+  }
+
+  // 4.1 recordUrls 应被用于证据链接
+  const issues = payload.items.filter((i) => i.kind === 'regress' || i.kind === 'minor');
+  if (issues.length > 0) {
+    const fakeRecordUrls = new Map();
+    const fakeUrl = 'https://feishu.cn/base/test?table=t1&record=rec1';
+    fakeRecordUrls.set(issues[0].key, fakeUrl);
+    const blocksWithUrls = buildCustomerDocBlocks(payload, fakeRecordUrls);
+    // 找到包含证据链接的文本块
+    const evidenceBlock = blocksWithUrls.find(
+      (b) => b.text && b.text.elements && b.text.elements.some((e) => e.text_run.content.includes(fakeUrl)),
+    );
+    assert.ok(evidenceBlock, '提供 recordUrls 时文档应包含证据链接');
   }
 
   // 5. 多维表记录字段

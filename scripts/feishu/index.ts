@@ -22,7 +22,7 @@ export {
   BITABLE_SEVERITY_OPTIONS,
   BITABLE_STATUS_OPTIONS,
 } from './bitable-display.js';
-export { writeBitableReport, calcUiPassRate, buildDailySummaryFromSnapshot, buildRunFieldsFromSnapshot } from './write-bitable-report.js';
+export { writeBitableReport, calcUiPassRate, calcMeanDifference, buildDailySummaryFromSnapshot, buildRunFieldsFromSnapshot } from './write-bitable-report.js';
 export type { BitableWriteInput, BitableWriteResult } from './write-bitable-report.js';
 export {
   FEISHU_MEDIA_CACHE_FILE,

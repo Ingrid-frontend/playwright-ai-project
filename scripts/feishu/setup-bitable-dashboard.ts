@@ -115,6 +115,14 @@ const DAILY_SPECS: FieldSpec[] = [
   { name: DAILY_FIELDS.avgDifference, type: FIELD_TYPE.number, property: { formatter: '0.00' } },
   { name: DAILY_FIELDS.worstScript, type: FIELD_TYPE.text },
   { name: DAILY_FIELDS.worstRoute, type: FIELD_TYPE.text },
+  { name: DAILY_FIELDS.cutoffTime, type: FIELD_TYPE.text },
+  { name: DAILY_FIELDS.coveragePct, type: FIELD_TYPE.number, property: { formatter: '0.0' } },
+  { name: DAILY_FIELDS.newIssues, type: FIELD_TYPE.number, property: { formatter: '0' } },
+  { name: DAILY_FIELDS.closedIssues, type: FIELD_TYPE.number, property: { formatter: '0' } },
+  { name: DAILY_FIELDS.remainingIssues, type: FIELD_TYPE.number, property: { formatter: '0' } },
+  { name: DAILY_FIELDS.overdueIssues, type: FIELD_TYPE.number, property: { formatter: '0' } },
+  { name: DAILY_FIELDS.dataIntegrity, type: FIELD_TYPE.text },
+  { name: DAILY_FIELDS.countedExecutions, type: FIELD_TYPE.text },
 ];
 
 const DASHBOARD_CHARTS = [
@@ -178,6 +186,85 @@ const DASHBOARD_AVOID = [
   '不要同时放 3 个饼图/柱状图（严重度、对比类型、脚本 TOP 信息重复）',
   'Blocker TOP 脚本请用维度「脚本简称」，不要用完整「脚本」路径',
   '筛选环境要与 .env 的 PLAYWRIGHT_ENV 一致（当前多为 uat）',
+];
+
+type RoleView = {
+  name: string;
+  table: string;
+  role: string;
+  filter: string;
+  sort?: string;
+  groupBy?: string;
+  columns?: string[];
+  note?: string;
+};
+
+const ROLE_VIEWS: RoleView[] = [
+  {
+    name: '本轮客户验收',
+    table: 'UI 验收明细',
+    role: '客户 / 交付负责人',
+    filter: '环境 = stage9084；按 delivery_id 筛选当前批次',
+    sort: 'actionable 降序（需处理项优先）',
+    groupBy: 'flow（按流程分组）',
+    columns: ['页面', 'verdict', 'flow', 'step', 'browser', 'affectedSteps', 'doc_url'],
+    note: '客户只看到脱敏后的交付数据；内部路径、账号不出现在此视图',
+  },
+  {
+    name: '我的待办',
+    table: 'UI采集反馈',
+    role: '开发 / 测试',
+    filter: '处理人 包含当前用户；状态 ≠ 已关闭 且 状态 ≠ 忽略',
+    sort: '严重度 降序 → 截止时间 升序',
+    columns: ['稳定问题ID', '问题描述', '严重度', '状态', '截止时间', '处理人', '环境'],
+    note: '飞书多维表「我的待办」视图需配合人员字段；当前用「处理人」文本字段模拟',
+  },
+  {
+    name: '问题分诊看板',
+    table: 'UI采集反馈',
+    role: 'QA / 研发负责人',
+    filter: '全量未关闭',
+    groupBy: '状态（待确认 → 处理中 → 待复测 → 已关闭 → 忽略）',
+    sort: '严重度 降序',
+    columns: ['稳定问题ID', '问题描述', '严重度', '环境', '处理人', '首次发现', '最近发现', '截止时间'],
+    note: '分组看板用于快速识别积压状态',
+  },
+  {
+    name: '待复测与逾期',
+    table: 'UI采集反馈',
+    role: 'QA / 项目经理',
+    filter: '状态 = 待复测；或 截止时间 < 当前时间 且 状态 ≠ 已关闭 且 状态 ≠ 忽略',
+    sort: '截止时间 升序',
+    columns: ['稳定问题ID', '问题描述', '严重度', '状态', '截止时间', '处理人', '复测运行'],
+    note: '逾期项需标红提醒；复测通过后关联运行链接',
+  },
+  {
+    name: '待补基线 / 缺测',
+    table: '执行记录',
+    role: '测试维护人员',
+    filter: 'goldenCount < totalSpecs 或 executedCount < totalSpecs',
+    sort: '执行时间 降序',
+    columns: ['执行时间', '环境', '状态', 'goldenCount', 'totalSpecs', 'executedCount', 'failureReasons'],
+    note: '定位缺失基线和未覆盖步骤，指导补充种子截图',
+  },
+  {
+    name: '运行与投递审计',
+    table: '执行记录',
+    role: '维护人员',
+    filter: '全量',
+    sort: '执行时间 降序',
+    columns: ['执行时间', '环境', '状态', 'testPassed', 'comparePassed', 'totalIssues', 'reportUrl', 'feishuDocUrl'],
+    note: '全量运行事实，含失败原因和报告链接；用于排查同步/发布异常',
+  },
+  {
+    name: '周度质量看板',
+    table: '日汇总',
+    role: '项目负责人',
+    filter: '环境 = stage9084；最近 30 天',
+    sort: '日期 降序',
+    columns: ['日期文本', 'UI通过率', '覆盖率', '阻断问题', '警告问题', '新增问题', '关闭问题', '遗留问题', '逾期问题', '数据截止'],
+    note: '趋势需配合仪表盘折线图；此处提供表格形式的明细数据',
+  },
 ];
 
 async function main(): Promise<void> {
@@ -260,6 +347,20 @@ async function main(): Promise<void> {
   for (const item of DASHBOARD_AVOID) {
     console.log(`   · ${item}`);
   }
+
+  console.log('\n── 角色视图（在飞书多维表各数据表中新建）──\n');
+  for (const view of ROLE_VIEWS) {
+    console.log(`### ${view.name}`);
+    console.log(`   数据表：${view.table}`);
+    console.log(`   使用者：${view.role}`);
+    console.log(`   筛选：${view.filter}`);
+    if (view.sort) console.log(`   排序：${view.sort}`);
+    if (view.groupBy) console.log(`   分组：${view.groupBy}`);
+    if (view.columns) console.log(`   列：${view.columns.join('、')}`);
+    if (view.note) console.log(`   说明：${view.note}`);
+    console.log('');
+  }
+
   console.log('3. 保存后复制仪表盘 URL（含 blk 开头 block_id）到 FEISHU_BITABLE_DASHBOARD_URL');
   console.log('4. 列名/字段: npm run feishu:bitable-setup -- --fix-fields && npm run feishu:bitable');
   console.log('5. 历史趋势: npm run feishu:bitable-backfill -- --apply\n');

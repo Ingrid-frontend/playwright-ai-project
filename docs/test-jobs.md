@@ -65,11 +65,22 @@ results/jobs/<jobId>/
 
 ## 手动 / 云端触发
 
-当前 Job 均为 `schedule: null`（仅手动）。可选方式：
+部分 Job 已配置 CI 定时调度（UTC cron），其余仅手动触发。
+
+| Job ID | 调度 | 北京时间 | 触发来源 |
+|--------|------|----------|----------|
+| `request-flow-golden` | `0 2 * * 1-5` | 工作日 10:00 | CI cron |
+| `request-flow-golden-all-envs` | `0 22 * * *` | 每天 06:00（次日） | CI cron |
+| `request-flow-write` | `0 3 * * 2,4` | 周二、周四 11:00 | CI cron |
+| `approval-flow-golden` | `null` | — | 仅手动 |
+| `approval-flow-write` | `0 4 * * 3` | 周三 12:00 | CI cron |
+| `catalog-drift-check` | `0 1 * * *` | 每天 09:00 | CI cron |
+
+手动触发方式：
 
 - Studio **定时任务** 工作区 → 前台/后台运行
 - CLI：`npm run test-job -- run --id=<jobId> [--background]`
-- GitHub Actions：[`.github/workflows/scheduled-test-jobs.yml`](../.github/workflows/scheduled-test-jobs.yml) → **Run workflow**（`workflow_dispatch`）
+- GitHub Actions：[`.github/workflows/scheduled-test-jobs.yml`](../.github/workflows/scheduled-test-jobs.yml) → **Run workflow**（`workflow_dispatch`）或 CI cron 自动触发
 
 ## Playwright Studio
 
