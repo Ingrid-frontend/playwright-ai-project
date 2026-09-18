@@ -38,7 +38,9 @@ export function alertFingerprint(summary: CustomerReportSummary): string {
 }
 
 export function currentIsoWeek(d = new Date()): string {
-  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  // 业务周按 Asia/Shanghai 切分（UTC 存储、北京时间分日），不依赖运行机器的本地时区
+  const shanghai = new Date(d.getTime() + 8 * 3600_000);
+  const date = new Date(Date.UTC(shanghai.getUTCFullYear(), shanghai.getUTCMonth(), shanghai.getUTCDate()));
   const day = date.getUTCDay() || 7;
   date.setUTCDate(date.getUTCDate() + 4 - day);
   const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));

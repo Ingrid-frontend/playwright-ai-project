@@ -124,13 +124,22 @@ export function formatWeeklyDigestMarkdown(digest: WeeklyDigest): string {
   if (failedManifests.length > 0) {
     lines.push('', '**失败运行**：');
     for (const m of failedManifests.slice(0, 5)) {
-      const time = m.startedAt ? new Date(m.startedAt).toLocaleDateString('zh-CN') : '?';
-      const reason = m.failures?.[0]?.message || m.failures?.[0]?.title || '未知原因';
-      lines.push(`- ${m.flowLabel}（${time}）— ${reason}`);
+      const time = m.startedAt ? shanghaiDate(m.startedAt) : '?';
+      const rawReason = m.failures?.[0]?.message || m.failures?.[0]?.title || '未知原因';
+      const reason = rawReason.split('\n').map((s) => s.trim()).find(Boolean) || '未知原因';
+      const collapsed = reason.replace(/\s+/g, ' ');
+      lines.push(`- ${m.flowLabel}（${time}）— ${collapsed.length > 120 ? `${collapsed.slice(0, 120)}…` : collapsed}`);
     }
   }
 
   return lines.join('\n');
+}
+
+/** 业务日按 Asia/Shanghai 切分（UTC 存储、北京时间展示） */
+function shanghaiDate(isoDate: string): string {
+  const d = new Date(isoDate);
+  if (Number.isNaN(d.getTime())) return '?';
+  return new Date(d.getTime() + 8 * 3600_000).toISOString().slice(0, 10);
 }
 
 function main(): void {

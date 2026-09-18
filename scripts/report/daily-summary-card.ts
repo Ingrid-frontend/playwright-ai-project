@@ -25,13 +25,19 @@ export type DailyCardData = {
   regressSteps?: number;
   minorSteps?: number;
   uncoveredSteps?: number;
+  snapshotDate?: string;
   hasData: boolean;
 };
 
+/** 业务日按 Asia/Shanghai 切分（UTC 存储、北京时间展示） */
+function shanghaiDate(isoDate: string | Date): string {
+  const d = typeof isoDate === 'string' ? new Date(isoDate) : isoDate;
+  if (Number.isNaN(d.getTime())) return '';
+  return new Date(d.getTime() + 8 * 3600_000).toISOString().slice(0, 10);
+}
+
 function isSameDate(isoDate: string, targetDate: string): boolean {
-  const d = new Date(isoDate);
-  if (Number.isNaN(d.getTime())) return false;
-  return d.toISOString().slice(0, 10) === targetDate;
+  return shanghaiDate(isoDate) === targetDate;
 }
 
 function readManifestsForDate(env: string, date: string): FlowRunManifest[] {
@@ -59,7 +65,7 @@ function readManifestsForDate(env: string, date: string): FlowRunManifest[] {
 }
 
 export function buildDailySummary(env: string, date?: string): DailyCardData {
-  const targetDate = date || new Date().toISOString().slice(0, 10);
+  const targetDate = date || shanghaiDate(new Date());
   const manifests = readManifestsForDate(env, targetDate);
 
   const seen = new Set<string>();
@@ -102,19 +108,22 @@ export function buildDailySummary(env: string, date?: string): DailyCardData {
     regressSteps: summary?.regressSteps,
     minorSteps: summary?.minorSteps,
     uncoveredSteps: summary?.uncoveredSteps,
+    snapshotDate: summary?.generatedAt ? shanghaiDate(summary.generatedAt) : undefined,
     hasData,
   };
 }
 
 export function formatDailyCardMarkdown(data: DailyCardData): string {
   if (!data.hasData) {
-    return `**${data.date} 日报**\n环境：${data.env}\n\n今日无运行数据。`;
+    return `**${data.date} 日报**\n环境：${data.env}\n\n今日无运行数据，数据不足，不作通过判定。`;
   }
 
   const lines: string[] = [
     `**${data.date} 日报**`,
     `环境：${data.env}`,
-    `运行 ${data.runCount} 次（成功 ${data.successCount}，失败 ${data.failedCount}）`,
+    data.runCount > 0
+      ? `运行 ${data.runCount} 次（成功 ${data.successCount}，失败 ${data.failedCount}）`
+      : '今日无运行数据（下方为最新验收批次参考，非今日结果）',
   ];
 
   if (data.totalPassed + data.totalFailed + data.totalSkipped > 0) {
@@ -125,7 +134,8 @@ export function formatDailyCardMarkdown(data: DailyCardData): string {
   }
 
   if (data.coveragePct !== undefined) {
-    lines.push(`覆盖率 ${data.coveragePct}%`);
+    const cutoff = data.snapshotDate ? `（截至 ${data.snapshotDate}）` : '';
+    lines.push(`最新验收快照${cutoff}：覆盖率 ${data.coveragePct}%`);
   }
   if (data.regressSteps !== undefined && data.regressSteps > 0) {
     lines.push(`需修复 ${data.regressSteps} 步`);
@@ -137,7 +147,7 @@ export function formatDailyCardMarkdown(data: DailyCardData): string {
     lines.push(`待补基线 ${data.uncoveredSteps} 步`);
   }
 
-  if ((data.regressSteps ?? 0) === 0 && (data.minorSteps ?? 0) === 0 && data.hasData) {
+  if (data.runCount > 0 && (data.regressSteps ?? 0) === 0 && (data.minorSteps ?? 0) === 0) {
     lines.push('', '今日验收状态正常。');
   }
 
