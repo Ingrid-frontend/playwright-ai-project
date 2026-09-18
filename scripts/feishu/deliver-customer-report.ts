@@ -21,6 +21,8 @@ import {
   startStage,
   completeStage,
   failStage,
+  isStageDone,
+  hashPayloadFile,
   type DeliveryReceipt,
 } from './delivery-receipt.js';
 import { runDeliveryGate, formatGateResult } from './delivery-gate.js';
@@ -159,16 +161,27 @@ async function main() {
 
   let receipt: DeliveryReceipt | null = null;
   if (opts.apply && payload.deliveryId) {
-    receipt = readReceipt(payload.deliveryId) || createReceipt(payload.deliveryId, payload.envId || opts.env || '', opts.payloadPath);
-    startStage(receipt, 'payload-loaded');
-    completeStage(receipt, 'payload-loaded');
-    const prev = readReceipt(payload.deliveryId);
-    if (prev) {
-      const doneStages = (Object.keys(prev.stages) as Array<keyof typeof prev.stages>)
-        .filter((s) => s !== 'failed' && prev.stages[s].status === 'done')
-        .join(', ');
-      if (doneStages) console.log(`  恢复回执：已完成阶段 [${doneStages}]`);
+    const existing = readReceipt(payload.deliveryId);
+    if (existing) {
+      const currentHash = hashPayloadFile(opts.payloadPath);
+      if (existing.payloadHash && currentHash && existing.payloadHash !== currentHash) {
+        console.error(
+          `交付载荷与回执不一致（deliveryId=${payload.deliveryId}）：同一交付身份的载荷不可变更。正式修订请提升 releaseTag 以生成新交付身份，避免复用旧文档或重复建文档。`,
+        );
+        process.exit(1);
+      }
+      receipt = existing;
+    } else {
+      receipt = createReceipt(payload.deliveryId, payload.envId || opts.env || '', opts.payloadPath);
     }
+    if (!isStageDone(receipt, 'payload-loaded')) {
+      startStage(receipt, 'payload-loaded');
+      completeStage(receipt, 'payload-loaded');
+    }
+    const doneStages = (Object.keys(receipt.stages) as Array<keyof DeliveryReceipt['stages']>)
+      .filter((s) => s !== 'failed' && receipt!.stages[s].status === 'done')
+      .join(', ');
+    if (doneStages) console.log(`  恢复回执：已完成阶段 [${doneStages}]`);
   }
 
   const imagePaths = collectImagePaths(payload);
@@ -240,57 +253,79 @@ async function main() {
       console.log(`  ⚠️  ${explainMissingBitableConfig()}`);
     } else {
       const client = new BitableClient(bitableConfig);
-      const { tableId, created, addedFields } = await ensureDeliveryTable(client, {
-        tableId: bitableConfig.deliveryTableId || undefined,
-      });
-      console.log(
-        `  明细表 ${created ? '已创建' : '已存在'}${addedFields.length ? `，补建字段 ${addedFields.length} 个` : ''}`,
-      );
-      console.log('  上传证据图（作为多维表附件）...');
-      const upload = await uploadImagesWithRetry(token, existingImages, { concurrency: opts.concurrency });
-      console.log(`  新传 ${upload.uploaded} 张 · 复用缓存 ${upload.reused} 张 · 失败 ${upload.failed.length} 张`);
-      for (const f of upload.failed) console.log(`  ⚠️  ${path.basename(f.absPath)}: ${f.error}`);
-      if (upload.failed.length > 0) {
-        console.error('图片上传失败，阻断交付（请检查网络或飞书凭证后重试）');
-        if (receipt) failStage(receipt, 'images-uploaded', `${upload.failed.length} 张图片上传失败`);
-        process.exit(1);
-      }
-      uploadSummary = { uploaded: upload.uploaded, reused: upload.reused, failed: upload.failed.length };
-      if (receipt) {
-        completeStage(receipt, 'images-uploaded', { uploaded: upload.uploaded, reused: upload.reused });
-        const tokenMap: Record<string, string> = {};
-        for (const [k, v] of upload.tokens) tokenMap[k] = v;
-        receipt.artifacts.imageTokens = tokenMap;
-        writeReceipt(receipt);
-      }
       bitableClient = client;
-      bitableTableId = tableId;
-      // 注意：此时 docUrl 尚未生成，多维表的 doc_url 字段将为空，文档创建后回填
-      const written = await writeDeliveryRecords(
-        client,
-        tableId,
-        payload,
-        { tokens: upload.tokens },
-        { dedupe: opts.dedupe, resolvePath: resolveDeliveryImagePath },
-      );
-      console.log(`  新增 ${written.created} 条 · 更新 ${written.updated} 条`);
-      bitableRecordIds = written.records.map((r) => ({ recordId: r.recordId, key: r.key }));
-      // 构建 recordUrls Map 供文档引用
-      for (const rec of written.records) {
-        recordUrls.set(rec.key, buildBitableRecordUrl(bitableConfig.appToken, tableId, rec.recordId));
-      }
-      bitableInfo = { tableId, ...written };
 
-      // 同步问题到反馈表（UI采集反馈），只更新检测事实，不覆盖人工字段
-      if (bitableConfig.feedbackTableId) {
-        const feedbackResult = await syncDeliveryFeedback(client, bitableConfig.feedbackTableId, payload);
-        console.log(`  反馈表同步：新增 ${feedbackResult.created} 条 · 更新 ${feedbackResult.updated} 条`);
-      }
-      if (receipt) {
-        completeStage(receipt, 'bitable-written', { tableId, created: written.created, updated: written.updated });
-        receipt.artifacts.tableId = tableId;
-        receipt.artifacts.recordIds = written.records.map((r) => ({ recordId: r.recordId, key: r.key }));
-        writeReceipt(receipt);
+      if (receipt && isStageDone(receipt, 'bitable-written') && receipt.artifacts.tableId) {
+        // 恢复：明细已写入，复用既有表与记录，不重传附件、不重写记录
+        bitableTableId = receipt.artifacts.tableId;
+        bitableRecordIds = receipt.artifacts.recordIds || [];
+        for (const rec of bitableRecordIds) {
+          recordUrls.set(rec.key, buildBitableRecordUrl(bitableConfig.appToken, bitableTableId, rec.recordId));
+        }
+        bitableInfo = { tableId: bitableTableId, resumed: true, records: bitableRecordIds.length };
+        console.log(`  恢复回执：明细已写入（表 ${bitableTableId}，${bitableRecordIds.length} 条），跳过图片上传与明细写入`);
+      } else {
+        const { tableId, created, addedFields } = await ensureDeliveryTable(client, {
+          tableId: bitableConfig.deliveryTableId || undefined,
+        });
+        console.log(
+          `  明细表 ${created ? '已创建' : '已存在'}${addedFields.length ? `，补建字段 ${addedFields.length} 个` : ''}`,
+        );
+        bitableTableId = tableId;
+
+        let imageTokens: Map<string, string>;
+        if (receipt && isStageDone(receipt, 'images-uploaded') && receipt.artifacts.imageTokens) {
+          // 恢复：图片已上传，复用回执里的附件 token，不重传
+          imageTokens = new Map(Object.entries(receipt.artifacts.imageTokens));
+          console.log(`  恢复回执：证据图已上传（复用 ${imageTokens.size} 个附件 token），跳过上传`);
+        } else {
+          console.log('  上传证据图（作为多维表附件）...');
+          const upload = await uploadImagesWithRetry(token, existingImages, { concurrency: opts.concurrency });
+          console.log(`  新传 ${upload.uploaded} 张 · 复用缓存 ${upload.reused} 张 · 失败 ${upload.failed.length} 张`);
+          for (const f of upload.failed) console.log(`  ⚠️  ${path.basename(f.absPath)}: ${f.error}`);
+          if (upload.failed.length > 0) {
+            console.error('图片上传失败，阻断交付（请检查网络或飞书凭证后重试）');
+            if (receipt) failStage(receipt, 'images-uploaded', `${upload.failed.length} 张图片上传失败`);
+            process.exit(1);
+          }
+          uploadSummary = { uploaded: upload.uploaded, reused: upload.reused, failed: upload.failed.length };
+          imageTokens = upload.tokens;
+          if (receipt) {
+            completeStage(receipt, 'images-uploaded', { uploaded: upload.uploaded, reused: upload.reused });
+            const tokenMap: Record<string, string> = {};
+            for (const [k, v] of upload.tokens) tokenMap[k] = v;
+            receipt.artifacts.imageTokens = tokenMap;
+            writeReceipt(receipt);
+          }
+        }
+
+        // 注意：此时 docUrl 尚未生成，多维表的 doc_url 字段将为空，文档创建后回填
+        const written = await writeDeliveryRecords(
+          client,
+          tableId,
+          payload,
+          { tokens: imageTokens },
+          { dedupe: opts.dedupe, resolvePath: resolveDeliveryImagePath },
+        );
+        console.log(`  新增 ${written.created} 条 · 更新 ${written.updated} 条`);
+        bitableRecordIds = written.records.map((r) => ({ recordId: r.recordId, key: r.key }));
+        // 构建 recordUrls Map 供文档引用
+        for (const rec of written.records) {
+          recordUrls.set(rec.key, buildBitableRecordUrl(bitableConfig.appToken, tableId, rec.recordId));
+        }
+        bitableInfo = { tableId, ...written };
+
+        // 同步问题到反馈表（UI采集反馈），只更新检测事实，不覆盖人工字段
+        if (bitableConfig.feedbackTableId) {
+          const feedbackResult = await syncDeliveryFeedback(client, bitableConfig.feedbackTableId, payload);
+          console.log(`  反馈表同步：新增 ${feedbackResult.created} 条 · 更新 ${feedbackResult.updated} 条`);
+        }
+        if (receipt) {
+          completeStage(receipt, 'bitable-written', { tableId, created: written.created, updated: written.updated });
+          receipt.artifacts.tableId = tableId;
+          receipt.artifacts.recordIds = written.records.map((r) => ({ recordId: r.recordId, key: r.key }));
+          writeReceipt(receipt);
+        }
       }
     }
   } else {
@@ -299,26 +334,36 @@ async function main() {
 
   // [2/3] 创建飞书文档，传入 recordUrls 用于证据链接
   if (opts.withDoc) {
-    console.log('\n[2/3] 创建飞书文档...');
-    const documentId = await createDocxDocument(token, title);
-    console.log(`  document_id: ${documentId}`);
-    const blocks = buildCustomerDocBlocks(payload, recordUrls);
-    const writtenBlocks = await addBlocksBatched(token, documentId, blocks);
-    const share = await shareDocxDocument(token, documentId);
-    docUrl = share.url;
-    shareDegraded = share.shareDegraded;
-    console.log(`  文档已生成（${writtenBlocks} 个内容块）：${docUrl}`);
-    if (receipt) {
-      completeStage(receipt, 'doc-created', { documentId, blocks: writtenBlocks, url: docUrl });
-      receipt.artifacts.documentId = documentId;
-      receipt.artifacts.docUrl = docUrl;
-      writeReceipt(receipt);
+    if (receipt && isStageDone(receipt, 'doc-created') && receipt.artifacts.documentId) {
+      // 恢复：复用已建文档，不重复创建
+      docUrl = receipt.artifacts.docUrl;
+      console.log(`\n[2/3] 恢复回执：文档已创建，跳过建文档：${docUrl || receipt.artifacts.documentId}`);
+    } else {
+      console.log('\n[2/3] 创建飞书文档...');
+      const documentId = await createDocxDocument(token, title);
+      console.log(`  document_id: ${documentId}`);
+      const blocks = buildCustomerDocBlocks(payload, recordUrls);
+      const writtenBlocks = await addBlocksBatched(token, documentId, blocks);
+      const share = await shareDocxDocument(token, documentId);
+      docUrl = share.url;
+      shareDegraded = share.shareDegraded;
+      console.log(`  文档已生成（${writtenBlocks} 个内容块）：${docUrl}`);
+      if (shareDegraded) {
+        console.warn('  ⚠️  分享链接未自动公开，请在飞书内手动「分享」后再发给客户。');
+      }
+      if (receipt) {
+        completeStage(receipt, 'doc-created', { documentId, blocks: writtenBlocks, url: docUrl });
+        receipt.artifacts.documentId = documentId;
+        receipt.artifacts.docUrl = docUrl;
+        writeReceipt(receipt);
+      }
     }
-    if (shareDegraded) {
-      console.warn('  ⚠️  分享链接未自动公开，请在飞书内手动「分享」后再发给客户。');
-    }
-    // 回填多维表记录的 doc_url（写多维表时 docUrl 尚未生成）
-    if (bitableClient && bitableTableId && bitableRecordIds.length > 0 && docUrl) {
+
+    // 回填多维表记录的 doc_url（写多维表时 docUrl 尚未生成）；已回填则跳过
+    const alreadyLinked = receipt ? isStageDone(receipt, 'doc-linked') : false;
+    if (alreadyLinked) {
+      console.log('  恢复回执：报告链接已回填，跳过');
+    } else if (bitableClient && bitableTableId && bitableRecordIds.length > 0 && docUrl) {
       const DELIVERY_DOC_URL_FIELD = 'doc_url';
       for (const rec of bitableRecordIds) {
         await bitableClient.updateRecord(bitableTableId, rec.recordId, {
@@ -333,11 +378,15 @@ async function main() {
   }
 
   if (opts.notify) {
-    console.log('[3/3] 发送飞书通知...');
-    const lines = [payload.headline, `发版建议：${payload.shipAdviceLabel}`, `检测覆盖 ${payload.stats.coveragePct}%`];
-    if (docUrl) lines.push(`验收报告：${docUrl}`);
-    await sendFeishuNotify({ msg_type: 'text', content: { text: lines.join('\n') } });
-    if (receipt) completeStage(receipt, 'notified');
+    if (receipt && isStageDone(receipt, 'notified')) {
+      console.log('[3/3] 恢复回执：通知已发送，跳过重复通知');
+    } else {
+      console.log('[3/3] 发送飞书通知...');
+      const lines = [payload.headline, `发版建议：${payload.shipAdviceLabel}`, `检测覆盖 ${payload.stats.coveragePct}%`];
+      if (docUrl) lines.push(`验收报告：${docUrl}`);
+      await sendFeishuNotify({ msg_type: 'text', content: { text: lines.join('\n') } });
+      if (receipt) completeStage(receipt, 'notified');
+    }
   } else {
     console.log('[3/3] 跳过通知（加 --notify 开启）');
   }
