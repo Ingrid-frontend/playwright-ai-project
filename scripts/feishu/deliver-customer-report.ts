@@ -8,7 +8,14 @@ import {
 } from '../report/customer-delivery-payload.js';
 import { resolveDeliveryPayloadPath } from '../../src/utils/env-profile.js';
 import { renderDeliveryPreview } from '../report/customer-delivery-preview.js';
-import { loadFeishuAppConfig, getFeishuAccessToken, sendFeishuNotify } from './feishu-app.js';
+import {
+  loadFeishuAppConfig,
+  getFeishuAccessToken,
+  sendFeishuNotify,
+  resolveFeishuChatId,
+  type NotifyChannel,
+} from './feishu-app.js';
+import { buildDeliveryCard } from './delivery-card.js';
 import { uploadImages, type UploadBatchResult, type UploaderOptions } from './feishu-media.js';
 import { BitableClient } from './bitable-client.js';
 import { loadBitableRuntimeConfig, explainMissingBitableConfig } from './bitable-schema.js';
@@ -26,7 +33,7 @@ import {
   type DeliveryReceipt,
 } from './delivery-receipt.js';
 import { runDeliveryGate, formatGateResult } from './delivery-gate.js';
-import { checkReview } from './delivery-review.js';
+import { checkReview, readReview } from './delivery-review.js';
 import {
   buildCustomerDocBlocks,
   buildCustomerDocTitle,
@@ -381,11 +388,44 @@ async function main() {
     if (receipt && isStageDone(receipt, 'notified')) {
       console.log('[3/3] 恢复回执：通知已发送，跳过重复通知');
     } else {
-      console.log('[3/3] 发送飞书通知...');
-      const lines = [payload.headline, `发版建议：${payload.shipAdviceLabel}`, `检测覆盖 ${payload.stats.coveragePct}%`];
-      if (docUrl) lines.push(`验收报告：${docUrl}`);
-      await sendFeishuNotify({ msg_type: 'text', content: { text: lines.join('\n') } });
-      if (receipt) completeStage(receipt, 'notified');
+      console.log('[3/3] 发送飞书通知（客户群 + 内部留档）...');
+      const notifiedChannels = new Set<NotifyChannel>(
+        (receipt?.artifacts.notifiedChannels ?? []).filter(
+          (c): c is NotifyChannel => c === 'customer' || c === 'internal',
+        ),
+      );
+
+      const bitableCfg = loadBitableRuntimeConfig();
+      const bitableUrl =
+        bitableTableId && bitableCfg
+          ? bitableCfg.dashboardUrl || `https://feishu.cn/base/${bitableCfg.appToken}?table=${bitableTableId}`
+          : undefined;
+      const review = readReview();
+      const reviewer = review && review.deliveryId === payload.deliveryId ? review.reviewer : undefined;
+
+      const customerConfigured = Boolean(resolveFeishuChatId('customer'));
+      const customerOk =
+        notifiedChannels.has('customer') ||
+        (!customerConfigured ||
+          (await sendFeishuNotify(buildDeliveryCard(payload, { docUrl }), 'customer')));
+      if (customerConfigured && customerOk) notifiedChannels.add('customer');
+
+      const internalOk =
+        notifiedChannels.has('internal') ||
+        (await sendFeishuNotify(
+          buildDeliveryCard(payload, { docUrl, bitableUrl, internal: true, reviewer }),
+          'internal',
+        ));
+      if (internalOk) notifiedChannels.add('internal');
+
+      if (receipt) {
+        receipt.artifacts.notifiedChannels = [...notifiedChannels];
+        // 客户群未配置时不阻塞完成；已配置则必须客户卡成功，避免内部发了但客户漏发
+        if (internalOk && (!customerConfigured || customerOk)) {
+          completeStage(receipt, 'notified');
+        }
+        writeReceipt(receipt);
+      }
     }
   } else {
     console.log('[3/3] 跳过通知（加 --notify 开启）');

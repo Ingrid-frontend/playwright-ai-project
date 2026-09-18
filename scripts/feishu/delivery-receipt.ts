@@ -36,6 +36,7 @@ export type DeliveryReceipt = {
     documentId?: string;
     docUrl?: string;
     imageTokens?: Record<string, string>;
+    notifiedChannels?: string[];
   };
 };
 

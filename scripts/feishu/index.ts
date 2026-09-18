@@ -9,7 +9,7 @@ export {
   canSendFeishuNotify,
   sendFeishuNotify,
 } from './feishu-app.js';
-export type { FeishuAppConfig, FeishuNotifyPayload } from './feishu-app.js';
+export type { FeishuAppConfig, FeishuNotifyPayload, NotifyChannel } from './feishu-app.js';
 export { BitableClient } from './bitable-client.js';
 export type { BitableFieldValue, BitableRecordFields, BitableUpsertResult, BitableAttachment } from './bitable-client.js';
 export { ensureBitableFields, isAutoBitableEnabled, writeBitableIfAuto } from './bitable-auto.js';

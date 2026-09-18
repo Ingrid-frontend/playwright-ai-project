@@ -67,8 +67,16 @@ export type FeishuNotifyPayload =
       };
     };
 
-export function resolveFeishuChatId(): string {
-  const fromEnv = process.env.FEISHU_CHAT_ID?.trim() || '';
+export type NotifyChannel = 'customer' | 'internal';
+
+export function resolveFeishuChatId(channel?: NotifyChannel): string {
+  // 客户群只认专用变量，缺省不回退到内部群，避免客户卡片错发内部
+  if (channel === 'customer') {
+    return process.env.FEISHU_CHAT_ID_CUSTOMER?.trim() || '';
+  }
+  // 内部群优先专用变量，缺省回退到通用 FEISHU_CHAT_ID（即当前内部群）
+  const namedInternal = channel === 'internal' ? process.env.FEISHU_CHAT_ID_INTERNAL?.trim() || '' : '';
+  const fromEnv = namedInternal || process.env.FEISHU_CHAT_ID?.trim() || '';
   if (fromEnv) return fromEnv;
   try {
     const cfg = JSON.parse(fs.readFileSync('feishu-config.json', 'utf-8')) as { chatId?: string };
@@ -94,9 +102,14 @@ export function canSendFeishuNotify(): boolean {
   return Boolean(resolveFeishuWebhookUrl());
 }
 
-export async function sendFeishuNotify(payload: FeishuNotifyPayload): Promise<boolean> {
-  const chatId = resolveFeishuChatId();
+export async function sendFeishuNotify(payload: FeishuNotifyPayload, channel?: NotifyChannel): Promise<boolean> {
+  const chatId = resolveFeishuChatId(channel);
   const app = loadFeishuAppConfig();
+
+  if (channel === 'customer' && !chatId) {
+    console.log('⚠️  未配置 FEISHU_CHAT_ID_CUSTOMER，跳过客户群通知（不回退内部群/Webhook）');
+    return false;
+  }
 
   if (chatId && app) {
     const token = await getFeishuAccessToken(app);
@@ -123,6 +136,11 @@ export async function sendFeishuNotify(payload: FeishuNotifyPayload): Promise<bo
       return true;
     }
     console.log(`❌ 飞书自建应用发信失败: code=${data.code} msg=${data.msg}`);
+    return false;
+  }
+
+  if (channel === 'customer') {
+    console.log('⚠️  客户群通知需应用凭证 + FEISHU_CHAT_ID_CUSTOMER，不走 Webhook 回退，跳过');
     return false;
   }
 
