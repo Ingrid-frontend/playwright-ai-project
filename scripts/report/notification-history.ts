@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 
-export type NotificationKind = 'weekly' | 'alert' | 'recovery' | 'delivery';
+export type NotificationKind = 'weekly' | 'alert' | 'recovery' | 'delivery' | 'daily' | 'weekly-digest';
 export type NotificationStatus = 'sent' | 'failed' | 'unknown' | 'skipped';
 
 export type NotificationRecord = {

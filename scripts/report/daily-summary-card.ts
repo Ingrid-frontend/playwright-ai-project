@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import dotenv from 'dotenv';
 import {
   flowRunsDir,
   type FlowId,
@@ -8,6 +9,9 @@ import {
 import {
   readCustomerReportSummary,
 } from './customer-report-summary.js';
+import { sendSummaryCard } from './send-report-card.js';
+
+dotenv.config({ path: path.join(process.cwd(), '.env') });
 
 const FLOW_IDS: FlowId[] = ['request-flow', 'approval-flow', 'expense-flow'];
 
@@ -154,16 +158,46 @@ export function formatDailyCardMarkdown(data: DailyCardData): string {
   return lines.join('\n');
 }
 
-function main(): void {
+function dailyCardTemplate(data: DailyCardData): 'green' | 'orange' | 'blue' {
+  if (!data.hasData) return 'blue';
+  // 例行汇总不用阻断红：仅有 UI 需修复项时用橙色提示，其余（含流程运行失败）走正常色
+  if ((data.regressSteps ?? 0) > 0) return 'orange';
+  return 'green';
+}
+
+async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const getArg = (prefix: string) => args.find((a) => a.startsWith(prefix))?.slice(prefix.length);
   const env = getArg('--env=') || 'stage9084';
   const date = getArg('--date=');
+  const send = args.includes('--send');
+  const force = args.includes('--force');
 
   const data = buildDailySummary(env, date);
-  console.log(formatDailyCardMarkdown(data));
+  const markdown = formatDailyCardMarkdown(data);
+  if (!send) {
+    console.log(markdown);
+    return;
+  }
+
+  const result = await sendSummaryCard({
+    env,
+    kind: 'daily',
+    period: data.date,
+    title: `UI 验收日报 · ${data.date} · ${env}`,
+    template: dailyCardTemplate(data),
+    markdown,
+    channel: 'internal',
+    force,
+    note: 'UI 验收日报 · 内部群推送',
+  });
+  if (result.sent) console.log(`✅ 日报已发送（${data.date}）`);
+  else console.log(`跳过日报发送：${result.reason}`);
 }
 
 if (process.argv[1]?.includes('daily-summary-card')) {
-  main();
+  main().catch((e) => {
+    console.error(e instanceof Error ? e.message : String(e));
+    process.exit(1);
+  });
 }

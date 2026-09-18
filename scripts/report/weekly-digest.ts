@@ -1,12 +1,16 @@
 import fs from 'fs';
 import path from 'path';
+import dotenv from 'dotenv';
 import {
   flowRunsDir,
   type FlowId,
   type FlowRunManifest,
 } from '../../src/utils/flow-run-report.js';
 import { currentIsoWeek } from './customer-feishu-notify.js';
-import type { CustomerReportSummary } from './customer-report-summary.js';
+import { readCustomerReportSummary, type CustomerReportSummary } from './customer-report-summary.js';
+import { sendSummaryCard } from './send-report-card.js';
+
+dotenv.config({ path: path.join(process.cwd(), '.env') });
 
 const FLOW_IDS: FlowId[] = ['request-flow', 'approval-flow', 'expense-flow'];
 
@@ -81,6 +85,9 @@ export function buildWeeklyDigest(env: string, weekKey?: string): WeeklyDigest {
   const total = totalPassed + totalFailed + totalSkipped;
   const passRate = total > 0 ? totalPassed / total : 0;
 
+  const latest = readCustomerReportSummary();
+  const latestSummary = latest && latest.generatedAt && isSameWeek(latest.generatedAt, week) ? latest : undefined;
+
   return {
     weekKey: week,
     env,
@@ -92,6 +99,7 @@ export function buildWeeklyDigest(env: string, weekKey?: string): WeeklyDigest {
     totalFailed,
     totalSkipped,
     passRate,
+    latestSummary,
     manifests: weekManifests,
   };
 }
@@ -142,16 +150,39 @@ function shanghaiDate(isoDate: string): string {
   return new Date(d.getTime() + 8 * 3600_000).toISOString().slice(0, 10);
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const getArg = (prefix: string) => args.find((a) => a.startsWith(prefix))?.slice(prefix.length);
   const env = getArg('--env=') || 'stage9084';
   const week = getArg('--week=');
+  const send = args.includes('--send');
+  const force = args.includes('--force');
 
   const digest = buildWeeklyDigest(env, week);
-  console.log(formatWeeklyDigestMarkdown(digest));
+  const markdown = formatWeeklyDigestMarkdown(digest);
+  if (!send) {
+    console.log(markdown);
+    return;
+  }
+
+  const result = await sendSummaryCard({
+    env,
+    kind: 'weekly-digest',
+    period: digest.weekKey,
+    title: `UI 验收周报（${digest.weekKey}）· ${env}`,
+    template: digest.failedCount > 0 ? 'orange' : digest.runCount > 0 ? 'green' : 'blue',
+    markdown,
+    channel: 'internal',
+    force,
+    note: 'UI 验收周报 · 内部群推送',
+  });
+  if (result.sent) console.log(`✅ 周报已发送（${digest.weekKey}）`);
+  else console.log(`跳过周报发送：${result.reason}`);
 }
 
 if (process.argv[1]?.includes('weekly-digest')) {
-  main();
+  main().catch((e) => {
+    console.error(e instanceof Error ? e.message : String(e));
+    process.exit(1);
+  });
 }
