@@ -14,6 +14,20 @@ export async function waitForAppLoadingHidden(page: Page, timeout = 15_000): Pro
   }
 }
 
+/** 等两帧 rAF：让浏览器真正完成一次绘制后再返回，替代定长 waitForTimeout 盲等 */
+export async function waitForNextPaint(page: Page): Promise<void> {
+  try {
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        }),
+    );
+  } catch {
+    /* frame 可能已销毁，按已稳定处理 */
+  }
+}
+
 export async function waitForPostInteractionPaint(page: Page): Promise<void> {
   await waitForAppLoadingHidden(page, 8_000);
 
@@ -44,7 +58,7 @@ export async function waitForPostInteractionPaint(page: Page): Promise<void> {
     for (const wait of waits) await wait;
   }
 
-  await page.waitForTimeout(150);
+  await waitForNextPaint(page);
 }
 
 export async function waitForRouteStable(page: Page, maxWaitTime: number = 3000): Promise<void> {
@@ -71,7 +85,9 @@ export async function waitForRouteStable(page: Page, maxWaitTime: number = 3000)
         currentRoute = newRoute;
         stableCount = 0;
       }
-      
+
+      // 达标即返回，避免确认稳定后再尾随一次无意义的采样等待
+      if (stableCount >= maxStableCount) break;
       await page.waitForTimeout(150);
     }
 
@@ -96,6 +112,9 @@ export async function getCurrentRoute(page: Page): Promise<string> {
 }
 
 export async function waitForViewportStable(page: Page, timeout: number = 3000): Promise<void> {
+  // Playwright 已把 viewport 锁成固定尺寸时，window.innerWidth 由协议保证不变，
+  // 无需再用轮询等满 ~1.1s；仅在 headed 的 viewport:null（跟随窗口）模式下才检测。
+  if (page.viewportSize()) return;
   try {
     const initialViewport = await page.evaluate(() => ({
       width: window.innerWidth,
@@ -130,6 +149,8 @@ export async function waitForViewportStable(page: Page, timeout: number = 3000):
         stableCount = 0;
       }
 
+      // 达标即返回，避免确认稳定后再尾随一次无意义的采样等待
+      if (stableCount >= maxStableCount) break;
       await page.waitForTimeout(200);
     }
   } catch {

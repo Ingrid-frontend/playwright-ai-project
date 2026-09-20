@@ -15,6 +15,7 @@ import {
   getCurrentRoute,
   waitForAppLoadingHidden,
   waitForContentReady,
+  waitForNextPaint,
   waitForRouteStable,
   waitForViewportStable,
 } from './screenshot-wait.js';
@@ -77,7 +78,7 @@ export async function screenshotWhenStable(
   await waitForViewportStable(page);
 
   await assertNotLoginLikePage(page, `stable screenshot: ${path}`);
-  await page.waitForTimeout(200);
+  await waitForNextPaint(page);
 
   const route = await getCurrentRoute(page);
   const routePath = addRouteToPath(path, route);
