@@ -71,13 +71,37 @@ function bandIsLetterbox(png: PNG, y0: number, y1: number): boolean {
   let non = 0;
   const total = w * (h - y0);
   if (total <= 0) return true;
+  // 非白像素达到 1% 阈值即可判定「非留白带」；non 只增不减，故此刻结果已锁定为 false，提前退出
+  const limit = total * 0.01;
   for (let y = y0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const i = (w * y + x) * 4;
-      if (png.data[i] < 250 || png.data[i + 1] < 250 || png.data[i + 2] < 250) non++;
+      if (png.data[i] < 250 || png.data[i + 1] < 250 || png.data[i + 2] < 250) {
+        non++;
+        if (non >= limit) return false;
+      }
     }
   }
   return non / total < 0.01;
+}
+
+/** 只读 PNG 的 IHDR 头拿宽高，避免为判断尺寸而全量解码整张图；解析失败返回 null 交给调用方兜底 */
+function readPngSize(filePath: string): { width: number; height: number } | null {
+  const fd = fs.openSync(filePath, 'r');
+  try {
+    const buf = Buffer.alloc(24);
+    if (fs.readSync(fd, buf, 0, 24, 0) < 24) return null;
+    const isSignature =
+      buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47 &&
+      buf[4] === 0x0d && buf[5] === 0x0a && buf[6] === 0x1a && buf[7] === 0x0a;
+    // IHDR 必为首个块，长度恒为 13；宽/高为大端 uint32
+    if (!isSignature || buf.readUInt32BE(8) !== 13 || buf.toString('ascii', 12, 16) !== 'IHDR') {
+      return null;
+    }
+    return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+  } finally {
+    fs.closeSync(fd);
+  }
 }
 
 /**
@@ -92,9 +116,21 @@ export function normalizeScreenshotToCssViewport(
   if (!fs.existsSync(filePath)) {
     return { width: 0, height: 0, cropped: false };
   }
-  let png: PNG = PNG.sync.read(fs.readFileSync(filePath));
   const wantW = viewport.width;
   const wantH = viewport.height;
+
+  // 先用 IHDR 头判断是否需要裁剪：固定 viewport 的流程截图多数已等于目标尺寸，
+  // 无需为拿宽高而全量解码。仅当命中裁宽 / 裁高候选时才走下方解码路径。
+  const header = readPngSize(filePath);
+  if (header) {
+    const needsWidthCrop = header.width > wantW && header.height >= wantH;
+    const needsHeightCrop = header.width === wantW && header.height > wantH;
+    if (!needsWidthCrop && !needsHeightCrop) {
+      return { width: header.width, height: header.height, cropped: false };
+    }
+  }
+
+  let png: PNG = PNG.sync.read(fs.readFileSync(filePath));
   let cropped = false;
 
   if (png.width > wantW && png.height >= wantH) {
