@@ -11,6 +11,8 @@
     "resolveJsonModule": true,
     "outDir": "./dist",
     "rootDir": "./",
+    "incremental": true,
+    "tsBuildInfoFile": "./node_modules/.cache/tsc/tsconfig.tsbuildinfo",
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
