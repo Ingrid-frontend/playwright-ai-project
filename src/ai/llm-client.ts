@@ -11,6 +11,8 @@ export interface CompleteTextOptions {
   system?: string;
   temperature?: number;
   maxTokens?: number;
+  /** 注入 fetch 以便离线测试重试/超时逻辑；默认 globalThis.fetch */
+  fetchImpl?: typeof fetch;
 }
 
 function envValue(...keys: string[]): string | undefined {
@@ -19,6 +21,99 @@ function envValue(...keys: string[]): string | undefined {
     if (value) return value;
   }
   return undefined;
+}
+
+function envInt(key: string, fallback: number): number {
+  const v = Number.parseInt(process.env[key] ?? '', 10);
+  return Number.isFinite(v) && v >= 0 ? v : fallback;
+}
+
+/** LLM 补全耗时远大于普通接口，超时给足（默认 120s）；覆盖：AI_TEST_TIMEOUT_MS */
+const LLM_TIMEOUT_MS = () => envInt('AI_TEST_TIMEOUT_MS', 120_000);
+/** 重试次数（不含首次），仅对 429/5xx/网络错误生效；覆盖：AI_TEST_RETRIES */
+const LLM_RETRIES = () => envInt('AI_TEST_RETRIES', 2);
+const LLM_BACKOFF_MS = 2_000;
+const MAX_BACKOFF_MS = 30_000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function safeText(res: Response): Promise<string> {
+  try {
+    return (await res.text()).slice(0, 500);
+  } catch {
+    return '';
+  }
+}
+
+/** 429 优先按 Retry-After（秒）退避，否则指数退避，封顶 MAX_BACKOFF_MS */
+function retryDelayMs(res: Response | null, attempt: number): number {
+  const ra = res?.headers.get('retry-after');
+  if (ra) {
+    const secs = Number(ra);
+    if (Number.isFinite(secs) && secs > 0) return Math.min(secs * 1000, MAX_BACKOFF_MS);
+  }
+  return Math.min(LLM_BACKOFF_MS * 2 ** attempt, MAX_BACKOFF_MS);
+}
+
+/**
+ * 带超时 + 指数退避重试的 POST JSON 请求。
+ * - 超时经 AbortController 实现（默认 120s，LLM 补全慢）
+ * - 仅对网络错误 / 超时 / 429 / 5xx 重试；其它 4xx（鉴权、请求非法）直接抛，重试无意义
+ */
+async function postJson<T>(
+  label: string,
+  url: string,
+  headers: Record<string, string>,
+  body: unknown,
+  fetchImpl: typeof fetch,
+): Promise<T> {
+  const timeout = LLM_TIMEOUT_MS();
+  const retries = LLM_RETRIES();
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const isLast = attempt === retries;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
+
+    let res: Response | null = null;
+    let networkError: Error | null = null;
+    try {
+      res = await fetchImpl(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      networkError = err instanceof Error ? err : new Error(String(err));
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (networkError) {
+      lastError = networkError;
+      if (isLast) throw networkError;
+      await sleep(retryDelayMs(null, attempt));
+      continue;
+    }
+
+    const status = res!.status;
+    if (status === 429 || status >= 500) {
+      lastError = new Error(`${label} API ${status}: ${await safeText(res!)}`);
+      if (isLast) throw lastError;
+      await sleep(retryDelayMs(res!, attempt));
+      continue;
+    }
+    if (!res!.ok) {
+      throw new Error(`${label} API ${status}: ${await safeText(res!)}`);
+    }
+    return (await res!.json()) as T;
+  }
+
+  throw lastError ?? new Error(`${label} API request failed`);
 }
 
 export function buildChatCompletionsUrl(baseUrl: string | undefined, defaultBase: string): string {
@@ -56,26 +151,26 @@ export async function completeText(prompt: string, options: CompleteTextOptions 
   const system = options.system?.trim();
   const temperature = options.temperature ?? 0.1;
   const maxTokens = options.maxTokens ?? 8000;
+  const fetchImpl = options.fetchImpl ?? globalThis.fetch;
 
   if (config.provider === 'anthropic') {
     const base = (config.baseUrl || 'https://api.anthropic.com').replace(/\/$/, '');
-    const res = await fetch(`${base}/v1/messages`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    const json = await postJson<{ content?: { type: string; text?: string }[] }>(
+      'Anthropic',
+      `${base}/v1/messages`,
+      {
         'x-api-key': config.apiKey,
         'anthropic-version': '2023-06-01',
       },
-      body: JSON.stringify({
+      {
         model: config.model,
         max_tokens: maxTokens,
         temperature,
         ...(system ? { system } : {}),
         messages: [{ role: 'user', content: prompt }],
-      }),
-    });
-    if (!res.ok) throw new Error(`Anthropic API ${res.status}: ${await res.text()}`);
-    const json = (await res.json()) as { content?: { type: string; text?: string }[] };
+      },
+      fetchImpl,
+    );
     return json.content?.find((block) => block.type === 'text')?.text || '';
   }
 
@@ -87,22 +182,19 @@ export async function completeText(prompt: string, options: CompleteTextOptions 
     { role: 'user', content: prompt },
   ];
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify({
+  const json = await postJson<{ choices?: { message?: { content?: string } }[] }>(
+    config.provider,
+    url,
+    { Authorization: `Bearer ${config.apiKey}` },
+    {
       model: config.model,
       messages,
       temperature,
       max_tokens: maxTokens,
       stream: false,
-    }),
-  });
-  if (!res.ok) throw new Error(`${config.provider} API ${res.status}: ${await res.text()}`);
-  const json = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+    },
+    fetchImpl,
+  );
   return json.choices?.[0]?.message?.content || '';
 }
 
