@@ -14,6 +14,7 @@ import {
   stripTechnicalNoise,
 } from './customer-report-plain.js';
 import { IMPACT_TIER_LABEL } from './coverage-stats.js';
+import { buildDeliveryTrend } from './customer-delivery-history.js';
 import { friendlyScriptLabel, friendlyStepLabel, regionZoneLabel, extractEnvId, envIdSortKey, envLabelFromId } from './customer-report-naming.js';
 import { formatDurationSec, formatScriptStartedAt } from './customer-report-run-meta.js';
 import type { ScriptRunHistoryEntry } from './customer-report-run-meta.js';
@@ -430,6 +431,41 @@ function renderCoverageBar(model: CustomerReportModel): string {
     </div>
     <div class="cov-track"><div class="cov-fill" style="width:${pct}%"></div></div>
     ${uncoveredNote}
+  </div>`;
+}
+
+function renderTrendPanel(model: CustomerReportModel): string {
+  const envId = model.envSummaries?.[0]?.envId || '';
+  const trend = buildDeliveryTrend(envId || undefined);
+  if (trend.entries.length < 2) return '';
+
+  const rows = trend.entries.slice(-5).map((e) => {
+    const date = e.generatedAt.slice(0, 10);
+    return `<tr>
+      <td>${esc(date)}</td>
+      <td>${e.stats.coveragePct}%</td>
+      <td>${e.stats.passRate}%</td>
+      <td class="${e.stats.regressSteps > 0 ? 'n-red' : ''}">${e.stats.regressSteps}</td>
+      <td>${e.stats.degradedSteps + e.stats.benignSteps}</td>
+    </tr>`;
+  }).join('');
+
+  let deltaLine = '';
+  if (trend.previous) {
+    const fmt = (d: number, suffix = ''): string => `${d > 0 ? '+' : ''}${d}${suffix}`;
+    deltaLine = `<div class="trend-delta">
+      较上次：覆盖率 ${fmt(trend.coverageDelta, '%')} · 通过率 ${fmt(trend.passRateDelta, '%')} · 衰退 ${fmt(trend.regressDelta)}
+    </div>`;
+  }
+
+  return `
+  <div class="trend-panel">
+    <div class="trend-head">近期趋势（最近 ${trend.entries.length} 次交付）</div>
+    <table class="trend-table">
+      <thead><tr><th>日期</th><th>覆盖率</th><th>通过率</th><th>衰退</th><th>需确认</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    ${deltaLine}
   </div>`;
 }
 
@@ -1111,6 +1147,7 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
         <span class="vl-item vl-degraded">● ${IMPACT_TIER_LABEL.degraded}：页面内容有变化，但操作仍可完成，建议评估后修复</span>
         <span class="vl-item vl-benign">● ${IMPACT_TIER_LABEL.benign}：页面内容未变化，差异来自整体位置偏移、字体渲染或测试数据不同，无需处理</span>
       </div>
+      ${renderTrendPanel(model)}
       <div class="verdict-foot">${esc(verdictFoot)}</div>
     </div>
 

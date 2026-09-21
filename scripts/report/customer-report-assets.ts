@@ -214,6 +214,19 @@ body {
 .vl-blocking { color: var(--red); }
 .vl-degraded { color: var(--amber); }
 .vl-benign { color: var(--muted); }
+.trend-panel {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: #f0f4f8;
+  border-radius: 6px;
+  border: 1px solid #dce3eb;
+}
+.trend-head { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+.trend-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.trend-table th { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); color: var(--muted); font-weight: 500; }
+.trend-table td { padding: 4px 8px; border-bottom: 1px solid #eef1f5; }
+.trend-table tr:last-child td { border-bottom: none; }
+.trend-delta { margin-top: 8px; font-size: 11px; color: var(--muted); }
 .tabs {
   display: flex;
   gap: 8px;
