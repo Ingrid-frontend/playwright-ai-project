@@ -156,7 +156,7 @@ async function main() {
 
     const skipReview = new Set(process.argv.filter((a) => a.startsWith('--')).map((a) => a.slice(2).split('=')[0])).has('skip-review');
     if (!skipReview && payload.deliveryId) {
-      const reviewCheck = checkReview(payload.deliveryId);
+      const reviewCheck = checkReview(payload.deliveryId, payload.contentHash);
       if (!reviewCheck.approved) {
         console.error(`审核未通过：${reviewCheck.reason}`);
         console.error('使用 --skip-review 跳过审核检查（不推荐，会记录告警）');

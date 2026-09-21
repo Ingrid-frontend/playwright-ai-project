@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import type { CustomerReportModel, CustomerBrowserCard, CustomerPageCard } from './customer-report-model.js';
 import { hasVisibleDifference } from './customer-report-model.js';
 import { buildCustomerReportSummary, type CustomerReportSummary } from './customer-report-summary.js';
+import { buildDeliveryTrend, type DeliveryTrendSummary } from './customer-delivery-history.js';
 import { parseRunMetaFromScreenshotPath } from './compare-screenshots-utils.js';
 
 /**
@@ -55,6 +56,10 @@ export type DeliveryUncoveredStep = {
 
 export type DeliveryPayload = {
   version: 1;
+  /** 快照版本：内容结构变化时递增，供下游门禁判断兼容性 */
+  snapshotVersion: number;
+  /** 内容哈希：基于 coverage stats + items 计算，审核绑定此值，内容变化需重新审核 */
+  contentHash: string;
   runId: string;
   generatedAt: string;
   /** 稳定交付身份：envId|runId|releaseTag，重试不变，正式修订新建 */
@@ -65,6 +70,8 @@ export type DeliveryPayload = {
   deliveryReady?: boolean;
   releaseTag?: string;
   envLabel?: string;
+  /** 源 run 映射：scriptKey → 实际参与比对的 runId，供门禁校验数据新鲜度 */
+  sourceRunIds?: Record<string, string>;
   headline: string;
   shipAdvice: string;
   shipAdviceLabel: string;
@@ -90,6 +97,8 @@ export type DeliveryPayload = {
   totalSampleCount: number;
   /** 未建基线、未参与判定的步骤（覆盖率不足时客户最该知道的部分） */
   uncoveredList: DeliveryUncoveredStep[];
+  /** 历史趋势：最近 N 次交付的关键指标变化 */
+  trend?: DeliveryTrendSummary;
 };
 
 export const CUSTOMER_DELIVERY_FILE = 'results/customer-delivery.json';
@@ -184,6 +193,37 @@ function resolveDeliveryRunId(model: CustomerReportModel, override?: string): st
   return '';
 }
 
+/** 当前快照版本：内容结构变化时递增 */
+const SNAPSHOT_VERSION = 1;
+
+/**
+ * 计算内容哈希：基于 coverage stats + items 的关键字段，
+ * 供审核绑定内容，同 deliveryId 但内容变化时需重新审核。
+ */
+function computeContentHash(
+  stats: DeliveryPayload['stats'],
+  items: DeliveryItem[],
+  generatedAt: string,
+): string {
+  const fingerprint = {
+    stats: {
+      expectedSteps: stats.expectedSteps,
+      comparedSteps: stats.comparedSteps,
+      regressSteps: stats.regressSteps,
+      minorSteps: stats.minorSteps,
+      passSteps: stats.passSteps,
+    },
+    items: items.map((i) => ({
+      key: i.key,
+      kind: i.kind,
+      differenceLabel: i.differenceLabel,
+      imageCount: i.images.length,
+    })),
+    generatedAt,
+  };
+  return createHash('sha256').update(JSON.stringify(fingerprint)).digest('hex').slice(0, 16);
+}
+
 export function buildCustomerDeliveryPayload(
   model: CustomerReportModel,
   opts?: {
@@ -192,6 +232,7 @@ export function buildCustomerDeliveryPayload(
     runId?: string;
     envId?: string;
     deliveryReady?: boolean;
+    sourceRunIds?: Map<string, string>;
   },
 ): DeliveryPayload {
   const maxItems = opts?.maxItems ?? 20;
@@ -234,8 +275,28 @@ export function buildCustomerDeliveryPayload(
     };
   });
 
+  const stats: DeliveryPayload['stats'] = {
+    expectedSteps: c.expectedSteps,
+    comparedSteps: c.comparedSteps,
+    uncoveredSteps: c.uncoveredSteps,
+    passSteps: c.passSteps,
+    minorSteps: c.minorSteps,
+    degradedSteps: c.degradedSteps,
+    benignSteps: c.benignSteps,
+    regressSteps: c.regressSteps,
+    passRate: c.passRate,
+    coveragePct,
+  };
+  const contentHash = computeContentHash(stats, items, s.generatedAt);
+  const sourceRunIds = opts?.sourceRunIds
+    ? Object.fromEntries(opts.sourceRunIds)
+    : undefined;
+  const trend = buildDeliveryTrend(opts?.envId);
+
   return {
     version: 1,
+    snapshotVersion: SNAPSHOT_VERSION,
+    contentHash,
     runId,
     generatedAt: s.generatedAt,
     deliveryId,
@@ -243,21 +304,11 @@ export function buildCustomerDeliveryPayload(
     deliveryReady: opts?.deliveryReady === true,
     releaseTag: s.releaseTag,
     envLabel: s.envLabel,
+    sourceRunIds,
     headline: s.headline,
     shipAdvice: s.shipAdvice,
     shipAdviceLabel: s.shipAdviceLabel,
-    stats: {
-      expectedSteps: c.expectedSteps,
-      comparedSteps: c.comparedSteps,
-      uncoveredSteps: c.uncoveredSteps,
-      passSteps: c.passSteps,
-      minorSteps: c.minorSteps,
-      degradedSteps: c.degradedSteps,
-      benignSteps: c.benignSteps,
-      regressSteps: c.regressSteps,
-      passRate: c.passRate,
-      coveragePct,
-    },
+    stats,
     actionItems: model.actionItems,
     items,
     totalIssueCount,
@@ -270,6 +321,7 @@ export function buildCustomerDeliveryPayload(
         stepLabel: p.stepLabel,
         stepNumber: p.stepNumber,
       })),
+    trend,
   };
 }
 
@@ -299,6 +351,8 @@ export function readCustomerDeliveryPayload(
     if (parsed.totalSampleCount === undefined) {
       parsed.totalSampleCount = parsed.items.filter((i) => i.kind === 'pass').length;
     }
+    if (!parsed.snapshotVersion) parsed.snapshotVersion = 0;
+    if (!parsed.contentHash) parsed.contentHash = '';
     return parsed;
   } catch {
     return null;

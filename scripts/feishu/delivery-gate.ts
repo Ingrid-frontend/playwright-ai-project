@@ -1,6 +1,7 @@
 import fs from 'fs';
 import { resolveDeliveryImagePath } from '../report/customer-delivery-payload.js';
 import type { DeliveryPayload } from '../report/customer-delivery-payload.js';
+import { buildRetestSummary } from './retest-trace.js';
 
 export type GateCheck = {
   name: string;
@@ -75,6 +76,21 @@ export function runDeliveryGate(payload: DeliveryPayload): GateResult {
     name: 'coverage',
     passed: payload.stats.coveragePct > 0,
     detail: `覆盖率 ${payload.stats.coveragePct}%`,
+  });
+
+  checks.push({
+    name: 'content-hash',
+    passed: !!payload.contentHash,
+    detail: payload.contentHash ? `内容哈希：${payload.contentHash}` : '缺少 contentHash，审核无法绑定内容',
+  });
+
+  const retestSummary = buildRetestSummary();
+  checks.push({
+    name: 'retest-trace',
+    passed: true,
+    detail: retestSummary.totalTracked > 0
+      ? `复验追踪：${retestSummary.totalTracked} 项（已解决 ${retestSummary.resolved}，仍存在 ${retestSummary.stillPresent}，待复验 ${retestSummary.pending}）`
+      : '无复验追踪记录',
   });
 
   return {

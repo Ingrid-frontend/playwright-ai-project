@@ -136,12 +136,16 @@ export function readCustomerReportSummary(
 
 export function formatCustomerSummaryMarkdown(s: CustomerReportSummary): string {
   const ctx = [s.envLabel, s.releaseTag ? `v${s.releaseTag}` : ''].filter(Boolean).join(' · ');
+  const minorParts: string[] = [];
+  if (s.degradedSteps > 0) minorParts.push(`需确认 ${s.degradedSteps} 步`);
+  if (s.benignSteps > 0) minorParts.push(`可忽略 ${s.benignSteps} 步`);
+  const minorLine = minorParts.length > 0 ? minorParts.join(' · ') : `无需处理 ${s.minorSteps} 步`;
   const lines: string[] = [
     `**${s.headline}**`,
     ...(ctx ? [`环境：${ctx}`] : []),
     `发版建议：${s.shipAdviceLabel}`,
     `检测覆盖：${s.coveragePct}%（已对比 ${s.comparedSteps}/${s.expectedSteps} 步）`,
-    `需要修复 ${s.regressSteps} 步 · 无需处理 ${s.minorSteps} 步 · 完全一致 ${s.passSteps} 步`,
+    `需要修复 ${s.regressSteps} 步 · ${minorLine} · 完全一致 ${s.passSteps} 步`,
   ];
   if (s.uncoveredSteps > 0) {
     lines.push(`待建基线 ${s.uncoveredSteps} 步（未参与判定）`);
@@ -230,7 +234,9 @@ export function renderCustomerSummaryPrintHtml(s: CustomerReportSummary): string
   <div class="bar"><i style="width:${s.coveragePct}%"></i></div>
   <div class="stats">
     <div class="stat"><div class="n" style="color:#e03131">${s.regressSteps}</div><div class="l">需要修复</div></div>
-    <div class="stat"><div class="n" style="color:#f08c00">${s.minorSteps}</div><div class="l">无需处理</div></div>
+    ${s.degradedSteps > 0 ? `<div class="stat"><div class="n" style="color:#f08c00">${s.degradedSteps}</div><div class="l">需确认</div></div>` : ''}
+    ${s.benignSteps > 0 ? `<div class="stat"><div class="n" style="color:#868e96">${s.benignSteps}</div><div class="l">可忽略</div></div>` : ''}
+    ${s.degradedSteps === 0 && s.benignSteps === 0 ? `<div class="stat"><div class="n" style="color:#f08c00">${s.minorSteps}</div><div class="l">无需处理</div></div>` : ''}
     <div class="stat"><div class="n" style="color:#2f9e44">${s.passSteps}</div><div class="l">完全一致</div></div>
     ${
       s.uncoveredSteps > 0

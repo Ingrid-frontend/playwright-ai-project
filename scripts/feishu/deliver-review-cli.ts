@@ -61,12 +61,14 @@ function main(): void {
   }
 
   if (flags.has('--approve')) {
-    const review = approveDelivery(deliveryId, payload.envId || env, reviewer, notes);
+    const review = approveDelivery(deliveryId, payload.envId || env, reviewer, notes, payload.contentHash);
     console.log(`✅ 已审核通过：deliveryId=${deliveryId}, reviewer=${reviewer}, at=${review.reviewedAt}`);
+    if (payload.contentHash) console.log(`   内容哈希：${payload.contentHash}`);
   } else if (flags.has('--reject')) {
-    const review = rejectDelivery(deliveryId, payload.envId || env, reviewer, notes);
+    const review = rejectDelivery(deliveryId, payload.envId || env, reviewer, notes, payload.contentHash);
     console.log(`❌ 已审核拒绝：deliveryId=${deliveryId}, reviewer=${reviewer}, at=${review.reviewedAt}`);
     if (notes) console.log(`   原因：${notes}`);
+    if (payload.contentHash) console.log(`   内容哈希：${payload.contentHash}`);
   } else {
     console.error('请指定 --approve 或 --reject');
     process.exit(1);

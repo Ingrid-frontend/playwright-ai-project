@@ -4,6 +4,8 @@ import path from 'path';
 export type DeliveryReview = {
   deliveryId: string;
   envId: string;
+  /** 内容哈希：审核绑定此值，内容变化后需重新审核 */
+  contentHash?: string;
   reviewer?: string;
   reviewedAt?: string;
   approved: boolean;
@@ -27,10 +29,11 @@ export function writeReview(review: DeliveryReview): void {
   fs.writeFileSync(path.resolve(REVIEW_FILE), JSON.stringify(review, null, 2), 'utf-8');
 }
 
-export function approveDelivery(deliveryId: string, envId: string, reviewer: string, notes?: string): DeliveryReview {
+export function approveDelivery(deliveryId: string, envId: string, reviewer: string, notes?: string, contentHash?: string): DeliveryReview {
   const review: DeliveryReview = {
     deliveryId,
     envId,
+    contentHash,
     reviewer,
     reviewedAt: new Date().toISOString(),
     approved: true,
@@ -40,10 +43,11 @@ export function approveDelivery(deliveryId: string, envId: string, reviewer: str
   return review;
 }
 
-export function rejectDelivery(deliveryId: string, envId: string, reviewer: string, notes?: string): DeliveryReview {
+export function rejectDelivery(deliveryId: string, envId: string, reviewer: string, notes?: string, contentHash?: string): DeliveryReview {
   const review: DeliveryReview = {
     deliveryId,
     envId,
+    contentHash,
     reviewer,
     reviewedAt: new Date().toISOString(),
     approved: false,
@@ -53,11 +57,15 @@ export function rejectDelivery(deliveryId: string, envId: string, reviewer: stri
   return review;
 }
 
-export function checkReview(deliveryId: string): { approved: boolean; reason: string } {
+export function checkReview(deliveryId: string, contentHash?: string): { approved: boolean; reason: string } {
   const review = readReview();
   if (!review) return { approved: false, reason: '未找到审核记录，请先执行 npm run deliver:review -- --approve' };
   if (review.deliveryId !== deliveryId) {
     return { approved: false, reason: `审核记录对应 ${review.deliveryId}，与当前 ${deliveryId} 不匹配` };
+  }
+  // 内容哈希绑定：审核时锁定的内容与实际交付内容必须一致
+  if (review.contentHash && contentHash && review.contentHash !== contentHash) {
+    return { approved: false, reason: '报告内容已变化，需重新审核（审核时内容哈希与当前不一致）' };
   }
   if (!review.approved) return { approved: false, reason: `审核未通过（${review.reviewer || '未知'}: ${review.notes || '无备注'}）` };
   return { approved: true, reason: `${review.reviewer || '未知'} 于 ${review.reviewedAt} 审核通过` };

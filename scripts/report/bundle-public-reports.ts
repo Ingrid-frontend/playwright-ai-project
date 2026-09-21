@@ -64,14 +64,10 @@ function main(): void {
         .replace(/src="\.\.\/screenshots\//g, 'src="../screenshots/')
         .replace(/src="diffs\//g, 'src="../diffs/');
       fs.writeFileSync(path.join(outDir, 'customer-report', 'index.html'), bundledCustomer, 'utf-8');
-      // 客户报告自己的 -assets/ 配图与 sidecar 一并带上
+      // 客户报告自己的 -assets/ 配图带上（sidecar 映射文件不打包，含内部脚本路径）
       const customerAssetsSrc = path.join(root, 'results', 'ui-regression-customer-assets');
-      const customerKeysSrc = path.join(root, 'results', 'ui-regression-customer.report-keys.json');
       if (fs.existsSync(customerAssetsSrc)) {
         copyDir(customerAssetsSrc, path.join(outDir, 'customer-report-assets'));
-      }
-      if (fs.existsSync(customerKeysSrc)) {
-        fs.copyFileSync(customerKeysSrc, path.join(outDir, 'ui-regression-customer.report-keys.json'));
       }
     }
   }

@@ -163,11 +163,15 @@ export function formatWeeklyMarkdown(
   const ctx = [summary.envLabel, summary.releaseTag ? `v${summary.releaseTag}` : '']
     .filter(Boolean)
     .join(' · ');
+  const minorParts: string[] = [];
+  if (summary.degradedSteps > 0) minorParts.push(`需确认 ${summary.degradedSteps} 步`);
+  if (summary.benignSteps > 0) minorParts.push(`可忽略 ${summary.benignSteps} 步`);
+  const minorLine = minorParts.length > 0 ? minorParts.join(' · ') : `无需处理 ${summary.minorSteps} 步`;
   const lines: string[] = [
     `**本周 UI 验收概况**`,
     ...(ctx ? [`环境：${ctx}`] : []),
     `检测覆盖：${summary.coveragePct}%（已对比 ${summary.comparedSteps}/${summary.expectedSteps} 步）`,
-    `需要修复 ${summary.regressSteps} 步 · 无需处理 ${summary.minorSteps} 步 · 通过率 ${(summary.passRate * 100).toFixed(1)}%`,
+    `需要修复 ${summary.regressSteps} 步 · ${minorLine} · 通过率 ${(summary.passRate * 100).toFixed(1)}%`,
   ];
   if (digest) {
     lines.push(

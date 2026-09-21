@@ -20,6 +20,7 @@ import { sanitizeCustomerReportHtml } from './customer-report-sanitize.js';
 import { inlineCustomerReportAssets } from './customer-report-inline.js';
 import { writeCustomerReportSummary } from './customer-report-summary.js';
 import { buildCustomerDeliveryPayload, writeCustomerDeliveryPayload } from './customer-delivery-payload.js';
+import { appendDeliveryHistory } from './customer-delivery-history.js';
 import { resolveScriptRunMeta, resolveScriptRunHistory } from './customer-report-run-meta.js';
 import { enrichRunHistoryComparisons, screenshotsForMainReport } from './customer-report-run-history.js';
 import { extractEnvId, envLabelFromId, envIdSortKey } from './customer-report-naming.js';
@@ -107,6 +108,7 @@ async function main() {
   console.log(`  输出: ${outputPath}`);
   console.log(`  并行: ${COMPARE_CONCURRENCY}，增量缓存: ${COMPARE_INCREMENTAL ? '开' : '关'}`);
 
+  const t0 = performance.now();
   const testDirComparisons: TestDirComparisons[] = [];
   const screenshotsByDir = new Map<string, ReturnType<typeof getAllScreenshots>>();
   const usedRunIds = new Map<string, string>();
@@ -151,6 +153,9 @@ async function main() {
     testDirComparisons.push({ testDir, comparisons });
   }
 
+  const tCompare = performance.now();
+  console.log(`  ⏱ 截图比对完成: ${((tCompare - t0) / 1000).toFixed(1)}s`);
+
   if (!hasCurrentPng || testDirComparisons.length === 0) {
     console.error('当前 screenshots 下没有可用步骤 PNG。请先跑用例截图后再生成客户报告。');
     process.exit(1);
@@ -168,6 +173,9 @@ async function main() {
     });
     runHistory.set(testDir, enriched);
   }
+  const tEnrich = performance.now();
+  console.log(`  ⏱ 运行历史富化完成: ${((tEnrich - tCompare) / 1000).toFixed(1)}s`);
+
   const auditInsights = readAuditInsights();
   const model = buildCustomerReportModel(coverage, undefined, scriptRuns, runHistory, {
     releaseTag: process.env.RELEASE_TAG || process.env.npm_package_version,
@@ -179,15 +187,15 @@ async function main() {
   const deliveryFile = envFilter ? resolveDeliveryPayloadPath(envFilter) : 'results/customer-delivery.json';
   const envCount = model.envSummaries?.length ?? 0;
   const deliveryReady = Boolean(envFilter && envCount <= 1);
-  writeCustomerDeliveryPayload(
-    buildCustomerDeliveryPayload(model, {
-      summary,
-      maxItems,
-      envId: envFilter || undefined,
-      deliveryReady,
-    }),
-    deliveryFile,
-  );
+  const deliveryPayload = buildCustomerDeliveryPayload(model, {
+    summary,
+    maxItems,
+    envId: envFilter || undefined,
+    deliveryReady,
+    sourceRunIds: usedRunIds,
+  });
+  writeCustomerDeliveryPayload(deliveryPayload, deliveryFile);
+  appendDeliveryHistory(deliveryPayload);
   const html = sanitizeCustomerReportHtml(renderCustomerReportHtml(model), outputPath).html;
 
   const outAbs = path.resolve(outputPath);
@@ -202,6 +210,8 @@ async function main() {
   }
 
   console.log(`\n客户报告已生成: ${outputPath}`);
+  const tEnd = performance.now();
+  console.log(`  ⏱ 总耗时: ${((tEnd - t0) / 1000).toFixed(1)}s（比对 ${((tCompare - t0) / 1000).toFixed(1)}s · 历史富化 ${((tEnrich - tCompare) / 1000).toFixed(1)}s · 渲染 ${((tEnd - tEnrich) / 1000).toFixed(1)}s）`);
   console.log(
     `  判定: ${coverage.verdictLabel} · 已检测 ${coverage.comparedSteps}/${coverage.expectedSteps} · 衰退 ${coverage.regressSteps} · 未检测 ${coverage.uncoveredSteps}`,
   );

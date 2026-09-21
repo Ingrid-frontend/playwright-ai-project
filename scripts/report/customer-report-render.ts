@@ -1106,6 +1106,11 @@ export function renderCustomerReportHtml(model: CustomerReportModel): string {
         <div class="stat"><span class="n n-gray">${c.benignSteps}</span><span class="l">${IMPACT_TIER_LABEL.benign}</span><span class="h">内容未变，仅位移/显示差异</span></div>
         <div class="stat"><span class="n n-green">${c.passSteps}</span><span class="l">完全一致</span><span class="h">与基线零差异</span></div>
       </div>
+      <div class="verdict-legend">
+        <span class="vl-item vl-blocking">● ${IMPACT_TIER_LABEL.blocking}：页面内容与基线相比发生了实质性变化，影响业务操作或数据展示，必须修复后才能发版</span>
+        <span class="vl-item vl-degraded">● ${IMPACT_TIER_LABEL.degraded}：页面内容有变化，但操作仍可完成，建议评估后修复</span>
+        <span class="vl-item vl-benign">● ${IMPACT_TIER_LABEL.benign}：页面内容未变化，差异来自整体位置偏移、字体渲染或测试数据不同，无需处理</span>
+      </div>
       <div class="verdict-foot">${esc(verdictFoot)}</div>
     </div>
 

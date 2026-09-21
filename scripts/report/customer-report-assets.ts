@@ -201,6 +201,19 @@ body {
 .n-red { color: var(--red); }
 .n-amber { color: var(--amber); }
 .n-gray { color: var(--muted); }
+.verdict-legend {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: #f8f9fb;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.vl-item { display: block; margin-bottom: 4px; }
+.vl-item:last-child { margin-bottom: 0; }
+.vl-blocking { color: var(--red); }
+.vl-degraded { color: var(--amber); }
+.vl-benign { color: var(--muted); }
 .tabs {
   display: flex;
   gap: 8px;
