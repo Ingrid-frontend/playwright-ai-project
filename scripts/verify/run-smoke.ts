@@ -47,6 +47,7 @@ const TASKS: SmokeTask[] = [
   { name: 'verify-intent-delete', argv: runWithNode('scripts/verify/verify-intent-delete.cjs') },
   { name: 'verify-request-flow-stable', argv: runWithNode('scripts/verify/verify-request-flow-stable.cjs') },
   { name: 'verify-customer-report-html', argv: runWithTsx('scripts/verify/verify-customer-report-html.ts') },
+  { name: 'smoke-customer-report-upgrade', argv: runWithTsx('scripts/verify/smoke-customer-report-upgrade.ts') },
 ];
 
 function resolveConcurrency(): number {

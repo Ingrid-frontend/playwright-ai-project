@@ -6,6 +6,7 @@
  */
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { readCustomerDeliveryPayload, type DeliveryPayload } from './customer-delivery-payload.js';
 import { resolveDeliveryPayloadPath } from '../../src/utils/env-profile.js';
 
@@ -144,7 +145,11 @@ async function main(): Promise<void> {
   console.log(`Markdown 已导出: ${outPath}`);
 }
 
-main().catch((e) => {
-  console.error(e instanceof Error ? e.message : String(e));
-  process.exit(1);
-});
+const isDirectRun = process.argv[1] &&
+  path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+if (isDirectRun) {
+  main().catch((e) => {
+    console.error(e instanceof Error ? e.message : String(e));
+    process.exit(1);
+  });
+}
