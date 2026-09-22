@@ -4,11 +4,10 @@ import { createRequire } from "module";
 import type { JobSummaryFile } from "./job-lock.js";
 import {
   buildJobFailReasons,
-  readUiIssuesSummaryCounts,
-  readUiIssuesSummaryLine,
   sendJobFeishuNotification,
 } from "./job-notify.js";
 import { writeBitableIfAuto } from "../feishu/bitable-auto.js";
+import { readIssuesReport } from "../report/issues-source.js";
 import { writeQualityDashboard } from "../report/generate-quality-dashboard.js";
 import { formatRunId, type AccountProfileFilter } from "./job-utils.js";
 import { listJobRunEnvs, resolveJobRunEnv, type NotifyOn, type ResolvedTestJob } from "./test-jobs-config.js";
@@ -241,6 +240,9 @@ export async function runFlowJob(
           errorSummary: reason,
         });
       }
+      if (job.steps.writeFeishuBitable) {
+        console.log("跳过飞书多维表同步：登录准备失败，本轮无比较产物");
+      }
       return {
         exitCode: 1,
         testPassed: false,
@@ -272,29 +274,40 @@ export async function runFlowJob(
   const testPassed = exitCode === 0;
   const specPaths = resolveFlowSpecPaths(runnerKey, job);
 
-  const compareSkipped =
-    !job.steps.compare ||
-    (runnerKey !== "request-flow-golden"
-      && runnerKey !== "approval-flow-golden"
-      && runnerKey !== "expense-flow-golden");
-  let comparePassed = true;
   const isGoldenRunner =
     runnerKey === "request-flow-golden"
     || runnerKey === "approval-flow-golden"
     || runnerKey === "expense-flow-golden";
+  const compareSkipped = !job.steps.compare || !isGoldenRunner;
+  let comparePassed = true;
+  const issuesSource = path.resolve(repoRoot, process.env.FLOW_UI_ISSUES_OUT || "results/flow-ui-issues.json");
+  let currentIssues: ReturnType<typeof readIssuesReport> = null;
 
-  if (!compareSkipped && isGoldenRunner) {
+  if (!compareSkipped) {
+    const previousGeneratedAt = readIssuesReport(issuesSource)?.generatedAt;
+    const compareStartedAt = Date.now();
     try {
       const cmpCmd = job.steps.compareGate
         ? "npm run compare-flow-screenshots -- --gate"
         : "npm run compare-flow-screenshots";
-      execSync(cmpCmd, { stdio: "inherit", cwd: repoRoot, env: process.env });
-      const ui = readUiIssuesSummaryCounts();
-      if (job.steps.compareGate) {
-        comparePassed = (ui?.blocker ?? 0) === 0;
-      }
+      execSync(cmpCmd, {
+        stdio: "inherit",
+        cwd: repoRoot,
+        env: { ...process.env, PLAYWRIGHT_ENV: effectiveEnv },
+      });
     } catch {
       comparePassed = false;
+    }
+    const report = readIssuesReport(issuesSource);
+    // 只认本次显式 compare 的产物；gate 失败后也读取，但不回退到 optimized/历史 issues。
+    if (report?.summary && Array.isArray(report.issues)
+      && report.generatedAt !== previousGeneratedAt
+      && Date.parse(report.generatedAt) >= compareStartedAt
+      && Date.parse(report.generatedAt) <= Date.now()) {
+      currentIssues = report;
+    } else {
+      comparePassed = false;
+      console.log("本轮流程截图对比未生成有效 issues，比较标记为失败（不复用历史报告）");
     }
   }
 
@@ -325,7 +338,13 @@ export async function runFlowJob(
     }
   }
 
-  const uiIssues = readUiIssuesSummaryCounts();
+  const issueSummary = currentIssues?.summary;
+  const uiIssues = issueSummary ? {
+    blocker: issueSummary.comparisonBlocker ?? issueSummary.blocker ?? 0,
+    warning: issueSummary.comparisonWarning ?? issueSummary.warning ?? 0,
+    total: issueSummary.comparisonTotal ?? issueSummary.total ?? 0,
+    review: issueSummary.review,
+  } : undefined;
   let failReasons = buildJobFailReasons({
     testPassed,
     comparePassed,
@@ -378,19 +397,28 @@ export async function runFlowJob(
       feishuDocAttempted: false,
       feishuDocPassed: true,
       aborted: false,
-      uiIssuesSummary: readUiIssuesSummaryLine(),
+      uiIssuesSummary: uiIssues
+        ? `**界面差异**：严重 ${uiIssues.blocker} 项 · 轻微 ${uiIssues.warning} 项 · 共 ${uiIssues.total} 项`
+          + (uiIssues.review && uiIssues.review.reviewed > 0
+            ? `\n**UI 判定**：疑似问题 ${uiIssues.review.uiBug} · 需人工 ${uiIssues.review.needsHuman} · 不稳定 ${uiIssues.review.unstable} · 噪声 ${uiIssues.review.likelyNoise}`
+            : '')
+        : undefined,
     });
   }
 
-  if (job.steps.writeFeishuBitable && compareSkipped) {
-    try {
-      const finalStatus = flowAllOk ? "success" : "failed";
-      await writeBitableIfAuto({ summary, env: effectiveEnv, status: finalStatus });
-    } catch (error) {
-      console.log(
-        "⚠️  飞书多维表写入失败（不影响任务流程）:",
-        error instanceof Error ? error.message : String(error),
-      );
+  if (job.steps.writeFeishuBitable) {
+    if (!currentIssues) {
+      console.log(`跳过飞书多维表同步：${compareSkipped ? '本轮未执行流程截图对比' : '本轮对比未生成有效新产物'}，不使用历史 issues`);
+    } else {
+      try {
+        const finalStatus = flowAllOk ? "success" : "failed";
+        await writeBitableIfAuto({ summary, env: effectiveEnv, status: finalStatus, issuesSource });
+      } catch (error) {
+        console.log(
+          "飞书多维表写入失败（不影响任务流程）:",
+          error instanceof Error ? error.message : String(error),
+        );
+      }
     }
   }
 

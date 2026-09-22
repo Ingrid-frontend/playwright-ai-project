@@ -155,11 +155,12 @@ export class ApprovalListPage extends GenericListPage {
   }
 
   override async goto(): Promise<void> {
+    const pending = this.waitPendingApi();
     await super.goto();
-    await this.waitPendingApi();
+    await pending;
   }
 
-  /** 等待「待审批」主数据接口返回（可能在 goto 前已返回，故 catch 兜底） */
+  /** 等待「待审批」主数据接口返回，无数据入口允许不触发请求 */
   async waitPendingApi() {
     await this.page
       .waitForResponse(
@@ -661,11 +662,11 @@ export class ApprovalListPage extends GenericListPage {
 
   // ---------- 搜索 ----------
 
-  /** 触发列表刷新后等待：部分筛选/清除不会打列表接口，避免空等 waitListApi 满超时 */
   private async withListMutation(action: () => Promise<void>, apiTimeout = 8_000): Promise<void> {
     const respP = this.waitListApi(apiTimeout);
     await action();
-    await Promise.race([respP, this.waitListSettled()]);
+    // loading 尚未出现时 hidden 已成立，不能用它抢先结束响应等待。
+    await respP;
     await this.waitListSettled();
   }
 
@@ -1172,6 +1173,9 @@ export class ApprovalListPage extends GenericListPage {
   /**
    * 操作列「通过/驳回」：dev 实机在右侧固定表（.ant-table-fixed-right），
    * 与数据行分表，不能只用 dataRow.locator('td').last()。
+   *
+   * 注意：返回的是 first()，所以不能直接用于「按 code 定位到的那一行」。
+   * 指定 code 时请用 actionButtonInRow()。
    */
   private actionButton(name: RegExp): Locator {
     const fixed = this.scope()
@@ -1182,15 +1186,58 @@ export class ApprovalListPage extends GenericListPage {
     return fixed.or(any).first();
   }
 
+  /** 右侧固定列（操作列）的可见行；与 dataRows() 按相同下标对齐 */
+  private fixedActionRows(): Locator {
+    return this.scope()
+      .locator('.ant-table-fixed-right tbody tr.ant-table-row')
+      .filter({ visible: true });
+  }
+
+  /** 在 dataRows() 中找到 target 的下标；找不到返回 -1 */
+  private async dataRowIndexOf(target: Locator): Promise<number> {
+    const targetHandle = await target.elementHandle().catch(() => null);
+    if (!targetHandle) return -1;
+    try {
+      return await this.dataRows().evaluateAll(
+        (rows, targetNode) => rows.findIndex((row) => row === targetNode),
+        targetHandle,
+      );
+    } finally {
+      await targetHandle.dispose();
+    }
+  }
+
+  /**
+   * 在与数据行 target 对应的固定列右侧行内查找按钮。
+   * 固定表行不存在时退化到数据行内查找（极少数非固定列布局）。
+   */
+  private async actionButtonInRow(target: Locator, name: RegExp): Promise<Locator> {
+    const idx = await this.dataRowIndexOf(target);
+    if (idx >= 0) {
+      const inFixed = this.fixedActionRows()
+        .nth(idx)
+        .getByRole('button', { name })
+        .filter({ visible: true });
+      if ((await inFixed.count()) > 0) return inFixed.first();
+    }
+    return target.getByRole('button', { name }).filter({ visible: true }).first();
+  }
+
   /** 在指定行（或首行）的操作列点击「通过」；若弹出意见框则自动填写 */
   async approveRow(comment?: string, code?: string): Promise<void> {
+    let btn: Locator;
     if (code) {
-      await expect(this.rowByCode(code), `未找到单据「${code}」`).toBeVisible({ timeout: 20_000 });
+      const dataRow = this.rowByCode(code);
+      await expect(dataRow, `未找到单据「${code}」`).toBeVisible({ timeout: 20_000 });
+      btn = await this.actionButtonInRow(dataRow, /^\s*通\s*过\s*$/);
     } else {
       await expect(this.dataRows().first()).toBeVisible({ timeout: 20_000 });
+      btn = this.actionButton(/^\s*通\s*过\s*$/);
     }
-    const btn = this.actionButton(/^\s*通\s*过\s*$/);
-    await expect(btn, '未在操作列找到「通过」按钮').toBeVisible({ timeout: 10_000 });
+    await expect(
+      btn,
+      code ? `未在单据「${code}」操作列找到「通过」按钮` : '未在操作列找到「通过」按钮',
+    ).toBeVisible({ timeout: 10_000 });
     await btn.click();
     await this.fillCommentDialogIfNeeded(comment, false);
     await this.confirmIfNeeded();
@@ -1198,13 +1245,19 @@ export class ApprovalListPage extends GenericListPage {
 
   /** 在指定行（或首行）的操作列点击「驳回」；若弹出意见框则自动填写 */
   async rejectRow(comment?: string, code?: string): Promise<void> {
+    let btn: Locator;
     if (code) {
-      await expect(this.rowByCode(code), `未找到单据「${code}」`).toBeVisible({ timeout: 20_000 });
+      const dataRow = this.rowByCode(code);
+      await expect(dataRow, `未找到单据「${code}」`).toBeVisible({ timeout: 20_000 });
+      btn = await this.actionButtonInRow(dataRow, /^\s*驳\s*回\s*$/);
     } else {
       await expect(this.dataRows().first()).toBeVisible({ timeout: 20_000 });
+      btn = this.actionButton(/^\s*驳\s*回\s*$/);
     }
-    const btn = this.actionButton(/^\s*驳\s*回\s*$/);
-    await expect(btn, '未在操作列找到「驳回」按钮').toBeVisible({ timeout: 10_000 });
+    await expect(
+      btn,
+      code ? `未在单据「${code}」操作列找到「驳回」按钮` : '未在操作列找到「驳回」按钮',
+    ).toBeVisible({ timeout: 10_000 });
     await btn.click();
     await expect(
       this.scope().getByRole('dialog').filter({ hasText: /驳回意见|审批驳回/ }),

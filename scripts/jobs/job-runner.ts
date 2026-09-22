@@ -12,9 +12,10 @@ import {
   type JobRunStatus,
   type JobSummaryFile,
 } from './job-lock.js';
-import { readUiIssuesSummaryLine, sendJobFeishuNotification, readUiIssuesSummaryCounts, buildJobFailReasons } from './job-notify.js';
+import { sendJobFeishuNotification, buildJobFailReasons } from './job-notify.js';
 import { getAnalyzeErrorsSummary, runAnalyzeErrorsOnFailure } from '../flow/flow-shared.js';
 import { writeBitableIfAuto } from '../feishu/bitable-auto.js';
+import { readIssuesReport } from '../report/issues-source.js';
 import { writeQualityDashboard } from '../report/generate-quality-dashboard.js';
 import {
   formatRunId,
@@ -248,6 +249,9 @@ export async function runDirect(opts: DirectRunOptions, ctx: JobRunContext): Pro
       updateStatus(ctx, { status: 'failed', finishedAt: new Date().toISOString() });
       clearLock(ctx.jobId);
     }
+    if (opts.steps.writeFeishuBitable) {
+      console.log('跳过飞书多维表同步：未匹配到可执行用例，本轮无比较产物');
+    }
     return {
       exitCode: 1,
       testPassed: false,
@@ -287,21 +291,35 @@ export async function runDirect(opts: DirectRunOptions, ctx: JobRunContext): Pro
     runAnalyzeErrorsOnFailure();
   }
   let comparePassed = true;
-  let compareSkipped = false;
   let feishuDocPassed = true;
   let feishuDocAttempted = false;
 
   const skipCompare = aborted && !opts.runCompareAfterAbort;
-  if (opts.steps.compare && !skipCompare) {
+  const compareSkipped = !opts.steps.compare || skipCompare;
+  const issuesSource = path.resolve(process.cwd(), process.env.UI_ISSUES_OUT || 'results/ui-issues.json');
+  let currentIssues: ReturnType<typeof readIssuesReport> = null;
+  if (!compareSkipped) {
+    const previousGeneratedAt = readIssuesReport(issuesSource)?.generatedAt;
+    const compareStartedAt = Date.now();
     const compareCmd = opts.steps.compareGate
       ? 'npm run compare-screenshots -- --gate'
       : 'npm run compare-screenshots';
-    comparePassed = runCommandBool(compareCmd, '生成截图对比报告');
-    if (!comparePassed && opts.stopOnCompareGate) {
-      /* gate 失败已在 comparePassed 体现 */
+    comparePassed = runCommandBool(compareCmd, '生成截图对比报告', {
+      ...process.env,
+      PLAYWRIGHT_ENV: runtimeEnv,
+    });
+    const report = readIssuesReport(issuesSource);
+    // gate 失败仍可能有本轮产物；成功退出也可能因无截图而未产出，不能只看退出码。
+    if (report?.summary && Array.isArray(report.issues)
+      && report.generatedAt !== previousGeneratedAt
+      && Date.parse(report.generatedAt) >= compareStartedAt
+      && Date.parse(report.generatedAt) <= Date.now()) {
+      currentIssues = report;
+    } else {
+      comparePassed = false;
+      console.log('本轮截图对比未生成有效 issues，比较标记为失败（不复用历史报告）');
     }
   } else if (skipCompare) {
-    compareSkipped = true;
     console.log('\n⏭️  执行已中断且 runCompareAfterAbort=false，跳过截图对比');
   }
 
@@ -338,7 +356,13 @@ export async function runDirect(opts: DirectRunOptions, ctx: JobRunContext): Pro
 
   const flowAllOk = testPassed && (compareSkipped || comparePassed) && (!feishuDocAttempted || feishuDocPassed);
 
-  const uiIssues = readUiIssuesSummaryCounts();
+  const issueSummary = currentIssues?.summary;
+  const uiIssues = issueSummary ? {
+    blocker: issueSummary.comparisonBlocker ?? issueSummary.blocker ?? 0,
+    warning: issueSummary.comparisonWarning ?? issueSummary.warning ?? 0,
+    total: issueSummary.comparisonTotal ?? issueSummary.total ?? 0,
+    review: issueSummary.review,
+  } : undefined;
   const failReasons = buildJobFailReasons({
     testPassed,
     comparePassed,
@@ -374,12 +398,16 @@ export async function runDirect(opts: DirectRunOptions, ctx: JobRunContext): Pro
     failReasons,
   };
 
-  if (opts.steps.writeFeishuBitable && compareSkipped) {
-    try {
-      const finalStatus: JobRunStatus = aborted ? 'aborted' : flowAllOk ? 'success' : 'failed';
-      await writeBitableIfAuto({ summary, env: runtimeEnv, status: finalStatus });
-    } catch (error) {
-      console.log('⚠️  飞书多维表写入失败（不影响任务流程）:', error instanceof Error ? error.message : String(error));
+  if (opts.steps.writeFeishuBitable) {
+    if (!currentIssues) {
+      console.log(`跳过飞书多维表同步：${compareSkipped ? '本轮未执行截图对比' : '本轮对比未生成有效新产物'}，不使用历史 issues`);
+    } else {
+      try {
+        const finalStatus: JobRunStatus = aborted ? 'aborted' : flowAllOk ? 'success' : 'failed';
+        await writeBitableIfAuto({ summary, env: runtimeEnv, status: finalStatus, issuesSource });
+      } catch (error) {
+        console.log('飞书多维表写入失败（不影响任务流程）:', error instanceof Error ? error.message : String(error));
+      }
     }
   }
 
@@ -403,7 +431,12 @@ export async function runDirect(opts: DirectRunOptions, ctx: JobRunContext): Pro
       feishuDocAttempted,
       feishuDocPassed,
       aborted,
-      uiIssuesSummary: readUiIssuesSummaryLine(),
+      uiIssuesSummary: uiIssues
+        ? `**界面差异**：严重 ${uiIssues.blocker} 项 · 轻微 ${uiIssues.warning} 项 · 共 ${uiIssues.total} 项`
+          + (uiIssues.review && uiIssues.review.reviewed > 0
+            ? `\n**UI 判定**：疑似问题 ${uiIssues.review.uiBug} · 需人工 ${uiIssues.review.needsHuman} · 不稳定 ${uiIssues.review.unstable} · 噪声 ${uiIssues.review.likelyNoise}`
+            : '')
+        : undefined,
       errorSummary: testPassed ? undefined : getAnalyzeErrorsSummary(),
     });
   }

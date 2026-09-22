@@ -1,6 +1,6 @@
 import { type Page } from '@playwright/test';
 import { test, type ApiGuard } from '../../fixtures';
-import { RequestListPage } from '../../pages/request-list.page';
+import { ExistingRequestDraftError, RequestListPage } from '../../pages/request-list.page';
 import { ApprovalListPage } from '../../../approval-flow/pages/approval-list.page';
 import { env } from '../../utils/env';
 import { randomReason } from '../../utils/random';
@@ -49,10 +49,12 @@ async function createTravelAndSubmit(
         await list.goto();
         await list.expectLoaded();
         await list.filterByReason(reason);
-        docNo = await list.pickFirstDocNo();
+        await list.expectReasonFilterResult(reason);
+        docNo = await list.pickFirstDocNo({ keepListFilters: true });
       }
       return { docNo, reason };
     } catch (err) {
+      if (err instanceof ExistingRequestDraftError) throw err;
       lastErr = err;
       apiGuard.dismissMatching(AVAILABLE_RE);
       if (attempt === 2) break;

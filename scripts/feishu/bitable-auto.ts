@@ -22,7 +22,6 @@ export function ensureBitableFields(): void {
 
 export async function writeBitableIfAuto(input: BitableWriteInput = {}): Promise<BitableWriteResult | null> {
   if (!isAutoBitableEnabled()) return null;
-  ensureBitableFields();
   const result = await writeBitableReport(input);
   if (!result.skipped) {
     console.log(`📊 飞书多维表已自动同步${result.issueRecordCount ? `（${result.issueRecordCount} 条问题）` : ''}`);

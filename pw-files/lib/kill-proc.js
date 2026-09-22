@@ -1,10 +1,36 @@
 const fs = require('fs');
 const path = require('path');
-const { spawn, spawnSync } = require('child_process');
+const { spawn } = require('child_process');
+const { AsyncLocalStorage } = require('async_hooks');
+
+// Only spawnTracked participates; shared Jobs and HTTP background jobs use their own spawn.
+const processScope = new AsyncLocalStorage();
+const processStates = new WeakMap();
+
+function observeProcess(proc, detached = false) {
+  let state = processStates.get(proc);
+  if (state) return state;
+  state = { closed: false, detached };
+  state.close = new Promise((resolve) => {
+    proc.once('close', () => {
+      state.closed = true;
+      resolve();
+    });
+  });
+  // A spawn error is followed by close, not evidence that an existing child exited.
+  proc.on('error', () => {});
+  processStates.set(proc, state);
+  return state;
+}
 
 function spawnTracked(cmd, args, opts = {}) {
+  const owner = processScope.getStore();
+  if (owner?.cancelled) throw new Error('会话已取消');
   const detached = process.platform !== 'win32';
-  return spawn(cmd, args, { ...opts, shell: false, detached });
+  const proc = spawn(cmd, args, { ...opts, shell: false, detached });
+  observeProcess(proc, detached);
+  owner?.trackProcess(proc);
+  return proc;
 }
 
 function resolveRepoBin(repoRoot, rel) {
@@ -12,7 +38,7 @@ function resolveRepoBin(repoRoot, rel) {
   return fs.existsSync(abs) ? abs : '';
 }
 
-function spawnTsx(repoRoot, scriptRel, args, env) {
+function spawnTsx(repoRoot, scriptRel, args, env, { localOnly = false } = {}) {
   const script = path.join(repoRoot, scriptRel);
   const tsxCli =
     resolveRepoBin(repoRoot, 'node_modules/tsx/dist/cli.mjs') ||
@@ -26,6 +52,7 @@ function spawnTsx(repoRoot, scriptRel, args, env) {
   if (tsxCli) {
     return spawnTracked(process.execPath, [tsxCli, script, ...args], { cwd: repoRoot, env });
   }
+  if (localOnly) throw new Error('未找到本地 tsx，请在项目根执行 npm install');
   const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
   return spawnTracked(npx, ['tsx', script, ...args], { cwd: repoRoot, env });
 }
@@ -41,60 +68,81 @@ function spawnPlaywright(repoRoot, args, env) {
   return spawnTracked(npx, ['playwright', ...args], { cwd: repoRoot, env });
 }
 
+function processGroupAlive(proc) {
+  if (!processStates.get(proc)?.detached || !proc.pid) return false;
+  try {
+    process.kill(-proc.pid, 0);
+    return true;
+  } catch (err) {
+    return err.code !== 'ESRCH';
+  }
+}
+
 function killProcessTree(proc, signal = 'SIGTERM') {
-  if (!proc || proc.killed) return false;
+  if (!proc || !proc.pid) return false;
+  const state = processStates.get(proc);
+  if (state?.closed && !processGroupAlive(proc)) return false;
+  if (!state && (proc.exitCode != null || proc.signalCode != null)) return false;
   const pid = proc.pid;
-  if (!pid) return false;
+  const killParent = () => {
+    try { return proc.kill(signal); } catch { return false; }
+  };
   if (process.platform === 'win32') {
     try {
-      spawnSync('taskkill', ['/pid', String(pid), '/f', '/t'], { stdio: 'ignore' });
+      const args = ['/pid', String(pid), '/t'];
+      if (signal === 'SIGKILL') args.push('/f');
+      const killer = spawn('taskkill', args, { stdio: 'ignore', shell: false });
+      killer.on('error', killParent);
+      killer.on('close', (code) => { if (code !== 0) killParent(); });
       return true;
     } catch {
-      try {
-        proc.kill(signal);
-        return true;
-      } catch {
-        return false;
-      }
+      return killParent();
     }
   }
   try {
     process.kill(-pid, signal);
     return true;
   } catch {
-    /* fall through */
+    /* Non-detached legacy callers: signal children before their parent. */
   }
   try {
-    spawnSync('pkill', ['-TERM', '-P', String(pid)], { stdio: 'ignore' });
-  } catch {
-    /* ignore */
-  }
-  try {
-    proc.kill(signal);
+    const killer = spawn('pkill', [`-${signal.replace(/^SIG/, '')}`, '-P', String(pid)], {
+      stdio: 'ignore', shell: false,
+    });
+    killer.on('error', killParent);
+    killer.on('close', killParent);
     return true;
   } catch {
-    return false;
+    return killParent();
   }
 }
 
 function killProcessTreeHard(proc) {
-  if (!proc || proc.killed) return false;
-  killProcessTree(proc, 'SIGKILL');
-  try {
-    if (process.platform === 'win32') {
-      spawnSync('taskkill', ['/pid', String(proc.pid), '/f', '/t'], { stdio: 'ignore' });
-    } else {
-      try {
-        process.kill(-proc.pid, 'SIGKILL');
-      } catch {
-        /* ignore */
-      }
-      proc.kill('SIGKILL');
-    }
-    return true;
-  } catch {
-    return false;
-  }
+  return killProcessTree(proc, 'SIGKILL');
 }
 
-module.exports = { spawnTracked, spawnTsx, spawnPlaywright, killProcessTree, killProcessTreeHard };
+function stopProcessTree(proc, { termTimeoutMs = 3000 } = {}) {
+  const state = observeProcess(proc);
+  if (state.stopping) return state.stopping;
+  state.stopping = new Promise((resolve) => {
+    let pollTimer;
+    const hardTimer = setTimeout(() => killProcessTreeHard(proc), termTimeoutMs);
+    const check = () => {
+      if (state.closed && !processGroupAlive(proc)) {
+        clearTimeout(hardTimer);
+        clearTimeout(pollTimer);
+        resolve();
+      } else {
+        pollTimer = setTimeout(check, 100);
+      }
+    };
+    killProcessTree(proc);
+    state.close.then(check);
+  });
+  return state.stopping;
+}
+
+module.exports = {
+  spawnTracked, spawnTsx, spawnPlaywright, killProcessTree, killProcessTreeHard,
+  stopProcessTree, observeProcess, processGroupAlive, processScope,
+};

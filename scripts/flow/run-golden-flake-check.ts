@@ -2,7 +2,7 @@
 /**
  * golden 稳定性验收：同一 golden runner 连跑 N 轮，统计 flake 率。
  *
- * 验收判据（Phase 1 事件驱动等待改造的最终标准）：默认轮数内 0 BUSINESS_FLAKY 才算通过。
+ * 验收判据：所有计划轮次有效通过；blocked / seed missing / infra 不计 business flake，但均阻断验收。
  * 默认 FLOW_DEBUG_FAST=1（首轮色/JSON 报告器/跳过飞书与对比报告），保证轮次节奏；
  * 需要全角色全报告的正式验收加 --full。
  *
@@ -22,7 +22,7 @@ import { getFlow, listFlowIds } from "./flow-registry.js";
 dotenv.config({ path: path.join(process.cwd(), ".env") });
 
 const require = createRequire(import.meta.url);
-const { readGoldenBatch } = require("../../pw-files/lib/golden-batch.js");
+const { readGoldenBatch, summarizeGoldenBatch, summarizeGoldenRounds } = require("../../pw-files/lib/golden-batch.js");
 
 export type FailureType = "BUSINESS_FLAKY" | "ENV_BLOCKED" | "SEED_MISSING" | "INFRA_FAIL";
 
@@ -55,7 +55,7 @@ function printHelpAndExit(): never {
       "",
       "选项:",
       "  --flow=<id>        流程 id（默认 request-flow，可选 approval-flow 等）",
-      "  --runs=<n>         循环轮数（默认 10，验收判据 0 flake）",
+      "  --runs=<n>         循环轮数（默认 10，须全部有效通过）",
       "  --env=<env>        环境（默认 dev，可用 uat/stage）",
       "  --profile=<id>     只跑指定角色档案",
       "  --stop-on-fail     首轮失败即终止",
@@ -93,22 +93,35 @@ function parseArgs(argv: string[]) {
   return { flowId, runs, env, profile, stopOnFail, full };
 }
 
-function readBatchProfiles(repoRoot: string, flowId: string): {
+function readBatchProfiles(repoRoot: string, flowId: string, env: string, profile: string, startedAt: number): {
+  validBatch: boolean;
+  ok: boolean;
   failedProfiles: string[];
   skippedProfiles: string[];
 } {
   const batch = readGoldenBatch(repoRoot, flowId);
-  const results = (batch?.results || []) as Array<{
+  const validBatch = batch?.flowId === flowId && batch?.env === env &&
+    Date.parse(batch.finishedAt) >= startedAt && Array.isArray(batch.results) &&
+    (!profile || batch.results.every((r: { profileId: string }) => r.profileId === profile));
+  if (!validBatch) {
+    return { validBatch: false, ok: false, failedProfiles: ['本轮缺少有效 Golden 批次结果（可能为上轮残留）'], skippedProfiles: [] };
+  }
+  const results = batch.results as Array<{
     profileId: string;
     ok?: boolean;
     skipped?: boolean;
+    skippedOnly?: boolean;
     reason?: string;
+    error?: string;
   }>;
   return {
-    failedProfiles: results.filter((r) => !r.ok && !r.skipped).map((r) => r.profileId),
-    skippedProfiles: results
-      .filter((r) => r.skipped)
-      .map((r) => `${r.profileId}${r.reason ? `(${r.reason})` : ""}`),
+    validBatch: true,
+    ok: summarizeGoldenBatch(batch).ok,
+    failedProfiles: results.filter((r) => !r.ok && !r.skipped && !r.skippedOnly)
+      .map((r) => `${r.profileId}${r.error ? `(${r.error})` : ""}`),
+    skippedProfiles: results.length ? results
+      .filter((r) => r.skipped || r.skippedOnly)
+      .map((r) => `${r.profileId}${r.reason ? `(${r.reason})` : ""}`) : ['无可运行账号（环境阻断）'],
   };
 }
 
@@ -133,7 +146,7 @@ export function classifyRoundFailure(
   const lower = combined.toLowerCase();
   if (ENV_BLOCK_PATTERNS.some((p) => lower.includes(p.toLowerCase()))) return "ENV_BLOCKED";
 
-  if (exitCode === 124 || exitCode >= 128) return "INFRA_FAIL";
+  if (exitCode === 124 || exitCode >= 128 || /结果解析失败|未执行任何测试/.test(combined)) return "INFRA_FAIL";
 
   if (failedProfiles.length === 0 && skippedProfiles.length > 0) return "ENV_BLOCKED";
 
@@ -186,9 +199,12 @@ function main(): void {
     });
     const durationSec = Math.round((Date.now() - t0) / 1000);
     const exitCode = proc.status ?? 1;
-    const { failedProfiles, skippedProfiles } = readBatchProfiles(repoRoot, flowId);
-    const failureType = classifyRoundFailure(exitCode, failedProfiles, skippedProfiles);
-    const ok = exitCode === 0;
+    const batch = readBatchProfiles(repoRoot, flowId, env, profile, t0);
+    const { failedProfiles, skippedProfiles } = batch;
+    const ok = exitCode === 0 && !proc.error && !proc.signal && batch.ok;
+    const failureType = proc.error || proc.signal || !batch.validBatch
+      ? "INFRA_FAIL"
+      : classifyRoundFailure(ok ? 0 : exitCode || 1, failedProfiles, skippedProfiles);
     rows.push({ run: i, ok, exitCode, durationSec, failureType, failedProfiles, skippedProfiles });
 
     const skipHint = skippedProfiles.length ? ` · 跳过 ${skippedProfiles.length}` : "";
@@ -200,7 +216,7 @@ function main(): void {
     if (!ok && stopOnFail) break;
   }
 
-  const passedRounds = rows.filter((r) => r.ok).length;
+  const { ok: accepted, passedRounds } = summarizeGoldenRounds(rows, runs);
   const failedRounds = rows.length - passedRounds;
   const businessFlakyRounds = rows.filter((r) => r.failureType === "BUSINESS_FLAKY").length;
   const envBlockedRounds = rows.filter((r) => r.failureType === "ENV_BLOCKED").length;
@@ -224,10 +240,7 @@ function main(): void {
     infraFailRounds,
     flakeRate: Number(flakeRate.toFixed(4)),
     legacyFlakeRate: Number(legacyFlakeRate.toFixed(4)),
-    verdict:
-      businessFlakyRounds === 0
-        ? "pass（0 business flake）"
-        : "fail（存在 business flake）",
+    verdict: accepted ? "pass（所有计划轮次有效通过）" : "fail（存在失败、阻断或未完成轮次）",
     startedAt,
     finishedAt: new Date().toISOString(),
     rows,
@@ -238,14 +251,14 @@ function main(): void {
   const outFile = path.join(outDir, `${flowId}-golden-${startedAt.replace(/[:.]/g, "-")}.json`);
   fs.writeFileSync(outFile, `${JSON.stringify(report, null, 2)}\n`, "utf8");
 
-  if (businessFlakyRounds === 0) {
+  if (accepted) {
     console.log(
-      `[flake-check] ✅ 验收通过: ${rows.length}/${runs} 轮 0 business flake · ${path.relative(repoRoot, outFile)}`,
+      `[flake-check] 验收通过: ${passedRounds}/${runs} 轮有效通过 · ${path.relative(repoRoot, outFile)}`,
     );
     process.exit(0);
   }
   console.error(
-    `[flake-check] ❌ 验收未通过: business flake ${businessFlakyRounds}/${rows.length} 轮 · 率 ${(flakeRate * 100).toFixed(1)}% · ${path.relative(repoRoot, outFile)}`,
+    `[flake-check] 验收未通过: 有效通过 ${passedRounds}/${runs}，已完成 ${rows.length}；business flake ${businessFlakyRounds}，blocked ${envBlockedRounds}，seed missing ${seedMissingRounds}，infra ${infraFailRounds} · 率 ${(flakeRate * 100).toFixed(1)}% · ${path.relative(repoRoot, outFile)}`,
   );
   process.exit(1);
 }

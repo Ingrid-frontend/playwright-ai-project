@@ -435,8 +435,9 @@ function renderCoverageBar(model: CustomerReportModel): string {
 }
 
 function renderTrendPanel(model: CustomerReportModel): string {
-  const envId = model.envSummaries?.[0]?.envId || '';
-  const trend = buildDeliveryTrend(envId || undefined);
+  // 未确定单一环境时不展示趋势，不能回退到所有环境的历史。
+  if (!model.envId) return '';
+  const trend = buildDeliveryTrend(model.envId);
   if (trend.entries.length < 2) return '';
 
   const rows = trend.entries.slice(-5).map((e) => {

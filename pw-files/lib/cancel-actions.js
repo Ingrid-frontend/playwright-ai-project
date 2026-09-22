@@ -108,6 +108,7 @@ function cancelRepoRerun(session) {
 
 function cancelOptimize(session) {
   session.optimizeCancelled = true;
+  session.optimizeController?.abort();
 }
 
 function cancelRun(session) {

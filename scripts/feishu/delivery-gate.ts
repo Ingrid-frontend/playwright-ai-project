@@ -1,6 +1,9 @@
 import fs from 'fs';
-import { resolveDeliveryImagePath } from '../report/customer-delivery-payload.js';
+import { assertDeliveryContentHash, resolveDeliveryImagePath, SNAPSHOT_VERSION } from '../report/customer-delivery-payload.js';
 import type { DeliveryPayload } from '../report/customer-delivery-payload.js';
+import { parseRunMetaFromScreenshotPath } from '../report/compare-screenshots-utils.js';
+import { runTimestampSortKey } from '../report/baseline-comparisons.js';
+import { extractEnvId } from '../report/customer-report-naming.js';
 import { buildRetestSummary } from './retest-trace.js';
 
 export type GateCheck = {
@@ -29,19 +32,49 @@ export function runDeliveryGate(payload: DeliveryPayload): GateResult {
     detail: payload.envId ? `环境: ${payload.envId}` : '缺少 envId，无法确认目标环境',
   });
 
-  const generatedAt = payload.generatedAt ? new Date(payload.generatedAt) : null;
-  const hoursSinceGeneration = generatedAt ? (Date.now() - generatedAt.getTime()) / 3600_000 : Infinity;
   checks.push({
-    name: 'freshness',
-    passed: generatedAt !== null && hoursSinceGeneration <= 24,
-    detail: generatedAt
-      ? `生成于 ${payload.generatedAt}（${hoursSinceGeneration.toFixed(1)} 小时前）`
-      : '缺少 generatedAt',
+    name: 'snapshot-identity',
+    passed: payload.version === 1 && payload.snapshotVersion === SNAPSHOT_VERSION &&
+      Boolean(payload.runId?.trim()) && Number.isFinite(Date.parse(payload.generatedAt)) &&
+      payload.deliveryId === [payload.envId, payload.runId, payload.releaseTag || ''].filter(Boolean).join('|'),
+    detail: `snapshotVersion=${payload.snapshotVersion}，runId=${payload.runId || '(缺失)'}`,
   });
 
-  const itemsWithEvidence = payload.items.filter(
-    (item) => item.images && item.images.length > 0,
-  );
+  const sources = Object.entries(payload.sourceRunIds ?? {});
+  const validSources = sources.length > 0 && sources.every(([script, run]) =>
+    Boolean(script && typeof run === 'string' && run.trim()) && extractEnvId(script) === payload.envId);
+  const currentImages = payload.items.flatMap((item) => item.images.filter((image) => image.role === 'current'));
+  const matchingEvidence = currentImages.length > 0 && payload.items.every((item) => {
+    const prefix = `${payload.deliveryId}::`;
+    const script = item.key.startsWith(prefix) ? item.key.slice(prefix.length).split('::')[0]! : '';
+    const selectedRun = payload.sourceRunIds?.[script];
+    const currents = item.images.filter((image) => image.role === 'current');
+    return Boolean(selectedRun) && currents.length > 0 && currents.every((image) => {
+      const normalized = resolveDeliveryImagePath(image.relPath).replace(/\\/g, '/');
+      return normalized.includes(`/${script.replace(/\\/g, '/')}/run-`) &&
+        parseRunMetaFromScreenshotPath(normalized).runTimestamp === selectedRun;
+    });
+  });
+  checks.push({
+    name: 'source-runs',
+    passed: validSources && matchingEvidence,
+    detail: validSources && matchingEvidence
+      ? `${sources.length} 个源运行与当前截图身份匹配`
+      : '缺少源运行/当前截图，或脚本、环境、运行与证据不匹配',
+  });
+
+  const now = Date.now();
+  const freshSources = validSources && sources.every(([, run]) => {
+    const startedAt = runTimestampSortKey(run);
+    const age = now - startedAt;
+    return startedAt > 0 && age >= 0 && age <= 24 * 3600_000;
+  });
+  checks.push({
+    name: 'freshness',
+    passed: freshSources,
+    detail: freshSources ? '源执行均在过去 24 小时内' : '源执行时间缺失、无效、在未来或已超过 24 小时；重新生成报告不能刷新源证据',
+  });
+
   const regressOrMinor = payload.items.filter(
     (item) => item.kind === 'regress' || item.kind === 'minor',
   );
@@ -51,7 +84,12 @@ export function runDeliveryGate(payload: DeliveryPayload): GateResult {
     passed: allHaveEvidence,
     detail: allHaveEvidence
       ? `${regressOrMinor.length} 个问题条目均有证据图`
-      : `${regressOrMinor.length - itemsWithEvidence.length} 个问题条目缺少证据图`,
+      : `${regressOrMinor.filter((item) => !item.images.length).length} 个问题条目缺少证据图`,
+  });
+  checks.push({
+    name: 'issue-completeness',
+    passed: Number.isSafeInteger(payload.totalIssueCount) && payload.totalIssueCount === regressOrMinor.length,
+    detail: `交付 ${regressOrMinor.length} / 共 ${payload.totalIssueCount} 个问题（根因组，不是步骤数）`,
   });
 
   const readableImages = payload.items
@@ -78,11 +116,15 @@ export function runDeliveryGate(payload: DeliveryPayload): GateResult {
     detail: `覆盖率 ${payload.stats.coveragePct}%`,
   });
 
-  checks.push({
-    name: 'content-hash',
-    passed: !!payload.contentHash,
-    detail: payload.contentHash ? `内容哈希：${payload.contentHash}` : '缺少 contentHash，审核无法绑定内容',
-  });
+  try {
+    const actualHash = assertDeliveryContentHash(payload);
+    checks.push({ name: 'content-hash', passed: true, detail: `已校验内容及证据：${actualHash}` });
+  } catch (error) {
+    checks.push({
+      name: 'content-hash', passed: false,
+      detail: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   const retestSummary = buildRetestSummary();
   checks.push({

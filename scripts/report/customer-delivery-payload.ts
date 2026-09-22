@@ -58,7 +58,7 @@ export type DeliveryPayload = {
   version: 1;
   /** 快照版本：内容结构变化时递增，供下游门禁判断兼容性 */
   snapshotVersion: number;
-  /** 内容哈希：基于 coverage stats + items 计算，审核绑定此值，内容变化需重新审核 */
+  /** 完整交付内容和证据文件字节的哈希，内容变化需重新审核 */
   contentHash: string;
   runId: string;
   generatedAt: string;
@@ -91,9 +91,9 @@ export type DeliveryPayload = {
   };
   actionItems: string[];
   items: DeliveryItem[];
-  /** 截断前的问题总数（regress + minor），用于文档标注「展示 X / 共 Y 项」 */
+  /** 全部问题根因组数（regress + minor），与 items 一致，不与受影响步骤数混算 */
   totalIssueCount: number;
-  /** 截断前的抽样总数（pass），用于文档标注「展示 X / 共 Y 项」 */
+  /** 实际交付的抽样数（pass，无问题时最多 5 项） */
   totalSampleCount: number;
   /** 未建基线、未参与判定的步骤（覆盖率不足时客户最该知道的部分） */
   uncoveredList: DeliveryUncoveredStep[];
@@ -171,57 +171,64 @@ export function collectDeliveryPages(model: CustomerReportModel, maxItems: numbe
   const issues = [
     ...model.regressionGroups.map((g) => g.representative),
     ...model.minorGroups.map((g) => g.representative),
-  ].slice(0, maxItems);
+  ];
 
   if (issues.length > 0) return { issues, samples: [] };
 
   const samples = model.pages
     .filter((p) => !p.processOnly && p.worstStatus === 'pass')
     .sort((a, b) => b.maxDifference - a.maxDifference)
-    .slice(0, Math.min(maxItems, SAMPLE_LIMIT));
+    .slice(0, Math.max(0, Math.min(maxItems, SAMPLE_LIMIT)));
 
   return { issues: [], samples };
 }
 
-function resolveDeliveryRunId(model: CustomerReportModel, override?: string): string {
+function resolveDeliveryRunId(model: CustomerReportModel, override?: string, selectedRunId?: string): string {
   if (override?.trim()) return override.trim();
   if (process.env.TEST_RUN_ID?.trim()) return process.env.TEST_RUN_ID.trim();
   if (process.env.FLOW_REPORT_BATCH_ID?.trim()) return process.env.FLOW_REPORT_BATCH_ID.trim();
+  if (selectedRunId) return selectedRunId;
   for (const run of model.scriptRuns.values()) {
     if (run.runId) return run.runId;
   }
   return '';
 }
 
-/** 当前快照版本：内容结构变化时递增 */
-const SNAPSHOT_VERSION = 1;
+/** v2：完整交付内容及证据字节绑定，旧版部分字段哈希不兼容。 */
+export const SNAPSHOT_VERSION = 2;
 
-/**
- * 计算内容哈希：基于 coverage stats + items 的关键字段，
- * 供审核绑定内容，同 deliveryId 但内容变化时需重新审核。
- */
-function computeContentHash(
-  stats: DeliveryPayload['stats'],
-  items: DeliveryItem[],
-  generatedAt: string,
+/** 只排除根级 contentHash 本身；对象键排序保证写入 JSON 再读回后哈希稳定。 */
+export function computeContentHash(
+  payload: Omit<DeliveryPayload, 'contentHash'> & { contentHash?: string },
 ): string {
-  const fingerprint = {
-    stats: {
-      expectedSteps: stats.expectedSteps,
-      comparedSteps: stats.comparedSteps,
-      regressSteps: stats.regressSteps,
-      minorSteps: stats.minorSteps,
-      passSteps: stats.passSteps,
-    },
-    items: items.map((i) => ({
-      key: i.key,
-      kind: i.kind,
-      differenceLabel: i.differenceLabel,
-      imageCount: i.images.length,
-    })),
-    generatedAt,
-  };
-  return createHash('sha256').update(JSON.stringify(fingerprint)).digest('hex').slice(0, 16);
+  const { contentHash: _contentHash, ...snapshot } = payload;
+  const evidence = [...new Set(payload.items.flatMap((item) => item.images.map((image) => image.relPath)))]
+    .sort()
+    .map((relPath) => {
+      const abs = resolveDeliveryImagePath(relPath);
+      try {
+        return { relPath, sha256: createHash('sha256').update(fs.readFileSync(abs)).digest('hex') };
+      } catch (error) {
+        throw new Error(`交付证据不可读: ${abs}`, { cause: error });
+      }
+    });
+  const serialized = JSON.stringify({ snapshot, evidence }, (_key, value: unknown) => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const record = value as Record<string, unknown>;
+      return Object.fromEntries(Object.keys(record).sort().map((key) => [key, record[key]]));
+    }
+    return value;
+  });
+  return createHash('sha256').update(serialized).digest('hex');
+}
+
+/** 生成、审核和 apply 共用，绝不信任载荷自报的哈希。 */
+export function assertDeliveryContentHash(payload: DeliveryPayload): string {
+  const actual = computeContentHash(payload);
+  if (!payload.contentHash || payload.contentHash !== actual) {
+    throw new Error('交付内容或证据已变化（contentHash 不匹配），请重新生成并审核');
+  }
+  return actual;
 }
 
 export function buildCustomerDeliveryPayload(
@@ -237,8 +244,17 @@ export function buildCustomerDeliveryPayload(
 ): DeliveryPayload {
   const maxItems = opts?.maxItems ?? 20;
   const s = opts?.summary ?? buildCustomerReportSummary(model);
-  const runId = resolveDeliveryRunId(model, opts?.runId);
+  const runId = resolveDeliveryRunId(model, opts?.runId, opts?.sourceRunIds?.values().next().value);
   const c = model.coverage;
+  if (opts?.deliveryReady || opts?.sourceRunIds) {
+    for (const slot of c.slots) {
+      const selectedRun = opts.sourceRunIds?.get(slot.scriptKey);
+      if (!selectedRun || !slot.currentPath ||
+          parseRunMetaFromScreenshotPath(slot.currentPath).runTimestamp !== selectedRun) {
+        throw new Error(`源运行与比较证据不匹配: ${slot.scriptKey} / ${slot.stepNumber}`);
+      }
+    }
+  }
   const coveragePct = c.expectedSteps > 0 ? Math.round((c.comparedSteps / c.expectedSteps) * 100) : 0;
 
   const envId = opts?.envId || '';
@@ -287,16 +303,15 @@ export function buildCustomerDeliveryPayload(
     passRate: c.passRate,
     coveragePct,
   };
-  const contentHash = computeContentHash(stats, items, s.generatedAt);
   const sourceRunIds = opts?.sourceRunIds
     ? Object.fromEntries(opts.sourceRunIds)
     : undefined;
-  const trend = buildDeliveryTrend(opts?.envId);
+  const trendEnv = opts?.envId || model.envId;
+  const trend = trendEnv ? buildDeliveryTrend(trendEnv) : undefined;
 
-  return {
+  const payload: Omit<DeliveryPayload, 'contentHash'> = {
     version: 1,
     snapshotVersion: SNAPSHOT_VERSION,
-    contentHash,
     runId,
     generatedAt: s.generatedAt,
     deliveryId,
@@ -323,6 +338,7 @@ export function buildCustomerDeliveryPayload(
       })),
     trend,
   };
+  return { ...payload, contentHash: computeContentHash(payload) };
 }
 
 export function writeCustomerDeliveryPayload(
@@ -341,6 +357,8 @@ export function readCustomerDeliveryPayload(
   if (!fs.existsSync(abs)) return null;
   try {
     const parsed = JSON.parse(fs.readFileSync(abs, 'utf-8')) as DeliveryPayload;
+    // 新快照必须原样校验，不能在读取时补默认值改变已审核的内容。
+    if (parsed.snapshotVersion === SNAPSHOT_VERSION) return parsed;
     if (!parsed.runId) parsed.runId = '';
     if (parsed.deliveryReady === undefined) parsed.deliveryReady = false;
     if (!parsed.envId) parsed.envId = '';
@@ -354,8 +372,8 @@ export function readCustomerDeliveryPayload(
     if (!parsed.snapshotVersion) parsed.snapshotVersion = 0;
     if (!parsed.contentHash) parsed.contentHash = '';
     return parsed;
-  } catch {
-    return null;
+  } catch (error) {
+    throw new Error(`交付载荷读取失败: ${abs}`, { cause: error });
   }
 }
 

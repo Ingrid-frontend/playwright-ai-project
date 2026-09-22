@@ -22,7 +22,8 @@ const docMod = tsxRequire(path.join(__dirname, '../feishu/doc-delivery.ts'), __f
 const bitableMod = tsxRequire(path.join(__dirname, '../feishu/bitable-delivery.ts'), __filename);
 
 const envProfileMod = tsxRequire(path.join(__dirname, '../../src/utils/env-profile.ts'), __filename);
-const { sanitizeScriptLabel, readCustomerDeliveryPayload, resolveDeliveryImagePath } = payloadMod;
+const { sanitizeScriptLabel, readCustomerDeliveryPayload, resolveDeliveryImagePath, assertDeliveryContentHash, SNAPSHOT_VERSION } = payloadMod;
+const { runDeliveryGate, formatGateResult } = tsxRequire(path.join(__dirname, '../feishu/delivery-gate.ts'), __filename);
 const { resolveDeliveryPayloadPath } = envProfileMod;
 const { renderDeliveryPreview } = previewMod;
 const { buildCustomerDocBlocks, buildCustomerDocTitle } = docMod;
@@ -89,19 +90,27 @@ function main() {
     return;
   }
 
-  // 2. 载荷结构
+  // 2. 载荷结构与真实内容哈希（包含所有证据文件字节）
   assert.strictEqual(payload.version, 1);
+  assert.strictEqual(payload.snapshotVersion, SNAPSHOT_VERSION);
+  assertDeliveryContentHash(payload);
+  assert.ok(payload.runId, '缺少源运行/批次身份 runId');
+  if (env) {
+    const gate = runDeliveryGate(payload);
+    assert.ok(gate.passed, formatGateResult(gate));
+  }
   assert.ok(payload.items.length > 0, '交付条目不能为空，否则客户会收到空报告');
   assert.ok(payload.headline, '缺少结论标题');
   assert.strictEqual(typeof payload.stats.coveragePct, 'number');
   assert.ok(payload.deliveryId, '缺少稳定交付身份 deliveryId');
   assert.strictEqual(typeof payload.totalIssueCount, 'number', '缺少 totalIssueCount');
   assert.strictEqual(typeof payload.totalSampleCount, 'number', '缺少 totalSampleCount');
-  // totalIssueCount 应 >= 实际 issues 数量（可能被截断）
+  // 问题根因组必须完整交付，不与受影响步骤数混算。
   const actualIssues = payload.items.filter((i) => i.kind === 'regress' || i.kind === 'minor').length;
-  assert.ok(payload.totalIssueCount >= actualIssues, 'totalIssueCount 不应小于实际问题数');
+  assert.strictEqual(payload.totalIssueCount, actualIssues, '交付问题不可截断');
   const actualSamples = payload.items.filter((i) => i.kind === 'pass').length;
-  assert.ok(payload.totalSampleCount >= actualSamples, 'totalSampleCount 不应小于实际抽样数');
+  assert.strictEqual(payload.totalSampleCount, actualSamples, '抽样数量必须与实际交付一致');
+  assert.ok(actualSamples <= 5, '无问题时抽样最多 5 项');
   if (env) {
     assert.strictEqual(payload.deliveryReady, true, '按环境交付时 deliveryReady 须为 true');
     assert.strictEqual(payload.envId, env, 'envId 与 --env 不一致');

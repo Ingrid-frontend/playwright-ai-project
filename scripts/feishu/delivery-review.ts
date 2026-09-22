@@ -63,8 +63,11 @@ export function checkReview(deliveryId: string, contentHash?: string): { approve
   if (review.deliveryId !== deliveryId) {
     return { approved: false, reason: `审核记录对应 ${review.deliveryId}，与当前 ${deliveryId} 不匹配` };
   }
-  // 内容哈希绑定：审核时锁定的内容与实际交付内容必须一致
-  if (review.contentHash && contentHash && review.contentHash !== contentHash) {
+  // 旧审核缺少哈希不能证明审核过本次内容。
+  if (!review.contentHash || !contentHash) {
+    return { approved: false, reason: '缺少内容哈希，需重新审核' };
+  }
+  if (review.contentHash !== contentHash) {
     return { approved: false, reason: '报告内容已变化，需重新审核（审核时内容哈希与当前不一致）' };
   }
   if (!review.approved) return { approved: false, reason: `审核未通过（${review.reviewer || '未知'}: ${review.notes || '无备注'}）` };

@@ -128,9 +128,12 @@ export async function sendFeishuNotify(payload: FeishuNotifyPayload, channel?: N
           msg_type: payload.msg_type,
           content,
         }),
+        retries: 0, // 非幂等发送：响应丢失只能人工核对，不能重放。
       },
     );
+    if (!res.ok) throw new Error(`飞书发信结果未确认: HTTP ${res.status}`);
     const data = (await res.json()) as { code: number; msg?: string; data?: { message_id?: string } };
+    if (typeof data.code !== 'number') throw new Error('飞书发信结果未确认：响应缺少状态码');
     if (data.code === 0) {
       console.log(`✅ 飞书通知发送成功（自建应用 → ${chatId}）`);
       return true;
@@ -146,8 +149,8 @@ export async function sendFeishuNotify(payload: FeishuNotifyPayload, channel?: N
 
   const webhookUrl = resolveFeishuWebhookUrl();
   if (!webhookUrl) {
-    console.log('⚠️  未配置 FEISHU_CHAT_ID+应用凭证，也未配置 FEISHU_WEBHOOK_URL，跳过通知');
-    return true;
+    console.log('未配置 FEISHU_CHAT_ID+应用凭证，也未配置 FEISHU_WEBHOOK_URL，未发送通知');
+    return false;
   }
 
   const webhookSecret = process.env.FEISHU_WEBHOOK_SECRET?.trim();
@@ -167,12 +170,13 @@ export async function sendFeishuNotify(payload: FeishuNotifyPayload, channel?: N
     method: 'POST',
     headers,
     body: JSON.stringify(payload),
+    retries: 0,
   });
-  const text = await res.text();
-  if (res.ok) {
-    console.log('✅ 飞书通知发送成功（Webhook）');
-    return true;
+  if (!res.ok) throw new Error(`飞书 Webhook 发信结果未确认: HTTP ${res.status}`);
+  const data = await res.json() as { code?: number; StatusCode?: number; msg?: string; StatusMessage?: string };
+  if ((data.code ?? data.StatusCode) !== 0) {
+    throw new Error(`飞书 Webhook 发信失败: ${data.msg || data.StatusMessage || '响应缺少成功状态'}`);
   }
-  console.log(`❌ 飞书 Webhook 发信失败: ${res.status} ${text}`);
-  return false;
+  console.log('飞书通知发送成功（Webhook）');
+  return true;
 }

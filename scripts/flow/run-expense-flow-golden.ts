@@ -17,12 +17,8 @@ const repoEnv = require("../../pw-files/repo-env.js");
 const { finalizeFlowRun, flowScriptKey } = require("../../pw-files/lib/flow-run-common.js");
 const { makeRunMarker, writeRunMarkerFile } = require("../../pw-files/lib/flow-run-marker.js");
 const { resolveFlowGoldenSeed } = require("../../pw-files/lib/flow-golden-seed.js");
-const {
-  parsePlaywrightResultJson,
-  parsePlaywrightFailures,
-  parsePlaywrightSkips,
-  logConcisePlaywrightFailures,
-} = require("../../pw-files/lib/failure-report.js");
+const { logConcisePlaywrightFailures } = require("../../pw-files/lib/failure-report.js");
+const { parseGoldenExecution, finalizeGoldenExecution, goldenBatchStatus, writeGoldenBatch } = require("../../pw-files/lib/golden-batch.js");
 
 const FLOW_ID = "expense-flow";
 const FLOW_LABEL = "报销流程";
@@ -32,8 +28,16 @@ const SPEC = "expense/golden-regression.spec.ts";
 type RunOneResult = {
   ok: boolean;
   skipped?: boolean;
+  skippedOnly?: boolean;
   profileId: string;
+  roleSlug?: string;
   exitCode: number;
+  passed?: number;
+  failed?: number;
+  total?: number;
+  runId?: string;
+  reason?: string;
+  error?: string;
 };
 
 function parseArgs(argv: string[]) {
@@ -51,17 +55,14 @@ function parseArgs(argv: string[]) {
 }
 
 function resolveStorage(repoRoot: string, envId: string, profileId: string): string {
-  const rel = repoEnv.resolveStorageStateRelDirect(repoRoot, envId, profileId);
-  if (rel && repoEnv.storageExists(repoRoot, rel)) {
-    return path.resolve(repoRoot, rel);
-  }
-  return "";
+  return repoEnv.resolveValidatedStorageAbs(repoRoot, envId, profileId).abs;
 }
 
 function listProfiles(repoRoot: string, envId: string, profile?: string): string[] {
   const ids = profile
     ? [profile]
     : repoEnv.listGoldenProfileIds(repoRoot, envId).filter((id: string) => repoEnv.isGoldenProfileId(id));
+  if (profile) return ids;
   return ids.filter((id: string) => resolveStorage(repoRoot, envId, id));
 }
 
@@ -80,8 +81,9 @@ function writeDebugPlaywrightResult(
 function runOne(repoRoot: string, envId: string, profileId: string, grep: string): RunOneResult {
   const storage = resolveStorage(repoRoot, envId, profileId);
   if (!storage) {
-    console.error(`[expense-flow:golden] 跳过 ${profileId}: 无登录态`);
-    return { ok: false, skipped: true, profileId, exitCode: 0 };
+    const reason = repoEnv.resolveValidatedStorageAbs(repoRoot, envId, profileId).reason || "无有效登录态";
+    console.error(`[expense-flow:golden] 跳过 ${profileId}: ${reason}`);
+    return { ok: false, skipped: true, skippedOnly: true, profileId, exitCode: 2, reason };
   }
 
   const base = repoEnv.getBaseEnvConfig(repoRoot, envId);
@@ -167,37 +169,11 @@ function runOne(repoRoot: string, envId: string, profileId: string, grep: string
   const duration = ((Date.now() - startTime) / 1000).toFixed(1);
   const specRelative = path.join(FLOW_ID, "tests", SPEC).replace(/\\/g, "/");
 
-  let passed = 0;
-  let failed = 0;
-  let total = 0;
-  let skipped = 0;
-  let skips: Array<{ title?: string; reason?: string }> = [];
-  let failures: Array<{ title?: string; message?: string }> = [];
-  let parsedResult: unknown | null = null;
-
-  try {
-    const result = parsePlaywrightResultJson(stdout);
-    parsedResult = result;
-    const s = result.stats || {};
-    const expected = Number(s.expected) || 0;
-    const unexpected = Number(s.unexpected) || 0;
-    skipped = Number(s.skipped) || 0;
-    const flaky = Number(s.flaky) || 0;
-    passed = expected + flaky;
-    failed = unexpected;
-    total = expected + unexpected + skipped + flaky;
-    skips = parsePlaywrightSkips(result);
-    failures = parsePlaywrightFailures(result, null, exitCode).map((item: { title?: string; message?: string }) => ({
-      title: item.title,
-      message: item.message,
-    }));
-  } catch {
-    passed = exitCode === 0 ? 1 : 0;
-    failed = exitCode === 0 ? 0 : 1;
-    total = 1;
-  }
-
-  const ok = exitCode === 0 && failed === 0 && (total <= 0 || passed === total);
+  const execution = parseGoldenExecution(stdout, exitCode);
+  const { passed, failed, total, skipped, skips, failures, parsedResult, allSkipped } = execution;
+  // 报销 Golden 保持全用例通过的要求，部分跳过也不放宽。
+  execution.ok = execution.ok && passed === total;
+  const ok = execution.ok;
   if (ok) {
     const skipHint = skipped > 0 ? `，跳过 ${skipped}` : "";
     console.log(`[expense-flow:golden] 通过 ${passed}/${total}${skipHint} · ${duration}s`);
@@ -217,7 +193,7 @@ function runOne(repoRoot: string, envId: string, profileId: string, grep: string
   }
   const finalized = finalizeFlowRun(repoRoot, FLOW_ID, FLOW_LABEL, {
     ok,
-    exitCode,
+    exitCode: ok ? 0 : allSkipped ? 2 : exitCode || 1,
     cancelled: false,
     mode: "headless",
     spec: SPEC,
@@ -247,7 +223,7 @@ function runOne(repoRoot: string, envId: string, profileId: string, grep: string
     runMarker,
   });
 
-  return { ok: Boolean(finalized.ok), profileId, exitCode: finalized.ok ? exitCode : exitCode || 1 };
+  return { ...finalizeGoldenExecution(execution, finalized), profileId, roleSlug, passed, failed, total, runId };
 }
 
 function runNpmScript(script: string, extraArgs: string[] = []): void {
@@ -271,6 +247,9 @@ function main(): void {
   let profiles = listProfiles(repoRoot, env, profile || undefined);
   if (!profiles.length) {
     console.error(`[expense-flow:golden] 无已登录 golden* 档案（env=${env}）`);
+    writeGoldenBatch(repoRoot, FLOW_ID, {
+      flowId: FLOW_ID, env, finishedAt: new Date().toISOString(), ...goldenBatchStatus([]), results: [],
+    });
     process.exit(1);
   }
   if (
@@ -283,18 +262,21 @@ function main(): void {
 
   console.log(`[expense-flow:golden] 开始 · env=${env} · ${profiles.length} 个角色 · ${SPEC}`);
 
-  let allOk = true;
+  const results: RunOneResult[] = [];
   for (const profileId of profiles) {
-    const result = runOne(repoRoot, env, profileId, grep);
-    if (!result.ok && !result.skipped) allOk = false;
+    results.push(runOne(repoRoot, env, profileId, grep));
   }
+  const batchStatus = goldenBatchStatus(results);
+  writeGoldenBatch(repoRoot, FLOW_ID, {
+    flowId: FLOW_ID, env, finishedAt: new Date().toISOString(), ...batchStatus, results,
+  });
 
   if (process.env.FLOW_DEBUG_FAST !== "1") {
     runNpmScript("feishu:flow-weekly-doc", [`--flow=${FLOW_ID}`]);
     runNpmScript("feishu:flow-notify", [`--flow=${FLOW_ID}`]);
   }
 
-  process.exit(allOk ? 0 : 1);
+  process.exit(batchStatus.exitCode);
 }
 
 main();

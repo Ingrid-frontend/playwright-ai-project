@@ -26,12 +26,6 @@ import { enrichRunHistoryComparisons, screenshotsForMainReport } from './custome
 import { extractEnvId, envLabelFromId, envIdSortKey } from './customer-report-naming.js';
 import { resolveDeliveryPayloadPath } from '../../src/utils/env-profile.js';
 import { resolveCompareCrossBrowser } from './ui-regression-config.js';
-import { readIssuesReport } from './issues-source.js';
-import {
-  normDir,
-  readUiCompareCache,
-  shouldReuseCompareCache,
-} from './ui-compare-cache.js';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
@@ -119,15 +113,7 @@ async function main() {
     scanTargets,
   );
 
-  const reuseCompare = shouldReuseCompareCache({ issuesGeneratedAt: readIssuesReport()?.generatedAt });
-  const cached = reuseCompare ? readUiCompareCache() : null;
-  const cacheByDir = new Map(
-    (cached?.testDirs ?? []).map((item) => [normDir(item.testDir), item]),
-  );
-  if (cacheByDir.size) {
-    console.log(`  ♻️  对比缓存可用（${cacheByDir.size} 个脚本）`);
-  }
-
+  // 客户结论只比较选定 run 的截图；缓存复用交由 image-diff 校验源文件及配置。
   for (let i = 0; i < scanTargets.length; i++) {
     const { testDir, scriptPath } = scanTargets[i]!;
     console.log(`\n[${i + 1}/${scanTargets.length}] ${testDir}`);
@@ -135,19 +121,8 @@ async function main() {
     screenshotsByDir.set(testDir, screenshots);
     const rows = runHistory.get(testDir) || [];
     const { filtered, runId } = screenshotsForMainReport(screenshots, rows);
-    if (runId) usedRunIds.set(testDir, runId);
-
-    const cachedHit = cacheByDir.get(normDir(testDir));
-    if (cachedHit) {
-      testDirComparisons.push({
-        testDir: testDir.replace(/\\/g, '/'),
-        comparisons: cachedHit.comparisons,
-      });
-      hasCurrentPng = true;
-      continue;
-    }
-
     if (filtered.size === 0) continue;
+    if (runId) usedRunIds.set(testDir, runId);
     hasCurrentPng = true;
     const comparisons = await generateTestComparisons(testDir, filtered, outputPath);
     testDirComparisons.push({ testDir, comparisons });
@@ -185,8 +160,7 @@ async function main() {
   // 交付载荷供飞书多维表 / 飞书文档链路消费，避免它们为了拿数据再跑一遍像素比对
   const maxItems = Number(process.env.DELIVERY_MAX_ITEMS || 20);
   const deliveryFile = envFilter ? resolveDeliveryPayloadPath(envFilter) : 'results/customer-delivery.json';
-  const envCount = model.envSummaries?.length ?? 0;
-  const deliveryReady = Boolean(envFilter && envCount <= 1);
+  const deliveryReady = Boolean(envFilter && model.envId === envFilter);
   const deliveryPayload = buildCustomerDeliveryPayload(model, {
     summary,
     maxItems,

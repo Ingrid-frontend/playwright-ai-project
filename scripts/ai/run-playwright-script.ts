@@ -3,13 +3,35 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import dotenv from 'dotenv';
-import { spawn } from 'child_process';
+import { createHash } from 'crypto';
+import { createRequire } from 'module';
+import { pathToFileURL } from 'url';
+import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'child_process';
 import { getBaseEnvConfig, resolveStorageState } from '../../src/utils/env-config.js';
 import { verifyStorageStateForRun } from '../../src/runtime/pw-page-context.js';
 import { writeFlowReplay } from '../../src/runtime/flow-replay.js';
 import { writeFailureBundle } from '../../src/runtime/failure-bundle.js';
 
-dotenv.config({ path: path.join(process.cwd(), '.env') });
+const require = createRequire(import.meta.url);
+const { spawnTracked, stopProcessTree } = require('../../pw-files/lib/kill-proc.js') as {
+  spawnTracked(cmd: string, args: string[], opts: SpawnOptionsWithoutStdio): ChildProcessWithoutNullStreams;
+  stopProcessTree(proc: ChildProcessWithoutNullStreams, options?: { termTimeoutMs?: number }): Promise<void>;
+};
+
+export function requireScriptReview(code: string, reviewedHash?: string): void {
+  const hash = createHash('sha256').update(code).digest('hex');
+  if (reviewedHash !== hash) {
+    throw new Error(`原生脚本未经审核或内容已变更。请先阅读脚本，确认后传 --reviewed-sha256=${hash}。原生脚本使用当前用户权限，并非安全沙箱；自动执行请使用 intent:run。`);
+  }
+}
+
+export function buildNativeScriptEnv(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const key of ['PATH', 'HOME', 'TMPDIR', 'TMP', 'TEMP', 'USERPROFILE', 'SystemRoot', 'WINDIR', 'COMSPEC', 'LANG', 'LC_ALL', 'DISPLAY', 'WAYLAND_DISPLAY', 'XAUTHORITY', 'PLAYWRIGHT_BROWSERS_PATH', 'CI']) {
+    if (source[key] !== undefined) env[key] = source[key];
+  }
+  return env;
+}
 
 function getArgValue(name: string): string | undefined {
   const args = process.argv.slice(2);
@@ -158,6 +180,8 @@ function printHelp(): void {
   --profile=<id>    账号 profile
   --entry=<path>    入口路径（默认 /）
   --out=<dir>       输出目录
+  --reviewed-sha256=<hash>  已人工审核脚本的 SHA-256（必填）
+  --timeout-ms=<ms> 原生脚本进程时限（默认 180000，最多 900000）
   --headed          有头浏览器
   -h, --help
 `);
@@ -175,6 +199,13 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  const code = fs.readFileSync(scriptPath, 'utf-8');
+  requireScriptReview(code, getArgValue('reviewed-sha256'));
+  const timeoutMs = Number(getArgValue('timeout-ms') ?? '180000');
+  if (!Number.isInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 900_000) {
+    throw new Error('--timeout-ms 必须是 1 到 900000 之间的整数');
+  }
+  dotenv.config({ path: path.join(process.cwd(), '.env') });
   const env = getArgValue('env') || process.env.PLAYWRIGHT_ENV || 'stage';
   const profile = getArgValue('profile') || process.env.PLAYWRIGHT_ACCOUNT;
   const baseConfig = getBaseEnvConfig(env);
@@ -198,17 +229,12 @@ async function main(): Promise<void> {
   fs.mkdirSync(wrapperDir, { recursive: true });
   const wrapperPath = path.join(wrapperDir, 'generated-run.mts');
   const logPath = path.join(outDir, 'stdout.log');
-  const code = fs.readFileSync(scriptPath, 'utf-8');
   fs.writeFileSync(wrapperPath, buildWrapper(code, hasFlag('headed')), 'utf-8');
 
-  const tsxBin = path.join(
-    process.cwd(),
-    'node_modules',
-    '.bin',
-    process.platform === 'win32' ? 'tsx.cmd' : 'tsx',
-  );
+  const tsxCli = path.join(process.cwd(), 'node_modules', 'tsx', 'dist', 'cli.mjs');
+  if (!fs.existsSync(tsxCli)) throw new Error('缺少本地 tsx，请先安装项目依赖');
   const spawnEnv: NodeJS.ProcessEnv = {
-    ...process.env,
+    ...buildNativeScriptEnv(process.env),
     AI_TEST_STORAGE_STATE: storageState && fs.existsSync(storageState) ? storageState : '',
     AI_TEST_BASE_URL: baseURL,
     AI_TEST_ENTRY: entry,
@@ -231,39 +257,61 @@ async function main(): Promise<void> {
     await browser.close().catch(() => {});
   }
 
-  console.log(`🧪 正在执行 Playwright 脚本...`);
-  const proc = spawn(tsxBin, [wrapperPath], {
-    cwd: process.cwd(),
+  console.log('正在执行已审核的 Playwright 脚本（当前用户权限，非安全沙箱）...');
+  const startedAt = new Date().toISOString();
+  const proc = spawnTracked(process.execPath, [tsxCli, wrapperPath], {
+    cwd: wrapperDir,
     env: spawnEnv,
     shell: false,
   });
 
   let stdout = '';
   let stderr = '';
+  const outputLimit = 1024 * 1024;
   proc.stdout.on('data', (d) => {
     const text = d.toString();
-    stdout += text;
+    stdout = (stdout + text).slice(-outputLimit);
     process.stdout.write(text);
   });
   proc.stderr.on('data', (d) => {
     const text = d.toString();
-    stderr += text;
+    stderr = (stderr + text).slice(-outputLimit);
     process.stderr.write(text);
   });
 
-  const exitCode = await new Promise<number | null>((resolve, reject) => {
-    proc.on('error', reject);
-    proc.on('close', resolve);
-  });
+  let terminationReason = '';
+  let stopping: Promise<void> | undefined;
+  const terminate = (reason: string): void => {
+    if (terminationReason) return;
+    terminationReason = reason;
+    // 内层进程须先于外层进程的终止宽限结束。
+    stopping = stopProcessTree(proc, { termTimeoutMs: 1_000 });
+  };
+  const onInterrupt = (): void => terminate('脚本执行已取消（SIGINT）');
+  const onTerminate = (): void => terminate('脚本执行已取消（SIGTERM）');
+  process.once('SIGINT', onInterrupt);
+  process.once('SIGTERM', onTerminate);
+  const timer = setTimeout(() => terminate(`脚本执行超过 ${timeoutMs}ms`), timeoutMs);
+  let exitCode: number | null;
+  try {
+    exitCode = await new Promise<number | null>((resolve) => {
+      proc.once('error', (error) => { terminationReason = error.message; });
+      proc.once('close', resolve);
+    });
+  } finally {
+    clearTimeout(timer);
+    await (stopping ?? stopProcessTree(proc, { termTimeoutMs: 1_000 }));
+    process.off('SIGINT', onInterrupt);
+    process.off('SIGTERM', onTerminate);
+  }
 
-  const passed = exitCode === 0;
+  const passed = exitCode === 0 && !terminationReason;
   const videoAbs = path.join(outDir, 'flow.webm');
   const flow = writeFlowReplay({
     outputDir: outDir,
     title: '口语试跑',
     videoAbs: fs.existsSync(videoAbs) ? videoAbs : undefined,
   });
-  const startedAt = new Date().toISOString();
   const finishedAt = new Date().toISOString();
   const baseResult = {
     passed,
@@ -271,11 +319,11 @@ async function main(): Promise<void> {
     startedAt,
     finishedAt,
     steps: [] as [],
-    error: passed ? undefined : (stderr || stdout || `退出码 ${exitCode}`).trim().slice(0, 800),
+    error: passed ? undefined : (terminationReason || stderr || stdout || `退出码 ${exitCode}`).trim().slice(0, 800),
     videoRel: flow.videoRel,
     replayRel: flow.replayRel,
   };
-  fs.writeFileSync(logPath, stdout + stderr, 'utf-8');
+  fs.writeFileSync(logPath, stdout + stderr + (terminationReason ? `\n${terminationReason}\n` : ''), 'utf-8');
   const failure = writeFailureBundle({
     kind: 'playwright-script',
     outputDir: outDir,
@@ -308,7 +356,9 @@ async function main(): Promise<void> {
   process.exit(passed ? 0 : 1);
 }
 
-main().catch((error) => {
-  console.error('❌', error instanceof Error ? error.message : error);
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  });
+}

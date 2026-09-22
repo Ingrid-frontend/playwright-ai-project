@@ -12,13 +12,8 @@ const repoEnv = require("../../pw-files/repo-env.js");
 const { finalizeFlowRun, flowScriptKey } = require("../../pw-files/lib/flow-run-common.js");
 const { makeRunMarker, writeRunMarkerFile } = require("../../pw-files/lib/flow-run-marker.js");
 const { resolveApprovalGoldenSeed } = require("../../pw-files/lib/approval-golden-seed.js");
-const {
-  parsePlaywrightResultJson,
-  parsePlaywrightFailures,
-  parsePlaywrightSkips,
-  logConcisePlaywrightFailures,
-} = require("../../pw-files/lib/failure-report.js");
-const { writeGoldenBatch, summarizeGoldenBatch } = require("../../pw-files/lib/golden-batch.js");
+const { logConcisePlaywrightFailures } = require("../../pw-files/lib/failure-report.js");
+const { parseGoldenExecution, finalizeGoldenExecution, goldenBatchStatus, writeGoldenBatch, summarizeGoldenBatch } = require("../../pw-files/lib/golden-batch.js");
 
 const FLOW_ID = "approval-flow";
 const FLOW_LABEL = "审批流程";
@@ -28,6 +23,11 @@ const SPEC = "approval/golden-regression.spec.ts";
 type RunOneResult = {
   ok: boolean;
   skipped?: boolean;
+  /**
+   * 没有任何用例真正跑通（passed + failed === 0），全靠 skip 占位。
+   * 不算 pass，期望 batch.exitCode !== 0，避免把「没单据可跑」误判成绿色门禁。
+   */
+  skippedOnly?: boolean;
   profileId: string;
   roleSlug: string;
   exitCode: number;
@@ -128,7 +128,7 @@ function runOne(repoRoot: string, envId: string, profileId: string, grep: string
   if (!storage) {
     const reason = storageSkipReason(repoRoot, envId, profileId);
     console.warn(`[approval-flow:golden] 跳过 ${profileId}: ${reason}`);
-    return { ok: true, skipped: true, profileId, roleSlug, exitCode: 0, reason };
+    return { ok: false, skipped: true, skippedOnly: true, profileId, roleSlug, exitCode: 2, reason };
   }
 
   const base = repoEnv.getBaseEnvConfig(repoRoot, envId);
@@ -225,39 +225,8 @@ function runOne(repoRoot: string, envId: string, profileId: string, grep: string
   const duration = ((Date.now() - startTime) / 1000).toFixed(1);
   const specRelative = path.join(FLOW_ID, "tests", SPEC).replace(/\\/g, "/");
 
-  let passed = 0;
-  let failed = 0;
-  let total = 0;
-  let skipped = 0;
-  let skips: Array<{ title?: string; reason?: string }> = [];
-  let failures: Array<{ title?: string; message?: string }> = [];
-  let parsedResult: unknown | null = null;
-
-  try {
-    const result = parsePlaywrightResultJson(stdout);
-    parsedResult = result;
-    const s = result.stats || {};
-    const expected = Number(s.expected) || 0;
-    const unexpected = Number(s.unexpected) || 0;
-    skipped = Number(s.skipped) || 0;
-    const flaky = Number(s.flaky) || 0;
-    passed = expected + flaky;
-    failed = unexpected;
-    total = expected + unexpected + skipped + flaky;
-    skips = parsePlaywrightSkips(result);
-    failures = parsePlaywrightFailures(result, null, exitCode).map((item: { title?: string; message?: string }) => ({
-      title: item.title,
-      message: item.message,
-    }));
-  } catch {
-    passed = exitCode === 0 ? 1 : 0;
-    failed = exitCode === 0 ? 0 : 1;
-    total = 1;
-  }
-
-  const allSkipped = skipped > 0 && failed === 0 && passed === 0 && exitCode === 0;
-  const ok =
-    exitCode === 0 && failed === 0 && (allSkipped || total <= 0 || passed + skipped === total);
+  const execution = parseGoldenExecution(stdout, exitCode);
+  const { passed, failed, total, skipped, skips, failures, parsedResult, allSkipped, ok } = execution;
   if (allSkipped) {
     console.warn(`[approval-flow:golden] 跳过 ${skipped}/${total} · ${duration}s`);
     for (const item of skips.slice(0, 5)) {
@@ -282,7 +251,7 @@ function runOne(repoRoot: string, envId: string, profileId: string, grep: string
   }
   const finalized = finalizeFlowRun(repoRoot, FLOW_ID, FLOW_LABEL, {
     ok,
-    exitCode,
+    exitCode: ok ? 0 : allSkipped ? 2 : exitCode || 1,
     cancelled: false,
     mode: "headless",
     spec: SPEC,
@@ -312,19 +281,14 @@ function runOne(repoRoot: string, envId: string, profileId: string, grep: string
     runMarker,
   });
 
-  const skipReason = skips[0]?.reason || "待审批无可用单号";
   return {
-    ok: allSkipped ? true : Boolean(finalized.ok),
-    skipped: allSkipped,
+    ...finalizeGoldenExecution(execution, finalized),
     profileId,
     roleSlug,
-    exitCode: allSkipped || finalized.ok ? 0 : exitCode || 1,
     passed,
     failed,
     total,
     runId,
-    reason: allSkipped ? skipReason : undefined,
-    error: allSkipped ? "" : failures[0]?.message || (ok ? "" : `失败 ${failed}/${total || 1}`),
   };
 }
 
@@ -349,6 +313,10 @@ function main(): void {
   let profiles = listProfiles(repoRoot, env, profile || undefined);
   if (!profiles.length) {
     console.error(`[approval-flow:golden] 无已登录 golden* 档案（env=${env}）`);
+    writeGoldenBatch(repoRoot, FLOW_ID, {
+      flowId: FLOW_ID, env, finishedAt: new Date().toISOString(),
+      ...goldenBatchStatus([]), results: [], ignored: listIgnoredProfiles(repoRoot, env),
+    });
     process.exit(1);
   }
   if (
@@ -363,19 +331,17 @@ function main(): void {
 
   const ignored = listIgnoredProfiles(repoRoot, env, profile || undefined);
   const results: RunOneResult[] = [];
-  let allOk = true;
   for (const profileId of profiles) {
-    const result = runOne(repoRoot, env, profileId, grep);
-    results.push(result);
-    if (!result.ok && !result.skipped) allOk = false;
+    results.push(runOne(repoRoot, env, profileId, grep));
   }
 
+  const batchStatus = goldenBatchStatus(results);
+  const batchExitCode = batchStatus.exitCode;
   const batch = {
     flowId: FLOW_ID,
     env,
     finishedAt: new Date().toISOString(),
-    ok: allOk,
-    exitCode: allOk ? 0 : 1,
+    ...batchStatus,
     ignored,
     results,
   };
@@ -386,13 +352,19 @@ function main(): void {
     const logFn = line.startsWith("失败") ? console.error : console.log;
     logFn(`[approval-flow:golden]   ${line}`);
   }
+  if (summary.skippedOnly) console.warn(`[approval-flow:golden]  软跳：${summary.headline}`);
 
   if (process.env.FLOW_DEBUG_FAST !== "1") {
     runNpmScript("feishu:flow-weekly-doc", [`--flow=${FLOW_ID}`]);
     runNpmScript("feishu:flow-notify", [`--flow=${FLOW_ID}`]);
   }
 
-  process.exit(allOk ? 0 : 1);
+  if (batch.skippedOnly) {
+    console.warn(
+      `[approval-flow:golden] 无任何用例真正执行（全部 skip），请检查账号登录态与待审批单号`,
+    );
+  }
+  process.exit(batchExitCode);
 }
 
 main();

@@ -46,8 +46,17 @@ const TASKS: SmokeTask[] = [
   { name: 'verify-replay-delete', argv: runWithNode('scripts/verify/verify-replay-delete.cjs') },
   { name: 'verify-intent-delete', argv: runWithNode('scripts/verify/verify-intent-delete.cjs') },
   { name: 'verify-request-flow-stable', argv: runWithNode('scripts/verify/verify-request-flow-stable.cjs') },
-  { name: 'verify-customer-report-html', argv: runWithTsx('scripts/verify/verify-customer-report-html.ts') },
+  { name: 'verify-customer-report-html (optional offline artifact)', argv: [...runWithTsx('scripts/verify/verify-customer-report-html.ts'), '--allow-missing'] },
   { name: 'smoke-customer-report-upgrade', argv: runWithTsx('scripts/verify/smoke-customer-report-upgrade.ts') },
+  { name: 'verify-diff-cache', argv: runWithTsx('scripts/verify/verify-diff-cache.ts') },
+  { name: 'verify-bitable-boundary', argv: runWithTsx('scripts/verify/verify-bitable-boundary.ts') },
+  { name: 'verify-delivery-recovery', argv: runWithTsx('scripts/verify/verify-delivery-recovery.ts') },
+  { name: 'verify-studio-lifecycle', argv: runWithNode('scripts/verify/verify-studio-lifecycle.cjs') },
+  { name: 'verify-list-wait-order', argv: runWithTsx('scripts/verify/verify-list-wait-order.ts') },
+  { name: 'verify-llm-budget', argv: runWithTsx('scripts/verify/verify-llm-budget.ts') },
+  { name: 'verify-native-script-boundary', argv: runWithTsx('scripts/verify/verify-native-script-boundary.ts') },
+  { name: 'verify-approval-row-scope', argv: runWithTsx('scripts/verify/verify-approval-row-scope.ts') },
+  { name: 'verify-golden-batch-skipped', argv: runWithTsx('scripts/verify/verify-golden-batch-skipped.ts') },
 ];
 
 function resolveConcurrency(): number {

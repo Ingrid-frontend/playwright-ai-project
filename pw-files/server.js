@@ -12,8 +12,7 @@
 
 const http = require('http');
 const path = require('path');
-const fs = require('fs');
-const { spawn } = require('child_process');
+const { spawnTracked: spawn } = require('./lib/kill-proc');
 const express = require('express');
 const { WebSocketServer } = require('ws');
 const Anthropic = require('@anthropic-ai/sdk');
@@ -47,6 +46,7 @@ const {
 const { send, logLine, now, errText } = require('./lib/ws-safe');
 const { registerHttpRoutes, registerStudioStatic } = require('./lib/http-routes');
 const { createSessionStore } = require('./lib/session');
+const { isTrustedStudioRequest } = require('./lib/studio-access');
 const { createSpecSessionHelpers } = require('./lib/spec-session');
 const { createWsDispatcher } = require('./lib/ws-dispatch');
 const { loadEnvFile } = require('./lib/load-env-file');
@@ -75,7 +75,6 @@ const {
   runRequestFlowTests,
   cancelRequestFlow,
 } = require('./lib/request-flow-run');
-const { cancelExpenseFlow } = require('./lib/expense-flow-run');
 const { runEgoAudit } = require('./lib/ego-audit');
 const { runEgoNlFlow } = require('./lib/ego-nl-run');
 const { runEgoExplore } = require('./lib/ego-explore');
@@ -181,7 +180,7 @@ const {
   sendCompareReportStatus,
 } = require('./lib/compare-report-status');
 
-const PORT = process.env.PORT || 3001;
+const PORT = Number(process.env.PORT || 3001);
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
 /** 直接执行 CLI，避免 spawn(..., { shell: true }) + 参数数组触发 Node DEP0190 */
@@ -284,7 +283,28 @@ const {
 // ── Setup ───────────────────────────────────────────────────────────────
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
+const listenPort = () => server.address()?.port || PORT;
+const wss = new WebSocketServer({
+  server,
+  verifyClient: ({ req }, done) => {
+    if (!isTrustedStudioRequest(req, listenPort(), { websocket: true })) {
+      done(false, 403, 'Forbidden');
+      return;
+    }
+    if (studioRestart.isPending()) {
+      done(false, 503, 'Studio restarting');
+      return;
+    }
+    done(true);
+  },
+});
+
+// Run before static files, JSON parsers and routes, including all HTTP task entry points.
+app.use((req, res, next) => {
+  if (!isTrustedStudioRequest(req, listenPort())) return res.status(403).send('Forbidden');
+  if (studioRestart.isPending()) return res.status(503).send('Studio restarting');
+  next();
+});
 
 registerStudioStatic(app, express, {
   studioDir: __dirname,
@@ -292,35 +312,21 @@ registerStudioStatic(app, express, {
   resolveRepoPublicReadFile,
 });
 
-const { sessions, makeSession } = createSessionStore({
+const { sessions, makeSession, scheduleCleanup, disposeAll } = createSessionStore({
   studioDir: __dirname,
   draftOptimizedRelative: DRAFT_OPTIMIZED_RELATIVE,
   defaultPlaywrightEnv: DEFAULT_PLAYWRIGHT_ENV,
 });
 
-function cancelAllSessionTasks(allSessions, ws) {
-  for (const session of allSessions.values()) {
-    cancelRequestFlow(session, ws);
-    cancelApprovalFlow(session, ws);
-    cancelExpenseFlow(session, ws);
-    cancelRun(session);
-    cancelOptimize(session);
-    cancelRepoPipeline(session);
-    cancelRepoTest(session);
-    cancelRepoBatch(session);
-    cancelRepoCompare(session);
-    cancelIntentRun(session);
-    cancelEgoAudit(session);
-    cancelEgoExplore(session);
-    cancelRepoRerun(session);
-    cancelUiAudit(session);
-  }
-}
-
 const studioRestart = createStudioRestart({
   studioDir: __dirname,
   send,
-  cancelAll: cancelAllSessionTasks,
+  disposeAll,
+});
+// A body parser may have awaited more bytes while restart began.
+app.use((_req, res, next) => {
+  if (studioRestart.isPending()) return res.status(503).send('Studio restarting');
+  next();
 });
 registerHttpRoutes(app, { resolveRepoRoot, sessions });
 
@@ -472,21 +478,30 @@ const { sendHello, handleMessage } = createWsDispatcher({
 });
 
 wss.on('connection', (ws) => {
+  if (studioRestart.isPending()) {
+    ws.close(1012, 'restarting');
+    return;
+  }
   const sessionId = Math.random().toString(36).slice(2);
   const session = makeSession();
   sessions.set(sessionId, session);
   sendHello(ws, session);
   console.log(`[${now()}] Client connected: ${sessionId}`);
 
-  ws.on('message', (raw) => handleMessage(ws, session, sessionId, raw));
+  ws.on('message', (raw) => {
+    if (studioRestart.isPending()) {
+      send(ws, 'error', { message: '服务正在重启，拒绝新任务' });
+      return;
+    }
+    void handleMessage(ws, session, sessionId, raw).catch((err) => {
+      console.error(`[${now()}] WS dispatch error:`, errText(err));
+    });
+  });
   ws.on('close', () => {
     console.log(`[${now()}] Client disconnected: ${sessionId}`);
-    setTimeout(() => {
-      // 临时目录可能已被清理，删除失败无需处理
-      // eslint-disable-next-line no-empty
-      try { fs.rmSync(session.tmpDir, { recursive: true, force: true }); } catch {}
-      sessions.delete(sessionId);
-    }, 60000);
+    scheduleCleanup(sessionId, (err) => {
+      console.error(`[${now()}] Session cleanup error:`, errText(err));
+    });
   });
 });
 
@@ -495,7 +510,7 @@ wss.on('connection', (ws) => {
 try { loadEnvFile(path.join(resolveRepoRoot(), '.env')); } catch { /* ignore */ }
 fixPlaywrightBrowsersEnv(process.env);
 
-server.listen(PORT, () => {
+server.listen(PORT, '127.0.0.1', () => {
   console.log(`\n🎭 Playwright Studio`);
   console.log(`   http://localhost:${PORT}`);
   for (const line of getLlmStartupLines(process.env)) {

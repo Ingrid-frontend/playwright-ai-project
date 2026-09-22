@@ -1,6 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import { completeJson } from '../ai/llm-client.js';
+import {
+  completeJson, createAiBudget, rethrowAiControlError, throwIfAiCancelled,
+  type CompleteTextOptions,
+} from '../ai/llm-client.js';
 import {
   buildHealFromSnapshotPrompt,
   buildHealFromSnapshotSystemPrompt,
@@ -460,6 +463,7 @@ function descriptionOf(action: SemanticAction): string {
 async function resolveOpsForAction(
   action: SemanticAction,
   snapshot: string,
+  aiOptions: CompleteTextOptions,
   constraints?: string[],
   ctx?: { menuSearchValue?: string },
 ): Promise<EgoResolvedOp[]> {
@@ -546,7 +550,7 @@ async function resolveOpsForAction(
       candidates,
       constraints,
     }),
-    { system: buildResolveOpsSystemPrompt(), temperature: 0.1, maxTokens: 2000 },
+    { ...aiOptions, system: buildResolveOpsSystemPrompt(), temperature: 0.1, maxTokens: 2000 },
   );
 
   const ops = Array.isArray(resolved.ops) ? resolved.ops : [];
@@ -566,6 +570,7 @@ async function healDescription(
   error: string,
   url: string,
   snapshot: string,
+  aiOptions: CompleteTextOptions,
   constraints?: string[],
 ): Promise<{ shouldSkip?: boolean; correctedDescription?: string; correctedValue?: string } | null> {
   if (step.action.type === 'assert' || step.action.type === 'goto') return null;
@@ -579,9 +584,10 @@ async function healDescription(
         snapshotSummary: summarizeSnapshot(snapshot),
         constraints,
       }),
-      { system: buildHealFromSnapshotSystemPrompt(), temperature: 0.1, maxTokens: 1500 },
+      { ...aiOptions, system: buildHealFromSnapshotSystemPrompt(), temperature: 0.1, maxTokens: 1500 },
     );
-  } catch {
+  } catch (error) {
+    rethrowAiControlError(error, aiOptions);
     return null;
   }
 }
@@ -590,6 +596,8 @@ export async function executeIntentEgo(
   plan: SemanticTestPlan,
   options: IntentEgoRunOptions = {},
 ): Promise<AiTestRunResult> {
+  const aiOptions = { budget: options.aiBudget ?? createAiBudget(), signal: options.signal };
+  throwIfAiCancelled(aiOptions);
   const env = options.env || plan.env || 'stage';
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
   const outputDir = options.outputDir
@@ -664,235 +672,247 @@ export async function executeIntentEgo(
   const entry = resolveUrl(env, entryPath);
 
   try {
-    if (entry) {
-      await openEntry(spaceName, entry);
-      if (isHomePath(plan.entry)) {
-        await recoverFromWrongHuilianyiPage(spaceName, env);
+    try {
+      if (entry) {
+        await openEntry(spaceName, entry);
+        if (isHomePath(plan.entry)) {
+          await recoverFromWrongHuilianyiPage(spaceName, env);
+        }
+      } else {
+        await egoSession(spaceName, [
+          `await ensureRealTab()`,
+          `const info = await pageInfo()`,
+          `const __result = { url: info && info.url }`,
+        ]);
       }
-    } else {
-      await egoSession(spaceName, [
-        `await ensureRealTab()`,
-        `const info = await pageInfo()`,
-        `const __result = { url: info && info.url }`,
-      ]);
+    } catch (err) {
+      rethrowAiControlError(err, aiOptions);
+      const message = err instanceof Error ? err.message : String(err);
+      const finishedAt = new Date().toISOString();
+      const result: AiTestRunResult = {
+        passed: false,
+        outputDir,
+        startedAt,
+        finishedAt,
+        steps: [],
+        error: message,
+      };
+      return persistResult({ ...result }, result);
     }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+
+    let pendingMenuSearchValue: string | undefined;
+    let pendingMenuSearchClick = false;
+
+    for (let index = 0; index < plan.steps.length; index++) {
+      const step = plan.steps[index];
+      const maxAttempts = 1 + Math.max(0, step.retries ?? 0) + (options.heal ? 1 : 0);
+      let attempt = 0;
+      let stepPassed = false;
+      let healed = false;
+      let skipped = false;
+      let errorMessage: string | undefined;
+      let screenshotPath: string | undefined;
+      let workingStep = step;
+
+      while (attempt < maxAttempts && !stepPassed) {
+        attempt += 1;
+        try {
+          throwIfAiCancelled(aiOptions);
+          const action = workingStep.action;
+
+          if (action.type === 'goto') {
+            const pathOrUrl = action.url || action.path;
+            const url = resolveUrl(env, normalizeHuilianyiEntryPath(env, pathOrUrl) || pathOrUrl);
+            if (url) {
+              await gotoInEgo(spaceName, url);
+              if (isHomePath(pathOrUrl)) {
+                await recoverFromWrongHuilianyiPage(spaceName, env);
+              }
+            }
+          } else if (action.type === 'wait') {
+            await waitInEgo(spaceName, action.timeoutMs ?? 1000);
+          } else if (action.type === 'screenshot') {
+            /* evidence below */
+          } else if (action.type === 'assert') {
+            const outcome = await assertInEgo(spaceName, action, plan.steps[index + 1]?.action);
+            if (outcome === 'skipped') {
+              skipped = true;
+              healed = true;
+            }
+          } else if (action.type === 'act') {
+            throw new Error(`act 动作已不支持，请改用 click/fill/select/assert: ${action.instruction}`);
+          } else if (action.type === 'click' || action.type === 'fill' || action.type === 'select') {
+            const desc = descriptionOf(action);
+            if (action.type === 'click' && (pendingMenuSearchValue || isMenuSearchResultClick(desc))) {
+              await waitInEgo(spaceName, 500);
+            }
+            const { snapshot } = await takeSnapshot(spaceName);
+            const ops = await resolveOpsForAction(action, snapshot, aiOptions, options.constraints, {
+              menuSearchValue: pendingMenuSearchClick ? pendingMenuSearchValue : undefined,
+            });
+            throwIfAiCancelled(aiOptions);
+            await runOps(spaceName, ops);
+            if (action.type === 'fill' && isMenuSearchFill(desc) && action.value?.trim()) {
+              pendingMenuSearchValue = action.value.trim();
+              pendingMenuSearchClick = true;
+            }
+            if (action.type === 'click') {
+              const kind = navClickKind(desc);
+              const menuNav = pendingMenuSearchClick || isMenuSearchResultClick(desc) || extractMenuSearchLabel(desc);
+              if (kind || menuNav) {
+                await waitInEgo(spaceName, 600);
+                const after = await takeSnapshot(spaceName);
+                const navErr = verifyNavClickOutcome(kind || 'my-approval', after.snapshot);
+                if (navErr) throw new Error(navErr);
+              }
+              if (pendingMenuSearchClick) {
+                pendingMenuSearchClick = false;
+                pendingMenuSearchValue = undefined;
+              }
+            }
+          } else {
+            throw new Error(`未知动作: ${(action as { type: string }).type}`);
+          }
+
+          const needsShot =
+            workingStep.evidence?.includes('screenshot') || workingStep.action.type === 'screenshot';
+          if (needsShot) {
+            const snapshotCtx =
+              workingStep.action.type === 'screenshot'
+                ? { snapshotName: workingStep.action.snapshotName, state: workingStep.action.state }
+                : undefined;
+            const shot = await captureShotWithPage(spaceName, scriptKey, snapshotCtx);
+            const dest = path.join(shotDir, stepShotName(index, workingStep));
+            screenshotPath = writePng(shot.data, dest);
+            if (screenshotPath) {
+              const metaPath = writeShotMeta(screenshotPath, shot, snapshotCtx);
+              const copy = path.join(outputDir, path.basename(dest));
+              fs.copyFileSync(screenshotPath, copy);
+              fs.copyFileSync(metaPath, path.join(outputDir, path.basename(metaPath)));
+            }
+          }
+
+          throwIfAiCancelled(aiOptions);
+          stepPassed = true;
+        } catch (err) {
+          rethrowAiControlError(err, aiOptions);
+          errorMessage = err instanceof Error ? err.message : String(err);
+          const canHeal =
+            Boolean(options.heal) &&
+            workingStep.action.type !== 'goto' &&
+            workingStep.action.type !== 'assert' &&
+            attempt < maxAttempts;
+
+          if (canHeal) {
+            try {
+              aiOptions.budget.assertAvailable();
+              const { snapshot, url } = await takeSnapshot(spaceName);
+              const heal = await healDescription(
+                workingStep,
+                errorMessage,
+                url,
+                snapshot,
+                aiOptions,
+                options.constraints,
+              );
+              healLogs.push({
+                stepId: step.id,
+                attempt,
+                engine: 'ego',
+                at: new Date().toISOString(),
+                error: errorMessage,
+                output: heal || undefined,
+              });
+              if (heal?.shouldSkip && workingStep.optional) {
+                healLogs[healLogs.length - 1].accepted = true;
+                stepPassed = true;
+                errorMessage = undefined;
+                break;
+              }
+              if (heal?.correctedDescription && 'description' in workingStep.action) {
+                const nextAction = { ...workingStep.action, description: heal.correctedDescription } as SemanticAction;
+                if (
+                  (nextAction.type === 'fill' || nextAction.type === 'select') &&
+                  heal.correctedValue
+                ) {
+                  (nextAction as { value: string }).value = heal.correctedValue;
+                }
+                workingStep = { ...workingStep, action: nextAction };
+                healed = true;
+                healLogs[healLogs.length - 1].accepted = true;
+                continue;
+              }
+            } catch (healError) {
+              rethrowAiControlError(healError, aiOptions);
+              /* ignore ordinary heal errors */
+            }
+          }
+
+          if (workingStep.optional && workingStep.action.type !== 'assert') {
+            stepPassed = true;
+            break;
+          }
+        }
+      }
+
+      if (!stepPassed) passed = false;
+
+      steps.push({
+        id: step.id,
+        action: step.action,
+        passed: stepPassed,
+        optional: Boolean(step.optional),
+        skipped: skipped || Boolean(step.optional && !stepPassed && errorMessage),
+        attempts: attempt,
+        healed,
+        error: stepPassed ? undefined : errorMessage,
+        screenshot: screenshotPath,
+      });
+
+      if (!stepPassed && !step.optional) {
+        fatal = errorMessage;
+        break;
+      }
+    }
+
+    throwIfAiCancelled(aiOptions);
     const finishedAt = new Date().toISOString();
+    const flow = writeFlowReplay({
+      outputDir,
+      title: plan.name,
+      frames: framesFromStepScreenshots(steps),
+    });
     const result: AiTestRunResult = {
-      passed: false,
+      passed,
       outputDir,
       startedAt,
       finishedAt,
-      steps: [],
-      error: message,
+      steps,
+      error: fatal,
+      videoRel: flow.videoRel,
+      replayRel: flow.replayRel,
     };
-    return persistResult({ ...result }, result);
-  }
 
-  let pendingMenuSearchValue: string | undefined;
-  let pendingMenuSearchClick = false;
-
-  for (let index = 0; index < plan.steps.length; index++) {
-    const step = plan.steps[index];
-    const maxAttempts = 1 + Math.max(0, step.retries ?? 0) + (options.heal ? 1 : 0);
-    let attempt = 0;
-    let stepPassed = false;
-    let healed = false;
-    let skipped = false;
-    let errorMessage: string | undefined;
-    let screenshotPath: string | undefined;
-    let workingStep = step;
-
-    while (attempt < maxAttempts && !stepPassed) {
-      attempt += 1;
+    return persistResult(
+      {
+        ...result,
+        engine: 'ego',
+        screenshotDir: shotDir,
+        spaceName,
+      },
+      result,
+    );
+  } finally {
+    if (!options.keepTab) {
       try {
-        const action = workingStep.action;
-
-        if (action.type === 'goto') {
-          const pathOrUrl = action.url || action.path;
-          const url = resolveUrl(env, normalizeHuilianyiEntryPath(env, pathOrUrl) || pathOrUrl);
-          if (url) {
-            await gotoInEgo(spaceName, url);
-            if (isHomePath(pathOrUrl)) {
-              await recoverFromWrongHuilianyiPage(spaceName, env);
-            }
-          }
-        } else if (action.type === 'wait') {
-          await waitInEgo(spaceName, action.timeoutMs ?? 1000);
-        } else if (action.type === 'screenshot') {
-          /* evidence below */
-        } else if (action.type === 'assert') {
-          const outcome = await assertInEgo(spaceName, action, plan.steps[index + 1]?.action);
-          if (outcome === 'skipped') {
-            skipped = true;
-            healed = true;
-          }
-        } else if (action.type === 'act') {
-          throw new Error(`act 动作已不支持，请改用 click/fill/select/assert: ${action.instruction}`);
-        } else if (action.type === 'click' || action.type === 'fill' || action.type === 'select') {
-          const desc = descriptionOf(action);
-          if (action.type === 'click' && (pendingMenuSearchValue || isMenuSearchResultClick(desc))) {
-            await waitInEgo(spaceName, 500);
-          }
-          const { snapshot } = await takeSnapshot(spaceName);
-          const ops = await resolveOpsForAction(action, snapshot, options.constraints, {
-            menuSearchValue: pendingMenuSearchClick ? pendingMenuSearchValue : undefined,
-          });
-          await runOps(spaceName, ops);
-          if (action.type === 'fill' && isMenuSearchFill(desc) && action.value?.trim()) {
-            pendingMenuSearchValue = action.value.trim();
-            pendingMenuSearchClick = true;
-          }
-          if (action.type === 'click') {
-            const kind = navClickKind(desc);
-            const menuNav = pendingMenuSearchClick || isMenuSearchResultClick(desc) || extractMenuSearchLabel(desc);
-            if (kind || menuNav) {
-              await waitInEgo(spaceName, 600);
-              const after = await takeSnapshot(spaceName);
-              const navErr = verifyNavClickOutcome(kind || 'my-approval', after.snapshot);
-              if (navErr) throw new Error(navErr);
-            }
-            if (pendingMenuSearchClick) {
-              pendingMenuSearchClick = false;
-              pendingMenuSearchValue = undefined;
-            }
-          }
-        } else {
-          throw new Error(`未知动作: ${(action as { type: string }).type}`);
-        }
-
-        const needsShot =
-          workingStep.evidence?.includes('screenshot') || workingStep.action.type === 'screenshot';
-        if (needsShot) {
-          const snapshotCtx =
-            workingStep.action.type === 'screenshot'
-              ? { snapshotName: workingStep.action.snapshotName, state: workingStep.action.state }
-              : undefined;
-          const shot = await captureShotWithPage(spaceName, scriptKey, snapshotCtx);
-          const dest = path.join(shotDir, stepShotName(index, workingStep));
-          screenshotPath = writePng(shot.data, dest);
-          if (screenshotPath) {
-            const metaPath = writeShotMeta(screenshotPath, shot, snapshotCtx);
-            const copy = path.join(outputDir, path.basename(dest));
-            fs.copyFileSync(screenshotPath, copy);
-            fs.copyFileSync(metaPath, path.join(outputDir, path.basename(metaPath)));
-          }
-        }
-
-        stepPassed = true;
-      } catch (err) {
-        errorMessage = err instanceof Error ? err.message : String(err);
-        const canHeal =
-          Boolean(options.heal) &&
-          workingStep.action.type !== 'goto' &&
-          workingStep.action.type !== 'assert' &&
-          attempt < maxAttempts;
-
-        if (canHeal) {
-          try {
-            const { snapshot, url } = await takeSnapshot(spaceName);
-            const heal = await healDescription(
-              workingStep,
-              errorMessage,
-              url,
-              snapshot,
-              options.constraints,
-            );
-            healLogs.push({
-              stepId: step.id,
-              attempt,
-              engine: 'ego',
-              at: new Date().toISOString(),
-              error: errorMessage,
-              output: heal || undefined,
-            });
-            if (heal?.shouldSkip && workingStep.optional) {
-              healLogs[healLogs.length - 1].accepted = true;
-              stepPassed = true;
-              errorMessage = undefined;
-              break;
-            }
-            if (heal?.correctedDescription && 'description' in workingStep.action) {
-              const nextAction = { ...workingStep.action, description: heal.correctedDescription } as SemanticAction;
-              if (
-                (nextAction.type === 'fill' || nextAction.type === 'select') &&
-                heal.correctedValue
-              ) {
-                (nextAction as { value: string }).value = heal.correctedValue;
-              }
-              workingStep = { ...workingStep, action: nextAction };
-              healed = true;
-              healLogs[healLogs.length - 1].accepted = true;
-              continue;
-            }
-          } catch {
-            /* ignore heal errors */
-          }
-        }
-
-        if (workingStep.optional && workingStep.action.type !== 'assert') {
-          stepPassed = true;
-          break;
-        }
+        await egoSession(spaceName, [
+          `await completeTaskSpace(task.id, { keep: false })`,
+          `const __result = { ok: true }`,
+        ]);
+      } catch {
+        /* ignore cleanup */
       }
     }
-
-    if (!stepPassed) passed = false;
-
-    steps.push({
-      id: step.id,
-      action: step.action,
-      passed: stepPassed,
-      optional: Boolean(step.optional),
-      skipped: skipped || Boolean(step.optional && !stepPassed && errorMessage),
-      attempts: attempt,
-      healed,
-      error: stepPassed ? undefined : errorMessage,
-      screenshot: screenshotPath,
-    });
-
-    if (!stepPassed && !step.optional) {
-      fatal = errorMessage;
-      break;
-    }
+    throwIfAiCancelled(aiOptions);
   }
-
-  if (!options.keepTab) {
-    try {
-      await egoSession(spaceName, [
-        `await completeTaskSpace(task.id, { keep: false })`,
-        `const __result = { ok: true }`,
-      ]);
-    } catch {
-      /* ignore cleanup */
-    }
-  }
-
-  const finishedAt = new Date().toISOString();
-  const flow = writeFlowReplay({
-    outputDir,
-    title: plan.name,
-    frames: framesFromStepScreenshots(steps),
-  });
-  const result: AiTestRunResult = {
-    passed,
-    outputDir,
-    startedAt,
-    finishedAt,
-    steps,
-    error: fatal,
-    videoRel: flow.videoRel,
-    replayRel: flow.replayRel,
-  };
-
-  return persistResult(
-    {
-      ...result,
-      engine: 'ego',
-      screenshotDir: shotDir,
-      spaceName,
-    },
-    result,
-  );
 }

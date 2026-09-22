@@ -1,7 +1,10 @@
 import fs from 'fs';
 import path from 'path';
+import { createHash } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 import dotenv from 'dotenv';
 import {
+  assertDeliveryContentHash,
   readCustomerDeliveryPayload,
   resolveDeliveryImagePath,
   type DeliveryPayload,
@@ -14,6 +17,7 @@ import {
   sendFeishuNotify,
   resolveFeishuChatId,
   type NotifyChannel,
+  type FeishuNotifyPayload,
 } from './feishu-app.js';
 import { buildDeliveryCard } from './delivery-card.js';
 import { uploadImages, type UploadBatchResult, type UploaderOptions } from './feishu-media.js';
@@ -28,9 +32,11 @@ import {
   startStage,
   completeStage,
   failStage,
+  updateStage,
   isStageDone,
   hashPayloadFile,
   type DeliveryReceipt,
+  type DeliveryStage,
 } from './delivery-receipt.js';
 import { runDeliveryGate, formatGateResult } from './delivery-gate.js';
 import { checkReview, readReview } from './delivery-review.js';
@@ -40,9 +46,8 @@ import {
   createDocxDocument,
   addBlocksBatched,
   shareDocxDocument,
+  type DocBlock,
 } from './doc-delivery.js';
-
-dotenv.config({ path: path.join(process.cwd(), '.env') });
 
 export const DELIVERY_RESULT_FILE = 'results/feishu-delivery-result.json';
 export const DELIVERY_PREVIEW_FILE = 'results/feishu-delivery-preview.html';
@@ -116,7 +121,162 @@ export async function uploadImagesWithRetry(
   return result;
 }
 
-async function main() {
+function requireReconciliation(receipt: DeliveryReceipt, stage: DeliveryStage, reason: string): never {
+  const error = `${reason}；交付 ${receipt.deliveryId} 的 ${stage} 状态未知，禁止自动重放。请人工核对远端与回执中的未决操作、文档 ID/正文数量或通知渠道后恢复。`;
+  updateStage(receipt, stage, { status: 'unknown', error });
+  throw new Error(error);
+}
+
+type DocumentServices = {
+  createDocument: typeof createDocxDocument;
+  appendBlocks: typeof addBlocksBatched;
+  shareDocument: typeof shareDocxDocument;
+};
+
+/** doc-created 仍表示正文及分享均已完成；未决 POST 只能人工核对，不能自动重放。 */
+export async function deliverDocument(
+  token: string,
+  title: string,
+  blocks: DocBlock[],
+  receipt: DeliveryReceipt,
+  services: Partial<DocumentServices> = {},
+): Promise<{ documentId: string; url: string; shareDegraded: boolean }> {
+  const { createDocument = createDocxDocument, appendBlocks = addBlocksBatched,
+    shareDocument = shareDocxDocument } = services;
+  if (receipt.artifacts.pendingDocumentWrite || receipt.stages['doc-created'].status === 'unknown') {
+    requireReconciliation(receipt, 'doc-created', '上次文档写入未取得可恢复的确认');
+  }
+  if (isStageDone(receipt, 'doc-created')) {
+    // 兼容旧版先写 done/detail、后写 artifacts 的回执，绝不再次 append。
+    const detail = receipt.stages['doc-created'].detail;
+    const documentId = receipt.artifacts.documentId ||
+      (typeof detail?.documentId === 'string' ? detail.documentId : undefined);
+    if (!documentId) requireReconciliation(receipt, 'doc-created', '已完成回执缺少 documentId');
+    const url = receipt.artifacts.docUrl ||
+      (typeof detail?.url === 'string' ? detail.url : `https://feishu.cn/docx/${documentId}`);
+    // 旧回执没有记录分享结果，不能默认为已成功授权。
+    return { documentId, url, shareDegraded: receipt.artifacts.shareDegraded ?? true };
+  }
+  if (receipt.checkpointVersion !== 1) {
+    requireReconciliation(receipt, 'doc-created', '旧版未完成回执没有写入检查点');
+  }
+  const blocksHash = createHash('sha256').update(JSON.stringify(blocks)).digest('hex');
+  if (receipt.artifacts.documentId &&
+      (receipt.artifacts.documentBlocksHash !== blocksHash ||
+       !Number.isSafeInteger(receipt.artifacts.writtenBlockCount) ||
+       receipt.artifacts.writtenBlockCount! < 0 || receipt.artifacts.writtenBlockCount! > blocks.length)) {
+    requireReconciliation(receipt, 'doc-created', '正文内容或已写数量与检查点不一致');
+  }
+
+  startStage(receipt, 'doc-created');
+  try {
+    let documentId = receipt.artifacts.documentId;
+    if (!documentId) {
+      receipt.artifacts.documentBlocksHash = blocksHash;
+      receipt.artifacts.pendingDocumentWrite = { operation: 'create' };
+      writeReceipt(receipt);
+      documentId = await createDocument(token, title);
+      // ID 必须先落盘，才能开始任何正文写入或分享。
+      receipt.artifacts.documentId = documentId;
+      receipt.artifacts.writtenBlockCount = 0;
+      delete receipt.artifacts.pendingDocumentWrite;
+      writeReceipt(receipt);
+    }
+    const writtenBlocks = await appendBlocks(token, documentId, blocks, 20, {
+      startIndex: receipt.artifacts.writtenBlockCount,
+      onBeforeBatch: (startIndex, count) => {
+        receipt.artifacts.pendingDocumentWrite = { operation: 'append', startIndex, count };
+        writeReceipt(receipt);
+      },
+      onBatchWritten: (writtenBlockCount) => {
+        receipt.artifacts.writtenBlockCount = writtenBlockCount;
+        delete receipt.artifacts.pendingDocumentWrite;
+        writeReceipt(receipt);
+      },
+    });
+    // 正文已全部确认时仅恢复分享，不重新写正文。权限设置沿用原函数。
+    const share = await shareDocument(token, documentId);
+    completeStage(receipt, 'doc-created', { documentId, blocks: writtenBlocks, url: share.url }, {
+      documentId, writtenBlockCount: writtenBlocks, docUrl: share.url, shareDegraded: share.shareDegraded,
+    });
+    return { documentId, ...share };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (receipt.artifacts.pendingDocumentWrite) requireReconciliation(receipt, 'doc-created', message);
+    failStage(receipt, 'doc-created', message);
+    throw err;
+  }
+}
+
+/** 回填是对同一字段赋同一值；未确认的一条可安全重试，已确认记录逐条跳过。 */
+export async function linkDocumentRecords(
+  client: Pick<BitableClient, 'updateRecord'>,
+  tableId: string,
+  records: Array<{ recordId: string; key: string }>,
+  docUrl: string,
+  receipt: DeliveryReceipt,
+): Promise<void> {
+  if (isStageDone(receipt, 'doc-linked')) return;
+  const linked = new Set(receipt.artifacts.linkedRecordIds ?? []);
+  startStage(receipt, 'doc-linked');
+  try {
+    for (const rec of records) {
+      if (linked.has(rec.recordId)) continue;
+      await client.updateRecord(tableId, rec.recordId, {
+        doc_url: { link: docUrl, text: '验收报告' },
+      });
+      linked.add(rec.recordId);
+      receipt.artifacts.linkedRecordIds = [...linked];
+      writeReceipt(receipt);
+    }
+    completeStage(receipt, 'doc-linked', { backfilledRecords: records.length }, { linkedRecordIds: [...linked] });
+  } catch (err) {
+    failStage(receipt, 'doc-linked', err instanceof Error ? err.message : String(err));
+    throw err;
+  }
+}
+
+/** 已确认渠道不重复发送；非幂等发送不自动重试，未知结果保留检查点待核对。 */
+export async function notifyDeliveryChannels(
+  receipt: DeliveryReceipt,
+  notifications: Array<{ channel: NotifyChannel; card: FeishuNotifyPayload }>,
+  send: typeof sendFeishuNotify = sendFeishuNotify,
+): Promise<void> {
+  if (isStageDone(receipt, 'notified')) return;
+  if (receipt.artifacts.pendingNotifyChannel || receipt.stages.notified.status === 'unknown') {
+    requireReconciliation(receipt, 'notified', '上次渠道通知未确认');
+  }
+  const notified = new Set(receipt.artifacts.notifiedChannels ?? []);
+  if (receipt.checkpointVersion !== 1 && notifications.some(({ channel }) => !notified.has(channel))) {
+    requireReconciliation(receipt, 'notified', '旧版未完成通知可能已发送但未保存渠道');
+  }
+  startStage(receipt, 'notified');
+  for (const { channel, card } of notifications) {
+    if (notified.has(channel)) continue;
+    receipt.artifacts.pendingNotifyChannel = channel;
+    writeReceipt(receipt);
+    let ok: boolean;
+    try {
+      ok = await send(card, channel);
+    } catch (err) {
+      requireReconciliation(receipt, 'notified', err instanceof Error ? err.message : String(err));
+    }
+    delete receipt.artifacts.pendingNotifyChannel;
+    if (ok) notified.add(channel);
+    receipt.artifacts.notifiedChannels = [...notified];
+    // 每个渠道返回后立即落盘，不让后续渠道失败抹掉先前的成功。
+    writeReceipt(receipt);
+  }
+  if (notifications.every(({ channel }) => notified.has(channel))) {
+    completeStage(receipt, 'notified', undefined, { notifiedChannels: [...notified] });
+  } else {
+    failStage(receipt, 'notified', '部分渠道返回发送失败');
+    throw new Error('部分渠道返回发送失败，交付通知未完成');
+  }
+}
+
+export async function main() {
+  dotenv.config({ path: path.join(process.cwd(), '.env') });
   const opts = parseArgs(process.argv.slice(2));
   const payload = readCustomerDeliveryPayload(opts.payloadPath);
   if (!payload) {
@@ -124,7 +284,7 @@ async function main() {
     process.exit(1);
   }
   if (!payload.generatedAt) {
-    console.error('交付载荷缺少 generatedAt，无法校验新鲜度');
+    console.error('交付载荷缺少 generatedAt，无法确认快照生成信息');
     process.exit(1);
   }
   if (opts.apply) {
@@ -138,7 +298,7 @@ async function main() {
       );
       process.exit(1);
     }
-    if (payload.envId && payload.envId !== opts.env) {
+    if (payload.envId !== opts.env) {
       console.error(
         `交付载荷环境不匹配：payload.envId=${payload.envId}，但 --env=${opts.env}。请用对应环境重新生成载荷。`,
       );
@@ -237,10 +397,15 @@ async function main() {
     return;
   }
 
+  if (!receipt) {
+    throw new Error('正式交付缺少 deliveryId，无法保存恢复检查点；请重新生成带交付身份的载荷。');
+  }
   if (!app) {
     console.error('未配置 FEISHU_APP_ID / FEISHU_APP_SECRET，无法写入飞书。');
     process.exit(1);
   }
+  // 本地预览/回执处理后，进入任何线上操作前再次读取真实证据字节。
+  assertDeliveryContentHash(payload);
   const token = await getFeishuAccessToken(app);
 
   let docUrl: string | undefined;
@@ -298,11 +463,11 @@ async function main() {
           uploadSummary = { uploaded: upload.uploaded, reused: upload.reused, failed: upload.failed.length };
           imageTokens = upload.tokens;
           if (receipt) {
-            completeStage(receipt, 'images-uploaded', { uploaded: upload.uploaded, reused: upload.reused });
             const tokenMap: Record<string, string> = {};
             for (const [k, v] of upload.tokens) tokenMap[k] = v;
-            receipt.artifacts.imageTokens = tokenMap;
-            writeReceipt(receipt);
+            completeStage(receipt, 'images-uploaded', { uploaded: upload.uploaded, reused: upload.reused }, {
+              imageTokens: tokenMap,
+            });
           }
         }
 
@@ -328,10 +493,10 @@ async function main() {
           console.log(`  反馈表同步：新增 ${feedbackResult.created} 条 · 更新 ${feedbackResult.updated} 条`);
         }
         if (receipt) {
-          completeStage(receipt, 'bitable-written', { tableId, created: written.created, updated: written.updated });
-          receipt.artifacts.tableId = tableId;
-          receipt.artifacts.recordIds = written.records.map((r) => ({ recordId: r.recordId, key: r.key }));
-          writeReceipt(receipt);
+          completeStage(receipt, 'bitable-written', { tableId, created: written.created, updated: written.updated }, {
+            tableId,
+            recordIds: bitableRecordIds,
+          });
         }
       }
     }
@@ -341,44 +506,21 @@ async function main() {
 
   // [2/3] 创建飞书文档，传入 recordUrls 用于证据链接
   if (opts.withDoc) {
-    if (receipt && isStageDone(receipt, 'doc-created') && receipt.artifacts.documentId) {
-      // 恢复：复用已建文档，不重复创建
-      docUrl = receipt.artifacts.docUrl;
-      console.log(`\n[2/3] 恢复回执：文档已创建，跳过建文档：${docUrl || receipt.artifacts.documentId}`);
-    } else {
-      console.log('\n[2/3] 创建飞书文档...');
-      const documentId = await createDocxDocument(token, title);
-      console.log(`  document_id: ${documentId}`);
-      const blocks = buildCustomerDocBlocks(payload, recordUrls);
-      const writtenBlocks = await addBlocksBatched(token, documentId, blocks);
-      const share = await shareDocxDocument(token, documentId);
-      docUrl = share.url;
-      shareDegraded = share.shareDegraded;
-      console.log(`  文档已生成（${writtenBlocks} 个内容块）：${docUrl}`);
-      if (shareDegraded) {
-        console.warn('  ⚠️  分享链接未自动公开，请在飞书内手动「分享」后再发给客户。');
-      }
-      if (receipt) {
-        completeStage(receipt, 'doc-created', { documentId, blocks: writtenBlocks, url: docUrl });
-        receipt.artifacts.documentId = documentId;
-        receipt.artifacts.docUrl = docUrl;
-        writeReceipt(receipt);
-      }
+    console.log('\n[2/3] 创建或恢复飞书文档...');
+    const document = await deliverDocument(token, title, buildCustomerDocBlocks(payload, recordUrls), receipt);
+    docUrl = document.url;
+    shareDegraded = document.shareDegraded;
+    console.log(`  document_id: ${document.documentId} · ${docUrl}`);
+    if (shareDegraded) {
+      console.warn('  分享链接未确认可用，请在飞书内核对「分享」后再发给客户。');
     }
 
-    // 回填多维表记录的 doc_url（写多维表时 docUrl 尚未生成）；已回填则跳过
-    const alreadyLinked = receipt ? isStageDone(receipt, 'doc-linked') : false;
-    if (alreadyLinked) {
+    // 回填多维表记录的 doc_url；独立于文档完成状态恢复。
+    if (isStageDone(receipt, 'doc-linked')) {
       console.log('  恢复回执：报告链接已回填，跳过');
     } else if (bitableClient && bitableTableId && bitableRecordIds.length > 0 && docUrl) {
-      const DELIVERY_DOC_URL_FIELD = 'doc_url';
-      for (const rec of bitableRecordIds) {
-        await bitableClient.updateRecord(bitableTableId, rec.recordId, {
-          [DELIVERY_DOC_URL_FIELD]: { link: docUrl, text: '验收报告' },
-        });
-      }
+      await linkDocumentRecords(bitableClient, bitableTableId, bitableRecordIds, docUrl, receipt);
       console.log(`  已回填 ${bitableRecordIds.length} 条多维表记录的报告链接`);
-      if (receipt) completeStage(receipt, 'doc-linked', { backfilledRecords: bitableRecordIds.length });
     }
   } else {
     console.log('\n[2/3] 跳过文档（--no-doc）');
@@ -389,12 +531,6 @@ async function main() {
       console.log('[3/3] 恢复回执：通知已发送，跳过重复通知');
     } else {
       console.log('[3/3] 发送飞书通知（客户群 + 内部留档）...');
-      const notifiedChannels = new Set<NotifyChannel>(
-        (receipt?.artifacts.notifiedChannels ?? []).filter(
-          (c): c is NotifyChannel => c === 'customer' || c === 'internal',
-        ),
-      );
-
       const bitableCfg = loadBitableRuntimeConfig();
       const bitableUrl =
         bitableTableId && bitableCfg
@@ -403,29 +539,16 @@ async function main() {
       const review = readReview();
       const reviewer = review && review.deliveryId === payload.deliveryId ? review.reviewer : undefined;
 
-      const customerConfigured = Boolean(resolveFeishuChatId('customer'));
-      const customerOk =
-        notifiedChannels.has('customer') ||
-        (!customerConfigured ||
-          (await sendFeishuNotify(buildDeliveryCard(payload, { docUrl }), 'customer')));
-      if (customerConfigured && customerOk) notifiedChannels.add('customer');
-
-      const internalOk =
-        notifiedChannels.has('internal') ||
-        (await sendFeishuNotify(
-          buildDeliveryCard(payload, { docUrl, bitableUrl, internal: true, reviewer }),
-          'internal',
-        ));
-      if (internalOk) notifiedChannels.add('internal');
-
-      if (receipt) {
-        receipt.artifacts.notifiedChannels = [...notifiedChannels];
-        // 客户群未配置时不阻塞完成；已配置则必须客户卡成功，避免内部发了但客户漏发
-        if (internalOk && (!customerConfigured || customerOk)) {
-          completeStage(receipt, 'notified');
-        }
-        writeReceipt(receipt);
+      const notifications: Array<{ channel: NotifyChannel; card: FeishuNotifyPayload }> = [];
+      // 客户群未配置时不阻塞完成，不回退到内部群或 Webhook。
+      if (resolveFeishuChatId('customer')) {
+        notifications.push({ channel: 'customer', card: buildDeliveryCard(payload, { docUrl }) });
       }
+      notifications.push({
+        channel: 'internal',
+        card: buildDeliveryCard(payload, { docUrl, bitableUrl, internal: true, reviewer }),
+      });
+      await notifyDeliveryChannels(receipt, notifications);
     }
   } else {
     console.log('[3/3] 跳过通知（加 --notify 开启）');
@@ -453,7 +576,9 @@ async function main() {
   console.log(`\n交付结果：${DELIVERY_RESULT_FILE}`);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

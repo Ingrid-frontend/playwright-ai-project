@@ -114,7 +114,7 @@ async function testStaticPage() {
 }
 
 async function testOptimizeDemo() {
-  const ws = new WebSocket(`ws://127.0.0.1:${PORT}`);
+  const ws = new WebSocket(`ws://127.0.0.1:${PORT}`, { origin: BASE });
   await new Promise((r, j) => {
     ws.on("open", r);
     ws.on("error", j);
@@ -134,7 +134,7 @@ async function testOptimizeDemo() {
 }
 
 async function testOptimizeCancel() {
-  const ws = new WebSocket(`ws://127.0.0.1:${PORT}`);
+  const ws = new WebSocket(`ws://127.0.0.1:${PORT}`, { origin: BASE });
   await new Promise((r, j) => {
     ws.on("open", r);
     ws.on("error", j);
@@ -176,7 +176,7 @@ async function testOptimizeCancel() {
 }
 
 async function testRunHeadless() {
-  const ws = new WebSocket(`ws://127.0.0.1:${PORT}`);
+  const ws = new WebSocket(`ws://127.0.0.1:${PORT}`, { origin: BASE });
   await new Promise((r, j) => {
     ws.on("open", r);
     ws.on("error", j);
@@ -195,7 +195,7 @@ async function testRunHeadless() {
 }
 
 async function testReport() {
-  const ws = new WebSocket(`ws://127.0.0.1:${PORT}`);
+  const ws = new WebSocket(`ws://127.0.0.1:${PORT}`, { origin: BASE });
   await new Promise((r, j) => {
     ws.on("open", r);
     ws.on("error", j);

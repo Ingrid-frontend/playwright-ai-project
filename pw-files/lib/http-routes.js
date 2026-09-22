@@ -4,6 +4,7 @@ const { spawn } = require('child_process');
 const express = require('express');
 const { require: tsxRequire } = require('tsx/cjs/api');
 const { stripAnsi } = require('./ws-safe');
+const { runSessionTask } = require('./session');
 
 let buildFlowRunAiDebug;
 function getFlowRunAiDebugBuilder() {
@@ -70,12 +71,14 @@ function registerHttpRoutes(app, deps) {
     res.send(session.optCode);
   });
 
-  app.get('/download/report', (req, res) => {
+  app.get('/download/report', (req, res, next) => {
     const sessionId = req.query.sid;
     const session = sessions.get(sessionId);
     const file = path.join(session?.tmpDir || '', 'report.html');
-    if (!session || !fs.existsSync(file)) return res.status(404).send('Not found');
-    res.sendFile(file);
+    if (!session || session.cancelled || !fs.existsSync(file)) return res.status(404).send('Not found');
+    void runSessionTask(session, () => new Promise((resolve, reject) => {
+      res.sendFile(file, (err) => err ? reject(err) : resolve());
+    })).catch(next);
   });
 
   app.post('/api/feishu/send', async (req, res) => {

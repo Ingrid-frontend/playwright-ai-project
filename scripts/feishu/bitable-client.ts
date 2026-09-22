@@ -1,5 +1,5 @@
 import type { BitableRuntimeConfig } from './bitable-schema.js';
-import { fetchWithRetry } from './feishu-utils.js';
+import { fetchWithRetry, type FetchWithRetryOptions } from './feishu-utils.js';
 
 /** 多维表附件字段值：上传图片后拿到的 file_token 列表 */
 export type BitableAttachment = {
@@ -73,7 +73,7 @@ export class BitableClient {
     return token;
   }
 
-  private async request<T>(url: string, init: RequestInit = {}): Promise<T> {
+  private async request<T>(url: string, init: FetchWithRetryOptions = {}): Promise<T> {
     const token = await this.getAccessToken();
     const response = await fetchWithRetry(url, {
       ...init,
@@ -285,6 +285,7 @@ export class BitableClient {
     const data = await this.request<CreateRecordData>(this.tableUrl(tableId, '/records'), {
       method: 'POST',
       body: JSON.stringify({ fields: cleanFields(fields) }),
+      retries: 0, // 创建结果未知时由上层重新查键核对，不能在 fetch 内重放。
     });
     const recordId = data.record?.record_id;
     if (!recordId) throw new Error('飞书多维表创建记录成功但未返回 record_id');

@@ -139,8 +139,134 @@ if (/ensureTravelReadyForSubmit/.test(editSrc) && /tripDatesReady\(root\)/.test(
   fail('RequestEditPage.submit', '缺少 tripDatesReady 自动判断');
 }
 
-if (process.exitCode) {
-  console.error('\nverify-request-flow-stable 失败');
-} else {
-  console.log('\nverify-request-flow-stable 通过');
+async function verifyRequestSafety() {
+  const assert = require('node:assert/strict');
+  const vm = require('node:vm');
+  const ts = require('typescript');
+  const events = [];
+  let existingDocNo = '';
+  let reasons = ['本轮事由'];
+  let selectedDocNo = 'CURRENT001';
+  const expect = () => ({ toBeVisible: async () => undefined });
+  expect.poll = (read, options) => ({
+    toBeGreaterThan: async (n) => assert.ok(await read() > n, options?.message),
+    toBe: async (value) => assert.equal(await read(), value, options?.message),
+  });
+  class GenericListPage { constructor(page) { this.page = page; } }
+  class EditPage {
+    async confirmNewRequestModal() { events.push('confirm-new'); }
+    async expectEditVisible() {}
+    async tryReadDocNo() { return existingDocNo; }
+    async deleteDraftIfPresent() { throw new Error('禁止删除已有草稿'); }
+    async fillReason() { events.push('fill'); }
+    async save() { events.push('save'); }
+    async submit() { events.push('submit'); }
+    async readDocNo() { throw new Error('提交后详情关闭'); }
+  }
+  function load(relative, mocks) {
+    const filename = path.join(repoRoot, relative);
+    const compiled = ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
+      fileName: filename,
+      compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
+    }).outputText;
+    const module = { exports: {} };
+    new vm.Script(compiled, { filename }).runInNewContext({
+      module, exports: module.exports,
+      require: (id) => {
+        assert.ok(Object.hasOwn(mocks, id), `禁止加载未替身依赖: ${id}`);
+        return mocks[id];
+      },
+    }, { timeout: 5_000 });
+    return module.exports;
+  }
+  const actual = load('request-flow/pages/request-list.page.ts', {
+    '@playwright/test': { expect },
+    '../../flow-kit/list/generic-list-page': { GenericListPage },
+    './request-edit.page': { RequestEditPage: EditPage },
+    '../utils/request-catalog': { FILTER_LABELS: { reason: '事由' } },
+  });
+  class RequestListPage extends actual.RequestListPage {
+    async goto() { events.push('goto'); }
+    async expectLoaded() {}
+    async expectListReady() {}
+    async closeDetailIfOpen() {}
+    async clickNewRequest() { events.push('new'); }
+    async clearListQuery() { events.push('clear'); selectedDocNo = 'DEFAULT001'; }
+    async clickFilterSearch() { events.push('search'); }
+    async hasDataRows() { return reasons.length > 0; }
+    async readFirstDocNo() { events.push('read'); return selectedDocNo; }
+    async columnIndex() { return 1; }
+    dataRows() {
+      return { count: async () => reasons.length, locator: () => ({ allTextContents: async () => reasons }) };
+    }
+    async filterByReason(reason) {
+      events.push('filter');
+      reasons = [reason];
+      selectedDocNo = 'CURRENT001';
+    }
+    async expectReasonFilterResult(reason) {
+      events.push('assert-reason');
+      await super.expectReasonFilterResult(reason);
+    }
+  }
+  const list = new RequestListPage({});
+  assert.equal(await list.pickFirstDocNo(), 'DEFAULT001', '默认调用仍清筛选');
+  assert.deepEqual(events, ['clear', 'read']);
+  events.length = 0;
+  await list.filterByReason('本轮事由');
+  await list.expectReasonFilterResult('本轮事由');
+  assert.equal(await list.pickFirstDocNo({ keepListFilters: true }), 'CURRENT001');
+  assert.deepEqual(events, ['filter', 'assert-reason', 'read']);
+  reasons = ['别人的事由', '本轮事由'];
+  await assert.rejects(list.expectReasonFilterResult('本轮事由'), /不匹配行/);
+  reasons = [];
+  events.length = 0;
+  await assert.rejects(list.pickFirstDocNo({ keepListFilters: true }), /没有可解析单号/);
+  assert.deepEqual(events, [], '保留筛选且空结果时不得清筛选或重新搜索');
+
+  existingDocNo = 'OTHER-DRAFT';
+  events.length = 0;
+  await assert.rejects(list.startNewRequest(), (error) =>
+    error instanceof actual.ExistingRequestDraftError && /独立账号.*人工确认/.test(error.message));
+  assert.deepEqual(events, ['new', 'confirm-new'], '有单号即终止，不删除、不填表、不重试');
+  existingDocNo = '';
+  assert.ok(await list.startNewRequest() instanceof EditPage, '空白单据允许继续');
+
+  for (const spec of ['submit-then-approve', 'travel-submit']) {
+    const cases = [];
+    const test = (_title, run) => cases.push(run);
+    test.describe = (_title, run) => run();
+    test.describe.configure = () => undefined;
+    test.beforeAll = () => undefined;
+    test.skip = () => undefined;
+    test.setTimeout = () => undefined;
+    load(`request-flow/tests/request/${spec}.spec.ts`, {
+      '../../fixtures': { test },
+      '../../pages/request-list.page': { ...actual, RequestListPage },
+      '../../../approval-flow/pages/approval-list.page': { ApprovalListPage: class {} },
+      '../../utils/env': { env: { writeEnabled: true } },
+      '../../utils/random': { randomReason: () => '本轮事由' },
+      '../../../src/utils/flow-step': { bindFlowStepCapture() {}, flowStep: async (_title, run) => run() },
+    });
+    events.length = 0;
+    await cases[0]({ page: {}, apiGuard: { dismissMatching() {} } });
+    assert.deepEqual(events.slice(-3), ['filter', 'assert-reason', 'read'], `${spec} 回退取号先校验且保留筛选`);
+    assert.ok(!events.includes('clear'), `${spec} 不得读默认首行`);
+    existingDocNo = 'OTHER-DRAFT';
+    events.length = 0;
+    await assert.rejects(cases[0]({ page: {}, apiGuard: { dismissMatching() {} } }),
+      (error) => error instanceof actual.ExistingRequestDraftError);
+    assert.equal(events.filter((event) => event === 'new').length, 1, `${spec} 不能重试未知归属草稿`);
+    assert.ok(!events.includes('fill') && !events.includes('save') && !events.includes('submit'));
+    existingDocNo = '';
+  }
+  pass('request-flow · 筛选取号与未知归属草稿安全契约');
 }
+
+verifyRequestSafety().catch((error) => fail('request-flow safety', error.stack || error.message)).then(() => {
+  if (process.exitCode) {
+    console.error('\nverify-request-flow-stable 失败');
+  } else {
+    console.log('\nverify-request-flow-stable 通过');
+  }
+});

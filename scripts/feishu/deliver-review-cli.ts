@@ -8,7 +8,7 @@
  */
 import fs from 'fs';
 import { resolveDeliveryPayloadPath } from '../../src/utils/env-profile.js';
-import { readCustomerDeliveryPayload } from '../report/customer-delivery-payload.js';
+import { assertDeliveryContentHash, readCustomerDeliveryPayload } from '../report/customer-delivery-payload.js';
 import { approveDelivery, rejectDelivery, readReview } from './delivery-review.js';
 
 function main(): void {
@@ -61,7 +61,8 @@ function main(): void {
   }
 
   if (flags.has('--approve')) {
-    const review = approveDelivery(deliveryId, payload.envId || env, reviewer, notes, payload.contentHash);
+    const actualHash = assertDeliveryContentHash(payload);
+    const review = approveDelivery(deliveryId, payload.envId || env, reviewer, notes, actualHash);
     console.log(`✅ 已审核通过：deliveryId=${deliveryId}, reviewer=${reviewer}, at=${review.reviewedAt}`);
     if (payload.contentHash) console.log(`   内容哈希：${payload.contentHash}`);
   } else if (flags.has('--reject')) {

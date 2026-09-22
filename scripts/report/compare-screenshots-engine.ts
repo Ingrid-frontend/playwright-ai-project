@@ -90,7 +90,10 @@ async function comparePair(
   const pixelmatchOpts = pixelmatchForCompareKind(meta.compareKind);
 
   if (COMPARE_INCREMENTAL) {
-    const cached = loadCachedDiffResult(baseline.path, compareScreenshot.path, diffOutputPath, pixelmatchOpts);
+    const cached = loadCachedDiffResult(baseline.path, compareScreenshot.path, diffOutputPath, {
+      ...pixelmatchOpts,
+      scriptKey: meta.scriptKey,
+    });
     if (cached) {
       return {
         image1Path: baseline.relativePath,

@@ -1,11 +1,6 @@
 name: Docs & Lint
 
-# 轻量门禁：只做不需要浏览器、不需要 secrets 的静态检查。
-#
-# 为什么独立于 playwright.yml：
-# 那个工作流要装浏览器 + 登录 + 跑 e2e，timeout 90 分钟。文档写错一个链接
-# 不该等 90 分钟才知道，也不该因为 stage 环境挂了就看不到文档检查结果。
-# 这个工作流通常 1 分钟内结束。
+# 离线门禁与浏览器 E2E 解耦，避免 stage 或凭证故障掩盖代码质量问题。
 
 on:
   push:
@@ -53,3 +48,31 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+  offline:
+    name: Offline ${{ matrix.check }}
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [typecheck, smoke]
+    env:
+      FEISHU_BITABLE_AUTO: '0'
+      FEISHU_NOTIFY_ON_COMPARE: '0'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Verify spec-meta
+        if: matrix.check == 'smoke'
+        run: node scripts/verify/verify-spec-meta-flow.cjs --env=stage
+
+      - name: Run offline check
+        run: npm run ${{ matrix.check }}
