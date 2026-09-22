@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { createHash } = require('crypto');
 const { send, logLine, stripAnsi, errText } = require('./ws-safe');
 
 function runChild(session, procKey, spawn, tsxBin, args, cwd, env, ws) {
@@ -50,6 +51,29 @@ async function runEgoNlFlow(ws, session, msg = {}, deps) {
     return;
   }
 
+  if (msg.reviewedSha256 != null) {
+    const pending = session.nativeScriptReview;
+    if (!pending || session.egoAuditCancelled || pending.seq !== session.egoAuditSeq ||
+        msg.seq !== pending.seq || msg.reviewedSha256 !== pending.sha256) {
+      send(ws, 'ego:nl-run:done', { ok: false, seq: msg.seq, message: '审核已失效，请重新生成并审核脚本' });
+      return;
+    }
+    session.nativeScriptReview = null;
+    let code;
+    try {
+      code = fs.readFileSync(pending.scriptPath, 'utf-8');
+    } catch {
+      send(ws, 'ego:nl-run:done', { ok: false, seq: pending.seq, message: '无法读取已审核脚本' });
+      return;
+    }
+    if (createHash('sha256').update(code).digest('hex') !== pending.sha256) {
+      send(ws, 'ego:nl-run:done', { ok: false, seq: pending.seq, message: '脚本内容已变更，请重新生成并审核' });
+      return;
+    }
+    await runReviewedNativeScript(ws, session, pending, spawn, buildRepoSpawnEnv(session));
+    return;
+  }
+
   const caseDescription = String(msg.caseDescription || '').trim();
   if (!caseDescription) {
     send(ws, 'error', { message: '请先填写自然语言测试步骤' });
@@ -83,6 +107,7 @@ async function runEgoNlFlow(ws, session, msg = {}, deps) {
   }
   session.egoAuditProc = null;
   session.egoAuditCancelled = false;
+  session.nativeScriptReview = null;
   session.egoAuditSeq = (session.egoAuditSeq || 0) + 1;
   const seq = session.egoAuditSeq;
 
@@ -150,20 +175,32 @@ async function runEgoNlFlow(ws, session, msg = {}, deps) {
   } catch {
     /* ignore */
   }
-  if (scriptCode) {
-    send(ws, 'ego:nl-run:script', {
-      seq,
-      outRel,
-      engine,
-      scriptRel: `${outRel}/generated.ts`,
-      scriptCode,
-    });
+  if (!scriptCode.trim()) {
+    send(ws, 'ego:nl-run:done', { ok: false, seq, outRel, message: '生成的脚本为空或无法读取' });
+    return;
   }
+  const sha256 = createHash('sha256').update(scriptCode).digest('hex');
+  session.nativeScriptReview = {
+    seq, outRel, engine, scriptPath, scriptCode, runDir, auditJson, env, profile,
+    entry, headed, doAudit, settle, keepTab, caseDescription, repoRoot, tsxBin, sha256,
+  };
+  send(ws, 'ego:nl-run:script', {
+    seq, outRel, engine, scriptRel: `${outRel}/generated.ts`, scriptCode,
+    reviewRequired: true, sha256, env, profile, entry, headed,
+  });
+  logLine(ws, '[ego-nl] 脚本已生成，等待人工审核后执行', 'info');
+}
 
-  logLine(ws, '[ego-nl] 脚本已生成，开始 Playwright 执行…', 'info');
+async function runReviewedNativeScript(ws, session, pending, spawn, spawnEnv) {
+  const {
+    seq, outRel, engine, scriptPath, scriptCode, runDir, auditJson, env, profile,
+    entry, headed, doAudit, settle, keepTab, caseDescription, repoRoot, tsxBin, sha256,
+  } = pending;
+  logLine(ws, '[ego-nl] 审核已确认，开始 Playwright 执行…', 'info');
   const runArgs = [
     'scripts/ai/run-playwright-script.ts',
     `--script=${scriptPath}`,
+    `--reviewed-sha256=${sha256}`,
     `--env=${env}`,
     `--profile=${profile}`,
     `--out=${runDir}`,
@@ -175,7 +212,7 @@ async function runEgoNlFlow(ws, session, msg = {}, deps) {
   if (session.egoAuditCancelled || session.egoAuditSeq !== seq) return;
 
   const runReport = readJson(path.join(runDir, 'result.json'));
-  const runOk = runResult.code === 0 && runReport?.passed !== false;
+  const runOk = runResult.code === 0 && runReport?.passed === true;
 
   let auditPayload = null;
   const canAudit = doAudit && /\.optimized\.spec\.ts$/i.test(scriptPath);

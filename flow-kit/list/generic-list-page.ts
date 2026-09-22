@@ -95,11 +95,13 @@ export class GenericListPage {
   // ---------- 导航 / 加载 ----------
 
   async goto(): Promise<void> {
+    const response = this.catalog.clickSearchOnLoad ? null : this.waitListApi();
     await this.page.goto(this.catalog.listPath, {
       waitUntil: 'domcontentloaded',
       timeout: 60_000,
     });
     this.root = await waitForAppRoot(this.page);
+    await response;
   }
 
   /** 关掉顶部用户菜单、快捷键提示等遮挡层，避免 click 被 intercept */
@@ -142,9 +144,6 @@ export class GenericListPage {
     const recoverEmpty = c.recoverEmptyOnLoad === true;
 
     await expect(this.page).toHaveURL(c.urlPattern, { timeout: 60_000 });
-    if (!clickSearch) {
-      await this.waitListApi();
-    }
     if (c.loadedSelector) {
       await expect(this.scope().locator(c.loadedSelector).first()).toBeVisible({ timeout: 60_000 });
     } else {
@@ -204,7 +203,7 @@ export class GenericListPage {
     await this.expectListReady();
   }
 
-  /** 等列表查询接口 POST 200；超时返回 null（接口可能已在 goto 前返回） */
+  /** 无数据入口或纯前端筛选可能不发查询，响应等待超时返回 null。 */
   async waitListApi(timeout = 20_000) {
     return this.page
       .waitForResponse(
@@ -505,7 +504,7 @@ export class GenericListPage {
     if (!(await btn.isVisible({ timeout: 1_000 }).catch(() => false))) return;
     const respP = this.waitListApi();
     await btn.click({ force: true });
-    await Promise.race([respP, this.waitListSettled()]);
+    await respP;
     await this.waitListSettled();
   }
 
@@ -540,8 +539,9 @@ export class GenericListPage {
     for (const clear of clears) {
       const btn = clear.filter({ visible: true }).first();
       if (!(await btn.isVisible({ timeout: 300 }).catch(() => false))) continue;
+      const response = this.waitListApi(3_000);
       await btn.click({ force: true });
-      await this.waitListApi(3_000).catch(() => null);
+      await response;
       await this.waitListSettled();
       return true;
     }

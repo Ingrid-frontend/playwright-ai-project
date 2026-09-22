@@ -9,8 +9,6 @@ import {
   isCompareCrossBrowserEnabled,
   type TestDirComparisons,
 } from './compare-screenshots-engine.js';
-import { readUiIssuesSummaryLine, sendJobFeishuNotification } from '../jobs/job-notify.js';
-import type { FeishuMode } from '../jobs/test-jobs-config.js';
 import {
   buildUiIssuesReport,
   gateShouldFail,
@@ -24,7 +22,6 @@ import { buildCoverageStats, toCustomerCoverageMetrics } from './coverage-stats.
 import { applyTriageToReport } from './issue-triage.js';
 import { appendHistorySnapshot } from './ui-regression-history.js';
 import { writeQualityDashboard } from './generate-quality-dashboard.js';
-import { writeBitableIfAuto } from '../feishu/bitable-auto.js';
 import {
   generateOverviewPanel,
   generateSummaryTableHtml,
@@ -93,34 +90,6 @@ function generateHTML(
       isCompareCrossBrowserEnabled,
       renderInlineDiffThumb: diffRenderer.renderInlineDiffThumb,
     }),
-  });
-}
-
-async function maybeNotifyCompareResult(comparePassed: boolean): Promise<void> {
-  if (process.env.FEISHU_NOTIFY_ON_COMPARE === '0') return;
-  const hasApp =
-    Boolean(process.env.FEISHU_CHAT_ID?.trim()) && Boolean(process.env.FEISHU_APP_ID?.trim());
-  if (!hasApp && !process.env.FEISHU_WEBHOOK_URL?.trim()) return;
-
-  let testPassed = true;
-  const lastRunPath = path.join(process.cwd(), 'results', 'last-test-run.json');
-  if (fs.existsSync(lastRunPath)) {
-    try {
-      const last = JSON.parse(fs.readFileSync(lastRunPath, 'utf-8')) as { passed?: boolean };
-      if (typeof last.passed === 'boolean') testPassed = last.passed;
-    } catch {
-      /* ignore */
-    }
-  }
-
-  const mode = (process.env.FEISHU_MODE || 'interactive') as FeishuMode;
-  await sendJobFeishuNotification(mode, {
-    trigger: 'cli',
-    testPassed,
-    comparePassed,
-    feishuDocAttempted: false,
-    feishuDocPassed: true,
-    uiIssuesSummary: readUiIssuesSummaryLine(),
   });
 }
 
@@ -270,7 +239,6 @@ async function main() {
   console.log(`   对比任务: ${compareTaskCount} 项，耗时 ${elapsed}s`);
 
   const comparePassed = !gateShouldFail(issuesReport);
-  await maybeNotifyCompareResult(comparePassed);
 
   if (process.env.AUTO_QUALITY_DASHBOARD !== '0') {
     try {
@@ -279,17 +247,6 @@ async function main() {
     } catch (err) {
       console.warn(`   质量看板生成跳过: ${(err as Error).message}`);
     }
-  }
-
-  try {
-    const blocker = issuesReport.summary.comparisonBlocker ?? issuesReport.summary.blocker ?? 0;
-    await writeBitableIfAuto({
-      env: process.env.PLAYWRIGHT_ENV,
-      status: blocker > 0 ? 'failed' : 'success',
-      issuesSource: issuesOut,
-    });
-  } catch (err) {
-    console.warn(`   飞书多维表同步跳过: ${(err as Error).message}`);
   }
 
   if (gateMode && !comparePassed) {

@@ -166,6 +166,7 @@ export async function generateBaselineComparisons(
           const cached = loadCachedDiffResult(resolved.baselinePath, latest.path, diffOutputPath, {
             threshold: pixelThreshold,
             includeAA,
+            scriptKey,
           });
           if (cached) {
             return {

@@ -199,6 +199,8 @@ export type CustomerReportModel = {
   actionItems: string[];
   /** 数字对账，确保分组步数与统计口径一致 */
   accounting: StepAccounting;
+  /** 单环境报告的环境身份（不能从仅多环境才有的 envSummaries 推断） */
+  envId?: string;
   /** 报告头环境名 */
   envLabel?: string;
   /** 多环境时分环境统计 */
@@ -558,6 +560,7 @@ export function buildCustomerReportModel(
     shipAdviceLabel: '',
     actionItems: [],
     accounting: buildStepAccounting(coverage, [...regressionGroups, ...minorGroups]),
+    envId: envSummaries.length === 1 && envSummaries[0]!.envId !== '_' ? envSummaries[0]!.envId : undefined,
     envLabel: meta?.envLabel || extractEnvLabel(scriptKeys) || undefined,
     envSummaries: envSummaries.length > 1 ? envSummaries : undefined,
     incompleteScripts: incompleteScripts.length ? incompleteScripts : undefined,

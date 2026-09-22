@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { createHash } = require('crypto');
 const { send, logLine, stripAnsi, errText } = require('./ws-safe');
 
 function readJson(filePath) {
@@ -316,6 +317,13 @@ function deleteFlowReplays(repoRoot, outRels = []) {
 }
 
 async function runFlowReplay(ws, session, msg = {}, deps) {
+  if (msg.reviewCancelled === true) {
+    if (session.nativeReplayReview?.seq === msg.seq) {
+      session.nativeReplayReview = null;
+      send(ws, 'replay:run:done', { ok: false, seq: msg.seq, message: '已取消脚本审核，未执行' });
+    }
+    return;
+  }
   const {
     resolveRepoRoot,
     spawn,
@@ -338,6 +346,12 @@ async function runFlowReplay(ws, session, msg = {}, deps) {
     send(ws, 'replay:run:done', { ok: false, message: '未找到脚本', outRel });
     return;
   }
+  if (msg.reviewedSha256 != null && script.scriptKind !== 'ts') {
+    session.nativeReplayReview = null;
+    send(ws, 'replay:run:done', { ok: false, message: '脚本类型已变更，请重新选择并审核', outRel });
+    return;
+  }
+  if (msg.reviewedSha256 == null) session.nativeReplayReview = null;
   const intent = readJson(path.join(dirAbs, 'intent.json')) || readJson(path.join(dirAbs, 'run', 'intent.json'));
   const meta = findMeta(dirAbs, path.basename(dirAbs), intent, script);
   const env = String(msg.env || meta.env || getSessionPlaywrightEnv(session) || 'stage').trim();
@@ -442,18 +456,37 @@ async function runFlowReplay(ws, session, msg = {}, deps) {
 
   const profile = getSessionAccountProfile(session, repoRoot);
   const entry = String(msg.entry || meta.entry || '').trim();
+  const scriptCode = fs.readFileSync(path.join(repoRoot, script.scriptRel), 'utf-8');
+  const sha256 = createHash('sha256').update(scriptCode).digest('hex');
+  if (msg.reviewedSha256 == null) {
+    session.replayRunSeq = (session.replayRunSeq || 0) + 1;
+    const seq = session.replayRunSeq;
+    session.nativeReplayReview = {
+      seq, outRel, scriptRel: script.scriptRel, sha256, env, profile, entry, headed: Boolean(msg.headed),
+    };
+    send(ws, 'replay:run:review', {
+      seq, outRel, scriptRel: script.scriptRel, scriptCode, sha256, env, profile, entry, headed: Boolean(msg.headed),
+    });
+    return;
+  }
+  const pending = session.nativeReplayReview;
+  if (pending?.seq === msg.seq) session.nativeReplayReview = null;
+  if (!pending || msg.seq !== pending.seq || pending.seq !== session.replayRunSeq ||
+      pending.outRel !== outRel || pending.scriptRel !== script.scriptRel ||
+      pending.sha256 !== sha256 || msg.reviewedSha256 !== sha256 ||
+      pending.env !== env || pending.profile !== profile || pending.entry !== entry ||
+      pending.headed !== Boolean(msg.headed)) {
+    send(ws, 'replay:run:done', { ok: false, seq: msg.seq, message: '脚本内容或运行配置已变更，请重新审核', outRel });
+    return;
+  }
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const runOutRel = `results/ego-studio/${stamp}-rerun`;
   const runAbs = path.join(repoRoot, runOutRel);
   fs.mkdirSync(runAbs, { recursive: true });
-  try {
-    fs.copyFileSync(path.join(repoRoot, script.scriptRel), path.join(runAbs, 'generated.ts'));
-  } catch {
-    /* ignore */
-  }
+  const reviewedScriptPath = path.join(runAbs, 'generated.ts');
+  fs.writeFileSync(reviewedScriptPath, scriptCode, 'utf-8');
 
-  session.replayRunSeq = (session.replayRunSeq || 0) + 1;
-  const seq = session.replayRunSeq;
+  const seq = pending.seq;
   send(ws, 'replay:run:start', { seq, outRel: runOutRel, engine: 'pw', env, scriptRel: script.scriptRel });
   logLine(ws, `[replay] 运行 ${script.scriptRel} · engine=pw · env=${env}`, 'info');
 
@@ -465,7 +498,8 @@ async function runFlowReplay(ws, session, msg = {}, deps) {
   );
   const args = [
     'scripts/ai/run-playwright-script.ts',
-    `--script=${path.join(repoRoot, script.scriptRel)}`,
+    `--script=${reviewedScriptPath}`,
+    `--reviewed-sha256=${sha256}`,
     `--env=${env}`,
     `--profile=${profile}`,
     `--out=${runAbs}`,
@@ -507,7 +541,7 @@ async function runFlowReplay(ws, session, msg = {}, deps) {
   if (session.replayRunSeq !== seq) return;
 
   const result = readJson(path.join(runAbs, 'result.json'));
-  const ok = runResult.code === 0 && result?.passed !== false;
+  const ok = runResult.code === 0 && result?.passed === true;
   const payload = {
     ok,
     seq,

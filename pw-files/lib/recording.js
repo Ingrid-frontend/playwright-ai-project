@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { send, logLine, errText } = require('./ws-safe');
+const { runSessionTask } = require('./session');
 const {
   postprocessRecordedScript,
 } = require('../../src/utils/strip-login-from-recording.cjs');
@@ -136,7 +137,11 @@ function createRecordingActions(deps) {
     }
   }
 
-  async function stopRecording(ws, session) {
+  function stopRecording(ws, session) {
+    return runSessionTask(session, () => finishRecording(ws, session));
+  }
+
+  async function finishRecording(ws, session) {
     if (session._stoppingRecord) return;
     session._stoppingRecord = true;
     session.recording = false;

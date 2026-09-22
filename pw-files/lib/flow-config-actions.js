@@ -1,7 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { spawnSync } = require('child_process');
-const { spawnTsx } = require('./kill-proc');
+const { spawnTsx, killProcessTreeHard, stopProcessTree } = require('./kill-proc');
 const { send, logLine, errText } = require('./ws-safe');
 const { createPlaywrightLogSink, parsePlaywrightResultJson, parsePlaywrightFailures } = require('./failure-report');
 const { resolveCatalogAbs, readCatalogForm, writeCatalogForm } = require('./catalog-form-io');
@@ -24,35 +23,69 @@ function deriveFlowMeta(label, entry, tabbed = false) {
   };
 }
 
-function resolveEntry(repoRoot, label, entryHint = '') {
+function queryFlowJson(repoRoot, scriptRel, args, maxBytes) {
+  return new Promise((resolve, reject) => {
+    const proc = spawnTsx(repoRoot, scriptRel, args, process.env, { localOnly: true });
+    const stdout = [];
+    const stderr = [];
+    let bytes = 0;
+    let settled = false;
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      // Reject at the deadline even if close is delayed; session ownership is retained
+      // independently until the child really closes.
+      killProcessTreeHard(proc);
+      reject(error);
+    };
+    const timer = setTimeout(() => fail(new Error('读取流程列表失败: 查询超时')), 15000);
+    const collect = (chunks, data) => {
+      if (settled) return;
+      const chunk = Buffer.isBuffer(data) ? data : Buffer.from(data);
+      bytes += chunk.length;
+      if (bytes > maxBytes) {
+        fail(new Error('读取流程列表失败: 输出超出限制'));
+        return;
+      }
+      chunks.push(chunk);
+    };
+    proc.stdout?.on('data', (data) => collect(stdout, data));
+    proc.stderr?.on('data', (data) => collect(stderr, data));
+    proc.once('error', fail);
+    proc.once('close', (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      const out = Buffer.concat(stdout).toString('utf8').trim();
+      if (code !== 0 || !out) {
+        reject(new Error(stripErr(Buffer.concat(stderr).toString('utf8')) || '读取流程列表失败'));
+        return;
+      }
+      try {
+        resolve(JSON.parse(out));
+      } catch (error) {
+        reject(error);
+      }
+    });
+  });
+}
+
+async function resolveEntry(repoRoot, label, entryHint = '') {
   const args = [`--label=${String(label || '').trim()}`];
   const hint = String(entryHint || '').trim();
   if (hint) args.push(`--entry=${hint}`);
-  const proc = spawnSync('npx', ['tsx', 'scripts/flow/resolve-flow-entry.ts', ...args], {
-    cwd: repoRoot,
-    encoding: 'utf8',
-    maxBuffer: 1024 * 1024,
-  });
-  const out = `${proc.stdout || ''}`.trim();
-  if (proc.status !== 0 || !out) return null;
   try {
-    return JSON.parse(out);
+    return await queryFlowJson(repoRoot, 'scripts/flow/resolve-flow-entry.ts', args, 1024 * 1024);
   } catch {
     return null;
   }
 }
 
-function listFlowsFromRegistry(repoRoot) {
-  const proc = spawnSync('npx', ['tsx', 'scripts/flow/flow-registry-json.ts'], {
-    cwd: repoRoot,
-    encoding: 'utf8',
-    maxBuffer: 4 * 1024 * 1024,
-  });
-  const out = `${proc.stdout || ''}`.trim();
-  if (proc.status !== 0 || !out) {
-    throw new Error(stripErr(proc.stderr) || '读取流程列表失败');
-  }
-  return JSON.parse(out);
+async function listFlowsFromRegistry(repoRoot) {
+  const flows = await queryFlowJson(repoRoot, 'scripts/flow/flow-registry-json.ts', [], 4 * 1024 * 1024);
+  if (!Array.isArray(flows)) throw new Error('读取流程列表失败');
+  return flows;
 }
 
 function stripErr(text) {
@@ -64,8 +97,8 @@ function stripErr(text) {
     .join(' ');
 }
 
-function getFlowFromRegistry(repoRoot, flowId) {
-  const flows = listFlowsFromRegistry(repoRoot);
+async function getFlowFromRegistry(repoRoot, flowId) {
+  const flows = await listFlowsFromRegistry(repoRoot);
   return flows.find((f) => f.id === flowId) || null;
 }
 
@@ -200,8 +233,8 @@ function summarizePlaywrightStdout(stdout, exitCode) {
   }
 }
 
-function flowStatus(repoRoot, flowId) {
-  const flow = getFlowFromRegistry(repoRoot, flowId);
+async function flowStatus(repoRoot, flowId) {
+  const flow = await getFlowFromRegistry(repoRoot, flowId);
   const domain = flow?.domain || flowId.replace(/-flow$/, '');
   const flowDir = path.join(repoRoot, flowId);
   const snapshotRel = `${flowId}/datasource/live-snapshot.json`;
@@ -220,17 +253,17 @@ function flowStatus(repoRoot, flowId) {
   };
 }
 
-function sendFlowConfigList(ws, deps) {
+async function sendFlowConfigList(ws, deps) {
   try {
     const repoRoot = deps.resolveRepoRoot();
-    const flows = listFlowsFromRegistry(repoRoot);
+    const flows = await listFlowsFromRegistry(repoRoot);
     send(ws, 'flow:config:list:done', { ok: true, flows });
   } catch (e) {
     send(ws, 'flow:config:list:done', { ok: false, message: errText(e), flows: [] });
   }
 }
 
-function sendFlowConfigStatus(ws, msg, deps) {
+async function sendFlowConfigStatus(ws, msg, deps) {
   try {
     const repoRoot = deps.resolveRepoRoot();
     const flowId = String(msg.flowId || '').trim();
@@ -238,7 +271,7 @@ function sendFlowConfigStatus(ws, msg, deps) {
       send(ws, 'flow:config:status:done', { ok: false, message: '缺少 flowId' });
       return;
     }
-    send(ws, 'flow:config:status:done', { ok: true, ...flowStatus(repoRoot, flowId) });
+    send(ws, 'flow:config:status:done', { ok: true, ...await flowStatus(repoRoot, flowId) });
   } catch (e) {
     send(ws, 'flow:config:status:done', { ok: false, message: errText(e) });
   }
@@ -267,7 +300,8 @@ async function runFlowConfigSetup(ws, session, msg, deps) {
   }
 
   emitStep('resolve', '正在从菜单路由表解析入口…');
-  const resolved = resolveEntry(repoRoot, label, entryHint);
+  const resolved = await resolveEntry(repoRoot, label, entryHint);
+  if (session.cancelled || session.flowConfigCancelled) return;
   if (!resolved?.entry) {
     send(ws, 'flow:config:setup:done', {
       ok: false,
@@ -357,7 +391,7 @@ async function runFlowConfigSetup(ws, session, msg, deps) {
     return;
   }
 
-  const st = flowStatus(repoRoot, flowId);
+  const st = await flowStatus(repoRoot, flowId);
   send(ws, 'flow:config:setup:done', {
     ok: true,
     flowId,
@@ -370,11 +404,11 @@ async function runFlowConfigSetup(ws, session, msg, deps) {
   logLine(ws, `[flow-config] ${meta.label} 配置完成`, 'ok');
 }
 
-function saveFlowConfigCatalog(ws, msg, deps) {
+async function saveFlowConfigCatalog(ws, msg, deps) {
   try {
     const repoRoot = deps.resolveRepoRoot();
     const flowId = String(msg.flowId || '').trim();
-    const flow = getFlowFromRegistry(repoRoot, flowId);
+    const flow = await getFlowFromRegistry(repoRoot, flowId);
     const domain = flow?.domain || flowId.replace(/-flow$/, '');
     const hit = resolveCatalogAbs(repoRoot, flowId, domain);
     if (!hit) {
@@ -413,7 +447,9 @@ async function runFlowConfigTryRun(ws, session, msg, deps) {
     return;
   }
 
-  const flow = getFlowFromRegistry(repoRoot, flowId);
+  session.flowConfigCancelled = false;
+  const flow = await getFlowFromRegistry(repoRoot, flowId);
+  if (session.cancelled || session.flowConfigCancelled) return;
   if (!flow?.goldenRunner) {
     send(ws, 'flow:config:try-run:done', {
       ok: false,
@@ -428,7 +464,6 @@ async function runFlowConfigTryRun(ws, session, msg, deps) {
   const runnerRel = path.join('scripts', 'flow', flow.goldenRunner);
   const startedAt = Date.now();
 
-  session.flowConfigCancelled = false;
   send(ws, 'flow:config:try-run:start', {
     flowId,
     label: flow.label,
@@ -522,13 +557,7 @@ async function runFlowConfigTryRun(ws, session, msg, deps) {
 function cancelFlowConfig(session, ws) {
   const proc = session.flowConfigProc;
   session.flowConfigCancelled = true;
-  if (proc && !proc.killed) {
-    try {
-      proc.kill('SIGTERM');
-    } catch {
-      /* ignore */
-    }
-  }
+  if (proc) void stopProcessTree(proc);
   if (ws) send(ws, 'flow:config:cancel:ack', {});
 }
 

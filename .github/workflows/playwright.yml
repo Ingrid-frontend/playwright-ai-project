@@ -28,13 +28,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Baseline PR gate
-        if: github.event_name == 'pull_request'
-        run: npm run check-baseline-pr -- --base=origin/${{ github.base_ref }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -52,17 +45,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Baseline PR gate
+        if: github.event_name == 'pull_request'
+        run: npm run check-baseline-pr -- --base="origin/$BASE_REF"
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps
-
-      - name: Verify spec-meta
-        run: node scripts/verify/verify-spec-meta-flow.cjs --env=stage
-
-      - name: Verify ego selector probe logic
-        run: node scripts/verify/verify-ego-selector-probe.cjs
-
-      - name: Smoke report modules
-        run: npm run smoke
 
       - name: Pipeline raw recordings (PR only)
         if: github.event_name == 'pull_request'

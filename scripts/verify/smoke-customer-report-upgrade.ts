@@ -16,7 +16,16 @@ import {
 } from '../feishu/retest-trace.js';
 import { buildCustomerReportMarkdown } from '../report/export-customer-report-markdown.js';
 import { runDeliveryGate, formatGateResult } from '../feishu/delivery-gate.js';
-import type { DeliveryPayload } from '../report/customer-delivery-payload.js';
+import {
+  buildCustomerDeliveryPayload, computeContentHash, assertDeliveryContentHash,
+  readCustomerDeliveryPayload, writeCustomerDeliveryPayload, SNAPSHOT_VERSION, type DeliveryPayload,
+} from '../report/customer-delivery-payload.js';
+import { buildCoverageStats } from '../report/coverage-stats.js';
+import { buildCustomerReportModel } from '../report/customer-report-model.js';
+import { renderCustomerReportHtml } from '../report/customer-report-render.js';
+import { checkReview, writeReview } from '../feishu/delivery-review.js';
+import { writeDeliveryRecords } from '../feishu/bitable-delivery.js';
+import { BitableClient } from '../feishu/bitable-client.js';
 
 function pass(name: string) {
   console.log(`  ✓ ${name}`);
@@ -41,6 +50,8 @@ function isolatedDir(label: string): string {
 
   const makePayload = (overrides: Partial<DeliveryPayload> = {}): DeliveryPayload => ({
     version: 1,
+    snapshotVersion: SNAPSHOT_VERSION,
+    runId: 'history-run',
     deliveryId: 'test-delivery-1',
     generatedAt: '2026-09-20T10:00:00.000Z',
     envId: 'stage9084',
@@ -69,7 +80,7 @@ function isolatedDir(label: string): string {
       passRate: 83,
     },
     ...overrides,
-  } as DeliveryPayload);
+  });
 
   // append + read
   appendDeliveryHistory(makePayload());
@@ -216,8 +227,10 @@ function isolatedDir(label: string): string {
 
 // ── M6: export-customer-report-markdown ────────────────────
 {
-  const mockPayload = {
+  const mockPayload: DeliveryPayload = {
     version: 1,
+    snapshotVersion: SNAPSHOT_VERSION,
+    runId: 'markdown-run',
     deliveryId: 'md-test',
     generatedAt: '2026-09-21T08:00:00.000Z',
     envId: 'dev',
@@ -268,7 +281,7 @@ function isolatedDir(label: string): string {
     ],
     actionItems: ['修复审批列表页按钮溢出', '确认工作台间距是否可接受'],
     uncoveredList: [
-      { scriptLabel: 'DEV环境 · 报销流程', stepLabel: '报销详情', scriptKey: 'k1', stepNumber: 5 },
+      { title: '报销详情', scriptLabel: 'DEV环境 · 报销流程', stepLabel: '报销详情', stepNumber: 5 },
     ],
     stats: {
       expectedSteps: 20,
@@ -325,7 +338,7 @@ function isolatedDir(label: string): string {
         passRateDelta: 13,
         coverageDelta: 10,
     },
-  } as unknown as DeliveryPayload;
+  };
 
   const md = buildCustomerReportMarkdown(mockPayload);
 
@@ -368,30 +381,174 @@ function isolatedDir(label: string): string {
 {
   const dir = isolatedDir('gate');
   process.chdir(dir);
+  const originalRunEnv = { TEST_RUN_ID: process.env.TEST_RUN_ID, FLOW_REPORT_BATCH_ID: process.env.FLOW_REPORT_BATCH_ID };
+  delete process.env.TEST_RUN_ID;
+  delete process.env.FLOW_REPORT_BATCH_ID;
 
-  // 无 retest 记录时 gate 仍通过（retest-trace 是信息性检查）
-  const emptyPayload = {
-    deliveryReady: true,
-    envId: 'stage9084',
-    generatedAt: new Date().toISOString(),
-    contentHash: 'hash123',
-    items: [],
-    stats: { comparedSteps: 5, coveragePct: 80 },
-  } as unknown as DeliveryPayload;
+  try {
+    const runId = new Date(Date.now() - 60_000).toISOString().replace(/[:.]/g, '-');
+    const script = 'flows/uat/offline';
+    const current = path.join(dir, 'screenshots', script, 'run-chromium-optimized', runId, 'step-1-home.png');
+    fs.mkdirSync(path.dirname(current), { recursive: true });
+    const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64');
+    fs.writeFileSync(current, image);
+    const coverage = {
+      ...buildCoverageStats([]), expectedSteps: 1, comparedSteps: 1, regressSteps: 1,
+      slots: [{
+        scriptKey: script, stepNumber: 1, stepName: 'home', browser: 'chrome',
+        status: 'regress' as const, difference: 0.1, pageTitle: '首页', processOnly: false,
+        currentPath: current, baselinePath: current,
+      }],
+    };
+    const sources = new Map([[script, runId]]);
+    const model = buildCustomerReportModel(coverage, new Date().toISOString(),
+      new Map([[script, { scriptKey: script, runId: 'latest-incomplete-run' }]]));
+    const payload = buildCustomerDeliveryPayload(model, { envId: 'uat', deliveryReady: true, sourceRunIds: sources });
+    assert.equal(payload.runId, runId, '顶层 runId 应采用选定完整轮，不能取最新未完成轮');
+    assert.deepEqual(payload.sourceRunIds, { [script]: runId });
+    assert.equal(payload.snapshotVersion, SNAPSHOT_VERSION);
+    assert.equal(payload.contentHash, computeContentHash(payload));
+    writeCustomerDeliveryPayload(payload);
+    assert.equal(assertDeliveryContentHash(readCustomerDeliveryPayload()!), payload.contentHash);
+    const gate = runDeliveryGate(payload);
+    assert.ok(gate.passed, formatGateResult(gate));
+    const check = (p: DeliveryPayload, name: string) => runDeliveryGate(p).checks.find((c) => c.name === name)!;
+    assert.match(check(payload, 'retest-trace').detail, /无复验追踪记录/);
+    assert.match(formatGateResult(gate), /retest-trace/);
 
-  const gate = runDeliveryGate(emptyPayload);
-  const retestCheck = gate.checks.find((c) => c.name === 'retest-trace');
-  assert.ok(retestCheck, '应有 retest-trace 检查项');
-  assert.equal(retestCheck!.passed, true, 'retest-trace 是信息性检查，始终通过');
-  assert.match(retestCheck!.detail, /无复验追踪记录/);
-  pass('delivery-gate retest-trace 信息性检查（空记录）');
+    assert.throws(() => buildCustomerDeliveryPayload(model, {
+      envId: 'uat', deliveryReady: true, sourceRunIds: new Map([[script, 'wrong-run']]),
+    }), /源运行与比较证据不匹配/);
+    for (const changed of [
+      { ...payload, runId: '' }, { ...payload, snapshotVersion: 0 },
+      { ...payload, generatedAt: 'invalid' }, { ...payload, deliveryId: 'wrong-identity' },
+    ]) assert.equal(check(changed, 'snapshot-identity').passed, false);
+    const sourceCases: Array<DeliveryPayload['sourceRunIds']> = [undefined, {}, { [script]: 'wrong-run' }, { 'flows/dev/offline': runId }];
+    for (const sourceRunIds of sourceCases) {
+      assert.equal(check({ ...payload, sourceRunIds }, 'source-runs').passed, false);
+    }
+    assert.equal(check({ ...payload, contentHash: '' }, 'content-hash').passed, false);
 
-  // formatGateResult 包含 retest-trace
-  const formatted = formatGateResult(gate);
-  assert.match(formatted, /retest-trace/);
-  pass('formatGateResult 包含 retest-trace');
+    // apply 即使显式跳过人工审核，也不能跳过真实哈希门禁或触发任何网络调用。
+    const { main: applyDelivery } = await import('../feishu/deliver-customer-report.js');
+    const originalArgv = process.argv;
+    const originalExit = process.exit;
+    const originalFetch = globalThis.fetch;
+    let networkCalls = 0;
+    try {
+      writeCustomerDeliveryPayload({ ...payload, headline: '篡改的未审核结论' });
+      process.argv = ['node', 'offline-delivery', '--apply', '--env=uat', '--skip-review', '--payload=results/customer-delivery.json'];
+      process.exit = ((code?: number) => { throw new Error(`offline-exit:${code}`); }) as typeof process.exit;
+      globalThis.fetch = async () => { networkCalls += 1; throw new Error('禁止线上请求'); };
+      await assert.rejects(applyDelivery(), /offline-exit:1/);
+      assert.equal(networkCalls, 0);
+      assert.equal(fs.existsSync('results/feishu-delivery-preview.html'), false);
+      assert.equal(fs.existsSync('results/feishu-delivery-result.json'), false);
+    } finally {
+      process.argv = originalArgv;
+      process.exit = originalExit;
+      globalThis.fetch = originalFetch;
+      writeCustomerDeliveryPayload(payload);
+    }
+    for (const stale of ['invalid', '2020-01-01T00-00-00-000Z', '2099-01-01T00-00-00-000Z']) {
+      const changed = { ...payload, generatedAt: new Date().toISOString(), sourceRunIds: { [script]: stale } };
+      changed.contentHash = computeContentHash(changed);
+      assert.equal(check(changed, 'freshness').passed, false, '重生成时间不能替代源执行时间');
+    }
 
-  process.chdir(origCwd);
+    // 超过 20 个根因组照常进入主载荷及多维表；根因组数不是步骤数。
+    const representative = model.regressionGroups[0]!.representative;
+    const groups = Array.from({ length: 27 }, (_, i) => ({
+      ...model.regressionGroups[0]!, groupKey: `group-${i}`, affectedSteps: 2,
+      representative: { ...representative, pageKey: `${script}::${i + 1}::home`, stepNumber: i + 1,
+        worstStatus: i < 22 ? 'regress' as const : 'minor' as const },
+    }));
+    const manyModel = { ...model, regressionGroups: groups.slice(0, 22), minorGroups: groups.slice(22) };
+    const many = buildCustomerDeliveryPayload(manyModel, { envId: 'uat', sourceRunIds: sources, maxItems: 1 });
+    assert.equal(many.items.length, 27);
+    assert.equal(many.totalIssueCount, 27);
+    assert.equal(many.items.reduce((n, item) => n + item.affectedSteps, 0), 54);
+    assert.equal(buildCustomerDeliveryPayload(manyModel, { maxItems: 0 }).totalIssueCount, 27);
+    class OfflineBitable extends BitableClient {
+      keys: string[] = [];
+      override async upsertRecord(...args: Parameters<BitableClient['upsertRecord']>) {
+        this.keys.push(args[2]);
+        return { recordId: `offline-${this.keys.length}`, created: true };
+      }
+    }
+    const client = new OfflineBitable({ appId: 'offline', appSecret: 'offline', appToken: 'offline', runTableId: 'offline' });
+    const written = await writeDeliveryRecords(client, 'offline', many, { tokens: new Map() });
+    assert.equal(written.created, 27);
+    assert.equal(new Set(client.keys).size, 27);
+    assert.equal(check({ ...many, items: many.items.slice(0, 20) }, 'issue-completeness').passed, false);
+    const passingModel = buildCustomerReportModel({
+      ...coverage, regressSteps: 0, passSteps: 1,
+      slots: coverage.slots.map((slot) => ({ ...slot, status: 'pass' as const, difference: 0 })),
+    });
+    passingModel.pages = Array.from({ length: 8 }, (_, i) => ({ ...passingModel.pages[0]!, pageKey: `pass-${i}` }));
+    const samples = buildCustomerDeliveryPayload(passingModel);
+    assert.equal(samples.items.length, 5);
+    assert.equal(samples.totalIssueCount, 0);
+    assert.equal(samples.totalSampleCount, 5);
+
+    // 全字段（包括第 21 项之后的内容）与证据字节均绑定审核。
+    for (const mutate of [
+      (p: DeliveryPayload) => { p.envId = 'dev'; },
+      (p: DeliveryPayload) => { p.runId = 'other'; },
+      (p: DeliveryPayload) => { p.sourceRunIds = { [script]: 'other' }; },
+      (p: DeliveryPayload) => { p.headline += 'changed'; },
+      (p: DeliveryPayload) => { p.shipAdvice = 'changed'; },
+      (p: DeliveryPayload) => { p.shipAdviceLabel += 'changed'; },
+      (p: DeliveryPayload) => { p.releaseTag = 'changed'; },
+      (p: DeliveryPayload) => { p.actionItems.push('changed'); },
+      (p: DeliveryPayload) => { p.stats.coveragePct -= 1; },
+      (p: DeliveryPayload) => { p.items[26]!.reason += 'changed'; },
+      (p: DeliveryPayload) => { p.items[26]!.images[0]!.label += 'changed'; },
+      (p: DeliveryPayload) => { p.items.pop(); },
+    ]) {
+      const changed = structuredClone(many);
+      mutate(changed);
+      assert.notEqual(computeContentHash(changed), many.contentHash);
+      assert.throws(() => assertDeliveryContentHash(changed), /contentHash/);
+    }
+    assert.equal(computeContentHash({ ...payload, contentHash: 'self-reported' }), payload.contentHash);
+    writeReview({ deliveryId: payload.deliveryId, envId: 'uat', approved: true });
+    assert.equal(checkReview(payload.deliveryId, payload.contentHash).approved, false, '旧审核无哈希必须拒绝');
+    writeReview({ deliveryId: payload.deliveryId, envId: 'uat', approved: true, contentHash: payload.contentHash });
+    assert.equal(checkReview(payload.deliveryId, payload.contentHash).approved, true);
+    const modified = { ...payload, headline: 'changed' };
+    modified.contentHash = computeContentHash(modified);
+    assert.equal(checkReview(payload.deliveryId, modified.contentHash).approved, false);
+    const stat = fs.statSync(current);
+    const changedImage = Buffer.from(image);
+    changedImage[changedImage.length - 1] ^= 1;
+    fs.writeFileSync(current, changedImage);
+    fs.utimesSync(current, stat.atime, stat.mtime);
+    assert.equal(check(payload, 'content-hash').passed, false, '同路径、大小、mtime 的证据变化也须拒绝');
+    fs.unlinkSync(current);
+    assert.throws(() => computeContentHash(payload), /交付证据不可读/);
+    assert.equal(check(payload, 'content-hash').passed, false);
+    fs.writeFileSync(current, image);
+
+    // 单环境模型故意没有 envSummaries，不能读取别的环境趋势。
+    assert.equal(model.envId, 'uat');
+    assert.equal(model.envSummaries, undefined);
+    appendDeliveryHistory({ ...payload, deliveryId: 'uat-1', generatedAt: '2026-01-01T00:00:00Z' });
+    appendDeliveryHistory({ ...payload, deliveryId: 'uat-2', generatedAt: '2026-01-02T00:00:00Z' });
+    const before = renderCustomerReportHtml(model);
+    assert.ok(before.includes('2026-01-01'));
+    appendDeliveryHistory({ ...payload, envId: 'dev', deliveryId: 'dev-1', generatedAt: '2099-01-01T00:00:00Z' });
+    appendDeliveryHistory({ ...payload, envId: 'dev', deliveryId: 'dev-2', generatedAt: '2099-01-02T00:00:00Z' });
+    assert.equal(renderCustomerReportHtml(model), before);
+    assert.ok(!renderCustomerReportHtml({ ...model, envId: undefined }).includes('2099-01-01'));
+    pass('完整交付、真实哈希、源运行门禁及单环境趋势');
+  } finally {
+    for (const [key, value] of Object.entries(originalRunEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    process.chdir(origCwd);
+  }
 }
 
 // ── 清理 ───────────────────────────────────────────────────

@@ -737,6 +737,7 @@
     padding: 16px;
   }
   .studio-modal[hidden] { display: none; }
+  #nativeScriptApprove[hidden] { display: none; }
   .studio-modal-backdrop {
     position: absolute; inset: 0;
     background: rgba(8, 10, 14, 0.72);
@@ -2312,9 +2313,11 @@
       <h3 class="studio-modal-title" id="replayScriptModalTitle" style="margin:0">脚本</h3>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button type="button" class="btn" onclick="copyReplayScript()">复制</button>
+        <button type="button" class="btn btn-run" id="nativeScriptApprove" hidden onclick="approveNativeScript()">已审核，允许执行</button>
         <button type="button" class="btn" onclick="closeReplayScript()">关闭</button>
       </div>
     </div>
+    <div class="sidebar-hint" id="nativeScriptReviewWarning" hidden>请完整检查以下代码。脚本不是沙箱，将以当前用户权限访问本机文件与网络；关闭窗口不会执行。</div>
     <div class="sidebar-hint" id="replayScriptPath" style="margin:8px 0 0"></div>
     <textarea id="replayScriptText" class="url-input" spellcheck="false" readonly
       style="flex:1;width:100%;margin-top:8px;resize:none;color:var(--text);line-height:1.5;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px"></textarea>
@@ -2327,6 +2330,7 @@ let ws = null;
 let state = { recording: false, hasRaw: false, hasOpt: false, hasRun: false };
 const busyState = { optimize: false, run: false, repoPipeline: false, repoCompare: false, repoRerunKeep: false, repoBatch: false, accountLogin: false, flowConfig: false };
 let intentRunSeq = 0;let intentLoadSeq = 0;
+let replayRunSeq = 0;
 let intentLoadSilent = false;
 /** 最近一次 Intent 运行，用于自愈写回 */
 let lastIntentBoundary = null;
@@ -2334,6 +2338,7 @@ let exploreSeq = 0;
 let egoAuditSeq = 0;
 let lastNlRunContext = null;
 let pendingNlRunOptions = null;
+let pendingNativeScriptReview = null;
 let recordTimer = null;
 let recordSeconds = 0;
 let lastOptimizeProvider = 'claude';
@@ -6898,6 +6903,9 @@ function connectWS() {
   };
   ws.onmessage = (e) => handleMessage(JSON.parse(e.data));
   ws.onclose = () => {
+    pendingNativeScriptReview = null;
+    replayRunSeq = 0;
+    closeReplayScript();
     document.getElementById('wsDot').className = 'ws-dot';
     document.getElementById('wsStatus').textContent = '重连中…';
     setIntentRunBusy(false);
@@ -7822,7 +7830,12 @@ function handleMessage(msg) {
     case 'ego:nl-run:intent':
       if (msg.seq && msg.seq < egoAuditSeq) break;
       renderEgoNlPreview(msg);
-      log('info', msg.previewYaml ? '[口语试跑] Intent YAML 已生成，ego 执行中…' : '[口语试跑] 临时脚本已生成，正在执行…');
+      if (msg.reviewRequired) {
+        showNativeScriptReview('ego:nl-run', msg);
+        log('info', '[口语试跑] 脚本已生成，等待人工审核');
+      } else {
+        log('info', msg.previewYaml ? '[口语试跑] Intent YAML 已生成，ego 执行中…' : '[口语试跑] 临时脚本已生成，正在执行…');
+      }
       break;
     case 'ai:validate:done':
     case 'ego:nl-run:done':
@@ -7936,13 +7949,20 @@ function handleMessage(msg) {
         showToast(msg.message || '保存失败', 'err');
       }
       break;
+    case 'replay:run:review':
+      if (msg.seq && msg.seq < replayRunSeq) break;
+      if (msg.seq) replayRunSeq = msg.seq;
+      showNativeScriptReview('replay:run', msg);
+      break;
     case 'replay:run:start':
-      if (msg.seq) intentRunSeq = msg.seq;
+      if (msg.seq && msg.seq < replayRunSeq) break;
+      if (msg.seq) replayRunSeq = msg.seq;
       setIntentRunBusy(true);
       switchToIntentRunTab();
       log('info', `[replay] 开始运行${msg.scriptRel ? ` · ${msg.scriptRel}` : ''}${msg.env ? ` · ${msg.env}` : ''}`);
       break;
     case 'replay:run:done':
+      if (msg.seq && msg.seq < replayRunSeq) break;
       setIntentRunBusy(false);
       renderIntentRunResult(msg);
       handleIntentFailureFromMsg(msg);
@@ -11726,6 +11746,7 @@ async function openReplayScript(index) {
     showToast('未找到对应脚本文件', 'err');
     return;
   }
+  closeReplayScript();
   const kind =
     script.kind === 'ts'
       ? 'Playwright 脚本'
@@ -11746,11 +11767,52 @@ async function openReplayScript(index) {
   if (modal) modal.hidden = false;
 }
 
+function showNativeScriptReview(type, msg) {
+  if (pendingNativeScriptReview?.type === type) pendingNativeScriptReview = null;
+  closeReplayScript();
+  pendingNativeScriptReview = { type, msg };
+  document.getElementById('replayScriptModalTitle').textContent = '审核原生 Playwright 脚本';
+  document.getElementById('replayScriptPath').textContent = `${msg.scriptRel} · ${msg.env} / ${msg.profile} · SHA-256: ${msg.sha256}`;
+  document.getElementById('replayScriptText').value = msg.scriptCode;
+  document.getElementById('nativeScriptApprove').hidden = false;
+  document.getElementById('nativeScriptReviewWarning').hidden = false;
+  document.getElementById('replayScriptModal').hidden = false;
+}
+
+function approveNativeScript() {
+  const review = pendingNativeScriptReview;
+  if (!review) return;
+  if (!confirm('确认已完整审核代码，并允许以当前用户权限执行？')) return;
+  pendingNativeScriptReview = null;
+  closeReplayScript();
+  const { type, msg } = review;
+  if (type === 'ego:nl-run') setEgoAuditBusy(true);
+  else setIntentRunBusy(true);
+  if (!send(type, {
+    seq: msg.seq, outRel: msg.outRel, env: msg.env, entry: msg.entry,
+    headed: msg.headed, reviewedSha256: msg.sha256,
+  })) {
+    if (type === 'ego:nl-run') setEgoAuditBusy(false);
+    else setIntentRunBusy(false);
+  }
+}
+
 function closeReplayScript() {
+  const review = pendingNativeScriptReview;
+  pendingNativeScriptReview = null;
+  if (review?.type === 'ego:nl-run') {
+    send('cancel:ego-audit', {});
+    setEgoAuditBusy(false);
+  } else if (review) {
+    send('replay:run', { reviewCancelled: true, seq: review.msg.seq });
+    setIntentRunBusy(false);
+  }
   const modal = document.getElementById('replayScriptModal');
   const textEl = document.getElementById('replayScriptText');
   if (textEl) textEl.value = '';
   if (modal) modal.hidden = true;
+  document.getElementById('nativeScriptApprove').hidden = true;
+  document.getElementById('nativeScriptReviewWarning').hidden = true;
 }
 
 function copyReplayScript() {
@@ -12096,7 +12158,7 @@ function onEgoNlEngineChange() {
   const steps = document.getElementById('egoNlFlowSteps');
   if (steps) {
     steps.textContent = pw
-      ? '流程（playwright）：自然语言 → 临时脚本 → Playwright 执行 →（可选）体检 → 通过后可转 YAML'
+      ? '流程（playwright）：自然语言 → 临时脚本 → 人工审核 → Playwright 执行 →（可选）体检 → 通过后可转 YAML'
       : '流程（ego）：自然语言 → Intent YAML → ego 执行 → 通过后可转 YAML';
   }
 }
@@ -12126,6 +12188,10 @@ function startEgoNlRun() {
 }
 
 function cancelEgoAuditUi() {
+  if (pendingNativeScriptReview?.type === 'ego:nl-run') {
+    pendingNativeScriptReview = null;
+    closeReplayScript();
+  }
   send('cancel:ego-audit', {});
   setEgoAuditBusy(false);
   showToast('已请求取消', 'err');

@@ -2,13 +2,20 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { spawnSync } from 'child_process';
+import { createRequire } from 'node:module';
+import type { ChildProcess } from 'node:child_process';
 import dotenv from 'dotenv';
 import { parse as parseYaml } from 'yaml';
 import { compileIntentToPlan } from '../../src/runtime/compile-intent.js';
 import { executeAiTest } from '../../src/runtime/execute-ai-test.js';
 import { executeIntentEgo } from '../../src/runtime/execute-intent-ego.js';
 import { recordIntentTrustRun, resolveIntentKey } from '../../src/runtime/intent-trust.js';
+
+const require = createRequire(import.meta.url);
+const { spawnTsx, stopProcessTree } = require('../../pw-files/lib/kill-proc.js') as {
+  spawnTsx(root: string, script: string, args: string[], env: NodeJS.ProcessEnv, options: { localOnly: boolean }): ChildProcess;
+  stopProcessTree(proc: ChildProcess, options?: { termTimeoutMs?: number }): Promise<void>;
+};
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
@@ -84,7 +91,7 @@ function expandRepoRootInYaml(text: string): string {
   return text.replace(/\{repoRoot\}/g, repoRoot);
 }
 
-async function main(): Promise<void> {
+async function main(signal: AbortSignal): Promise<void> {
   if (hasFlag('help') || hasFlag('h')) {
     printHelp();
     return;
@@ -94,7 +101,8 @@ async function main(): Promise<void> {
   if (!intentPath || !fs.existsSync(intentPath)) {
     console.error(`❌ 测试意图文件不存在: ${intentPath || '(未指定)'}`);
     printHelp();
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   const engineRaw = (getArgValue('engine') || 'ego').toLowerCase();
@@ -140,6 +148,7 @@ async function main(): Promise<void> {
           constraints: intent.constraints,
           keepTab: hasFlag('keep-tab'),
           intentPath: intentAbs,
+          signal,
         })
       : await executeAiTest(plan, {
           env,
@@ -149,8 +158,10 @@ async function main(): Promise<void> {
           heal,
           constraints: intent.constraints,
           intentPath: intentAbs,
+          signal,
         });
 
+  signal.throwIfAborted();
   const healed = result.steps.some((s) => s.healed);
   const trust = recordIntentTrustRun({
     intentKey: resolveIntentKey({
@@ -192,16 +203,60 @@ async function main(): Promise<void> {
   }
 
   if (hasFlag('compare') && result.passed) {
-    const compareArgs = ['tsx', 'scripts/report/compare-screenshots.ts'];
-    if (hasFlag('gate')) compareArgs.push('--gate');
-    const cmp = spawnSync('npx', compareArgs, { cwd: process.cwd(), stdio: 'inherit', shell: false });
-    process.exit(cmp.status ?? 1);
+    signal.throwIfAborted();
+    const compareArgs = hasFlag('gate') ? ['--gate'] : [];
+    const proc = spawnTsx(process.cwd(), 'scripts/report/compare-screenshots.ts', compareArgs, process.env, { localOnly: true });
+    proc.stdout?.pipe(process.stdout);
+    proc.stderr?.pipe(process.stderr);
+    let stopping: Promise<void> | undefined;
+    const onAbort = () => { stopping = stopProcessTree(proc, { termTimeoutMs: 1_000 }); };
+    signal.addEventListener('abort', onAbort, { once: true });
+    let status: number | null;
+    try {
+      status = await new Promise<number | null>((resolve, reject) => {
+        proc.once('error', reject);
+        proc.once('close', resolve);
+      });
+    } finally {
+      await (stopping ?? stopProcessTree(proc, { termTimeoutMs: 1_000 }));
+      signal.removeEventListener('abort', onAbort);
+    }
+    signal.throwIfAborted();
+    process.exitCode = status ?? 1;
+    return;
   }
 
-  process.exit(result.passed ? 0 : 1);
+  process.exitCode = result.passed ? 0 : 1;
 }
 
-main().catch((error) => {
-  console.error('❌', error instanceof Error ? error.message : error);
-  process.exit(1);
+async function runWithCancellation(): Promise<void> {
+  const controller = new AbortController();
+  let forcedExit: ReturnType<typeof setTimeout> | undefined;
+  const cancel = (signal: 'SIGINT' | 'SIGTERM') => {
+    if (controller.signal.aborted) return;
+    const exitCode = signal === 'SIGINT' ? 130 : 143;
+    process.exitCode = exitCode;
+    controller.abort(new DOMException(`Intent run cancelled by ${signal}`, 'AbortError'));
+    // 仅显式进程终止时兜底；不把 AI deadline 冒充浏览器整体硬超时。
+    forcedExit = setTimeout(() => process.exit(exitCode), 5_000);
+    forcedExit.unref();
+  };
+  const onInt = () => cancel('SIGINT');
+  const onTerm = () => cancel('SIGTERM');
+  process.on('SIGINT', onInt);
+  process.on('SIGTERM', onTerm);
+  try {
+    await main(controller.signal);
+  } finally {
+    clearTimeout(forcedExit);
+    process.off('SIGINT', onInt);
+    process.off('SIGTERM', onTerm);
+  }
+}
+
+runWithCancellation().then(() => {
+  process.exit(process.exitCode ?? 0);
+}).catch((error) => {
+  console.error(error instanceof Error ? error.message : error);
+  process.exit(process.exitCode || 1);
 });

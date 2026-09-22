@@ -611,7 +611,7 @@ function createRepoHandlers(ctx) {
     },
 
     'flow:config:list': async (ws) => {
-      sendFlowConfigList(ws, {
+      await sendFlowConfigList(ws, {
         resolveRepoRoot,
         getSessionPlaywrightEnv,
         getSessionAccountProfile,
@@ -620,7 +620,7 @@ function createRepoHandlers(ctx) {
     },
 
     'flow:config:status': async (ws, _session, _sessionId, msg) => {
-      sendFlowConfigStatus(ws, msg, {
+      await sendFlowConfigStatus(ws, msg, {
         resolveRepoRoot,
         getSessionPlaywrightEnv,
         getSessionAccountProfile,
@@ -638,7 +638,7 @@ function createRepoHandlers(ctx) {
     },
 
     'flow:config:catalog-save': async (ws, _session, _sessionId, msg) => {
-      saveFlowConfigCatalog(ws, msg, {
+      await saveFlowConfigCatalog(ws, msg, {
         resolveRepoRoot,
         getSessionPlaywrightEnv,
         getSessionAccountProfile,
@@ -710,6 +710,7 @@ function createRepoHandlers(ctx) {
     },
 
     'cancel:ego-audit': async (_ws, session) => {
+      session.nativeScriptReview = null;
       cancelEgoAudit(session);
     },
 

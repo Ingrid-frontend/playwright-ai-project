@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { createHash } from 'crypto';
 import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
 import {
@@ -558,6 +559,9 @@ export async function compareImagesWithDiff(
   const writeDiffImage = opts.writeDiffImage ?? true;
 
   try {
+    const img1Identity = imageCacheIdentity(img1Path);
+    const img2Identity = imageCacheIdentity(img2Path);
+    const configFingerprint = diffConfigFingerprint(threshold, includeAA, opts.scriptKey);
     const prepared = await prepareImagePair(img1Path, img2Path);
     prepareComparePair(prepared, opts.scriptKey);
     const numDiffPixels = runPixelmatch(prepared, threshold, includeAA);
@@ -602,6 +606,9 @@ export async function compareImagesWithDiff(
       height: prepared.height,
       img1Mtime: t1,
       img2Mtime: t2,
+      img1Identity,
+      img2Identity,
+      configFingerprint,
       pixelmatchThreshold: threshold,
       includeAA,
       regions,
@@ -635,6 +642,9 @@ export interface DiffMeta {
   height?: number;
   img1Mtime: number;
   img2Mtime: number;
+  img1Identity?: string;
+  img2Identity?: string;
+  configFingerprint?: string;
   pixelmatchThreshold?: number;
   includeAA?: boolean;
   regions?: DiffRegion[];
@@ -668,53 +678,52 @@ export function readDiffMeta(diffOutputPath: string): DiffMeta | null {
   }
 }
 
-/** 源图未更新且 meta 与 diff 图均有效时跳过 pixelmatch */
+function imageCacheIdentity(filePath: string): string {
+  const stat = fs.statSync(filePath);
+  return JSON.stringify([path.resolve(filePath), stat.size, stat.mtimeMs, stat.ctimeMs]);
+}
+
+function diffConfigFingerprint(threshold: number, includeAA: boolean, scriptKey?: string): string {
+  const config = {
+    threshold,
+    includeAA,
+    ignoreRegions: resolveIgnoreRegions(scriptKey).map(({ x, y, width, height }) => ({ x, y, width, height })),
+    align: resolveCompareAlign(),
+    watermark: resolveWatermarkSuppress(),
+    regions: resolveDiffRegionsConfig(),
+    versions: [DIFF_REGIONS_VERSION, DIFF_NATURE_VERSION, ALIGN_SHIFT_VERSION, WATERMARK_SUPPRESS_VERSION],
+  };
+  return createHash('sha256').update(JSON.stringify(config)).digest('hex');
+}
+
 export function isDiffCacheValid(
   img1Path: string,
   img2Path: string,
   diffOutputPath: string,
-  expected?: { threshold: number; includeAA: boolean },
+  expected: { threshold: number; includeAA: boolean; scriptKey?: string } = { threshold: 0.1, includeAA: true },
 ): boolean {
-  try {
-    const t1 = fs.statSync(img1Path).mtimeMs;
-    const t2 = fs.statSync(img2Path).mtimeMs;
-    const meta = readDiffMeta(diffOutputPath);
-    if (meta && meta.img1Mtime === t1 && meta.img2Mtime === t2) {
-      if (expected) {
-        if (meta.pixelmatchThreshold !== expected.threshold) return false;
-        if (meta.includeAA !== expected.includeAA) return false;
-      }
-      if (meta.difference <= 0) return true;
-      if (resolveDiffRegionsConfig().enabled) {
-        if (!meta.regions) return false;
-        if ((meta.regionsVersion ?? 1) !== DIFF_REGIONS_VERSION) return false;
-        if ((meta.natureVersion ?? 0) !== DIFF_NATURE_VERSION) return false;
-        const align = resolveCompareAlign();
-        const wantAlign = align.enabled ? ALIGN_SHIFT_VERSION : 0;
-        if ((meta.alignShiftVersion ?? 0) !== wantAlign) return false;
-        const ws = resolveWatermarkSuppress();
-        const wantWs = ws.enabled ? WATERMARK_SUPPRESS_VERSION : 0;
-        if ((meta.watermarkSuppressVersion ?? 0) !== wantWs) return false;
-      }
-      return fs.existsSync(diffOutputPath);
-    }
-    if (!fs.existsSync(diffOutputPath)) return false;
-    const diffMtime = fs.statSync(diffOutputPath).mtimeMs;
-    return diffMtime >= t1 && diffMtime >= t2;
-  } catch {
-    return false;
-  }
+  return loadCachedDiffResult(img1Path, img2Path, diffOutputPath, expected) !== null;
 }
 
 export function loadCachedDiffResult(
   img1Path: string,
   img2Path: string,
   diffOutputPath: string,
-  expected?: { threshold: number; includeAA: boolean },
+  expected: { threshold: number; includeAA: boolean; scriptKey?: string } = { threshold: 0.1, includeAA: true },
 ): ImageDiffResult | null {
-  if (!isDiffCacheValid(img1Path, img2Path, diffOutputPath, expected)) return null;
   const meta = readDiffMeta(diffOutputPath);
   if (!meta) return null;
+  try {
+    if (meta.img1Identity !== imageCacheIdentity(img1Path)) return null;
+    if (meta.img2Identity !== imageCacheIdentity(img2Path)) return null;
+    if (meta.configFingerprint !== diffConfigFingerprint(expected.threshold, expected.includeAA, expected.scriptKey)) return null;
+    if (meta.regionsVersion !== DIFF_REGIONS_VERSION || meta.natureVersion !== DIFF_NATURE_VERSION) return null;
+    if (!Number.isFinite(meta.difference) || meta.difference < 0 || meta.difference > 1) return null;
+    if (meta.difference > 0 && (!fs.existsSync(diffOutputPath) || !fs.existsSync(diffOutputPath.replace(/\.png$/i, '-overlay.png')))) return null;
+    if (resolveDiffRegionsConfig().enabled && !meta.regions) return null;
+  } catch {
+    return null;
+  }
   return {
     difference: meta.difference,
     diffImagePath: meta.difference > 0 && fs.existsSync(diffOutputPath) ? diffOutputPath : undefined,

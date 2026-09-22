@@ -23,6 +23,8 @@ export type StageRecord = {
 };
 
 export type DeliveryReceipt = {
+  /** 缺省为旧回执：未完成的文档没有可证明安全的重放检查点。 */
+  checkpointVersion?: 1;
   deliveryId: string;
   envId: string;
   payloadPath: string;
@@ -35,8 +37,14 @@ export type DeliveryReceipt = {
     recordIds?: Array<{ recordId: string; key: string }>;
     documentId?: string;
     docUrl?: string;
+    writtenBlockCount?: number;
+    documentBlocksHash?: string;
+    shareDegraded?: boolean;
+    pendingDocumentWrite?: { operation: 'create' | 'append'; startIndex?: number; count?: number };
+    linkedRecordIds?: string[];
     imageTokens?: Record<string, string>;
     notifiedChannels?: string[];
+    pendingNotifyChannel?: string;
   };
 };
 
@@ -66,6 +74,7 @@ function emptyStage(): StageRecord {
 export function createReceipt(deliveryId: string, envId: string, payloadPath: string): DeliveryReceipt {
   const now = new Date().toISOString();
   return {
+    checkpointVersion: 1,
     deliveryId,
     envId,
     payloadPath,
@@ -89,9 +98,14 @@ export function readReceipt(deliveryId: string): DeliveryReceipt | null {
   const p = receiptPath(deliveryId);
   if (!fs.existsSync(p)) return null;
   try {
-    return JSON.parse(fs.readFileSync(p, 'utf-8')) as DeliveryReceipt;
+    const receipt = JSON.parse(fs.readFileSync(p, 'utf-8')) as DeliveryReceipt;
+    if (receipt.deliveryId !== deliveryId || !receipt.stages || !receipt.artifacts) {
+      throw new Error('回执结构不完整');
+    }
+    return receipt;
   } catch {
-    return null;
+    // 损坏的既有回执不能当作未交付，否则可能重复创建远端文档。
+    throw new Error(`交付回执不可读，需人工核对后恢复：${path.resolve(p)}`);
   }
 }
 
@@ -128,10 +142,14 @@ export function completeStage(
   receipt: DeliveryReceipt,
   stage: DeliveryStage,
   detail?: Record<string, unknown>,
+  artifacts?: Partial<DeliveryReceipt['artifacts']>,
 ): void {
+  // 阶段完成和恢复所需产物必须通过同一次 tmp + rename 落盘。
+  if (artifacts) receipt.artifacts = { ...receipt.artifacts, ...artifacts };
   updateStage(receipt, stage, {
     status: 'done',
     completedAt: new Date().toISOString(),
+    error: undefined,
     detail: detail ? { ...(receipt.stages[stage].detail || {}), ...detail } : receipt.stages[stage].detail,
   });
 }

@@ -223,12 +223,15 @@ async function jsonRequest<T>(
 ): Promise<T> {
   const res = await fetchWithRetry(url, {
     ...init,
+    // 创建/追加不是幂等操作：响应丢失或 5xx 后不能自动重放。
+    ...(init.method === 'POST' ? { retries: 0 } : {}),
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
       ...(init.headers ?? {}),
     },
   });
+  if (!res.ok) throw new Error(`飞书 HTTP ${res.status}，写入结果需核对`);
   const raw = (await res.text()).replace(/^﻿/, '');
   let data: FeishuResponse<T>;
   try {
@@ -256,19 +259,27 @@ export async function createDocxDocument(token: string, title: string): Promise<
   return documentId;
 }
 
-/**
- * 批量写入内容块。飞书单请求可携带多个 descendants，
- * 逐块写入会被频率限制拖垮（每块 500ms），这里按批提交。
- */
+export type BlockWriteProgress = {
+  startIndex?: number;
+  onBeforeBatch?: (startIndex: number, count: number) => void | Promise<void>;
+  onBatchWritten?: (writtenBlockCount: number) => void | Promise<void>;
+};
+
+/** 回调落盘后才发下一批；调用方负责阻止未决批次重放。 */
 export async function addBlocksBatched(
   token: string,
   documentId: string,
   blocks: DocBlock[],
   batchSize = 20,
+  progress: BlockWriteProgress = {},
 ): Promise<number> {
-  if (blocks.length === 0) return 0;
-  let written = 0;
-  for (let i = 0; i < blocks.length; i += batchSize) {
+  const startIndex = progress.startIndex ?? 0;
+  if (!Number.isSafeInteger(batchSize) || batchSize <= 0 ||
+      !Number.isSafeInteger(startIndex) || startIndex < 0 || startIndex > blocks.length) {
+    throw new Error('正文批次大小或恢复位置无效');
+  }
+  let written = startIndex;
+  for (let i = startIndex; i < blocks.length; i += batchSize) {
     const batch = blocks.slice(i, i + batchSize);
     const childrenId: string[] = [];
     const descendants: unknown[] = [];
@@ -277,12 +288,14 @@ export async function addBlocksBatched(
       childrenId.push(blockId);
       descendants.push({ block_id: blockId, children: [], ...block });
     });
+    await progress.onBeforeBatch?.(i, batch.length);
     await jsonRequest(
       `https://open.feishu.cn/open-apis/docx/v1/documents/${documentId}/blocks/${documentId}/descendant`,
       token,
       { method: 'POST', body: JSON.stringify({ index: -1, children_id: childrenId, descendants }) },
     );
     written += batch.length;
+    await progress.onBatchWritten?.(written);
     if (i + batchSize < blocks.length) await new Promise((r) => setTimeout(r, 400));
   }
   return written;

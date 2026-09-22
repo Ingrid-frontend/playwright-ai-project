@@ -5,21 +5,29 @@
  *   npx tsx scripts/verify/verify-customer-report-html.ts                 # 默认 results/ui-regression-customer.html
  *   npx tsx scripts/verify/verify-customer-report-html.ts --report=results/ui-regression-customer-uat.html
  *
- * 未生成报告时自动跳过集成断言（打印 SKIP 并不阻塞 smoke 链），报告存在时逐项核验。
+ * 仅离线 smoke 可用 --allow-missing 跳过默认报告；显式 --report 缺失始终失败。
  */
 import fs from 'fs';
 import path from 'path';
 import assert from 'node:assert/strict';
 
-const reportArg = process.argv.find((a) => a.startsWith('--report='))?.slice('--report='.length);
+const reportIndex = process.argv.indexOf('--report');
+const reportArg = process.argv.find((a) => a.startsWith('--report='))?.slice('--report='.length)
+  ?? (reportIndex >= 0 ? process.argv[reportIndex + 1] : undefined);
+const explicitReport = process.argv.some((a) => a === '--report' || a.startsWith('--report='));
+if (explicitReport && (!reportArg?.trim() || reportArg.startsWith('--'))) {
+  console.error('--report 必须指定报告文件路径');
+  process.exit(1);
+}
 const reportPath = path.resolve(reportArg || 'results/ui-regression-customer.html');
 
 if (!fs.existsSync(reportPath)) {
-  console.log(
-    `⚠️  未找到 ${path.relative(process.cwd(), reportPath)}，跳过集成断言（先跑 npm run report:customer）`,
-  );
-  console.log('✅ verify-customer-report-html 通过（跳过集成部分）');
-  process.exit(0);
+  if (process.argv.includes('--allow-missing') && !explicitReport) {
+    console.log(`SKIP: 未找到 ${reportPath}（离线 smoke 显式 --allow-missing）`);
+    process.exit(0);
+  }
+  console.error(`未找到客户报告: ${reportPath}，请先生成报告`);
+  process.exit(1);
 }
 
 const html = fs.readFileSync(reportPath, 'utf8');

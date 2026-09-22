@@ -43,7 +43,7 @@ function main(): void {
   const env = parseDeliverEnv(process.argv.slice(2));
   const reportPath = `results/ui-regression-customer-${env}.html`;
 
-  runStep(`npm run report:customer -- --env=${env} --reuse-compare`, '生成客户报告');
+  runStep(`npm run report:customer -- --env=${env}`, '生成客户报告');
   runStep(`npx tsx scripts/verify/verify-customer-report-html.ts --report=${reportPath}`, '校验报告 HTML');
   runStep(`node scripts/verify/verify-customer-delivery.cjs --env=${env}`, '校验交付载荷');
   runStep(`npm run deliver:preview -- --env=${env}`, '生成飞书预览');

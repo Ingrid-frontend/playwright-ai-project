@@ -1,5 +1,11 @@
 const { send } = require('./ws-safe');
 
+const DEFAULT_OPTIMIZE_TIMEOUT_MS = 120000;
+
+function sendOptimizeCancelled(ws, signal) {
+  send(ws, 'optimize:cancelled', { reason: signal?.reason?.name === 'TimeoutError' ? 'timeout' : 'cancelled' });
+}
+
 async function optimizeCode(ws, session, code, opts, providerHint, msgKeys, deps) {
   const {
     getOptimizeApiKeys,
@@ -12,13 +18,9 @@ async function optimizeCode(ws, session, code, opts, providerHint, msgKeys, deps
     logLine,
   } = deps;
 
-  session.optimizeRunning = true;
-  session.optimizeCancelled = false;
-
+  if (session.cancelled || session.optimizeRunning) return;
   const keys = getOptimizeApiKeys(session, msgKeys || {}, envKeys);
   const { provider, fallback } = resolveOptimizeProvider(providerHint, keys);
-  send(ws, 'optimize:start', { provider, requested: providerHint || null, fallback });
-  logOptimizeProviderChoice(ws, providerHint, provider, keys, fallback, envKeys);
 
   const checks = [
     opts.selector && '- 将脆弱的 CSS/XPath 选择器替换为 getByRole、getByLabel、getByTestId 等语义化选择器',
@@ -43,20 +45,38 @@ ${checks}
 待优化的原始脚本：
 ${code}`;
 
+  const controller = new AbortController();
+  const { signal } = controller;
+  const timeoutMs = Number.isFinite(deps.timeoutMs) && deps.timeoutMs > 0
+    ? Math.min(deps.timeoutMs, DEFAULT_OPTIMIZE_TIMEOUT_MS) : DEFAULT_OPTIMIZE_TIMEOUT_MS;
+  session.optimizeRunning = true;
+  session.optimizeCancelled = false;
+  session.optimizeController = controller;
+  const timer = setTimeout(() => {
+    controller.abort(Object.assign(new Error('优化请求超时'), { name: 'TimeoutError' }));
+  }, timeoutMs);
+  let anthropicStream;
+  const abortAnthropic = () => anthropicStream?.abort();
+
   try {
+    send(ws, 'optimize:start', { provider, requested: providerHint || null, fallback });
+    logOptimizeProviderChoice(ws, providerHint, provider, keys, fallback, envKeys);
     let fullCode = '';
 
     if (provider === 'claude') {
       if (!keys.anthropic) throw new Error('ANTHROPIC_API_KEY 未配置（请填写 Anthropic 密钥或配置环境变量）');
 
       const client = new Anthropic({ apiKey: keys.anthropic });
-      const stream = await client.messages.stream({
+      anthropicStream = client.messages.stream({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 2000,
         messages: [{ role: 'user', content: prompt }],
-      });
+      }, { signal });
+      signal.addEventListener('abort', abortAnthropic, { once: true });
+      if (signal.aborted) abortAnthropic();
 
-      for await (const chunk of stream) {
+      for await (const chunk of anthropicStream) {
+        signal.throwIfAborted();
         if (session.optimizeCancelled) break;
         if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
           const text = chunk.delta.text;
@@ -69,16 +89,18 @@ ${code}`;
       await streamDeepSeekChat(
         prompt,
         (text) => {
-          if (session.optimizeCancelled) return;
+          if (session.optimizeCancelled || signal.aborted) return;
           fullCode += text;
           send(ws, 'optimize:stream', { chunk: text });
         },
         keys.deepseek,
+        { signal },
       );
     }
 
+    signal.throwIfAborted();
     if (session.optimizeCancelled) {
-      send(ws, 'optimize:cancelled');
+      sendOptimizeCancelled(ws, signal);
       return;
     }
 
@@ -95,18 +117,27 @@ ${code}`;
       demo: false,
     });
   } catch (err) {
-    if (session.optimizeCancelled) {
-      send(ws, 'optimize:cancelled');
+    const timedOut = err?.name === 'TimeoutError' || err?.constructor?.name === 'APIConnectionTimeoutError' ||
+      err?.code === 'ETIMEDOUT';
+    if (session.optimizeCancelled || signal.aborted || timedOut || err?.code === 'ABORT_ERR' ||
+        ['AbortError', 'APIUserAbortError'].includes(err?.name) || err?.constructor?.name === 'APIUserAbortError') {
+      if (!signal.aborted) controller.abort(timedOut
+        ? Object.assign(new Error('优化请求超时'), { name: 'TimeoutError' }) : err);
+      if (signal.reason?.name === 'TimeoutError') logLine(ws, '优化请求超时，未保存优化结果', 'warn');
+      sendOptimizeCancelled(ws, signal);
       return;
     }
     logLine(ws, `[演示模式] ${err.message}，使用示例优化结果`, 'warn');
-    await simulateOptimize(ws, session, code, opts, err.message);
+    await simulateOptimize(ws, session, code, opts, err.message, signal);
   } finally {
+    clearTimeout(timer);
+    signal.removeEventListener('abort', abortAnthropic);
+    if (session.optimizeController === controller) session.optimizeController = null;
     session.optimizeRunning = false;
   }
 }
 
-async function simulateOptimize(ws, session, code, opts, demoReason = 'API 不可用') {
+async function simulateOptimize(ws, session, code, opts, demoReason = 'API 不可用', signal = session.optimizeController?.signal) {
   let result = code;
 
   if (opts.wait) {
@@ -141,8 +172,8 @@ async function simulateOptimize(ws, session, code, opts, demoReason = 'API 不�
   const chars = result.split('');
   let buf = '';
   for (let i = 0; i < chars.length; i++) {
-    if (session.optimizeCancelled) {
-      send(ws, 'optimize:cancelled');
+    if (session.optimizeCancelled || signal?.aborted) {
+      sendOptimizeCancelled(ws, signal);
       return;
     }
     buf += chars[i];
@@ -152,8 +183,8 @@ async function simulateOptimize(ws, session, code, opts, demoReason = 'API 不�
       await new Promise((r) => setTimeout(r, 5));
     }
   }
-  if (session.optimizeCancelled) {
-    send(ws, 'optimize:cancelled');
+  if (session.optimizeCancelled || signal?.aborted) {
+    sendOptimizeCancelled(ws, signal);
     return;
   }
   if (buf) send(ws, 'optimize:stream', { chunk: buf });

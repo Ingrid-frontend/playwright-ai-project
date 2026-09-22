@@ -1,7 +1,10 @@
 import fs from 'fs';
 import path from 'path';
 import type { Browser, BrowserContext, FrameLocator, Page } from 'playwright';
-import { completeJson } from '../ai/llm-client.js';
+import {
+  completeJson, createAiBudget, rethrowAiControlError, throwIfAiCancelled,
+  type AiBudget, type CompleteTextOptions,
+} from '../ai/llm-client.js';
 import { buildHealStepPrompt, buildHealStepSystemPrompt } from '../ai/prompts/heal-step.js';
 import {
   validateSemanticTestPlan,
@@ -33,6 +36,10 @@ export interface AiTestRunOptions {
   heal?: boolean;
   constraints?: string[];
   intentPath?: string;
+  /** 本轮所有 AI 调用共用；默认 createAiBudget()，可注入 deadline/maxCalls/signal。 */
+  aiBudget?: AiBudget;
+  /** AI 等待即时取消；浏览器动作只在边界检查，不是浏览器整体硬超时。 */
+  signal?: AbortSignal;
 }
 
 export interface AiTestStepResult {
@@ -476,13 +483,19 @@ async function healStep(
   stepIndex: number,
   error: string,
   outputDir: string,
+  aiOptions: CompleteTextOptions,
   constraints?: string[],
 ): Promise<HealResult> {
+  throwIfAiCancelled(aiOptions);
+  aiOptions.budget?.assertAvailable();
   const screenshotPath = path.join(outputDir, `heal-step-${String(stepIndex + 1).padStart(2, '0')}.png`);
   await page.screenshot({ path: screenshotPath, fullPage: false }).catch(() => {});
+  throwIfAiCancelled(aiOptions);
   const dom = await page.locator('body').innerHTML().catch(() => '');
+  throwIfAiCancelled(aiOptions);
   const currentUrl = page.url();
   const frameTexts = formatFrameTextSamples(await collectFrameTextSamples(page));
+  throwIfAiCancelled(aiOptions);
   const failedStep: SemanticStep | undefined = plan.steps[stepIndex];
   const prompt = buildHealStepPrompt({
     plan,
@@ -495,6 +508,7 @@ async function healStep(
     constraints,
   });
   return completeJson<HealResult>(prompt, {
+    ...aiOptions,
     system: buildHealStepSystemPrompt(),
     temperature: 0,
     maxTokens: 6_000,
@@ -502,6 +516,8 @@ async function healStep(
 }
 
 export async function executeAiTest(planInput: unknown, options: AiTestRunOptions = {}): Promise<AiTestRunResult> {
+  const aiOptions = { budget: options.aiBudget ?? createAiBudget(), signal: options.signal };
+  throwIfAiCancelled(aiOptions);
   const plan = validateSemanticTestPlan(planInput);
   const env = options.env || plan.env || process.env.PLAYWRIGHT_ENV || 'stage';
   const profile = options.profile || plan.profile || process.env.PLAYWRIGHT_ACCOUNT;
@@ -592,6 +608,7 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
   };
 
   try {
+    throwIfAiCancelled(aiOptions);
     const storageCheck = await verifyStorageStateForRun(browser, storageStatePath, {
       baseURL: baseConfig?.baseURL || process.env.BASE_URL,
       entry: plan.entry || '/',
@@ -636,10 +653,13 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
         attemptsUsed = attempt + 1;
         try {
+          throwIfAiCancelled(aiOptions);
           await executeAction(pwPage, step.action);
+          throwIfAiCancelled(aiOptions);
           passed = true;
           break;
         } catch (error) {
+          rethrowAiControlError(error, aiOptions);
           errorMessage = error instanceof Error ? error.message : String(error);
           console.log(`❌ ${step.id} 第 ${attempt + 1}/${maxAttempts} 次失败: ${errorMessage}`);
 
@@ -651,7 +671,7 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
 
           if (canHeal && attempt === maxAttempts - 1) {
             try {
-              const heal = await healStep(pwPage, plan, index, errorMessage, outputDir, options.constraints);
+              const heal = await healStep(pwPage, plan, index, errorMessage, outputDir, aiOptions, options.constraints);
               healLogs.push({
                 stepId: step.id,
                 attempt: attempt + 1,
@@ -678,11 +698,14 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
                   step = accepted;
                   healed = true;
                   try {
+                    throwIfAiCancelled(aiOptions);
                     await executeAction(pwPage, step.action);
+                    throwIfAiCancelled(aiOptions);
                     passed = true;
                     errorMessage = undefined;
                     break;
                   } catch (healExecError) {
+                    rethrowAiControlError(healExecError, aiOptions);
                     errorMessage =
                       healExecError instanceof Error ? healExecError.message : String(healExecError);
                     healLogs[healLogs.length - 1].execError = errorMessage;
@@ -691,6 +714,7 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
                 }
               }
             } catch (healError) {
+              rethrowAiControlError(healError, aiOptions);
               console.log(`⚠️ 自愈失败: ${healError instanceof Error ? healError.message : String(healError)}`);
             }
           }
@@ -728,7 +752,9 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
       });
     }
 
+    throwIfAiCancelled(aiOptions);
     const flow = await finishFlow();
+    throwIfAiCancelled(aiOptions);
     clearRuntimeStyleChecks();
     const finishedAt = new Date().toISOString();
     const baseResult: AiTestRunResult = {
@@ -746,6 +772,7 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
       baseResult,
     );
   } catch (error) {
+    rethrowAiControlError(error, aiOptions);
     const message = error instanceof Error ? error.message : String(error);
     const flow = await finishFlow();
     const finishedAt = new Date().toISOString();
@@ -761,6 +788,8 @@ export async function executeAiTest(planInput: unknown, options: AiTestRunOption
     };
     return persistResult({ passed: false, error: message, steps: stepResults, ...flow }, baseResult);
   } finally {
-    await browser.close();
+    await browser.close().catch(() => {});
+    clearRuntimeStyleChecks();
+    throwIfAiCancelled(aiOptions);
   }
 }

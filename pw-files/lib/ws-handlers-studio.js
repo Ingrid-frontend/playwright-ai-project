@@ -49,7 +49,7 @@ function createStudioHandlers(ctx) {
     },
 
     'env:set': async (ws, session, _sessionId, msg) => {
-      setSessionPlaywrightEnv(ws, session, String(msg.env || ''));
+      await setSessionPlaywrightEnv(ws, session, String(msg.env || ''));
     },
 
     'account:set': async (ws, session, _sessionId, msg) => {

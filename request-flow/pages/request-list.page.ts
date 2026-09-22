@@ -65,6 +65,13 @@ export const REQUEST_LIST_CATALOG: ListCatalog = {
   dashIsEmpty: true,
 };
 
+export class ExistingRequestDraftError extends Error {
+  constructor(docNo: string) {
+    super(`新建申请单遇到已有草稿单号 ${docNo}，已安全终止，未修改或删除草稿；请使用独立账号或人工确认后处理`);
+    this.name = 'ExistingRequestDraftError';
+  }
+}
+
 export class RequestListPage extends GenericListPage {
   constructor(page: Page) {
     super(page, REQUEST_LIST_CATALOG);
@@ -192,10 +199,14 @@ export class RequestListPage extends GenericListPage {
         message: `事由筛选「${keyword}」后列表无数据行`,
       })
       .toBeGreaterThan(0);
+    const reasonIndex = await this.columnIndex(FILTER_LABELS.reason);
     await expect
-      .poll(async () => await this.reasonKeywordExists(keyword), {
+      .poll(async () => {
+        const reasons = await this.dataRows().locator(`td:nth-child(${reasonIndex + 1})`).allTextContents();
+        return reasons.length > 0 && reasons.every((reason) => reason.includes(keyword));
+      }, {
         timeout: 20_000,
-        message: `事由筛选「${keyword}」后「事由」列无匹配行`,
+        message: `事由筛选「${keyword}」后存在不匹配行，拒绝从默认列表取号`,
       })
       .toBe(true);
   }
@@ -203,11 +214,13 @@ export class RequestListPage extends GenericListPage {
   // openByCode 不再 override：基类已按 catalog 的 detailSelectors/detailTextRe
   // 做事件驱动等待（等 DETAIL 容器 + DETAIL_MARKERS 文案），行为与本类旧实现等价。
 
-  /** 先清筛选再取首行单号（申请单列表默认筛选常导致列表为空） */
-  override async pickFirstDocNo(): Promise<string> {
-    await this.clearListQuery();
-    if (!(await this.hasDataRows())) {
-      await this.clickFilterSearch();
+  /** 默认先清筛选；已按事由筛选并校验的调用须显式保留筛选。 */
+  override async pickFirstDocNo(opts: { keepListFilters?: boolean } = {}): Promise<string> {
+    if (!opts.keepListFilters) {
+      await this.clearListQuery();
+      if (!(await this.hasDataRows())) {
+        await this.clickFilterSearch();
+      }
     }
     await expect
       .poll(async () => await this.dataRows().count().catch(() => 0), {
@@ -253,34 +266,16 @@ export class RequestListPage extends GenericListPage {
     }
   }
 
-  /**
-   * 新建空白申请单。若汇联易复用「编辑中」草稿（单号已存在），先删草稿再重试一次。
-   */
+  /** 新建空白申请单；已有单号的草稿归属不可证明，必须安全终止。 */
   async startNewRequest(formName?: string): Promise<RequestEditPage> {
     await this.closeDetailIfOpen();
     const edit = new RequestEditPage(this.page);
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      await this.clickNewRequest();
-      await edit.confirmNewRequestModal(formName);
-      await edit.expectEditVisible();
-      const docNo = await edit.tryReadDocNo();
-      if (!docNo) return edit;
-      if (!(await edit.deleteDraftIfPresent())) {
-        await this.closeDetailIfOpen();
-        // 等列表真正就绪后再重试（替代旧版 800ms 盲等）
-        await this.waitListSettled();
-        await this.expectListReady();
-        continue;
-      }
-      await this.goto();
-      await this.expectLoaded();
-    }
     await this.clickNewRequest();
     await edit.confirmNewRequestModal(formName);
     await edit.expectEditVisible();
-    const left = await edit.tryReadDocNo();
-    if (!left) return edit;
-    throw new Error(`新建仍复用草稿单号 ${left}`);
+    const docNo = await edit.tryReadDocNo();
+    if (docNo) throw new ExistingRequestDraftError(docNo);
+    return edit;
   }
 
   async clickNewRequest(): Promise<void> {

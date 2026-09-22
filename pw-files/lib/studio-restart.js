@@ -1,30 +1,13 @@
 const { spawn } = require('child_process');
 const path = require('path');
-
-const PROC_KEYS = [
-  'recordProc',
-  'runProc',
-  'repoPipelineProc',
-  'repoTestProc',
-  'repoCompareProc',
-  'repoRerunProc',
-  'aiValidateProc',
-  'intentRunProc',
-  'egoAuditProc',
-  'egoExploreProc',
-  'requestFlowProc',
-  'approvalFlowProc',
-  'uiAuditProc',
-  'debugBrowserProc',
-  'replayRunProc',
-];
+const { SESSION_PROC_KEYS } = require('./session');
 
 function isSessionBusy(session) {
   if (!session) return false;
   if (session.recording || session.optimizeRunning || session.repoBatchRunning) return true;
-  return PROC_KEYS.some((k) => {
+  return SESSION_PROC_KEYS.some((k) => {
     const proc = session[k];
-    return proc && proc.exitCode == null && !proc.killed;
+    return proc && proc.exitCode == null && proc.signalCode == null;
   });
 }
 
@@ -37,7 +20,7 @@ function countBusySessions(sessions) {
 }
 
 function createStudioRestart(opts) {
-  const { studioDir, send, cancelAll } = opts;
+  const { studioDir, send, disposeAll } = opts;
   let pending = false;
 
   function broadcast(wss, type, payload) {
@@ -49,42 +32,46 @@ function createStudioRestart(opts) {
 
   function spawnNext() {
     const script = path.join(studioDir, 'server.js');
-    spawn(process.execPath, [script], {
-      cwd: studioDir,
-      env: process.env,
-      detached: true,
-      stdio: 'ignore',
-    }).unref();
-  }
-
-  function shutdown(server, wss) {
-    broadcast(wss, 'studio:restarting', { at: new Date().toISOString() });
-    setTimeout(() => {
-      try {
-        for (const client of wss.clients) {
-          client.close(1012, 'restarting');
-        }
-      } catch {
-        /* ignore */
-      }
-      wss.close(() => {
-        server.close(() => process.exit(0));
+    return new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, [script], {
+        cwd: studioDir,
+        env: process.env,
+        detached: true,
+        stdio: 'ignore',
       });
-      setTimeout(() => process.exit(0), 2500);
-    }, 120);
+      child.once('error', reject);
+      child.once('spawn', () => { child.unref(); resolve(); });
+    });
   }
 
-  function restart(ws, sessions, server, wss) {
+  async function shutdown(server, wss) {
+    // All session work has stopped. Closing sockets cannot abandon a task or its directory.
+    // Terminate WS transports so an uncooperative peer cannot hold the old listener open.
+    for (const client of wss.clients) client.terminate();
+    await Promise.all([
+      new Promise((resolve, reject) => wss.close((err) => err ? reject(err) : resolve())),
+      new Promise((resolve, reject) => {
+        server.close((err) => err ? reject(err) : resolve());
+        server.closeIdleConnections?.();
+      }),
+    ]);
+  }
+
+  async function restart(_ws, sessions, server, wss) {
     if (pending) return { ok: false, error: 'restarting' };
     pending = true;
     const busy = countBusySessions(sessions);
-    cancelAll(sessions, ws);
-    spawnNext();
-    shutdown(server, wss);
+    broadcast(wss, 'studio:restarting', { at: new Date().toISOString() });
+    // Fail closed: on cleanup failure keep the old server and reject new work.
+    // Never race child-process draining against a forced process.exit deadline.
+    await disposeAll();
+    await shutdown(server, wss);
+    await spawnNext();
+    process.exit(0);
     return { ok: true, busy };
   }
 
-  return { restart, countBusySessions };
+  return { restart, countBusySessions, isPending: () => pending };
 }
 
 module.exports = { createStudioRestart, isSessionBusy, countBusySessions };
