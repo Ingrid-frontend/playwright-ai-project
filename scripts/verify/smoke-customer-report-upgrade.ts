@@ -6,7 +6,6 @@ import {
   appendDeliveryHistory,
   readDeliveryHistory,
   buildDeliveryTrend,
-  type DeliveryHistoryEntry,
 } from '../report/customer-delivery-history.js';
 import {
   deriveStableIssueId,
