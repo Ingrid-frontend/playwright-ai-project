@@ -9,7 +9,6 @@ const {
   sendCustomerReportReady,
   deliveryPreviewOpenPath,
   customerReportOpenPath,
-  DELIVERY_PREVIEW_REL,
 } = require('./compare-report-status');
 
 function resolveEnvId(session, buildRepoSpawnEnv) {

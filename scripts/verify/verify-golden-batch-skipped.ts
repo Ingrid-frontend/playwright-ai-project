@@ -268,4 +268,127 @@ for (const scenario of ['pass', 'blocked', 'seed', 'infra', 'stale', 'false-succ
   assert.equal(capture.saved?.executedRounds, spawned);
 }
 
+async function verifyGoldenListData(): Promise<void> {
+  class GoldenSkip extends Error {}
+  type SpecBody = (fixtures: { page: object; authenticatedPage: object; flowRunDir: string }) => Promise<void>;
+
+  for (const flow of ['request', 'approval', 'expense']) {
+    const filename = path.join(root, `${flow}-flow/tests/${flow}/golden-regression.spec.ts`);
+    const compiled = ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
+      fileName: filename,
+      compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
+    }).outputText;
+    for (const scenario of ['live', 'configured', 'seed', 'empty', 'recover', 'malformed']) {
+      const cases: SpecBody[] = [];
+      const annotations: Array<{ type: string; description?: string }> = [];
+      const searched: string[] = [];
+      const opened: string[] = [];
+      const filtered: string[] = [];
+      let rows = scenario !== 'empty' && scenario !== 'recover';
+      let reads = 0;
+      let recoveries = 0;
+      const expectedDocNo = scenario === 'configured' ? 'CONFIGURED001'
+        : scenario === 'seed' ? 'SEED001' : 'VISIBLE001';
+      const test = Object.assign((_title: string, run: SpecBody) => cases.push(run), {
+        describe: Object.assign((_title: string, run: () => void) => run(), { configure() {} }),
+        beforeAll() {},
+        skip(condition: boolean, reason: string) { if (condition) throw new GoldenSkip(reason); },
+        info: () => ({ annotations }),
+      });
+      class ListPage {
+        async goto() {}
+        async expectLoaded() {}
+        async expectGoldenLoaded() {}
+        async expectListReady() {}
+        async ensureOnList() {}
+        async hasDataRows() { return rows; }
+        async recoverIfEmptyList() {
+          recoveries += 1;
+          if (scenario === 'recover') rows = true;
+          return rows;
+        }
+        async activateBestPendingSegment() {
+          if (!rows) await this.recoverIfEmptyList();
+        }
+        async isPendingGoldenEmpty() { return !rows; }
+        async readFirstDocNo() {
+          reads += 1;
+          assert.ok(rows, '不得从空列表读取单号');
+          if (scenario === 'malformed') throw new Error('列表行中未解析到单号');
+          return 'VISIBLE001';
+        }
+        async ensureRowVisible(docNo: string) { assert.equal(docNo, expectedDocNo); }
+        async search(docNo: string) { searched.push(docNo); }
+        async filterByDocNo(docNo: string) { searched.push(docNo); }
+        async expectRowContains(docNo: string) { assert.equal(docNo, expectedDocNo); }
+        async openByCode(docNo: string) { opened.push(docNo); }
+        async expectDetailVisible() {}
+        async restoreDefaultList() {}
+        async clearFilters() {}
+        async switchTab() {}
+        async expectFilterBarVisible() {}
+        async openFilterPanel() {}
+        async closeFilterPanel() {}
+        async readReasonForDocNo(docNo: string) {
+          assert.equal(docNo, expectedDocNo);
+          return '现场事由';
+        }
+        async readFirstReasonKeyword() { return '现场事由'; }
+        async reasonKeywordExists(keyword: string) { return keyword === '现场事由'; }
+        async filterByReason(keyword: string) { filtered.push(keyword); }
+        async expectReasonFilterResult(keyword: string) { assert.equal(keyword, '现场事由'); }
+      }
+      const fixtures = { test, expect: () => ({ toHaveURL: async () => undefined }) };
+      const mocks: Record<string, unknown> = {
+        '../../fixtures': fixtures,
+        '../../fixtures/index': fixtures,
+        [`../../pages/${flow}-list.page`]: {
+          [`${flow[0].toUpperCase()}${flow.slice(1)}ListPage`]: ListPage,
+        },
+        '../../pages/request-edit.page': { RequestEditPage: class { async expectEditVisible() {} } },
+        '../../utils/approval-catalog': { TABS: { pending: 'pending', approved: 'approved', cc: 'cc' } },
+        '../../utils/env': { env: {
+          [`${flow}DocNo`]: scenario === 'configured' ? expectedDocNo : '', requestFilterKeyword: '无匹配关键字',
+        } },
+        '../../utils/golden-seed': { resolveGoldenSeed: () => ({
+          docNo: scenario === 'seed' || scenario === 'configured' ? 'SEED001' : '', keyword: '',
+        }) },
+        [`../../../src/utils/flow-step${flow === 'expense' ? '.js' : ''}`]: {
+          bindFlowStepCapture() {}, flowStep: async (_title: string, run: () => Promise<void>) => run(),
+        },
+      };
+      const module = { exports: {} };
+      new vm.Script(compiled, { filename }).runInNewContext({
+        module, exports: module.exports,
+        require: (id: string) => {
+          assert.ok(Object.hasOwn(mocks, id), `禁止加载未替身依赖: ${id}`);
+          return mocks[id];
+        },
+        process: { env: { PLAYWRIGHT_ENV: 'stage9084', FLOW_ACCOUNT_SLUG: 'offline' } },
+      }, { timeout: 5_000 });
+      assert.equal(cases.length, flow === 'request' ? 4 : flow === 'approval' ? 1 : 2);
+      const context = { page: {}, authenticatedPage: {}, flowRunDir: '/offline' };
+      const run = async () => { for (const body of cases) await body(context); };
+      const label = `${flow}: ${scenario}`;
+      if (scenario === 'empty') {
+        await assert.rejects(run(), (error: unknown) => error instanceof GoldenSkip && /无可用单号/.test(error.message), label);
+        assert.equal(reads, 0, label);
+        assert.deepEqual(searched, [], label);
+      } else if (scenario === 'malformed') {
+        await assert.rejects(run(), (error: unknown) =>
+          !(error instanceof GoldenSkip) && error instanceof Error && /未解析到单号/.test(error.message), label);
+        assert.deepEqual(searched, [], label);
+      } else {
+        await run();
+        assert.equal(reads, scenario === 'configured' || scenario === 'seed' ? 0 : 1, label);
+        assert.ok(searched.length > 0 && searched.every((docNo) => docNo === expectedDocNo), label);
+        if (flow !== 'expense') assert.deepEqual(opened, [expectedDocNo], label);
+        if (flow === 'request') assert.deepEqual(filtered, ['现场事由'], label);
+        if (scenario === 'recover') assert.ok(recoveries > 0, label);
+      }
+    }
+  }
+}
+
+await verifyGoldenListData();
 console.log('golden batch and flake acceptance verification passed');

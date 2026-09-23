@@ -16,7 +16,6 @@ test.describe.configure({ mode: 'serial' });
 const goldenCtx = { docNo: '' };
 const GOLDEN_SKIP_MSG =
   '待审批无可用单号，跳过 Golden（APPROVAL_DOC_NO / golden-seeds 或确保有待审批数据）';
-const SEED_MISSING_MSG = 'Golden 种子缺失（SEED_MISSING）';
 
 function configuredDocNo(): string {
   const fromEnv = env.approvalDocNo.trim();
@@ -37,7 +36,7 @@ async function prepareGolden(approval: ApprovalListPage) {
 
   if (!goldenCtx.docNo) goldenCtx.docNo = configuredDocNo();
   if (!goldenCtx.docNo) {
-    test.skip(true, SEED_MISSING_MSG);
+    goldenCtx.docNo = await approval.readFirstDocNo();
   }
 
   try {

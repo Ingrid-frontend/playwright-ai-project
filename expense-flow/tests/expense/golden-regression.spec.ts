@@ -4,7 +4,7 @@ import { env } from '../../utils/env';
 import { resolveGoldenSeed } from '../../utils/golden-seed';
 import { bindFlowStepCapture, flowStep } from '../../../src/utils/flow-step.js';
 
-const SEED_MISSING_MSG = 'Golden 种子缺失（SEED_MISSING）';
+const GOLDEN_SKIP_MSG = '列表无可用单号，跳过 Golden 搜索';
 
 function configuredDocNo(): string {
   const fromEnv = env.expenseDocNo.trim();
@@ -48,8 +48,12 @@ test.describe('报销流程 golden 回归', () => {
     await list.goto();
     await list.expectLoaded();
 
-    const docNo = configuredDocNo();
-    test.skip(!docNo, SEED_MISSING_MSG);
+    let docNo = configuredDocNo();
+    if (!docNo) {
+      if (!(await list.hasDataRows())) await list.recoverIfEmptyList();
+      test.skip(!(await list.hasDataRows()), GOLDEN_SKIP_MSG);
+      docNo = await list.readFirstDocNo();
+    }
 
     await flowStep('搜索单号', async () => {
       await list.search(docNo);

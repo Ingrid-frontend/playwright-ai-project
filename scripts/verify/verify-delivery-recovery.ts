@@ -26,7 +26,7 @@ export async function verifyDeliveryRecovery(): Promise<void> {
     process.chdir(tempDir);
     const { createReceipt, readReceipt, writeReceipt, completeStage, receiptPath } =
       await import('../feishu/delivery-receipt.js');
-    const { deliverDocument, linkDocumentRecords, notifyDeliveryChannels, parseArgs } =
+    const { deliverDocument, linkDocumentRecords, notifyDeliveryChannels, parseArgs, assertDeliveryNotificationOptions } =
       await import('../feishu/deliver-customer-report.js');
     const { addBlocksBatched, createDocxDocument, shareDocxDocument } =
       await import('../feishu/doc-delivery.js');
@@ -37,6 +37,16 @@ export async function verifyDeliveryRecovery(): Promise<void> {
     assert.equal(cli.withDoc, false);
     assert.equal(cli.withBitable, false);
     assert.equal(cli.notify, true);
+    process.env.FEISHU_CHAT_ID_CUSTOMER = 'mock-customer';
+    assert.throws(() => assertDeliveryNotificationOptions(cli), /禁止.*--no-doc/);
+    assert.doesNotThrow(() => assertDeliveryNotificationOptions({ ...cli, apply: false }));
+    assert.doesNotThrow(() => assertDeliveryNotificationOptions({ ...cli, notify: false }));
+    assert.doesNotThrow(() => assertDeliveryNotificationOptions({ ...cli, withDoc: true }));
+    process.env.FEISHU_CHAT_ID_CUSTOMER = ' ';
+    process.env.FEISHU_CHAT_ID_INTERNAL = 'mock-internal';
+    assert.doesNotThrow(() => assertDeliveryNotificationOptions(cli), '内部-only 允许 --no-doc');
+    assert.equal(networkCalls, 0, '选项门禁不得触发网络请求');
+    assert.deepEqual(fs.readdirSync(tempDir), [], '选项门禁不得写入回执');
 
     const fresh = (id: string) => createReceipt(id, 'offline', path.join(tempDir, 'unused-payload.json'));
     const reload = (receipt: DeliveryReceipt): DeliveryReceipt => {
@@ -47,7 +57,16 @@ export async function verifyDeliveryRecovery(): Promise<void> {
     const blocks: DocBlock[] = Array.from({ length: 21 }, (_, i) => ({
       block_type: 2, text: { elements: [{ text_run: { content: `offline-${i}` } }] },
     }));
-    const share = async () => ({ url: 'https://example.invalid/doc', shareDegraded: true });
+    const docUrl = 'https://example.invalid/doc';
+    const share = async () => ({ url: docUrl, shareDegraded: true });
+    const confirmedShare = { url: docUrl, shareDegraded: false };
+    const confirmDocument = (receipt: DeliveryReceipt) => completeStage(receipt, 'doc-created', undefined, {
+      documentId: `doc-${receipt.deliveryId}`, docUrl, shareDegraded: false,
+    });
+    const noBodyWrites = {
+      createDocument: async (): Promise<string> => { throw new Error('恢复禁止重新 create'); },
+      appendBlocks: async (): Promise<number> => { throw new Error('恢复禁止重新 append'); },
+    };
     const json = (data: unknown) => new Response(JSON.stringify({ code: 0, data }));
 
     // 每次 completeStage 只发布一个同时含 done 和产物的文件。
@@ -113,9 +132,35 @@ export async function verifyDeliveryRecovery(): Promise<void> {
     assert.equal(completed.shareDegraded, true);
     assert.equal(reload(created).artifacts.shareDegraded, true);
     assert.equal(reload(created).stages['doc-created'].status, 'done');
-    const callsBeforeDoneResume = networkCalls;
-    assert.deepEqual(await deliverDocument('mock', 'title', blocks, reload(created)), completed);
-    assert.equal(networkCalls, callsBeforeDoneResume);
+
+    // done 但分享降级仍可恢复；分享中断不丢正文 done，重启只确认分享。
+    await assert.rejects(deliverDocument('mock', 'title', blocks, reload(created), {
+      ...noBodyWrites,
+      shareDocument: async () => { throw new Error('重新确认分享中断'); },
+    }), /重新确认分享中断/);
+    assert.equal(reload(created).stages['doc-created'].status, 'done');
+    assert.equal(reload(created).artifacts.shareDegraded, true);
+    let shareConfirmations = 0;
+    const confirmed = await deliverDocument('mock', 'title', blocks, reload(created), {
+      ...noBodyWrites,
+      shareDocument: async (_token, documentId) => {
+        shareConfirmations += 1;
+        assert.equal(documentId, completed.documentId);
+        return confirmedShare;
+      },
+    });
+    assert.equal(shareConfirmations, 1);
+    assert.equal(confirmed.shareDegraded, false);
+    assert.equal(reload(created).artifacts.shareDegraded, false);
+    assert.equal(reload(created).artifacts.docUrl, confirmed.url);
+    assert.equal(reload(created).artifacts.documentId, completed.documentId);
+    assert.equal(reload(created).artifacts.writtenBlockCount, blocks.length);
+    assert.equal(reload(created).stages['doc-created'].detail?.blocks, blocks.length);
+    assert.equal(createdRemote.creates, 1);
+    assert.equal(createdRemote.batches.flat().length, blocks.length);
+    const callsBeforeDoneResume: number = networkCalls;
+    assert.deepEqual(await deliverDocument('mock', 'title', blocks, reload(created)), confirmed);
+    assert.equal(networkCalls, callsBeforeDoneResume, '已确认分享的 done 恢复零网络');
 
     // 第一批确认落盘后中断；下一次仅提交未写前缀之后的块。
     const partial = fresh('after-batch');
@@ -199,13 +244,26 @@ export async function verifyDeliveryRecovery(): Promise<void> {
     assert.equal(networkCalls, callsBeforeInterruptedResume);
     assert.equal(reload(interrupted).stages['doc-created'].status, 'unknown');
 
-    // 缺少新字段的旧 done 仍表示整份完成，包含旧版 done/artifacts 间隙。
+    // 旧 done/artifacts 间隙复用正文；缺少分享确认时仅恢复既有文档的分享。
     const legacy = fresh('legacy-done');
     delete legacy.checkpointVersion;
     completeStage(legacy, 'doc-created', { documentId: 'old-doc', url: 'https://example.invalid/old' });
-    const callsBeforeLegacyResume = networkCalls;
-    const oldDocument = await deliverDocument('mock', 'title', blocks, reload(legacy));
+    const callsBeforeLegacyResume: number = networkCalls;
+    let legacyShares = 0;
+    const oldDocument = await deliverDocument('mock', 'title', blocks, reload(legacy), {
+      ...noBodyWrites,
+      shareDocument: async (_token, documentId) => {
+        legacyShares += 1;
+        assert.equal(documentId, 'old-doc');
+        return { url: 'https://example.invalid/old', shareDegraded: false };
+      },
+    });
     assert.equal(oldDocument.documentId, 'old-doc');
+    assert.equal(legacyShares, 1);
+    assert.equal(reload(legacy).artifacts.documentId, 'old-doc');
+    assert.equal(reload(legacy).artifacts.docUrl, oldDocument.url);
+    assert.equal(reload(legacy).artifacts.shareDegraded, false);
+    assert.deepEqual(await deliverDocument('mock', 'title', blocks, reload(legacy)), oldDocument);
     assert.equal(networkCalls, callsBeforeLegacyResume);
     const legacyPartial = fresh('legacy-partial');
     delete legacyPartial.checkpointVersion;
@@ -261,12 +319,109 @@ export async function verifyDeliveryRecovery(): Promise<void> {
     assert.deepEqual(updated, ['r1', 'r2', 'r2']);
     assert.equal(reload(linking).stages['doc-linked'].status, 'done');
 
-    // 客户成功立即持久化；内部明确失败后续只补内部。
-    const card: FeishuNotifyPayload = { msg_type: 'text', content: { text: 'offline' } };
+    const card: FeishuNotifyPayload = { msg_type: 'text', content: { text: `offline ${docUrl}` } };
     const notifications: Array<{ channel: NotifyChannel; card: FeishuNotifyPayload }> = [
       { channel: 'customer', card }, { channel: 'internal', card },
     ];
+
+    // 客户必须有正文完成、有效 HTTPS 链接和严格 false 的分享确认。
+    const blockedCases: Array<{ name: string; prepare: (receipt: DeliveryReceipt) => void }> = [
+      { name: 'no-document', prepare: (r) => { r.stages['doc-created'].status = 'pending'; r.artifacts = {}; } },
+      { name: 'document-pending', prepare: (r) => { r.stages['doc-created'].status = 'pending'; } },
+      { name: 'document-failed', prepare: (r) => { r.stages['doc-created'].status = 'failed'; } },
+      { name: 'document-unknown', prepare: (r) => { r.stages['doc-created'].status = 'unknown'; } },
+      { name: 'missing-url', prepare: (r) => { delete r.artifacts.docUrl; } },
+      ...['', ' ', '/doc', '//example.invalid/doc', 'http://example.invalid/doc',
+        'javascript:alert(1)', 'not-a-url', 'https://', 'https:///doc', 'https://[invalid',
+        'https://example.invalid/ bad'].map((url, index) => ({
+        name: `invalid-url-${index}`,
+        prepare: (r: DeliveryReceipt) => { r.artifacts.docUrl = url; },
+      })),
+      { name: 'missing-share', prepare: (r) => { delete r.artifacts.shareDegraded; } },
+      { name: 'degraded-share', prepare: (r) => { r.artifacts.shareDegraded = true; } },
+      { name: 'null-share', prepare: (r) => { r.artifacts.shareDegraded = null as unknown as boolean; } },
+    ];
+    for (const { name, prepare } of blockedCases) {
+      const blocked = fresh(`blocked-${name}`);
+      confirmDocument(blocked);
+      prepare(blocked);
+      writeReceipt(blocked);
+      const callsBeforeBlocked: number = networkCalls;
+      let sends = 0;
+      await assert.rejects(notifyDeliveryChannels(reload(blocked), notifications, async () => {
+        sends += 1;
+        return true;
+      }), /客户群通知被阻断/);
+      const saved = reload(blocked);
+      assert.equal(sends, 0, `${name} 不得调用客户发送器`);
+      assert.equal(networkCalls, callsBeforeBlocked);
+      assert.equal(saved.stages.notified.status, 'failed', `${name} 必须可恢复而非 unknown`);
+      assert.equal(saved.artifacts.pendingNotifyChannel, undefined);
+      assert.deepEqual(saved.artifacts.notifiedChannels ?? [], []);
+      confirmDocument(saved);
+      const resumedChannels: string[] = [];
+      await notifyDeliveryChannels(reload(saved), notifications, async (_card, channel) => {
+        resumedChannels.push(channel!);
+        assert.equal(reload(saved).artifacts.pendingNotifyChannel, channel);
+        return true;
+      });
+      assert.deepEqual(resumedChannels, ['customer', 'internal']);
+      assert.equal(reload(saved).stages.notified.status, 'done');
+      await notifyDeliveryChannels(reload(saved), notifications, async () => {
+        throw new Error('已确认通知不得重发');
+      });
+    }
+
+    // 分享持续降级时一直阻断；确认同一文档后可恢复通知，不再写正文。
+    const degraded = fresh('degraded-notification');
+    confirmDocument(degraded);
+    degraded.artifacts.shareDegraded = true;
+    writeReceipt(degraded);
+    let degradedSends = 0;
+    const sendAfterShare = async () => { degradedSends += 1; return true; };
+    await assert.rejects(notifyDeliveryChannels(degraded, notifications, sendAfterShare), /客户群通知被阻断/);
+    await deliverDocument('mock', 'title', blocks, reload(degraded), { ...noBodyWrites, shareDocument: share });
+    await assert.rejects(notifyDeliveryChannels(reload(degraded), notifications, sendAfterShare), /客户群通知被阻断/);
+    assert.equal(degradedSends, 0);
+    await deliverDocument('mock', 'title', blocks, reload(degraded), {
+      ...noBodyWrites,
+      shareDocument: async (_token, documentId) => {
+        assert.equal(documentId, degraded.artifacts.documentId);
+        return confirmedShare;
+      },
+    });
+    await notifyDeliveryChannels(reload(degraded), notifications, sendAfterShare);
+    assert.equal(degradedSends, 2);
+    assert.equal(reload(degraded).stages.notified.status, 'done');
+
+    // 内部-only 不要求文档；先发内部再遇客户门禁也保留内部成功检查点。
+    const internalOnly = fresh('internal-only');
+    const internalCard: FeishuNotifyPayload = { msg_type: 'text', content: { text: 'offline internal without document' } };
+    const internalChannels: string[] = [];
+    await notifyDeliveryChannels(internalOnly, [{ channel: 'internal', card: internalCard }], async (_card, channel) => {
+      internalChannels.push(channel!);
+      return true;
+    });
+    assert.deepEqual(internalChannels, ['internal']);
+    assert.equal(reload(internalOnly).stages.notified.status, 'done');
+    assert.equal(reload(internalOnly).stages['doc-created'].status, 'pending');
+    const internalFirst = fresh('internal-first');
+    const orderedChannels: string[] = [];
+    const sendOrdered = async (_card: FeishuNotifyPayload, channel?: NotifyChannel) => {
+      orderedChannels.push(channel!);
+      return true;
+    };
+    const internalFirstNotifications = [...notifications].reverse();
+    await assert.rejects(notifyDeliveryChannels(internalFirst, internalFirstNotifications, sendOrdered), /客户群通知被阻断/);
+    assert.deepEqual(reload(internalFirst).artifacts.notifiedChannels, ['internal']);
+    assert.equal(reload(internalFirst).artifacts.pendingNotifyChannel, undefined);
+    confirmDocument(internalFirst);
+    await notifyDeliveryChannels(reload(internalFirst), internalFirstNotifications, sendOrdered);
+    assert.deepEqual(orderedChannels, ['internal', 'customer']);
+
+    // 客户成功立即持久化；内部明确失败后续只补内部，不再检查客户门禁。
     const notifying = fresh('notifying');
+    confirmDocument(notifying);
     const channels: string[] = [];
     await assert.rejects(notifyDeliveryChannels(notifying, notifications, async (_card, channel) => {
       channels.push(channel!);
@@ -274,7 +429,12 @@ export async function verifyDeliveryRecovery(): Promise<void> {
       return channel === 'customer';
     }), /部分渠道返回发送失败/);
     assert.equal(reload(notifying).stages.notified.status, 'failed');
-    await notifyDeliveryChannels(reload(notifying), notifications, async (_card, channel) => {
+    const internalResume = reload(notifying);
+    internalResume.stages['doc-created'].status = 'pending';
+    delete internalResume.artifacts.docUrl;
+    delete internalResume.artifacts.shareDegraded;
+    writeReceipt(internalResume);
+    await notifyDeliveryChannels(reload(internalResume), notifications, async (_card, channel) => {
       channels.push(channel!);
       return true;
     });
@@ -283,6 +443,7 @@ export async function verifyDeliveryRecovery(): Promise<void> {
 
     // 渠道响应丢失保留已成功渠道，未知渠道需核对而非自动重发。
     const lostNotify = fresh('lost-notify');
+    confirmDocument(lostNotify);
     await assert.rejects(notifyDeliveryChannels(lostNotify, notifications, async (_card, channel) => {
       if (channel === 'internal') throw new Error('通知响应丢失');
       return true;
@@ -295,6 +456,29 @@ export async function verifyDeliveryRecovery(): Promise<void> {
       return true;
     }), /人工核对/);
     assert.equal(resent, false);
+
+    // 客户发送结果未知优先于分享门禁：不能降为可重试失败，也不能自动重发。
+    const lostCustomer = fresh('lost-customer');
+    confirmDocument(lostCustomer);
+    let customerAttempts = 0;
+    const loseCustomerResponse = async () => {
+      customerAttempts += 1;
+      throw new Error('客户通知响应丢失');
+    };
+    await assert.rejects(notifyDeliveryChannels(lostCustomer, notifications, loseCustomerResponse), /人工核对/);
+    const unknownCustomer = reload(lostCustomer);
+    assert.equal(unknownCustomer.stages.notified.status, 'unknown');
+    assert.equal(unknownCustomer.artifacts.pendingNotifyChannel, 'customer');
+    delete unknownCustomer.artifacts.docUrl;
+    delete unknownCustomer.artifacts.shareDegraded;
+    writeReceipt(unknownCustomer);
+    await assert.rejects(notifyDeliveryChannels(reload(unknownCustomer), notifications, loseCustomerResponse), /人工核对/);
+    assert.equal(customerAttempts, 1);
+    assert.equal(reload(unknownCustomer).stages.notified.status, 'unknown');
+    assert.equal(reload(unknownCustomer).artifacts.pendingNotifyChannel, 'customer');
+    confirmDocument(unknownCustomer);
+    await assert.rejects(notifyDeliveryChannels(reload(unknownCustomer), notifications, loseCustomerResponse), /人工核对/);
+    assert.equal(customerAttempts, 1, '补齐分享确认也不能重放 unknown 客户通知');
 
     // 真实共享 fetch 封装下，非幂等 POST 也只能尝试一次（不是仅 mock 上层发送器）。
     const { BitableClient } = await import('../feishu/bitable-client.js');
@@ -343,7 +527,7 @@ export async function verifyDeliveryRecovery(): Promise<void> {
           assert.equal(saved.stages.notified.status, 'failed');
         } else {
           assert.equal(saved.stages.notified.status, 'unknown');
-          const beforeResume = networkCalls;
+          const beforeResume: number = networkCalls;
           await assert.rejects(notifyDeliveryChannels(saved, [{ channel: 'internal', card }], sendFeishuNotify), /人工核对/);
           assert.equal(networkCalls, beforeResume);
         }

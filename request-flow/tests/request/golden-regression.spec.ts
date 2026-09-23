@@ -15,7 +15,6 @@ test.describe.configure({ mode: 'serial' });
 const goldenCtx = { docNo: '', keyword: '' };
 const keepFilters = { keepListFilters: true } as const;
 const GOLDEN_SKIP_MSG = '列表无可用单号，跳过后续 Golden 步骤';
-const SEED_MISSING_MSG = 'Golden 种子缺失（SEED_MISSING）';
 
 const KEYWORD_SKIP_MSG = '无法从列表读取可用事由关键字';
 
@@ -65,13 +64,13 @@ async function trySeedGoldenContext(list: RequestListPage) {
   }
   if (!goldenCtx.keyword) goldenCtx.keyword = env.requestFilterKeyword.trim();
 
-  if (!goldenCtx.docNo) {
-    test.skip(true, SEED_MISSING_MSG);
-    return;
-  }
-
   if (!(await list.hasDataRows())) {
     await list.recoverIfEmptyList();
+  }
+
+  if (!goldenCtx.docNo) {
+    test.skip(!(await list.hasDataRows()), GOLDEN_SKIP_MSG);
+    goldenCtx.docNo = await list.readFirstDocNo();
   }
 
   if (!goldenCtx.keyword) {

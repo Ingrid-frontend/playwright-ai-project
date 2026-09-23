@@ -90,6 +90,22 @@ export function parseArgs(argv: string[]): CliOptions {
   };
 }
 
+export function assertDeliveryNotificationOptions(opts: CliOptions): void {
+  if (opts.apply && opts.notify && !opts.withDoc && resolveFeishuChatId('customer')) {
+    throw new Error('客户群通知必须包含已确认分享的报告链接，禁止 --apply --notify 与 --no-doc 组合；仅内部通知可跳过文档。');
+  }
+}
+
+function isHttpsDocumentUrl(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^https:\/\/[^/\\\s]+/i.test(value) || /[\s\\]/.test(value)) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && Boolean(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
 export function collectImagePaths(payload: DeliveryPayload): string[] {
   const out = new Set<string>();
   for (const item of payload.items) {
@@ -133,7 +149,7 @@ type DocumentServices = {
   shareDocument: typeof shareDocxDocument;
 };
 
-/** doc-created 仍表示正文及分享均已完成；未决 POST 只能人工核对，不能自动重放。 */
+/** doc-created 表示正文完成且已尝试分享；分享须单独确认，未决 POST 禁止自动重放。 */
 export async function deliverDocument(
   token: string,
   title: string,
@@ -152,10 +168,15 @@ export async function deliverDocument(
     const documentId = receipt.artifacts.documentId ||
       (typeof detail?.documentId === 'string' ? detail.documentId : undefined);
     if (!documentId) requireReconciliation(receipt, 'doc-created', '已完成回执缺少 documentId');
-    const url = receipt.artifacts.docUrl ||
-      (typeof detail?.url === 'string' ? detail.url : `https://feishu.cn/docx/${documentId}`);
-    // 旧回执没有记录分享结果，不能默认为已成功授权。
-    return { documentId, url, shareDegraded: receipt.artifacts.shareDegraded ?? true };
+    if (receipt.artifacts.shareDegraded === false && isHttpsDocumentUrl(receipt.artifacts.docUrl)) {
+      return { documentId, url: receipt.artifacts.docUrl, shareDegraded: false };
+    }
+    // 分享失败仍保留正文 done，避免旧回执恢复时重写正文。
+    const share = await shareDocument(token, documentId);
+    completeStage(receipt, 'doc-created', { ...detail, documentId, url: share.url }, {
+      documentId, docUrl: share.url, shareDegraded: share.shareDegraded,
+    });
+    return { documentId, ...share };
   }
   if (receipt.checkpointVersion !== 1) {
     requireReconciliation(receipt, 'doc-created', '旧版未完成回执没有写入检查点');
@@ -253,6 +274,12 @@ export async function notifyDeliveryChannels(
   startStage(receipt, 'notified');
   for (const { channel, card } of notifications) {
     if (notified.has(channel)) continue;
+    if (channel === 'customer' && (!isStageDone(receipt, 'doc-created') ||
+        !isHttpsDocumentUrl(receipt.artifacts.docUrl) || receipt.artifacts.shareDegraded !== false)) {
+      const error = '客户群通知被阻断：报告文档必须已完成、具有有效 HTTPS 绝对链接且分享已确认；请恢复文档分享后重试。';
+      failStage(receipt, 'notified', error);
+      throw new Error(error);
+    }
     receipt.artifacts.pendingNotifyChannel = channel;
     writeReceipt(receipt);
     let ok: boolean;
@@ -278,6 +305,7 @@ export async function notifyDeliveryChannels(
 export async function main() {
   dotenv.config({ path: path.join(process.cwd(), '.env') });
   const opts = parseArgs(process.argv.slice(2));
+  assertDeliveryNotificationOptions(opts);
   const payload = readCustomerDeliveryPayload(opts.payloadPath);
   if (!payload) {
     console.error(`未找到交付载荷 ${opts.payloadPath}，请先执行 npm run report:customer`);
