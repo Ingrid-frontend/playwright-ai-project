@@ -151,4 +151,7 @@ async function main(): Promise<void> {
   process.exit(result.exitCode);
 }
 
-main();
+main().catch((e) => {
+  console.error('❌', e instanceof Error ? e.message : e);
+  process.exit(1);
+});

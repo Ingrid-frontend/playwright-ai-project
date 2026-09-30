@@ -1,11 +1,13 @@
 import { execSync } from 'child_process';
+import path from 'path';
 import type { NotifyOn, ResolvedTestJob } from './test-jobs-config.js';
 import {
   groupSpecEntriesByProfile,
   type AccountProfileFilter,
   type SpecRunEntry,
 } from './job-utils.js';
-import { resolveAccountProfile } from '../../src/utils/env-config.js';
+import { resolveAccountProfile, resolveStorageState } from '../../src/utils/env-config.js';
+import { validateStorageStateFile } from '../../src/utils/login-detection.js';
 
 const UNKNOWN_PROFILE = 'unknown';
 
@@ -68,6 +70,24 @@ function buildTestRunEnv(playwrightEnv: string, accountProfile?: string): NodeJS
   return env;
 }
 
+/**
+ * P002：用例逐个 spawn Playwright 进程时，每个进程都会重跑 setup 登录依赖链（浏览器启动+探测）。
+ * job 链路未配置 login 步骤、且 storageState 已通过结构校验时，用 --no-deps 跳过重复 setup；
+ * 登录态由 job 链路（或调用方）保证，失效时由用例自身的登录态探测断言快速失败。
+ * 注：此处只做零浏览器开销的结构校验（存在+大小+cookie/localStorage 计数），符合项目
+ * storageState 有效性规范；不做运行时探测（那会启动浏览器，抵消 --no-deps 的提速收益）。
+ */
+function canSkipSetupDeps(playwrightEnv: string, accountProfile?: string): boolean {
+  if (process.env.PLAYWRIGHT_FORCE_SETUP === '1') return false;
+  try {
+    const profile = resolveAccountProfile(playwrightEnv, accountProfile);
+    const storagePath = path.resolve(process.cwd(), resolveStorageState(playwrightEnv, profile));
+    return validateStorageStateFile(storagePath).valid;
+  } catch {
+    return false;
+  }
+}
+
 export async function executeTests(
   opts: DirectRunOptions,
   entries: SpecRunEntry[],
@@ -117,6 +137,7 @@ export async function executeTests(
 
         const reporter = opts.verbose ? '--reporter=list' : '';
         const env = buildTestRunEnv(runtimeEnv, entry.accountProfile);
+        const noDeps = !opts.steps.login && canSkipSetupDeps(runtimeEnv, entry.accountProfile);
         if (env.PLAYWRIGHT_ACCOUNT) {
           console.log(`   PLAYWRIGHT_ACCOUNT=${env.PLAYWRIGHT_ACCOUNT}`);
         }
@@ -125,7 +146,7 @@ export async function executeTests(
         for (let attempt = 0; attempt <= maxRetry; attempt++) {
           if (attempt > 0) console.log(`   🔁 重试 ${attempt}/${maxRetry}…`);
           try {
-            execSync(`npx playwright test "${relPath}" --project=${project} --workers=1 ${reporter}`.trim(), {
+            execSync(`npx playwright test "${relPath}" --project=${project} --workers=1${noDeps ? ' --no-deps' : ''} ${reporter}`.trim(), {
               stdio: 'inherit',
               env,
             });
