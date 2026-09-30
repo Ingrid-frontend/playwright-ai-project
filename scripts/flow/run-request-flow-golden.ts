@@ -39,7 +39,7 @@ type RunOneResult = {
 function parseArgs(argv: string[]) {
   let env = process.env.PLAYWRIGHT_ENV?.trim() || "dev";
   let profile = "";
-  let filterKeyword = process.env.REQUEST_FILTER_KEYWORD?.trim() || "测试";
+  let filterKeyword = process.env.REQUEST_FILTER_KEYWORD?.trim() || "";
   let allEnvs = false;
   let grep = "";
 

@@ -192,6 +192,16 @@ export class RequestListPage extends GenericListPage {
     return reason.slice(0, Math.min(maxLen, reason.length));
   }
 
+  /** 列表「事由」列为空时，打开详情读表单事由后回到列表 */
+  async readReasonForDocNoFromDetail(docNo: string, maxLen = 8): Promise<string> {
+    await this.search(docNo, { keepListFilters: true });
+    await this.openByCode(docNo);
+    const edit = new RequestEditPage(this.page);
+    const reason = await edit.readReason(maxLen);
+    await this.ensureOnList();
+    return reason;
+  }
+
   async expectReasonFilterResult(keyword: string): Promise<void> {
     await expect
       .poll(async () => await this.dataRows().count().catch(() => 0), {

@@ -291,6 +291,14 @@ export class RequestEditPage {
     await expect(input, '事由未写入表单').toHaveValue(value, { timeout: 5_000 });
   }
 
+  async readReason(maxLen = 8): Promise<string> {
+    await this.expectEditVisible();
+    const input = await this.resolveReasonInput();
+    const val = ((await input.inputValue().catch(() => '')) || '').trim();
+    if (!val) throw new Error('详情事由为空');
+    return val.slice(0, Math.min(maxLen, val.length));
+  }
+
   private async ensureReasonFilled() {
     const input = await this.resolveReasonInput().catch(() => null);
     if (!input || !(await input.isVisible({ timeout: 1_000 }).catch(() => false))) return;

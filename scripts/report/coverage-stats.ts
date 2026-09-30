@@ -301,6 +301,21 @@ function natureVerb(nature?: ChangeNature): string {
   }
 }
 
+/** 把一组区域的性质汇总成短语：单一性质直接用，混合时标「等」 */
+function natureSummary(regions: DiffRegion[]): string {
+  if (regions.length === 0) return '内容发生了变化';
+  const natures = regions.map((r) => r.nature).filter(Boolean) as ChangeNature[];
+  if (natures.length === 0) return '内容发生了变化';
+  const counts = new Map<string, number>();
+  for (const n of natures) {
+    const key = n === 'appeared' ? '新增内容' : n === 'vanished' ? '内容消失' : '内容变化';
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  if (counts.size === 1) return counts.keys().next().value!;
+  const parts = [...counts.entries()].map(([k, v]) => (v > 1 ? `${k}×${v}` : k));
+  return parts.join('、') + '等';
+}
+
 function shiftLabelOf(regions: DiffRegion[]): string | undefined {
   const shifts = regions
     .filter((r) => r.nature === 'shifted')
@@ -408,13 +423,13 @@ export function classifyDifference(
   }
   const multiSpotMin = cfg.multiSpotRegressRatio ?? 0.01;
   if (difference >= cfg.majorRatio && actionable.length >= 3 && difference >= multiSpotMin) {
-    evidence.reason = `页面有 ${actionable.length} 处内容变化，最大在${where}`;
+    evidence.reason = `页面有 ${actionable.length} 处${natureSummary(actionable)}，最大在${where}`;
     evidence.impactTier = 'blocking';
     return { status: 'regress', evidence };
   }
 
   // 内容确实变了，但没到阻断阈值：与「只是挪了位置」区分开，避免严重度被抹平
-  evidence.reason = `页面有 ${actionable.length} 处小范围内容变化，最大在${where}，不影响整体布局`;
+  evidence.reason = `页面有 ${actionable.length} 处${natureSummary(actionable)}（最大在${where}），不影响整体布局`;
   evidence.impactTier = 'degraded';
   return { status: 'minor', evidence };
 }

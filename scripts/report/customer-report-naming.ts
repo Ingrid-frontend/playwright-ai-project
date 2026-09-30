@@ -195,6 +195,28 @@ export function extractEnvLabel(scriptKeys: string[]): string {
 }
 
 /**
+ * 技术标识符 → 业务名称映射。
+ * AI 审计描述里的 CSS 选择器/元素 ID 客户看不懂，需要翻译成业务语言。
+ */
+const TECH_IDENTIFIER_LABELS: Record<string, string> = {
+  'request-filter-panel': '筛选面板',
+  'request-list-root': '列表容器',
+  'request-list-table': '列表表格',
+  'request-detail-root': '详情容器',
+  'approval-list-root': '审批列表',
+  'approval-filter-panel': '审批筛选面板',
+};
+
+/** 把审计描述里的技术标识符替换成业务名称 */
+export function translateAuditDescription(description: string): string {
+  let result = description;
+  for (const [tech, business] of Object.entries(TECH_IDENTIFIER_LABELS)) {
+    result = result.replace(new RegExp(tech, 'g'), business);
+  }
+  return result;
+}
+
+/**
  * 差异区在页面上的方位描述，如「页面上部右侧」。
  * 判定理由与页面文案共用，保证客户看到的措辞一致。
  */

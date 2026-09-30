@@ -393,6 +393,21 @@ export class GenericListPage {
     return reason.slice(0, Math.min(maxLen, reason.length));
   }
 
+  /** 前 20 行中首个非空「事由」，首行空时兜底 */
+  async readFirstAvailableReasonKeyword(header = '事由', maxLen = 8): Promise<string> {
+    const idx = await this.columnIndex(header);
+    const rows = this.dataRows();
+    const n = await rows.count();
+    for (let i = 0; i < Math.min(n, 20); i += 1) {
+      const text = ((await rows.nth(i).locator('td').nth(idx).innerText()) || '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (!text || (this.catalog.dashIsEmpty && text === '-')) continue;
+      return text.slice(0, Math.min(maxLen, text.length));
+    }
+    throw new Error(`列表前 ${Math.min(n, 20)} 行「${header}」均为空`);
+  }
+
   /** 指定列是否出现包含 keyword 的单元格（最多扫 20 行） */
   async columnContains(header: string, keyword: string): Promise<boolean> {
     if (!keyword) return false;

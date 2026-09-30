@@ -25,7 +25,7 @@ const api = createFlowRun({
       filterKeyword:
         msg.filterKeyword != null
           ? String(msg.filterKeyword).trim()
-          : String(process.env.REQUEST_FILTER_KEYWORD || '测试').trim(),
+          : String(process.env.REQUEST_FILTER_KEYWORD || '').trim(),
     };
   },
 });

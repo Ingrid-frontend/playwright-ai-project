@@ -176,6 +176,13 @@ body {
   font-weight: 600;
   color: var(--text);
 }
+.reading-guide > summary .guide-hint {
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--muted);
+  margin-left: 8px;
+}
+.reading-guide[open] > summary .guide-hint { display: none; }
 .reading-guide[open] > summary { margin-bottom: 8px; }
 .reading-guide ol {
   margin: 0;
@@ -901,6 +908,22 @@ body {
   align-items: center;
 }
 .minor-block[open] > summary { margin-bottom: 12px; }
+.minor-summary-box {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin: 18px 0 14px;
+}
+.minor-summary-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+.minor-summary-text { flex: 1; }
 .incomplete-notice {
   margin: 16px 0;
   padding: 12px 14px;

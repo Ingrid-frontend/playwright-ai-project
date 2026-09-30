@@ -180,12 +180,16 @@ export function buildActionItems(model: CustomerReportModel): string[] {
   const needsBaseline = uncoveredRatio >= COVERAGE_GAP_RATIO && meaningfulUncovered > 0;
   if (model.regressionGroups.length === 0 && c.minorSteps > 0) {
     const degradedGroups = model.minorGroups.filter((g) => g.impactTier === 'degraded');
+    const benignGroups = model.minorGroups.filter((g) => g.impactTier === 'benign');
     if (degradedGroups.length > 0) {
+      const sampleReason = degradedGroups[0]?.reason || '';
+      const hasListData = sampleReason.includes('列表') || sampleReason.includes('数据');
+      const context = hasListData ? '（多为列表数据或内容更新）' : '';
       items.push(
-        `${c.degradedSteps} 步内容确实有变化但未阻断操作（按根因归为 ${degradedGroups.length} 个问题），建议评估后修复`,
+        `${c.degradedSteps} 步内容确实有变化但未阻断操作（按根因归为 ${degradedGroups.length} 个问题）${context}，建议评估后修复`,
       );
     }
-    if (c.benignSteps > 0) {
+    if (benignGroups.length > 0) {
       items.push(`${c.benignSteps} 步仅为位置偏移或显示效果差异，内容未变，无需处理`);
     }
     if (model.accounting.ungroupedSteps > 0) {
@@ -195,11 +199,13 @@ export function buildActionItems(model: CustomerReportModel): string[] {
   if (needsBaseline) {
     items.push(`检测覆盖不足，建议优先为 ${meaningfulUncovered} 个核心页面建立验收基线`);
   } else if (model.regressionGroups.length === 0 && c.comparedSteps > 0) {
-    items.push(
-      c.degradedSteps > 0
-        ? '本次未发现阻断问题，其余差异建议业务确认后发布'
-        : '本次未发现需要修复的问题，可按计划发版',
-    );
+    if (c.degradedSteps > 0 && c.degradedSteps <= 3) {
+      items.push('本次未发现阻断问题；少量内容变化建议业务确认后发布');
+    } else if (c.degradedSteps > 3) {
+      items.push(`本次未发现阻断问题；${c.degradedSteps} 处内容变化建议分批确认后发布`);
+    } else {
+      items.push('本次未发现需要修复的问题，可按计划发版');
+    }
   }
   return items.slice(0, 5);
 }
