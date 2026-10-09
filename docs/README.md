@@ -35,6 +35,7 @@ npm test --env=dev       # 指定环境跑
 | [flow-debug-acceleration.md](./flow-debug-acceleration.md) | 流程写完跑不通时。`flow:debug-fast` 关掉 video/trace/截图、压缩超时，只留失败定位所需 |
 | [ui-contract-from-source.md](./ui-contract-from-source.md) | 想让选择器更稳时。用前端源码建索引生成 UI 契约（**索引，不是把源码灌给 AI**），含两个只有实机才能发现的坑 |
 | [golden-set-definition.md](./golden-set-definition.md) | 定义「哪些页面算 golden」时。登录 / 工作台 / 审批列表三个基准页与门禁约定 |
+| [page-catalog.md](./page-catalog.md) | 想自动发现全站页面 / 让 flow:new 不再手填入口时。`catalog:crawl` 产出全站页面清单（Smoke 巡检与用例生产的页面来源） |
 
 ```bash
 npm run flow:list                                    # 看已注册的流程

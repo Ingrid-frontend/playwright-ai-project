@@ -43,6 +43,7 @@
     "flow:list": "tsx scripts/flow/flow-debug-fast.ts --list",
     "flow:verify": "tsx scripts/flow/flow-verify.ts",
     "catalog:drift-check": "tsx scripts/flow/run-catalog-drift-check.ts",
+    "catalog:crawl": "tsx scripts/catalog/crawl-page-catalog.ts",
     "flow:selector-audit": "tsx scripts/flow/run-failure-selector-audit.ts",
     "flow:flake-check": "tsx scripts/flow/run-golden-flake-check.ts",
     "request-flow:golden": "tsx scripts/flow/run-request-flow-golden.ts",

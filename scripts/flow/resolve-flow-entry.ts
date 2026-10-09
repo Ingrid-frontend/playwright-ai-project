@@ -37,6 +37,29 @@ export function loadMenuMaps(repoRoot?: string): MenuMaps {
   const root = repoRoot || resolveRepoRoot();
   const items = JSON.parse(fs.readFileSync(path.join(root, 'datasource/menu_items.json'), 'utf8'));
   const routes = JSON.parse(fs.readFileSync(path.join(root, 'datasource/menu_routes.json'), 'utf8'));
+
+  // page-catalog.json（npm run catalog:crawl 产出的全站页面清单）优先合并：
+  // 实爬覆盖更全、含人工标记；menu_routes.json 作为底册兜底。
+  const catalogPath = path.join(root, 'datasource/page-catalog.json');
+  if (fs.existsSync(catalogPath)) {
+    try {
+      const catalog = JSON.parse(fs.readFileSync(catalogPath, 'utf8')) as {
+        pages?: Array<{ id?: string; label?: string; route?: string; status?: string }>;
+      };
+      const mergedRoutes: Record<string, string> = { ...routes };
+      const mergedItems: Record<string, string> = { ...items };
+      for (const p of catalog.pages || []) {
+        if (!p?.id || !p?.route) continue;
+        if (p.status === 'retired') continue;
+        mergedRoutes[p.id] = p.route;
+        if (p.label) mergedItems[p.id] = p.label;
+      }
+      return { items: mergedItems, routes: mergedRoutes };
+    } catch {
+      // catalog 损坏时回退静态底册
+    }
+  }
+
   return { items, routes };
 }
 

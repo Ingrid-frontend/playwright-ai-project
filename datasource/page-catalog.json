@@ -1,0 +1,242 @@
+{
+  "version": 1,
+  "app": "huilianyi",
+  "env": "stage",
+  "crawledAt": "2026-10-09T09:35:57.720Z",
+  "pages": [
+    {
+      "id": "home",
+      "label": "首页",
+      "group": "",
+      "route": "/main/home",
+      "source": "route-table",
+      "status": "active",
+      "verify": "unseen",
+      "lastSeenAt": null,
+      "suspectDuplicateOf": null,
+      "smoke": {
+        "enabled": true,
+        "weight": "normal",
+        "keyElements": [],
+        "keyElementsAiSuggested": false
+      },
+      "goldenFlowId": null
+    },
+    {
+      "id": "my-account",
+      "label": "账本",
+      "group": "",
+      "route": "/main/my-account",
+      "source": "route-table",
+      "status": "active",
+      "verify": "unseen",
+      "lastSeenAt": null,
+      "suspectDuplicateOf": null,
+      "smoke": {
+        "enabled": true,
+        "weight": "normal",
+        "keyElements": [],
+        "keyElementsAiSuggested": false
+      },
+      "goldenFlowId": null
+    },
+    {
+      "id": "expense-report",
+      "label": "报销单",
+      "group": "",
+      "route": "/main/expense-parent-report/expense-report",
+      "source": "route-table",
+      "status": "active",
+      "verify": "unseen",
+      "lastSeenAt": null,
+      "suspectDuplicateOf": null,
+      "smoke": {
+        "enabled": true,
+        "weight": "core",
+        "keyElements": [],
+        "keyElementsAiSuggested": false
+      },
+      "goldenFlowId": null
+    },
+    {
+      "id": "request",
+      "label": "申请单",
+      "group": "",
+      "route": "/main/request",
+      "source": "route-table",
+      "status": "active",
+      "verify": "unseen",
+      "lastSeenAt": null,
+      "suspectDuplicateOf": null,
+      "smoke": {
+        "enabled": true,
+        "weight": "core",
+        "keyElements": [],
+        "keyElementsAiSuggested": false
+      },
+      "goldenFlowId": null
+    },
+    {
+      "id": "accrual-business",
+      "label": "预提单",
+      "group": "",
+      "route": "/main/accrual",
+      "source": "route-table",
+      "status": "active",
+      "verify": "unseen",
+      "lastSeenAt": null,
+      "suspectDuplicateOf": null,
+      "smoke": {
+        "enabled": true,
+        "weight": "normal",
+        "keyElements": [],
+        "keyElementsAiSuggested": false
+      },
+      "goldenFlowId": null
+    },
+    {
+      "id": "my-borrow",
+      "label": "借款单",
+      "group": "",
+      "route": "/main/loan-billing/my-borrow",
+      "source": "route-table",
+      "status": "active",
+      "verify": "unseen",
+      "lastSeenAt": null,
+      "suspectDuplicateOf": null,
+      "smoke": {
+        "enabled": true,
+        "weight": "normal",
+        "keyElements": [],
+        "keyElementsAiSuggested": false
+      },
+      "goldenFlowId": null
+    },
+    {
+      "id": "borrow-management",
+      "label": "待还款",
+      "group": "",
+      "route": "/main/loan-billing/borrow-management",
+      "source": "route-table",
+      "status": "active",
+      "verify": "unseen",
+      "lastSeenAt": null,
+      "suspectDuplicateOf": null,
+      "smoke": {
+        "enabled": true,
+        "weight": "normal",
+        "keyElements": [],
+        "keyElementsAiSuggested": false
+      },
+      "goldenFlowId": null
+    },
+    {
+      "id": "ap-request",
+      "label": "对公申请单",
+      "group": "",
+      "route": "/main/ap-request",
+      "source": "route-table",
+      "status": "active",
+      "verify": "unseen",
+      "lastSeenAt": null,
+      "suspectDuplicateOf": null,
+      "smoke": {
+        "enabled": true,
+        "weight": "normal",
+        "keyElements": [],
+        "keyElementsAiSuggested": false
+      },
+      "goldenFlowId": null
+    },
+    {
+      "id": "corporate-payment-report",
+      "label": "对公支付单",
+      "group": "",
+      "route": "/main/corporate-payment-report",
+      "source": "route-table",
+      "status": "active",
+      "verify": "unseen",
+      "lastSeenAt": null,
+      "suspectDuplicateOf": null,
+      "smoke": {
+        "enabled": true,
+        "weight": "normal",
+        "keyElements": [],
+        "keyElementsAiSuggested": false
+      },
+      "goldenFlowId": null
+    },
+    {
+      "id": "my-contract",
+      "label": "合同",
+      "group": "",
+      "route": "/main/contract/my-contract",
+      "source": "route-table",
+      "status": "active",
+      "verify": "unseen",
+      "lastSeenAt": null,
+      "suspectDuplicateOf": null,
+      "smoke": {
+        "enabled": true,
+        "weight": "normal",
+        "keyElements": [],
+        "keyElementsAiSuggested": false
+      },
+      "goldenFlowId": null
+    },
+    {
+      "id": "budget-journal",
+      "label": "预算单",
+      "group": "",
+      "route": "/main/budget/budget-journal",
+      "source": "route-table",
+      "status": "active",
+      "verify": "unseen",
+      "lastSeenAt": null,
+      "suspectDuplicateOf": null,
+      "smoke": {
+        "enabled": true,
+        "weight": "normal",
+        "keyElements": [],
+        "keyElementsAiSuggested": false
+      },
+      "goldenFlowId": null
+    },
+    {
+      "id": "approve",
+      "label": "我的审批",
+      "group": "",
+      "route": "/main/approve",
+      "source": "route-table",
+      "status": "active",
+      "verify": "unseen",
+      "lastSeenAt": null,
+      "suspectDuplicateOf": null,
+      "smoke": {
+        "enabled": true,
+        "weight": "core",
+        "keyElements": [],
+        "keyElementsAiSuggested": false
+      },
+      "goldenFlowId": null
+    },
+    {
+      "id": "my-agency",
+      "label": "我的代理",
+      "group": "",
+      "route": "/main/my-agency",
+      "source": "route-table",
+      "status": "active",
+      "verify": "unseen",
+      "lastSeenAt": null,
+      "suspectDuplicateOf": null,
+      "smoke": {
+        "enabled": true,
+        "weight": "normal",
+        "keyElements": [],
+        "keyElementsAiSuggested": false
+      },
+      "goldenFlowId": null
+    }
+  ]
+}
