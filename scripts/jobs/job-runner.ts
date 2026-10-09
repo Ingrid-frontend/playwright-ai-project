@@ -34,6 +34,7 @@ import { assertSpecEnvMatch, listKnownEnvs } from '../../src/utils/test-env-path
 import { executeTests, runCommandBool, type DirectRunOptions } from './job-runner-execute.js';
 import { isFlowRunner, runFlowJob } from './job-runner-flow.js';
 import { runCatalogDriftJob } from './job-runner-catalog.js';
+import { runSmokePatrolJob } from './job-runner-smoke.js';
 import { listReportEnvs } from '../feishu/deliver-ready.js';
 
 export type { DirectRunOptions } from './job-runner-execute.js';
@@ -109,6 +110,13 @@ export async function runJobById(
 
   if (job.runner === 'catalog-drift-check') {
     return runCatalogDriftJob(job, {
+      ...ctxPartial,
+      playwrightEnv: effectiveEnv,
+    });
+  }
+
+  if (job.runner === 'ai-smoke-patrol') {
+    return runSmokePatrolJob(job, {
       ...ctxPartial,
       playwrightEnv: effectiveEnv,
     });

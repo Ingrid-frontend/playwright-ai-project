@@ -2,7 +2,7 @@
 
 > 索引：[docs/README.md](./README.md)
 
-> 生成时间：2026-09-10 · 共 **146** 条 npm scripts / **202** 个 TS 脚本（`scripts/` 下）。
+> 生成时间：2026-10-09 · 共 **163** 条 npm scripts / **243** 个 TS 脚本（`scripts/` 下）。
 > 本地图按业务域分组，是「有哪些命令可用」的唯一索引。
 > 增删 npm scripts 时请同步更新本文件（`docs:check` 会校验 docs 索引完整性）。
 
@@ -137,6 +137,15 @@
 | `flow:new` | `tsx scripts/flow/new-flow.ts` |
 | `flow:run` | `tsx scripts/flow/run-flow-cli.ts` |
 | `flow:verify` | `tsx scripts/flow/flow-verify.ts` |
+
+### catalog — 页面目录与全站 Smoke 巡检（4）
+
+| 命令 | 内容 |
+|---|---|
+| `catalog:crawl` | `tsx scripts/catalog/crawl-page-catalog.ts` |
+| `catalog:suggest-key-elements` | `tsx scripts/catalog/suggest-key-elements.ts` |
+| `smoke:patrol` | `tsx scripts/smoke/run-smoke-patrol.ts` |
+| `report:smoke` | `tsx scripts/report/build-smoke-report.ts` |
 
 ### request-flow — 申请单流程（4）
 

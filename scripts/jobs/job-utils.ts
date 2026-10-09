@@ -146,15 +146,17 @@ export function normalizeSpecPatterns(specs: string[], playwrightEnv: string): s
 }
 
 export function resolveSpecPaths(
-  specs: 'all' | string[],
+  specs: 'all' | string[] | string,
   optimizedDir: string,
   playwrightEnv?: string,
 ): string[] {
   const env = playwrightEnv || 'stage';
   const allSpecs = collectOptimizedSpecsForEnv(optimizedDir, playwrightEnv);
   if (specs === 'all') return allSpecs;
+  // 容忍单个字符串 spec（如 flow 类 job 的 "request/golden-regression.spec.ts"）
+  const specList = Array.isArray(specs) ? specs : [specs];
 
-  const patterns = normalizeSpecPatterns(specs, env);
+  const patterns = normalizeSpecPatterns(specList, env);
   const matched = allSpecs.filter((abs) => {
     const rel = path.relative(process.cwd(), abs).replace(/\\/g, '/');
     const normRel = relPathForJobSpecMatch(rel, env);

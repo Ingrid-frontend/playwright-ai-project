@@ -192,6 +192,29 @@
         "refreshLogin": false
       },
       "notifyOn": ["failure"]
+    },
+    {
+      "id": "ai-smoke-patrol",
+      "enabled": false,
+      "description": "L2 全站 Smoke 巡检（page-catalog 驱动，零 LLM；调参期 notifyOn=failure，放量前手动触发观察）",
+      "runner": "ai-smoke-patrol",
+      "tier": "L2",
+      "schedule": "0 6 * * 1-5",
+      "timezone": "Asia/Shanghai",
+      "playwrightEnv": "dev",
+      "accountProfile": null,
+      "specs": "all",
+      "steps": {
+        "login": false,
+        "compare": false,
+        "compareGate": false,
+        "recordLastGreen": false,
+        "feishuNotify": true,
+        "createFeishuDoc": false,
+        "writeFeishuBitable": false,
+        "refreshLogin": false
+      },
+      "notifyOn": ["failure"]
     }
   ]
 }
