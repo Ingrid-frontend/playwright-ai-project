@@ -103,6 +103,7 @@
     "report:daily": "tsx scripts/report/daily-summary-card.ts",
     "report:weekly-digest": "tsx scripts/report/weekly-digest.ts",
     "verify:customer-delivery": "node scripts/verify/verify-customer-delivery.cjs",
+    "verify:flow-registry": "tsx scripts/verify/verify-flow-registry-generalize.ts",
     "verify:schedules": "tsx scripts/verify/verify-schedules.ts",
     "report:customer:bundle": "tsx scripts/report/bundle-customer-report.ts",
     "report:customer:pdf": "tsx scripts/report/export-customer-report-pdf.ts",

@@ -1,28 +1,15 @@
 import { execSync } from "child_process";
-import {
-  clearLock,
-  writeLock,
-  writeStatus,
-  writeSummary,
-  type JobSummaryFile,
-} from "./job-lock.js";
+import type { JobSummaryFile } from "./job-lock.js";
 import { buildJobFailReasons, sendJobFeishuNotification } from "./job-notify.js";
-import { formatRunId } from "./job-utils.js";
+import {
+  beginJobRun,
+  finalizeJobRun,
+  shouldNotify,
+  type JobRunnerCtx,
+} from "./job-runner-kit.js";
 import type { ResolvedTestJob } from "./test-jobs-config.js";
 
-type CatalogJobCtx = {
-  runId?: string;
-  trigger: "manual" | "schedule" | "cli" | "run-optimized-tests";
-  persistState?: boolean;
-  force?: boolean;
-  playwrightEnv?: string;
-};
-
-function shouldNotify(notifyOn: ResolvedTestJob["notifyOn"], success: boolean): boolean {
-  if (success && notifyOn.includes("success")) return true;
-  if (!success && notifyOn.includes("failure")) return true;
-  return false;
-}
+type CatalogJobCtx = JobRunnerCtx;
 
 export async function runCatalogDriftJob(
   job: ResolvedTestJob,
@@ -36,31 +23,8 @@ export async function runCatalogDriftJob(
   feishuDocPassed: boolean;
   summary: JobSummaryFile;
 }> {
-  const runId = ctxPartial.runId ?? formatRunId();
-  const ctx = {
-    jobId: job.id,
-    runId,
-    trigger: ctxPartial.trigger,
-    persistState: ctxPartial.persistState !== false,
-  };
-  const persist = ctx.persistState !== false && Boolean(job.id);
-
-  if (persist && job.id) {
-    writeLock(job.id, {
-      pid: process.pid,
-      runId,
-      startedAt: new Date().toISOString(),
-      trigger: ctx.trigger,
-    });
-    writeStatus(job.id, runId, {
-      jobId: job.id,
-      runId,
-      status: "running",
-      trigger: ctx.trigger,
-      startedAt: new Date().toISOString(),
-      pid: process.pid,
-    });
-  }
+  const run = beginJobRun(job, ctxPartial);
+  const runId = run.runId;
 
   console.log(`\n🔍 开始执行任务「${job.id}」· catalog 漂移检测 (runId=${runId})\n`);
 
@@ -93,7 +57,7 @@ export async function runCatalogDriftJob(
   const summary: JobSummaryFile = {
     jobId: job.id,
     runId,
-    trigger: ctx.trigger,
+    trigger: run.trigger,
     testPassed,
     comparePassed: true,
     compareSkipped: true,
@@ -112,7 +76,7 @@ export async function runCatalogDriftJob(
     await sendJobFeishuNotification(job.feishuMode, {
       jobId: job.id,
       jobDescription: job.description,
-      trigger: ctx.trigger,
+      trigger: run.trigger,
       testPassed,
       comparePassed: true,
       compareSkipped: true,
@@ -123,19 +87,7 @@ export async function runCatalogDriftJob(
     });
   }
 
-  if (persist && job.id) {
-    writeSummary(job.id, runId, summary);
-    writeStatus(job.id, runId, {
-      jobId: job.id,
-      runId,
-      status: testPassed ? "success" : "failed",
-      trigger: ctx.trigger,
-      startedAt: new Date().toISOString(),
-      finishedAt: new Date().toISOString(),
-      pid: process.pid,
-    });
-    clearLock(job.id);
-  }
+  finalizeJobRun(job, run, summary, testPassed ? "success" : "failed");
 
   console.log(`\n📊 任务结束：${testPassed ? "success" : "failed"}`);
 

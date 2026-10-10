@@ -45,10 +45,6 @@ function shouldNotify(notifyOn: NotifyOn[], success: boolean): boolean {
 }
 
 
-export function isFlowRunner(runner?: string | null, jobId?: string): boolean {
-  return resolveFlowRunnerKey(runner, jobId) != null;
-}
-
 function listFlowLoginProfiles(
   repoRoot: string,
   runnerKey: FlowRunnerKey,
@@ -70,6 +66,16 @@ function parseFlowRunnerKey(runnerKey: FlowRunnerKey): { flowId: string; kind: "
   const m = runnerKey.match(/^(.+)-(golden|write)$/);
   if (!m) return null;
   return { flowId: m[1]!, kind: m[2] as "golden" | "write" };
+}
+
+/**
+ * runner key → 流程类别。golden-flow 才走流程截图对比 / 交付链（替代旧的
+ * request/approval/expense 三连 or 硬编码；内置三条流程的 kind 均为 golden-flow，
+ * 布尔结果与旧逻辑等价，见 scripts/verify/verify-flow-registry-generalize.ts）。
+ */
+export function resolveFlowKind(runnerKey: FlowRunnerKey): "golden-flow" | "intent-suite" | null {
+  const flowId = parseFlowRunnerKey(runnerKey)?.flowId;
+  return flowId ? getFlow(flowId)?.kind ?? null : null;
 }
 
 function resolveFlowSpecPaths(runnerKey: FlowRunnerKey, job: ResolvedTestJob): string[] {
@@ -274,10 +280,7 @@ export async function runFlowJob(
   const testPassed = exitCode === 0;
   const specPaths = resolveFlowSpecPaths(runnerKey, job);
 
-  const isGoldenRunner =
-    runnerKey === "request-flow-golden"
-    || runnerKey === "approval-flow-golden"
-    || runnerKey === "expense-flow-golden";
+  const isGoldenRunner = resolveFlowKind(runnerKey) === "golden-flow";
   const compareSkipped = !job.steps.compare || !isGoldenRunner;
   let comparePassed = true;
   const issuesSource = path.resolve(repoRoot, process.env.FLOW_UI_ISSUES_OUT || "results/flow-ui-issues.json");

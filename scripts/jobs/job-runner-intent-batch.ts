@@ -1,30 +1,17 @@
 import { execSync } from "child_process";
 import fs from "fs";
 import path from "path";
-import {
-  clearLock,
-  writeLock,
-  writeStatus,
-  writeSummary,
-  type JobSummaryFile,
-} from "./job-lock.js";
+import type { JobSummaryFile } from "./job-lock.js";
 import { buildJobFailReasons, sendJobFeishuNotification } from "./job-notify.js";
-import { formatRunId } from "./job-utils.js";
+import {
+  beginJobRun,
+  finalizeJobRun,
+  shouldNotify,
+  type JobRunnerCtx,
+} from "./job-runner-kit.js";
 import type { ResolvedTestJob } from "./test-jobs-config.js";
 
-type IntentBatchJobCtx = {
-  runId?: string;
-  trigger: "manual" | "schedule" | "cli" | "run-optimized-tests";
-  persistState?: boolean;
-  force?: boolean;
-  playwrightEnv?: string;
-};
-
-function shouldNotify(notifyOn: ResolvedTestJob["notifyOn"], success: boolean): boolean {
-  if (success && notifyOn.includes("success")) return true;
-  if (!success && notifyOn.includes("failure")) return true;
-  return false;
-}
+type IntentBatchJobCtx = JobRunnerCtx;
 
 /** 取最近 10 分钟内最新的 stable-batch 汇总（run-stable-intents 每次运行写独立 stamp 目录） */
 function readLatestStableSummary(): {
@@ -63,32 +50,8 @@ export async function runIntentBatchJob(
   feishuDocPassed: boolean;
   summary: JobSummaryFile;
 }> {
-  const runId = ctxPartial.runId ?? formatRunId();
-  const ctx = {
-    jobId: job.id,
-    runId,
-    trigger: ctxPartial.trigger,
-    persistState: ctxPartial.persistState !== false,
-  };
-  const persist = ctx.persistState !== false && Boolean(job.id);
-  const startedAtIso = new Date().toISOString();
-
-  if (persist && job.id) {
-    writeLock(job.id, {
-      pid: process.pid,
-      runId,
-      startedAt: startedAtIso,
-      trigger: ctx.trigger,
-    });
-    writeStatus(job.id, runId, {
-      jobId: job.id,
-      runId,
-      status: "running",
-      trigger: ctx.trigger,
-      startedAt: startedAtIso,
-      pid: process.pid,
-    });
-  }
+  const run = beginJobRun(job, ctxPartial);
+  const runId = run.runId;
 
   const env = ctxPartial.playwrightEnv || job.playwrightEnv || "dev";
   console.log(`\n🎯 开始执行任务「${job.id}」· Stable Intent 回归 (env=${env}, runId=${runId})\n`);
@@ -139,7 +102,7 @@ export async function runIntentBatchJob(
   const summary: JobSummaryFile = {
     jobId: job.id,
     runId,
-    trigger: ctx.trigger,
+    trigger: run.trigger,
     testPassed,
     comparePassed: true,
     compareSkipped: true,
@@ -161,7 +124,7 @@ export async function runIntentBatchJob(
     await sendJobFeishuNotification(job.feishuMode, {
       jobId: job.id,
       jobDescription: [job.description, batchSummary].filter(Boolean).join(" · "),
-      trigger: ctx.trigger,
+      trigger: run.trigger,
       testPassed,
       comparePassed: true,
       compareSkipped: true,
@@ -172,19 +135,7 @@ export async function runIntentBatchJob(
     });
   }
 
-  if (persist && job.id) {
-    writeSummary(job.id, runId, summary);
-    writeStatus(job.id, runId, {
-      jobId: job.id,
-      runId,
-      status: testPassed ? "success" : "failed",
-      trigger: ctx.trigger,
-      startedAt: startedAtIso,
-      finishedAt: new Date().toISOString(),
-      pid: process.pid,
-    });
-    clearLock(job.id);
-  }
+  finalizeJobRun(job, run, summary, testPassed ? "success" : "failed");
 
   if (watchSkipped) {
     console.log(`🔔 watch 用例 ${watchSkipped} 条未进本批（需人工复查，npm run ai:promote-intent）`);

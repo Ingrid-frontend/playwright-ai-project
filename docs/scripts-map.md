@@ -2,7 +2,7 @@
 
 > 索引：[docs/README.md](./README.md)
 
-> 生成时间：2026-10-10 · 共 **167** 条 npm scripts / **248** 个 TS 脚本（`scripts/` 下）。
+> 生成时间：2026-10-10 · 共 **168** 条 npm scripts / **250** 个 TS 脚本（`scripts/` 下）。
 > 本地图按业务域分组，是「有哪些命令可用」的唯一索引。
 > 增删 npm scripts 时请同步更新本文件（`docs:check` 会校验 docs 索引完整性）。
 
@@ -246,11 +246,12 @@
 | `deliver:feishu:notify` | 同上 + `--notify` |
 | `deliver:preview` | 仅生成 `feishu-delivery-preview.html`（通常由 `deliver:ready` 调用） |
 
-### verify — 校验（1）
+### verify — 校验（2）
 
 | 命令 | 内容 |
 |---|---|
 | `verify:customer-delivery` | `node scripts/verify/verify-customer-delivery.cjs` |
+| `verify:flow-registry` | `tsx scripts/verify/verify-flow-registry-generalize.ts` |
 
 ### reset — 数据重置（2）
 

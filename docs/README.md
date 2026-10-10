@@ -120,7 +120,7 @@ npm run trust:report         # Intent 可信度
 | 文档 | 什么时候看 |
 | --- | --- |
 | [OPTIMIZATION-ROADMAP.md](./OPTIMIZATION-ROADMAP.md) | 想知道「某个能力做了没」。已落地清单 + 环境变量速查 |
-| [scripts-map.md](./scripts-map.md) | 想知道「有哪些命令可用」。167 条 npm scripts 按域分组的唯一索引 + 6 个孤儿工具 CLI 纳管清单 |
+| [scripts-map.md](./scripts-map.md) | 想知道「有哪些命令可用」。168 条 npm scripts 按域分组的唯一索引 + 6 个孤儿工具 CLI 纳管清单 |
 | [improvement-plan.md](./improvement-plan.md) | 要做项目瓶颈改造时。六大瓶颈分析 + 四阶段实施计划 + 统一验收指标 |
 
 ---

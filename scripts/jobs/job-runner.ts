@@ -32,10 +32,12 @@ import {
 } from './job-utils.js';
 import { assertSpecEnvMatch, listKnownEnvs } from '../../src/utils/test-env-path.js';
 import { executeTests, runCommandBool, type DirectRunOptions } from './job-runner-execute.js';
-import { isFlowRunner, runFlowJob } from './job-runner-flow.js';
+import { runFlowJob } from './job-runner-flow.js';
 import { runCatalogDriftJob } from './job-runner-catalog.js';
 import { runSmokePatrolJob } from './job-runner-smoke.js';
 import { runIntentBatchJob } from './job-runner-intent-batch.js';
+import { FLOW_RUNNER_SCRIPTS } from './flow-runner-registry.js';
+import type { JobRunnerCtx } from './job-runner-kit.js';
 import { listReportEnvs } from '../feishu/deliver-ready.js';
 
 export type { DirectRunOptions } from './job-runner-execute.js';
@@ -63,6 +65,31 @@ function shouldNotify(notifyOn: NotifyOn[], success: boolean): boolean {
   if (success && notifyOn.includes('success')) return true;
   if (!success && notifyOn.includes('failure')) return true;
   return false;
+}
+
+/**
+ * Job runner 分发表：runner 名 → handler。
+ * 新增 job 类型 = 新 handler 文件 + registerJobRunner 一行 + test-jobs.json 一条，分发处零改动。
+ * flow runner（<flowId>-golden / <flowId>-write）由 flow-registry 派生批量注册，
+ * config/flows.json 新流程自动进入本表。
+ */
+export type JobRunnerHandler = (job: ResolvedTestJob, ctx: JobRunnerCtx) => Promise<JobRunResult>;
+
+const JOB_RUNNER_HANDLERS: Record<string, JobRunnerHandler> = {};
+
+export function registerJobRunner(runner: string, handler: JobRunnerHandler): void {
+  JOB_RUNNER_HANDLERS[runner] = handler;
+}
+
+registerJobRunner('catalog-drift-check', runCatalogDriftJob);
+registerJobRunner('ai-smoke-patrol', runSmokePatrolJob);
+registerJobRunner('intent-batch', runIntentBatchJob);
+for (const flowRunnerKey of Object.keys(FLOW_RUNNER_SCRIPTS)) {
+  registerJobRunner(flowRunnerKey, (job, ctx) => runFlowJob(job, ctx));
+}
+
+export function listJobRunnerKeys(): string[] {
+  return Object.keys(JOB_RUNNER_HANDLERS).sort();
 }
 
 function updateStatus(
@@ -109,29 +136,10 @@ export async function runJobById(
   const effectiveEnv = resolveJobRunEnv(job, ctxPartial.playwrightEnv);
   const effectiveProfile = ctxPartial.accountProfile ?? job.accountProfile ?? null;
 
-  if (job.runner === 'catalog-drift-check') {
-    return runCatalogDriftJob(job, {
-      ...ctxPartial,
-      playwrightEnv: effectiveEnv,
-    });
-  }
-
-  if (job.runner === 'ai-smoke-patrol') {
-    return runSmokePatrolJob(job, {
-      ...ctxPartial,
-      playwrightEnv: effectiveEnv,
-    });
-  }
-
-  if (job.runner === 'intent-batch') {
-    return runIntentBatchJob(job, {
-      ...ctxPartial,
-      playwrightEnv: effectiveEnv,
-    });
-  }
-
-  if (isFlowRunner(job.runner, job.id)) {
-    return runFlowJob(job, {
+  // 显式分发表：catalog/smoke/intent-batch 与全部 flow runner；未注册 runner 走 runDirect（optimized 用例直接执行）
+  const handler = JOB_RUNNER_HANDLERS[job.runner || ''] ?? JOB_RUNNER_HANDLERS[job.id || ''];
+  if (handler) {
+    return handler(job, {
       ...ctxPartial,
       playwrightEnv: effectiveEnv,
       accountProfile: effectiveProfile,
