@@ -243,7 +243,7 @@ export const DELIVERY_FIELDS = {
   generatedAt: 'generated_at',
   env: 'env',
   releaseTag: 'release_tag',
-  /** 迭代标识（交付时 ITERATION 环境变量传入，如 202610-迭代2）；列为中文名，客户可见 */
+  /** 迭代标识（交付时 ITERATION 环境变量传入，如 202610-迭代2）；未传时用 DEFAULT_DELIVERY_ITERATION 兜底；列为中文名，客户可见 */
   iteration: '迭代',
   verdict: 'verdict',
   page: 'page',
@@ -262,6 +262,9 @@ export const DELIVERY_FIELDS = {
 } as const;
 
 export const DELIVERY_TABLE_NAME = 'UI 验收明细';
+
+/** 交付所属迭代的兜底值：ITERATION 环境变量未传时统一填入，保证迭代列不留空 */
+export const DEFAULT_DELIVERY_ITERATION = '261016';
 
 /** 建表字段定义，首字段必须是索引列 */
 export const DELIVERY_FIELD_SPECS: Array<{

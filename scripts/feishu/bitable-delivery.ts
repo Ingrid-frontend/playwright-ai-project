@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { BitableClient, BitableAttachment, BitableRecordFields } from './bitable-client.js';
-import { DELIVERY_FIELDS, DELIVERY_FIELD_SPECS, DELIVERY_TABLE_NAME } from './bitable-schema.js';
+import { DEFAULT_DELIVERY_ITERATION, DELIVERY_FIELDS, DELIVERY_FIELD_SPECS, DELIVERY_TABLE_NAME } from './bitable-schema.js';
 import type { DeliveryPayload, DeliveryItem } from '../report/customer-delivery-payload.js';
 
 /**
@@ -80,7 +80,7 @@ export function buildDeliveryRecord(
     [DELIVERY_FIELDS.generatedAt]: payload.generatedAt,
     [DELIVERY_FIELDS.env]: payload.envLabel || '',
     [DELIVERY_FIELDS.releaseTag]: payload.releaseTag || '',
-    [DELIVERY_FIELDS.iteration]: payload.iteration || '',
+    [DELIVERY_FIELDS.iteration]: payload.iteration || DEFAULT_DELIVERY_ITERATION,
     [DELIVERY_FIELDS.verdict]: item.verdictLabel,
     [DELIVERY_FIELDS.flow]: item.scriptLabel,
     [DELIVERY_FIELDS.step]: item.stepLabel,
