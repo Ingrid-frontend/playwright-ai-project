@@ -209,6 +209,8 @@ export type CustomerReportModel = {
   incompleteScripts?: IncompleteScriptNote[];
   /** 发版版本号 */
   releaseTag?: string;
+  /** 交付所属迭代标识（跑交付时 ITERATION 环境变量传入） */
+  iteration?: string;
   reportScope?: 'golden' | 'all';
   reportBatch?: CustomerReportBatchMeta;
 };
@@ -231,6 +233,7 @@ export type StepAccounting = {
 
 export type CustomerReportMeta = {
   releaseTag?: string;
+  iteration?: string;
   envLabel?: string;
   /** golden=仅 Golden 回归；all=含流程调试截图 */
   reportScope?: 'golden' | 'all';
@@ -565,6 +568,7 @@ export function buildCustomerReportModel(
     envSummaries: envSummaries.length > 1 ? envSummaries : undefined,
     incompleteScripts: incompleteScripts.length ? incompleteScripts : undefined,
     releaseTag: meta?.releaseTag || undefined,
+    iteration: meta?.iteration || undefined,
     reportScope: meta?.reportScope || 'golden',
     reportBatch: meta?.reportBatch,
   };

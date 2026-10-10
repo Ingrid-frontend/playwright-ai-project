@@ -80,6 +80,7 @@ export function buildDeliveryRecord(
     [DELIVERY_FIELDS.generatedAt]: payload.generatedAt,
     [DELIVERY_FIELDS.env]: payload.envLabel || '',
     [DELIVERY_FIELDS.releaseTag]: payload.releaseTag || '',
+    [DELIVERY_FIELDS.iteration]: payload.iteration || '',
     [DELIVERY_FIELDS.verdict]: item.verdictLabel,
     [DELIVERY_FIELDS.flow]: item.scriptLabel,
     [DELIVERY_FIELDS.step]: item.stepLabel,

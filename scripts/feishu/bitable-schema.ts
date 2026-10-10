@@ -243,6 +243,8 @@ export const DELIVERY_FIELDS = {
   generatedAt: 'generated_at',
   env: 'env',
   releaseTag: 'release_tag',
+  /** 迭代标识（交付时 ITERATION 环境变量传入，如 202610-迭代2）；列为中文名，客户可见 */
+  iteration: '迭代',
   verdict: 'verdict',
   page: 'page',
   flow: 'flow',
@@ -275,6 +277,7 @@ export const DELIVERY_FIELD_SPECS: Array<{
   { name: DELIVERY_FIELDS.generatedAt, type: BITABLE_FIELD_TYPE.text },
   { name: DELIVERY_FIELDS.env, type: BITABLE_FIELD_TYPE.text },
   { name: DELIVERY_FIELDS.releaseTag, type: BITABLE_FIELD_TYPE.text },
+  { name: DELIVERY_FIELDS.iteration, type: BITABLE_FIELD_TYPE.text },
   { name: DELIVERY_FIELDS.verdict, type: BITABLE_FIELD_TYPE.text },
   { name: DELIVERY_FIELDS.flow, type: BITABLE_FIELD_TYPE.text },
   { name: DELIVERY_FIELDS.step, type: BITABLE_FIELD_TYPE.text },

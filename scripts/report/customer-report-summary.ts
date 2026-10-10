@@ -23,6 +23,7 @@ export type CustomerReportSummary = {
   coveragePct: number;
   envLabel?: string;
   releaseTag?: string;
+  iteration?: string;
   reportBatch?: CustomerReportModel['reportBatch'];
   actionItems: string[];
   issues: Array<{
@@ -83,6 +84,7 @@ export function buildCustomerReportSummary(model: CustomerReportModel): Customer
     coveragePct,
     envLabel: model.envLabel,
     releaseTag: model.releaseTag,
+    iteration: model.iteration,
     reportBatch: model.reportBatch,
     actionItems: model.actionItems,
     issues: model.regressionDisplay.map((entry) => {

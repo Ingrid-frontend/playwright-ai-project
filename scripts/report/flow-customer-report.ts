@@ -160,6 +160,7 @@ async function main() {
     runHistory,
     {
       releaseTag: process.env.RELEASE_TAG || process.env.npm_package_version,
+      iteration: process.env.ITERATION || undefined,
       reportScope: 'golden',
       reportBatch,
     },

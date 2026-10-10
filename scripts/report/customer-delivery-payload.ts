@@ -69,6 +69,8 @@ export type DeliveryPayload = {
   /** 是否允许 deliver:feishu --apply（单环境、显式 --env= 时为 true） */
   deliveryReady?: boolean;
   releaseTag?: string;
+  /** 交付所属迭代标识（跑交付时 ITERATION 环境变量传入） */
+  iteration?: string;
   envLabel?: string;
   /** 源 run 映射：scriptKey → 实际参与比对的 runId，供门禁校验数据新鲜度 */
   sourceRunIds?: Record<string, string>;
@@ -318,6 +320,7 @@ export function buildCustomerDeliveryPayload(
     envId: opts?.envId || undefined,
     deliveryReady: opts?.deliveryReady === true,
     releaseTag: s.releaseTag,
+    iteration: s.iteration,
     envLabel: s.envLabel,
     sourceRunIds,
     headline: s.headline,

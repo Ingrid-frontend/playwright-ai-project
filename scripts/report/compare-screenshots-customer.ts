@@ -154,6 +154,7 @@ async function main() {
   const auditInsights = readAuditInsights();
   const model = buildCustomerReportModel(coverage, undefined, scriptRuns, runHistory, {
     releaseTag: process.env.RELEASE_TAG || process.env.npm_package_version,
+    iteration: process.env.ITERATION || undefined,
     reportScope: allScripts ? 'all' : 'golden',
   }, usedRunIds, auditInsights);
   const summary = writeCustomerReportSummary(model);
