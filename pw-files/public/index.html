@@ -1339,6 +1339,20 @@
               <div id="exploreResult" style="display:none"></div>
               </div>
 
+              <div id="yamlSectionDrafts">
+              <div style="font-weight:600;color:var(--text)">1.5 用例草稿箱（AI 批量初稿）</div>
+              <p class="sidebar-hint" style="color:var(--text-tertiary);margin:0">
+                <code>npm run ai:batch-explore</code> 按 page-catalog 核心页批量生成的初稿。入库强制 trustLevel=trial；含写动作强制 reviewRequired（只进 write 类 job）。
+              </p>
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <button type="button" class="btn" style="font-size:var(--fs-sm);padding:4px 10px" onclick="refreshDraftsList()">刷新草稿箱</button>
+                <span class="sidebar-hint" id="draftsCount" style="color:var(--text-tertiary)"></span>
+              </div>
+              <div id="draftsList" style="display:flex;flex-direction:column;gap:6px">
+                <div class="sidebar-hint" style="color:var(--text-tertiary)">暂无草稿。跑 npm run ai:batch-explore -- --env=stage --limit=3 生成。</div>
+              </div>
+              </div>
+
               <hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
               <div style="font-weight:600;color:var(--text)">2. 编辑并保存</div>
               <div>
@@ -7862,6 +7876,30 @@ function handleMessage(msg) {
     case 'intent:list:done':
       renderIntentPresetList(msg.items || []);
       break;
+    case 'drafts:list':
+      renderDraftsList(msg.drafts || []);
+      break;
+    case 'drafts:loaded': {
+      const draftPathEl = document.getElementById('intentPath');
+      const draftEditorEl = document.getElementById('intentYamlText');
+      if (draftPathEl) draftPathEl.value = msg.yamlRel || '';
+      if (draftEditorEl) draftEditorEl.value = msg.yamlText || '';
+      showToast(`草稿已载入：${msg.yamlRel || ''}`, 'ok');
+      const draftAutoRun = pendingDraftAutoRun;
+      pendingDraftAutoRun = false;
+      if (draftAutoRun) startIntentRun();
+      break;
+    }
+    case 'drafts:promote:done':
+      if (msg.ok) {
+        showToast(`已入库：${msg.promotedPath}（trustLevel=trial${msg.reviewRequired ? ' · reviewRequired' : ''}）`, 'ok');
+        log('ok', `[drafts] 已入库 ${msg.promotedPath}`);
+      } else {
+        showToast(msg.message || '入库失败', 'err');
+        log('err', `[drafts] ${msg.message || '入库失败'}`);
+      }
+      refreshDraftsList();
+      break;
     case 'intent:delete:done':
       if (msg.ok) {
         showToast(msg.message || `已删除 ${msg.deleted?.length || 0} 条`, 'ok');
@@ -9232,6 +9270,10 @@ function switchTab(name, el) {
   if (name === 'request-flow') refreshRequestFlowStatus(true);
   if (name === 'approval-flow') refreshApprovalFlowStatus(true);
   if (name === 'expense-flow') refreshExpenseFlowStatus(true);
+  if (name === 'intent-run') {
+    refreshIntentList();
+    refreshDraftsList();
+  }
   if (name === 'jobs') {
     refreshTestJobsList();
     if (!testJobsState.selectedJobId && testJobsState.jobs.length) {
@@ -9274,6 +9316,64 @@ function switchToIntentRunTab() {
 
 function refreshIntentList() {
   send('intent:list', {});
+}
+
+let pendingDraftAutoRun = false;
+let lastDraftsItems = [];
+
+function refreshDraftsList() {
+  send('drafts:list', {});
+}
+
+function renderDraftsList(items) {
+  const list = Array.isArray(items) ? items : [];
+  lastDraftsItems = list;
+  const wrap = document.getElementById('draftsList');
+  const count = document.getElementById('draftsCount');
+  if (count) count.textContent = list.length ? `${list.length} 条草稿` : '';
+  if (!wrap) return;
+  if (!list.length) {
+    wrap.innerHTML = '<div class="sidebar-hint" style="color:var(--text-tertiary)">暂无草稿。跑 npm run ai:batch-explore -- --env=stage --limit=3 生成。</div>';
+    return;
+  }
+  wrap.innerHTML = list.map((d) => {
+    const badge = d.status === 'promoted'
+      ? '<span style="color:#2e7d32">已入库</span>'
+      : d.status === 'error'
+        ? '<span style="color:#c62828">生成失败</span>'
+        : '<span style="color:var(--text-tertiary)">待审核</span>';
+    const flags = [
+      d.reviewRequired ? '✍️ reviewRequired' : '',
+      d.writeActionsCount ? `写动作 ${d.writeActionsCount}` : '',
+    ].filter(Boolean).join(' · ');
+    const pageIdSafe = escHtml(d.pageId);
+    const actions = d.yamlExists
+      ? [
+          `<button type="button" class="btn" style="font-size:var(--fs-sm);padding:3px 10px" onclick="loadDraftToEditor('${pageIdSafe}')">载入</button>`,
+          `<button type="button" class="btn btn-run" style="font-size:var(--fs-sm);padding:3px 10px" onclick="loadDraftToEditor('${pageIdSafe}', true)">载入并试跑</button>`,
+          d.status !== 'promoted'
+            ? `<button type="button" class="btn" style="font-size:var(--fs-sm);padding:3px 10px" onclick="promoteDraft('${pageIdSafe}')">入库</button>`
+            : `<span class="sidebar-hint">${escHtml(d.promotedPath || '')}</span>`,
+        ].join(' ')
+      : '<span class="sidebar-hint">YAML 缺失</span>';
+    return `<div style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <div style="flex:1;min-width:220px">
+        <div style="color:var(--text)">${escHtml(d.label)} <span class="sidebar-hint">${pageIdSafe}${d.route ? ' · ' + escHtml(d.route) : ''}</span></div>
+        <div class="sidebar-hint" style="color:var(--text-tertiary)">${badge}${flags ? ' · ' + flags : ''} · ${d.steps || 0} 步 · trial</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${actions}</div>
+    </div>`;
+  }).join('');
+}
+
+function loadDraftToEditor(pageId, autoRun) {
+  pendingDraftAutoRun = Boolean(autoRun);
+  send('drafts:load', { pageId });
+}
+
+function promoteDraft(pageId) {
+  if (!confirm(`确认把草稿「${pageId}」入库到 tests/definitions/drafts/？\n入库后 trustLevel 强制 trial，试跑通过前不进每日回归。`)) return;
+  send('drafts:promote', { pageId });
 }
 
 let lastIntentDefItems = [];

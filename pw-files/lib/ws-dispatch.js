@@ -3,6 +3,7 @@ const path = require('path');
 const { createStudioHandlers } = require('./ws-handlers-studio');
 const { createRepoHandlers } = require('./ws-handlers-repo');
 const { createJobsHandlers } = require('./ws-handlers-jobs');
+const { createDraftsHandlers } = require('./ws-handlers-drafts');
 const { runSessionTask } = require('./session');
 
 function flattenWsCtx(ctx) {
@@ -38,6 +39,7 @@ function createWsDispatcher(rawCtx) {
     ...createStudioHandlers(ctx),
     ...createRepoHandlers(ctx),
     ...createJobsHandlers(ctx),
+    ...createDraftsHandlers(ctx),
     // Restart owns the whole store, not this session. Adapt the legacy synchronous handler.
     'studio:restart': async (ws, _session, _sessionId, msg) => {
       if (!ctx.restartStudio) {

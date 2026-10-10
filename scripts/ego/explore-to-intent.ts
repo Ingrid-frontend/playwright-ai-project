@@ -3,12 +3,14 @@
  * Explore：ego Snapshot 代操 → 语义轨迹 → Intent YAML 预览（不落 Playwright）
  *
  *   npm run ego:explore -- --goal="进入审批列表" --entry=/main/approve --env=stage
+ *
+ * 探索主流程抽为 exploreToIntent() 供 batch-explore 复用；本文件 CLI 壳保留。
  */
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
 import { stringify as stringifyYaml } from 'yaml';
-import { completeJson } from '../../src/ai/llm-client.js';
+import { completeJson, type AiBudget } from '../../src/ai/llm-client.js';
 import {
   buildExploreDecidePrompt,
   buildExploreDecideSystemPrompt,
@@ -24,7 +26,7 @@ import {
   parseSnapshotText,
   summarizeSnapshot,
 } from '../../src/runtime/ego-snapshot.js';
-import { validateTestIntent } from '../../src/types/test-intent.js';
+import { validateTestIntent, type TestIntent } from '../../src/types/test-intent.js';
 import { getBaseEnvConfig } from '../../src/utils/env-config.js';
 import { EGO_RESULT_PREFIX, runEgoJson, EgoUnavailableError, EgoUserControllingError } from '../../src/utils/ego-browser.js';
 
@@ -77,49 +79,50 @@ async function egoJson<T>(spaceName: string, body: string[], timeoutMs = 180_000
   return data;
 }
 
-function printHelp(): void {
-  console.log(`用法: npm run ego:explore -- --goal=<目标> [选项]
+export type ExploreToIntentOptions = {
+  goal: string;
+  env?: string;
+  entry?: string;
+  maxSteps?: number;
+  spaceName?: string;
+  outDir?: string;
+  keepTab?: boolean;
+  /** 校验通过后写入 tests/definitions/ 的目标路径 */
+  saveTo?: string;
+  /** LLM 预算（批量场景传入共享预算） */
+  budget?: AiBudget;
+  /** 进度日志（缺省 console.log） */
+  log?: (line: string) => void;
+};
 
-选项:
-  --goal=<text>       探索目标（必需）
-  --entry=<path|url>  入口
-  --env=<env>         默认 stage
-  --space=<name>      task space 名
-  --max-steps=<n>     最大探索步数（默认 8）
-  --out=<dir>         输出目录
-  --keep-tab          结束后保留 Space
-  --save=<file.yaml>  校验通过后写入 definitions 相对/绝对路径
-  -h, --help
-`);
-}
+export type ExploreToIntentResult = {
+  outDir: string;
+  trace: ExploreTrace;
+  intent: TestIntent;
+  yamlText: string;
+  savedTo?: string;
+};
 
-async function main(): Promise<void> {
-  if (hasFlag('help') || hasFlag('h')) {
-    printHelp();
-    return;
-  }
+/** 探索主流程：ego 代操 → trace → LLM 编译 Intent YAML。batch-explore 与 CLI 共用。 */
+export async function exploreToIntent(opts: ExploreToIntentOptions): Promise<ExploreToIntentResult> {
+  const goal = opts.goal;
+  if (!goal?.trim()) throw new Error('exploreToIntent 需要 goal');
 
-  const goal = getArgValue('goal');
-  if (!goal) {
-    console.error('❌ 请提供 --goal=');
-    printHelp();
-    process.exit(1);
-  }
-
-  const env = getArgValue('env') || process.env.PLAYWRIGHT_ENV || 'stage';
-  const entry = getArgValue('entry');
-  const maxSteps = Math.max(1, Number(getArgValue('max-steps') || 8));
-  const spaceName = getArgValue('space') || `explore:${sanitizeName(goal)}`;
+  const env = opts.env || process.env.PLAYWRIGHT_ENV || 'stage';
+  const entry = opts.entry;
+  const maxSteps = Math.max(1, opts.maxSteps ?? 8);
+  const spaceName = opts.spaceName || `explore:${sanitizeName(goal)}`;
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
   const outDir = path.resolve(
-    getArgValue('out') || path.join('results', 'ego-explore', `${stamp}-${sanitizeName(goal)}`),
+    opts.outDir || path.join('results', 'ego-explore', `${stamp}-${sanitizeName(goal)}`),
   );
+  const log = opts.log || ((line: string) => console.log(line));
   fs.mkdirSync(outDir, { recursive: true });
 
   const entryUrl = resolveUrl(env, entry);
-  console.log(`🧭 explore goal=${goal}`);
-  console.log(`🌐 entry=${entryUrl || '(当前页)'}`);
-  console.log(`📦 space=${spaceName}`);
+  log(`🧭 explore goal=${goal}`);
+  log(`🌐 entry=${entryUrl || '(当前页)'}`);
+  log(`📦 space=${spaceName}`);
 
   try {
     if (entryUrl) {
@@ -132,12 +135,10 @@ async function main(): Promise<void> {
     }
   } catch (err) {
     if (err instanceof EgoUnavailableError) {
-      console.error(`❌ ${err.message}`);
-      process.exit(2);
+      throw new Error(`ego 不可用: ${err.message}`);
     }
     if (err instanceof EgoUserControllingError) {
-      console.error(`⏸️  ${err.message}`);
-      process.exit(3);
+      throw new Error(`用户正在操控: ${err.message}`);
     }
     throw err;
   }
@@ -181,11 +182,11 @@ async function main(): Promise<void> {
         history,
         constraints,
       }),
-      { system: buildExploreDecideSystemPrompt(), temperature: 0.2, maxTokens: 1500 },
+      { system: buildExploreDecideSystemPrompt(), temperature: 0.2, maxTokens: 1500, budget: opts.budget },
     );
 
     if (decision.done) {
-      console.log(`✅ 探索结束: ${decision.reason}`);
+      log(`✅ 探索结束: ${decision.reason}`);
       break;
     }
 
@@ -239,7 +240,7 @@ async function main(): Promise<void> {
       }
     } catch (err) {
       note = err instanceof Error ? err.message : String(err);
-      console.log(`⚠️  步骤失败: ${note}`);
+      log(`⚠️  步骤失败: ${note}`);
     }
 
     const after = await egoJson<{ snapshot: string; url: string }>(spaceName, [
@@ -260,7 +261,7 @@ async function main(): Promise<void> {
     history.push(
       `${semantic.action} ${semantic.description || ''} ${semantic.value || ''} ${semantic.path || semantic.url || ''}`.trim(),
     );
-    console.log(`→ ${i + 1}. ${history[history.length - 1]}${note ? ` (${note})` : ''}`);
+    log(`→ ${i + 1}. ${history[history.length - 1]}${note ? ` (${note})` : ''}`);
 
     if (note && /验证码|登录|captcha|login/i.test(note)) break;
   }
@@ -272,44 +273,45 @@ async function main(): Promise<void> {
     system: buildExploreToIntentSystemPrompt(),
     temperature: 0.1,
     maxTokens: 4000,
+    budget: opts.budget,
   });
 
   if (!draft.env) draft.env = env;
   if (!draft.entry && entry) draft.entry = entry;
   if (!draft.goal) draft.goal = goal;
 
-  let intent;
+  let intent: TestIntent;
   try {
     intent = validateTestIntent(draft);
   } catch (err) {
-    console.error(`❌ Intent 校验失败: ${err instanceof Error ? err.message : err}`);
+    const msg = err instanceof Error ? err.message : String(err);
     fs.writeFileSync(path.join(outDir, 'intent.draft.json'), `${JSON.stringify(draft, null, 2)}\n`);
-    process.exit(1);
+    throw new Error(`Intent 校验失败: ${msg}`);
   }
 
   const yamlText = stringifyYaml(intent);
   fs.writeFileSync(path.join(outDir, 'intent.preview.yaml'), yamlText.endsWith('\n') ? yamlText : `${yamlText}\n`);
   fs.writeFileSync(path.join(outDir, 'intent.json'), `${JSON.stringify(intent, null, 2)}\n`);
 
-  console.log(`\n📁 产出: ${outDir}`);
-  console.log(`   - trace.json`);
-  console.log(`   - intent.preview.yaml`);
+  log(`\n📁 产出: ${outDir}`);
+  log(`   - trace.json`);
+  log(`   - intent.preview.yaml`);
 
-  const saveTo = getArgValue('save');
-  if (saveTo) {
-    const abs = path.isAbsolute(saveTo)
-      ? saveTo
-      : path.resolve(process.cwd(), saveTo.startsWith('tests/definitions/') ? saveTo : path.join('tests/definitions', saveTo));
+  let savedTo: string | undefined;
+  if (opts.saveTo) {
+    const abs = path.isAbsolute(opts.saveTo)
+      ? opts.saveTo
+      : path.resolve(process.cwd(), opts.saveTo.startsWith('tests/definitions/') ? opts.saveTo : path.join('tests/definitions', opts.saveTo));
     if (!abs.includes(`${path.sep}tests${path.sep}definitions${path.sep}`)) {
-      console.error('❌ --save 仅允许写入 tests/definitions/');
-      process.exit(1);
+      throw new Error('saveTo 仅允许写入 tests/definitions/');
     }
     fs.mkdirSync(path.dirname(abs), { recursive: true });
     fs.writeFileSync(abs, yamlText.endsWith('\n') ? yamlText : `${yamlText}\n`);
-    console.log(`💾 已保存: ${path.relative(process.cwd(), abs)}`);
+    log(`💾 已保存: ${path.relative(process.cwd(), abs)}`);
+    savedTo = path.relative(process.cwd(), abs);
   }
 
-  if (!hasFlag('keep-tab')) {
+  if (!opts.keepTab) {
     try {
       await egoJson(spaceName, [
         `await completeTaskSpace(task.id, { keep: false })`,
@@ -319,9 +321,68 @@ async function main(): Promise<void> {
       /* ignore */
     }
   }
+
+  return { outDir, trace, intent, yamlText, savedTo };
 }
 
-main().catch((e) => {
-  console.error('❌', e instanceof Error ? e.message : e);
-  process.exit(1);
-});
+function printHelp(): void {
+  console.log(`用法: npm run ego:explore -- --goal=<目标> [选项]
+
+选项:
+  --goal=<text>       探索目标（必需）
+  --entry=<path|url>  入口
+  --env=<env>         默认 stage
+  --space=<name>      task space 名
+  --max-steps=<n>     最大探索步数（默认 8）
+  --out=<dir>         输出目录
+  --keep-tab          结束后保留 Space
+  --save=<file.yaml>  校验通过后写入 definitions 相对/绝对路径
+  -h, --help
+`);
+}
+
+async function main(): Promise<void> {
+  if (hasFlag('help') || hasFlag('h')) {
+    printHelp();
+    return;
+  }
+
+  const goal = getArgValue('goal');
+  if (!goal) {
+    console.error('❌ 请提供 --goal=');
+    printHelp();
+    process.exit(1);
+  }
+
+  try {
+    await exploreToIntent({
+      goal,
+      env: getArgValue('env') || process.env.PLAYWRIGHT_ENV || 'stage',
+      entry: getArgValue('entry'),
+      maxSteps: Number(getArgValue('max-steps') || 8),
+      spaceName: getArgValue('space'),
+      outDir: getArgValue('out'),
+      keepTab: hasFlag('keep-tab'),
+      saveTo: getArgValue('save'),
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/ego 不可用/.test(msg)) {
+      console.error(`❌ ${msg}`);
+      process.exit(2);
+    }
+    if (/用户正在操控/.test(msg)) {
+      console.error(`⏸️  ${msg}`);
+      process.exit(3);
+    }
+    console.error('❌', msg);
+    process.exit(1);
+  }
+}
+
+if (process.argv[1]?.replace(/\\/g, '/').endsWith('scripts/ego/explore-to-intent.ts')) {
+  main().catch((e) => {
+    console.error('❌', e instanceof Error ? e.message : e);
+    process.exit(1);
+  });
+}

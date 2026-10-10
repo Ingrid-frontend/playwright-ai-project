@@ -2,7 +2,7 @@
 
 > 索引：[docs/README.md](./README.md)
 
-> 生成时间：2026-10-09 · 共 **163** 条 npm scripts / **243** 个 TS 脚本（`scripts/` 下）。
+> 生成时间：2026-10-10 · 共 **167** 条 npm scripts / **248** 个 TS 脚本（`scripts/` 下）。
 > 本地图按业务域分组，是「有哪些命令可用」的唯一索引。
 > 增删 npm scripts 时请同步更新本文件（`docs:check` 会校验 docs 索引完整性）。
 
@@ -55,12 +55,15 @@
 | `test:ui` | `playwright test --ui` |
 | `typecheck` | `tsc --noEmit` |
 
-### ai — AI 生成用例（2）
+### ai — AI 生成用例与批量初稿（5）
 
 | 命令 | 内容 |
 |---|---|
+| `ai:batch-explore` | `tsx scripts/ai/batch-explore.ts` |
 | `ai:generate` | `tsx scripts/ai/generate-playwright-script.ts` |
+| `ai:promote-intent` | `tsx scripts/ai/promote-intent.ts` |
 | `ai:run` | `tsx scripts/ai/run-playwright-script.ts` |
+| `intents:stable` | `tsx scripts/ai/run-stable-intents.ts` |
 
 ### misc — 其他工具（29）
 
@@ -138,11 +141,12 @@
 | `flow:run` | `tsx scripts/flow/run-flow-cli.ts` |
 | `flow:verify` | `tsx scripts/flow/flow-verify.ts` |
 
-### catalog — 页面目录与全站 Smoke 巡检（4）
+### catalog — 页面目录与全站 Smoke 巡检（5）
 
 | 命令 | 内容 |
 |---|---|
 | `catalog:crawl` | `tsx scripts/catalog/crawl-page-catalog.ts` |
+| `catalog:golden-candidates` | `tsx scripts/catalog/golden-candidates.ts` |
 | `catalog:suggest-key-elements` | `tsx scripts/catalog/suggest-key-elements.ts` |
 | `smoke:patrol` | `tsx scripts/smoke/run-smoke-patrol.ts` |
 | `report:smoke` | `tsx scripts/report/build-smoke-report.ts` |

@@ -14,9 +14,10 @@ function resolveIntentPath(repoRoot, intentRel) {
     rel.startsWith('results/intent-studio/') ||
     rel.startsWith('results/intent-runs/') ||
     rel.startsWith('results/ego-explore/') ||
-    rel.startsWith('results/ego-studio/');
+    rel.startsWith('results/ego-studio/') ||
+    rel.startsWith('results/drafts/');
   if (!allowed) {
-    return { error: 'Intent 路径仅允许 tests/definitions/ 或 results/intent-* / ego-explore / ego-studio' };
+    return { error: 'Intent 路径仅允许 tests/definitions/ 或 results/intent-* / drafts / ego-explore / ego-studio' };
   }
   if (!/\.ya?ml$/i.test(rel)) {
     return { error: 'Intent 文件必须是 .yaml / .yml' };

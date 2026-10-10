@@ -215,6 +215,29 @@
         "refreshLogin": false
       },
       "notifyOn": ["failure"]
+    },
+    {
+      "id": "intent-batch",
+      "enabled": false,
+      "description": "L2 Stable Intent 回归（trustLevel=stable 且非写动作用例顺序跑；trial/watch 不进批；manual 触起步）",
+      "runner": "intent-batch",
+      "tier": "L2",
+      "schedule": null,
+      "timezone": "Asia/Shanghai",
+      "playwrightEnv": "dev",
+      "accountProfile": null,
+      "specs": "all",
+      "steps": {
+        "login": false,
+        "compare": false,
+        "compareGate": false,
+        "recordLastGreen": false,
+        "feishuNotify": true,
+        "createFeishuDoc": false,
+        "writeFeishuBitable": false,
+        "refreshLogin": false
+      },
+      "notifyOn": ["failure"]
     }
   ]
 }

@@ -35,6 +35,7 @@ import { executeTests, runCommandBool, type DirectRunOptions } from './job-runne
 import { isFlowRunner, runFlowJob } from './job-runner-flow.js';
 import { runCatalogDriftJob } from './job-runner-catalog.js';
 import { runSmokePatrolJob } from './job-runner-smoke.js';
+import { runIntentBatchJob } from './job-runner-intent-batch.js';
 import { listReportEnvs } from '../feishu/deliver-ready.js';
 
 export type { DirectRunOptions } from './job-runner-execute.js';
@@ -117,6 +118,13 @@ export async function runJobById(
 
   if (job.runner === 'ai-smoke-patrol') {
     return runSmokePatrolJob(job, {
+      ...ctxPartial,
+      playwrightEnv: effectiveEnv,
+    });
+  }
+
+  if (job.runner === 'intent-batch') {
+    return runIntentBatchJob(job, {
       ...ctxPartial,
       playwrightEnv: effectiveEnv,
     });

@@ -57,6 +57,8 @@ export interface TestIntent {
   profile?: string;
   entry?: string;
   scriptKey?: string;
+  /** 来源页面（page-catalog.json 的 id），batch-explore 落盘时反查写入；缺省安全 */
+  pageId?: string;
   /** 支付/权限等关键路径：试跑通过后仍须人审再入库 */
   reviewRequired?: boolean;
   /** 人设可信度；缺省按 trial 处理 */
@@ -252,6 +254,7 @@ export function validateTestIntent(value: unknown): TestIntent {
     profile: assertOptionalString(value.profile, 'profile'),
     entry: assertOptionalString(value.entry, 'entry'),
     scriptKey: assertOptionalString(value.scriptKey, 'scriptKey'),
+    pageId: assertOptionalString(value.pageId, 'pageId'),
     reviewRequired: value.reviewRequired === true,
     trustLevel: trustRaw as IntentTrustLevel | undefined,
     styleChecks: Array.isArray(value.styleChecks)
@@ -262,4 +265,24 @@ export function validateTestIntent(value: unknown): TestIntent {
     assertions,
     steps: steps.map((step, index) => validateStep(step, index)),
   };
+}
+
+/**
+ * 写动作特征：提交/审批/删除等会变更业务数据的步骤。
+ * 入库门禁用——命中的用例强制 reviewRequired=true，且只允许进 write 类 job。
+ */
+export const WRITE_ACTION_RE =
+  /(提交|送审|审批|审核通过|驳回|撤销|撤回|作废|删除|新建|创建|保存|发送|抄送|会签|加签|转交|导入|上传|生成单据|开票|支付|付款|确认)/;
+
+/** 扫描 Intent 中命中写动作的步骤（返回「步骤序号 + 描述」列表，空数组 = 纯只读） */
+export function detectWriteActions(intent: TestIntent): string[] {
+  const hits: string[] = [];
+  intent.steps.forEach((step, i) => {
+    const texts = [step.description, step.instruction, step.value, step.expect, step.label]
+      .filter((t): t is string => typeof t === 'string' && t.length > 0);
+    if (texts.some((t) => WRITE_ACTION_RE.test(t))) {
+      hits.push(`steps[${i}] ${step.description || step.instruction || step.action}`);
+    }
+  });
+  return hits;
 }
