@@ -1,0 +1,4 @@
+[
+  "^pageerror: undefined$",
+  "^console\\.error: unhandledrejection信息: undefined$"
+]
