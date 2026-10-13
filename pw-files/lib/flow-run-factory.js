@@ -654,6 +654,23 @@ function createFlowRun(cfg) {
         deps,
         { send, logLine },
       );
+      if (result.ok && !result.cancelled) {
+        const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+        logLine(ws, `${tag} 检测完成，生成飞书预览 deliver:ready --env=${envId}`, 'info');
+        const ready = spawnSync(npm, ['run', 'deliver:ready', '--', `--env=${envId}`], {
+          cwd: repoRoot,
+          encoding: 'utf8',
+          env: process.env,
+          maxBuffer: 16 * 1024 * 1024,
+        });
+        const tail = `${ready.stdout || ''}${ready.stderr || ''}`.trim().split('\n').slice(-6);
+        for (const line of tail) {
+          if (line.trim()) logLine(ws, line.trimEnd(), ready.status === 0 ? 'dim' : 'warn');
+        }
+        if (ready.status !== 0) {
+          logLine(ws, `${tag} 飞书预览未生成（退出码 ${ready.status ?? 1}），点「写入飞书」时会再试一次`, 'warn');
+        }
+      }
       send(ws, `${ev}:golden-all:done`, {
         ok: Boolean(result.ok),
         env: envId,
