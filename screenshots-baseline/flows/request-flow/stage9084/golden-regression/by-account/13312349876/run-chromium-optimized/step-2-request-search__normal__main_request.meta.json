@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-09-01T06:46:31.341Z",
+  "capturedAt": "2026-10-12T09:59:37.466Z",
   "viewport": {
     "name": "desktop",
     "width": 1280,
@@ -13,12 +13,12 @@
     "scrollWidth": 1280,
     "innerWidth": 1280
   },
-  "domHash": "SEC|97d0ea1a11051473",
+  "domHash": "SEC|1deab938ad2e6e11",
   "sections": [
     {
       "key": "request-search-table",
-      "structureHash": "97d0ea1a11051473",
-      "textHash": "9904e9d76212392b",
+      "structureHash": "1deab938ad2e6e11",
+      "textHash": "5968457ba60706dd",
       "nodeCount": 1310,
       "childTags": "DIV,DIV,DIV,DIV,DIV,DIV"
     }
@@ -32,9 +32,9 @@
         "width": 1380,
         "height": 862
       },
-      "domHash": "97d0ea1a11051473",
-      "structureHash": "97d0ea1a11051473",
-      "textHash": "9904e9d76212392b",
+      "domHash": "1deab938ad2e6e11",
+      "structureHash": "1deab938ad2e6e11",
+      "textHash": "5968457ba60706dd",
       "resolvedBy": "selector",
       "fingerprint": {
         "tag": "DIV",

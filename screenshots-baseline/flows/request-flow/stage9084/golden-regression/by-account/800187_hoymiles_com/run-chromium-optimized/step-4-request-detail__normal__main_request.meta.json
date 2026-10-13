@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-09-03T08:49:39.076Z",
+  "capturedAt": "2026-10-12T08:51:40.791Z",
   "viewport": {
     "name": "desktop",
     "width": 1280,
@@ -13,13 +13,13 @@
     "scrollWidth": 1280,
     "innerWidth": 1280
   },
-  "domHash": "SEC|7bdaf4d173d5fe3e",
+  "domHash": "SEC|a01024d2a170f5dd",
   "sections": [
     {
       "key": "request-detail-slide",
-      "structureHash": "7bdaf4d173d5fe3e",
-      "textHash": "834d6b3a4ef30f75",
-      "nodeCount": 49,
+      "structureHash": "a01024d2a170f5dd",
+      "textHash": "3b99945911725abe",
+      "nodeCount": 51,
       "childTags": "DIV"
     }
   ],
@@ -32,15 +32,15 @@
         "width": 1420,
         "height": 816
       },
-      "domHash": "7bdaf4d173d5fe3e",
-      "structureHash": "7bdaf4d173d5fe3e",
-      "textHash": "834d6b3a4ef30f75",
+      "domHash": "a01024d2a170f5dd",
+      "structureHash": "a01024d2a170f5dd",
+      "textHash": "3b99945911725abe",
       "resolvedBy": "selector",
       "fingerprint": {
         "tag": "DIV",
         "stableAttributes": {},
-        "textHint": "出差申请单\n提交日期：2026-08-13\n制单人：鲍文晗\n版本：V2\n单号：C",
-        "xpath": "/html[1]/body[1]/div[15]/div[1]/div[2]",
+        "textHint": "出差申请单\n提交日期：2026-09-22\n制单人：鲍文晗\n版本：V2\n单号：C",
+        "xpath": "/html[1]/body[1]/div[14]/div[1]/div[2]",
         "fallbackSelectors": [],
         "baselineRect": {
           "x": 180,

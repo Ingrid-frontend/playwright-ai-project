@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-09-03T08:46:56.347Z",
+  "capturedAt": "2026-10-12T10:00:48.190Z",
   "viewport": {
     "name": "desktop",
     "width": 1280,
@@ -18,7 +18,7 @@
     {
       "key": "request-list-root",
       "structureHash": "0adcfcd953940ddb",
-      "textHash": "c90055ad5373f378",
+      "textHash": "e926bab9b5cb8254",
       "nodeCount": 109,
       "childTags": "DIV"
     },
@@ -41,7 +41,7 @@
       },
       "domHash": "0adcfcd953940ddb",
       "structureHash": "0adcfcd953940ddb",
-      "textHash": "c90055ad5373f378",
+      "textHash": "e926bab9b5cb8254",
       "resolvedBy": "selector",
       "fingerprint": {
         "tag": "DIV",

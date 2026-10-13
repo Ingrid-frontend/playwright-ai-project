@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-09-03T08:46:05.726Z",
+  "capturedAt": "2026-10-12T10:00:33.047Z",
   "viewport": {
     "name": "desktop",
     "width": 1280,
@@ -40,7 +40,7 @@
         "tag": "DIV",
         "stableAttributes": {},
         "textHint": "外出申请单\n创建日期：2026-03-10\n制单人：韩青青\n单号：CLSQ260",
-        "xpath": "/html[1]/body[1]/div[17]/div[1]/div[2]",
+        "xpath": "/html[1]/body[1]/div[15]/div[1]/div[2]",
         "fallbackSelectors": [],
         "baselineRect": {
           "x": 180,

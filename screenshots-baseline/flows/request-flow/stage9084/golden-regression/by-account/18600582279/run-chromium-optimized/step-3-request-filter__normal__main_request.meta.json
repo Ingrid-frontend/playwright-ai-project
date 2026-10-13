@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-09-03T08:45:53.658Z",
+  "capturedAt": "2026-10-12T10:00:27.134Z",
   "viewport": {
     "name": "desktop",
     "width": 1280,
@@ -53,7 +53,7 @@
     {
       "key": "request-list-root",
       "structureHash": "7f266a77a10afa27",
-      "textHash": "b345897d0e068680",
+      "textHash": "4bf1dac54e8b4a1e",
       "nodeCount": 103,
       "childTags": "DIV"
     },

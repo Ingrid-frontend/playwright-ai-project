@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-09-01T06:46:21.315Z",
+  "capturedAt": "2026-10-12T09:59:31.958Z",
   "viewport": {
     "name": "desktop",
     "width": 1280,
@@ -18,14 +18,14 @@
     {
       "key": "request-list-root",
       "structureHash": "21f3255c32ddf49c",
-      "textHash": "5b1128939eb59577",
+      "textHash": "b1c88d2d3d259a29",
       "nodeCount": 120,
       "childTags": "DIV"
     },
     {
       "key": "request-list-table",
-      "structureHash": "97d0ea1a11051473",
-      "textHash": "9904e9d76212392b",
+      "structureHash": "1deab938ad2e6e11",
+      "textHash": "5968457ba60706dd",
       "nodeCount": 1310,
       "childTags": "DIV,DIV,DIV,DIV,DIV,DIV"
     }
@@ -41,7 +41,7 @@
       },
       "domHash": "21f3255c32ddf49c",
       "structureHash": "21f3255c32ddf49c",
-      "textHash": "5b1128939eb59577",
+      "textHash": "b1c88d2d3d259a29",
       "resolvedBy": "selector",
       "fingerprint": {
         "tag": "DIV",
@@ -67,9 +67,9 @@
         "width": 1380,
         "height": 862
       },
-      "domHash": "97d0ea1a11051473",
-      "structureHash": "97d0ea1a11051473",
-      "textHash": "9904e9d76212392b",
+      "domHash": "1deab938ad2e6e11",
+      "structureHash": "1deab938ad2e6e11",
+      "textHash": "5968457ba60706dd",
       "resolvedBy": "selector",
       "fingerprint": {
         "tag": "DIV",

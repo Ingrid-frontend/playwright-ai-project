@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-09-03T08:47:30.889Z",
+  "capturedAt": "2026-10-12T10:01:07.300Z",
   "viewport": {
     "name": "desktop",
     "width": 1280,
@@ -40,7 +40,7 @@
         "tag": "DIV",
         "stableAttributes": {},
         "textHint": "差旅申请单\n创建日期：2025-07-22\n制单人：管理员\n单号：CB00425",
-        "xpath": "/html[1]/body[1]/div[16]/div[1]/div[2]",
+        "xpath": "/html[1]/body[1]/div[14]/div[1]/div[2]",
         "fallbackSelectors": [],
         "baselineRect": {
           "x": 180,
