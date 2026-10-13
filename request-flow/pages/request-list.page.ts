@@ -203,22 +203,40 @@ export class RequestListPage extends GenericListPage {
   }
 
   async expectReasonFilterResult(keyword: string): Promise<void> {
-    await expect
-      .poll(async () => await this.dataRows().count().catch(() => 0), {
-        timeout: 20_000,
-        message: `事由筛选「${keyword}」后列表无数据行`,
-      })
-      .toBeGreaterThan(0);
-    const reasonIndex = await this.columnIndex(FILTER_LABELS.reason);
+    let detail = '';
     await expect
       .poll(async () => {
-        const reasons = await this.dataRows().locator(`td:nth-child(${reasonIndex + 1})`).allTextContents();
+        let idx: number;
+        try {
+          idx = await this.columnIndex(FILTER_LABELS.reason);
+        } catch {
+          detail = '未找到事由列';
+          return false;
+        }
+        // 排除固定列克隆行：其隐藏 td 常为空，会让 every() 误判「存在不匹配行」
+        const reasons = await this.dataRows().evaluateAll((trs, colIdx) => {
+          const out: string[] = [];
+          for (const tr of trs) {
+            if (tr.closest('.ant-table-fixed-right, .ant-table-fixed-left')) continue;
+            if (tr.querySelector('.ant-table-placeholder')) continue;
+            const tds = tr.querySelectorAll(':scope > td');
+            if (tds.length <= colIdx) continue;
+            out.push((tds[colIdx].textContent || '').replace(/\s+/g, ' ').trim());
+          }
+          return out;
+        }, idx);
+        detail = reasons.length ? reasons.slice(0, 8).join(' | ') : '无事由单元格';
         return reasons.length > 0 && reasons.every((reason) => reason.includes(keyword));
       }, {
         timeout: 20_000,
         message: `事由筛选「${keyword}」后存在不匹配行，拒绝从默认列表取号`,
       })
-      .toBe(true);
+      .toBe(true)
+      .catch(() => {
+        throw new Error(
+          `事由筛选「${keyword}」后存在不匹配行，拒绝从默认列表取号；实际事由：${detail || '(空)'}`,
+        );
+      });
   }
 
   // openByCode 不再 override：基类已按 catalog 的 detailSelectors/detailTextRe

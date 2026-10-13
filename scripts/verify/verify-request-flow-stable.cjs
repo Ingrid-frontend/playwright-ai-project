@@ -197,7 +197,24 @@ async function verifyRequestSafety() {
     async readFirstDocNo() { events.push('read'); return selectedDocNo; }
     async columnIndex() { return 1; }
     dataRows() {
-      return { count: async () => reasons.length, locator: () => ({ allTextContents: async () => reasons }) };
+      return {
+        count: async () => reasons.length,
+        locator: () => ({ allTextContents: async () => reasons }),
+        evaluateAll: async (fn, colIdx) => {
+          const trs = reasons.map((text) => ({
+            closest: () => null,
+            querySelector: () => null,
+            querySelectorAll: () => {
+              const tds = [];
+              for (let i = 0; i <= colIdx; i += 1) {
+                tds.push({ textContent: i === colIdx ? text : '' });
+              }
+              return tds;
+            },
+          }));
+          return fn(trs, colIdx);
+        },
+      };
     }
     async filterByReason(reason) {
       events.push('filter');

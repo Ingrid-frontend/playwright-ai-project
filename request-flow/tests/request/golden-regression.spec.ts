@@ -128,9 +128,9 @@ test.describe('申请单 · Golden 回归', () => {
   test('按单号搜索并校验列表', async ({ page, flowRunDir }) => {
     bindFlowStepCapture({ page, runDir: flowRunDir });
     const list = new RequestListPage(page);
-    await flowStep('准备列表', async () => {
+    await flowStep('准备列表（按单号搜索）', async () => {
       await ensureGoldenList(list);
-    }, { capture: false });
+    }, { capture: false, step: 1 });
     const docNo = goldenCtx.docNo;
     await flowStep('按单号搜索', async () => {
       await list.search(docNo, keepFilters);
@@ -142,11 +142,11 @@ test.describe('申请单 · Golden 回归', () => {
   test('展开筛选并按固定关键字筛选', async ({ page, flowRunDir }) => {
     bindFlowStepCapture({ page, flowRunDir });
     const list = new RequestListPage(page);
-    await flowStep('准备列表', async () => {
+    await flowStep('准备列表（按事由筛选）', async () => {
       await ensureGoldenList(list);
       goldenCtx.keyword = '';
       await ensureFilterKeyword(list);
-    }, { capture: false });
+    }, { capture: false, step: 2 });
     const keyword = goldenCtx.keyword;
     await flowStep('按事由筛选', async () => {
       await list.filterByReason(keyword, keepFilters);
@@ -161,7 +161,12 @@ test.describe('申请单 · Golden 回归', () => {
     const list = new RequestListPage(page);
     // 用带空列表恢复的准备（ensureGoldenList）：前序用例 skip/筛选残留可能
     // 让列表处于空状态，recoverIfEmptyList 会清筛选重搜兜底
-    await ensureGoldenList(list);
+    await flowStep('准备列表（打开详情）', async () => {
+      await ensureGoldenList(list);
+      if (!goldenCtx.docNo) {
+        test.skip(true, GOLDEN_SKIP_MSG);
+      }
+    }, { capture: false, step: 3 });
     const docNo = goldenCtx.docNo;
     await flowStep('搜索并打开详情', async () => {
       await list.search(docNo, keepFilters);
