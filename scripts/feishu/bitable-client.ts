@@ -1,4 +1,4 @@
-import type { BitableRuntimeConfig } from './bitable-schema.js';
+import { ARCHIVE_FIELD, type BitableRuntimeConfig } from './bitable-schema.js';
 import { fetchWithRetry, type FetchWithRetryOptions } from './feishu-utils.js';
 
 /** 多维表附件字段值：上传图片后拿到的 file_token 列表 */
@@ -47,13 +47,14 @@ export class BitableClient {
   constructor(private readonly config: BitableRuntimeConfig) {}
 
   async upsertRecord(tableId: string, uniqueField: string, uniqueValue: string, fields: BitableRecordFields): Promise<BitableUpsertResult> {
+    const next = fields[ARCHIVE_FIELD] === true ? fields : { ...fields, [ARCHIVE_FIELD]: false };
     const existingRecordId = await this.findRecordId(tableId, uniqueField, uniqueValue);
     if (existingRecordId) {
-      await this.updateRecord(tableId, existingRecordId, fields);
+      await this.updateRecord(tableId, existingRecordId, next);
       return { recordId: existingRecordId, created: false };
     }
 
-    const recordId = await this.createRecord(tableId, fields);
+    const recordId = await this.createRecord(tableId, next);
     return { recordId, created: true };
   }
 
@@ -99,11 +100,46 @@ export class BitableClient {
     return `https://open.feishu.cn/open-apis/bitable/v1/apps/${this.config.appToken}${suffix}`;
   }
 
+  async listViews(tableId: string): Promise<Array<{ view_id: string; view_name: string; view_type: string }>> {
+    const data = await this.request<{ items?: Array<{ view_id: string; view_name: string; view_type: string }> }>(
+      this.tableUrl(tableId, '/views?page_size=100'),
+    );
+    return data.items ?? [];
+  }
+
+  async getView(tableId: string, viewId: string): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>(this.tableUrl(tableId, `/views/${viewId}`));
+  }
+
+  async createView(tableId: string, name: string, viewType = 'grid'): Promise<string> {
+    const data = await this.request<{ view?: { view_id?: string }; view_id?: string }>(
+      this.tableUrl(tableId, '/views'),
+      {
+        method: 'POST',
+        body: JSON.stringify({ view_name: name, view_type: viewType }),
+      },
+    );
+    const viewId = data.view?.view_id ?? data.view_id;
+    if (!viewId) throw new Error('创建视图成功但未返回 view_id');
+    return viewId;
+  }
+
+  async patchView(
+    tableId: string,
+    viewId: string,
+    property: { filter_info?: unknown; hidden_fields?: string[]; hierarchy_config?: unknown },
+  ): Promise<void> {
+    await this.request<unknown>(this.tableUrl(tableId, `/views/${viewId}`), {
+      method: 'PATCH',
+      body: JSON.stringify({ property }),
+    });
+  }
+
   async listFields(
     tableId: string,
-  ): Promise<Array<{ field_id: string; field_name: string; type: number; property?: Record<string, unknown> }>> {
+  ): Promise<Array<{ field_id: string; field_name: string; type: number; is_primary?: boolean; property?: Record<string, unknown> }>> {
     const data = await this.request<{
-      items?: Array<{ field_id: string; field_name: string; type: number; property?: Record<string, unknown> }>;
+      items?: Array<{ field_id: string; field_name: string; type: number; is_primary?: boolean; property?: Record<string, unknown> }>;
     }>(this.tableUrl(tableId, '/fields?page_size=500'));
     return data.items ?? [];
   }
@@ -156,6 +192,22 @@ export class BitableClient {
     });
   }
 
+  async batchUpdateRecords(
+    tableId: string,
+    records: Array<{ recordId: string; fields: BitableRecordFields }>,
+  ): Promise<void> {
+    for (let i = 0; i < records.length; i += 200) {
+      const recordsBatch = records.slice(i, i + 200).map((item) => ({
+        record_id: item.recordId,
+        fields: cleanFields(item.fields),
+      }));
+      await this.request<unknown>(this.tableUrl(tableId, '/records/batch_update'), {
+        method: 'POST',
+        body: JSON.stringify({ records: recordsBatch }),
+      });
+    }
+  }
+
   async listTables(): Promise<Array<{ table_id: string; name: string }>> {
     const data = await this.request<{ items?: Array<{ table_id: string; name: string }> }>(
       this.appUrl('/tables?page_size=100'),
@@ -181,6 +233,10 @@ export class BitableClient {
     );
     if (!data.table_id) throw new Error('创建数据表成功但未返回 table_id');
     return { table_id: data.table_id, default_view_id: data.default_view_id };
+  }
+
+  async deleteTable(tableId: string): Promise<void> {
+    await this.request<unknown>(this.appUrl(`/tables/${tableId}`), { method: 'DELETE' });
   }
 
   async listDashboards(): Promise<Array<{ block_id: string; name: string }>> {
@@ -244,26 +300,12 @@ export class BitableClient {
   }
 
   private async findRecordId(tableId: string, uniqueField: string, uniqueValue: string): Promise<string | null> {
-    const data = await this.request<SearchRecordsData>(this.tableUrl(tableId, '/records/search?page_size=1'), {
-      method: 'POST',
-      body: JSON.stringify({
-        filter: {
-          conjunction: 'and',
-          conditions: [
-            {
-              field_name: uniqueField,
-              operator: 'is',
-              value: [uniqueValue],
-            },
-          ],
-        },
-      }),
-    });
-    return data.items?.[0]?.record_id ?? null;
+    const found = await this.findRecord(tableId, uniqueField, uniqueValue);
+    return found?.record_id ?? null;
   }
 
   async findRecord(tableId: string, uniqueField: string, uniqueValue: string): Promise<SearchRecordItem | null> {
-    const data = await this.request<SearchRecordsData>(this.tableUrl(tableId, '/records/search?page_size=1'), {
+    const data = await this.request<SearchRecordsData>(this.tableUrl(tableId, '/records/search?page_size=100'), {
       method: 'POST',
       body: JSON.stringify({
         filter: {
@@ -278,7 +320,7 @@ export class BitableClient {
         },
       }),
     });
-    return data.items?.[0] ?? null;
+    return (data.items ?? []).find((item) => item.fields?.[ARCHIVE_FIELD] !== true) ?? null;
   }
 
   private async createRecord(tableId: string, fields: BitableRecordFields): Promise<string> {

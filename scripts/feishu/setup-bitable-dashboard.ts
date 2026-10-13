@@ -13,10 +13,13 @@ import {
   ISSUE_FIELDS,
   RUN_FIELDS,
   BITABLE_ENV_OPTIONS,
+  ARCHIVE_FIELD,
   BITABLE_FIELD_TYPE,
   buildIssueLinkFieldSpec,
   DELIVERY_FIELD_SPECS,
   DELIVERY_TABLE_NAME,
+  DELIVERY_SUMMARY_FIELD_SPECS,
+  DELIVERY_SUMMARY_TABLE_NAME,
   explainMissingBitableConfig,
   loadBitableRuntimeConfig,
 } from './index.js';
@@ -63,6 +66,7 @@ const RUN_SPECS: FieldSpec[] = [
   { name: RUN_FIELDS.reportUrl, type: FIELD_TYPE.url },
   { name: RUN_FIELDS.feishuDocUrl, type: FIELD_TYPE.url },
   { name: RUN_FIELDS.failureReasons, type: FIELD_TYPE.text },
+  { name: ARCHIVE_FIELD, type: FIELD_TYPE.checkbox },
 ];
 
 function buildIssueSpecs(runTableId?: string): FieldSpec[] {
@@ -87,6 +91,7 @@ function buildIssueSpecs(runTableId?: string): FieldSpec[] {
     { name: ISSUE_FIELDS.elementXpath, type: FIELD_TYPE.text },
     { name: ISSUE_FIELDS.elementSelector, type: FIELD_TYPE.text },
     { name: ISSUE_FIELDS.aiDocUrl, type: FIELD_TYPE.url },
+    { name: ARCHIVE_FIELD, type: FIELD_TYPE.checkbox },
   ];
   if (runTableId) {
     specs.splice(2, 0, buildIssueLinkFieldSpec(runTableId));
@@ -123,6 +128,7 @@ const DAILY_SPECS: FieldSpec[] = [
   { name: DAILY_FIELDS.overdueIssues, type: FIELD_TYPE.number, property: { formatter: '0' } },
   { name: DAILY_FIELDS.dataIntegrity, type: FIELD_TYPE.text },
   { name: DAILY_FIELDS.countedExecutions, type: FIELD_TYPE.text },
+  { name: ARCHIVE_FIELD, type: FIELD_TYPE.checkbox },
 ];
 
 const DASHBOARD_CHARTS = [
@@ -165,19 +171,35 @@ const DASHBOARD_CHARTS = [
     title: '⑤ 最近执行',
     table: '执行记录',
     type: '表格',
-    cols: ['执行时间', '状态', '阻断问题', '警告问题', 'UI通过率', '报告链接'],
+    cols: ['环境', '执行时间', '状态', '阻断问题', '警告问题', '高频脚本', '失败原因'],
     sort: '执行时间 降序',
     limit: 8,
-    note: '「UI通过率」列若无可删，以日汇总为准',
+    note: '不放「执行ID」「报告链接」：ID 过长，报告链接多为本地路径，看板上看不清',
   },
   {
     title: '⑥ 待处理问题（明细）',
     table: '问题明细',
     type: '表格',
-    cols: ['严重度', '脚本简称', '步骤名', '对比类型', '差异%', '关联执行', 'AI分析'],
+    cols: ['步骤名', '对比类型', '严重度', '差异%', '描述', '脚本简称'],
     sort: '严重度 降序',
     limit: 15,
     filter: '严重度 = 阻断 或 严重度 = 警告',
+  },
+  {
+    title: '⑦ 迭代交付通过率（交付批次）',
+    table: 'UI 验收汇总',
+    type: '折线图',
+    x: '交付时间',
+    y: ['通过率%'],
+    note: '一行一个交付批次；按「迭代」筛选可对比同一迭代内多次交付的变化',
+  },
+  {
+    title: '⑧ 迭代问题分布（交付批次）',
+    table: 'UI 验收汇总',
+    type: '堆叠柱状图',
+    x: '迭代',
+    y: ['需修复数', '无需处理数', '待建基线数'],
+    note: '按「迭代」分组，观察各迭代问题构成的变化',
   },
 ];
 
@@ -204,11 +226,21 @@ const ROLE_VIEWS: RoleView[] = [
     name: '本轮客户验收',
     table: 'UI 验收明细',
     role: '客户 / 交付负责人',
-    filter: '环境 = stage9084；按 delivery_id 筛选当前批次',
-    sort: 'actionable 降序（需处理项优先）',
-    groupBy: 'flow（按流程分组）',
-    columns: ['页面', 'verdict', 'flow', 'step', 'browser', 'affectedSteps', 'doc_url'],
-    note: '客户只看到脱敏后的交付数据；内部路径、账号不出现在此视图',
+    filter: '环境 = Stage9084环境；按 delivery_id 筛选当前批次',
+    sort: '需处理 降序 → 差异% 降序',
+    groupBy: '判定（按问题分类分组：需要修复 → 无需处理 → 待建基线 → 完全一致）',
+    columns: ['页面', '判定', '流程', '登录账号', '步骤', '浏览器', '差异', '差异%', '受影响步骤数', '需处理', '判定说明', '验收报告'],
+    note: '流程名不含账号；登录账号单独成列，同一流程多账号时可筛选',
+  },
+  {
+    name: '迭代交付对比',
+    table: 'UI 验收汇总',
+    role: '交付负责人 / 项目经理',
+    filter: '全量',
+    sort: '交付时间 降序',
+    groupBy: '迭代（同迭代内按交付时间排）',
+    columns: ['交付时间', '迭代', '环境', '版本标签', '通过率%', '覆盖率%', '发布建议', '结论', '报告链接'],
+    note: '一行一个交付批次。检测步骤数、已比对数、通过数、无需处理数、需修复数、待建基线数留给仪表盘，默认视图不展示',
   },
   {
     name: '我的待办',
@@ -284,6 +316,7 @@ async function main(): Promise<void> {
     { label: '日汇总', id: config.dailySummaryTableId, specs: DAILY_SPECS },
     { label: 'UI采集反馈', id: config.feedbackTableId, specs: FEEDBACK_SPECS },
     { label: DELIVERY_TABLE_NAME, id: config.deliveryTableId, specs: DELIVERY_FIELD_SPECS },
+    { label: DELIVERY_SUMMARY_TABLE_NAME, id: config.deliverySummaryTableId, specs: DELIVERY_SUMMARY_FIELD_SPECS },
   ];
 
   for (const table of tables) {

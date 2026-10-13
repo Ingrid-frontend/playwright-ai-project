@@ -22,8 +22,9 @@ import {
 import { buildDeliveryCard } from './delivery-card.js';
 import { uploadImages, type UploadBatchResult, type UploaderOptions } from './feishu-media.js';
 import { BitableClient } from './bitable-client.js';
-import { loadBitableRuntimeConfig, explainMissingBitableConfig } from './bitable-schema.js';
+import { DELIVERY_FIELDS, DELIVERY_SUMMARY_FIELDS, loadBitableRuntimeConfig, explainMissingBitableConfig } from './bitable-schema.js';
 import { ensureDeliveryTable, hashItemKey, writeDeliveryRecords } from './bitable-delivery.js';
+import { ensureDeliverySummaryTable, writeDeliverySummaryRecord } from './bitable-delivery-summary.js';
 import { syncDeliveryFeedback } from './sync-delivery-feedback.js';
 import {
   createReceipt,
@@ -236,21 +237,37 @@ export async function linkDocumentRecords(
   records: Array<{ recordId: string; key: string }>,
   docUrl: string,
   receipt: DeliveryReceipt,
+  summary?: { tableId: string; recordId: string },
 ): Promise<void> {
   if (isStageDone(receipt, 'doc-linked')) return;
   const linked = new Set(receipt.artifacts.linkedRecordIds ?? []);
+  const summaryLinked = receipt.artifacts.summaryLinked === true;
   startStage(receipt, 'doc-linked');
   try {
     for (const rec of records) {
       if (linked.has(rec.recordId)) continue;
       await client.updateRecord(tableId, rec.recordId, {
-        doc_url: { link: docUrl, text: '验收报告' },
+        [DELIVERY_FIELDS.docUrl]: { link: docUrl, text: '验收报告' },
       });
       linked.add(rec.recordId);
       receipt.artifacts.linkedRecordIds = [...linked];
       writeReceipt(receipt);
     }
-    completeStage(receipt, 'doc-linked', { backfilledRecords: records.length }, { linkedRecordIds: [...linked] });
+    let summaryBackfilled = 0;
+    if (summary && !summaryLinked) {
+      await client.updateRecord(summary.tableId, summary.recordId, {
+        [DELIVERY_SUMMARY_FIELDS.docUrl]: { link: docUrl, text: '验收报告' },
+      });
+      receipt.artifacts.summaryLinked = true;
+      summaryBackfilled = 1;
+      writeReceipt(receipt);
+    }
+    completeStage(
+      receipt,
+      'doc-linked',
+      { backfilledRecords: records.length, summaryBackfilled },
+      { linkedRecordIds: [...linked] },
+    );
   } catch (err) {
     failStage(receipt, 'doc-linked', err instanceof Error ? err.message : String(err));
     throw err;
@@ -444,6 +461,8 @@ export async function main() {
   let bitableClient: BitableClient | null = null;
   let bitableTableId = '';
   let bitableRecordIds: Array<{ recordId: string; key: string }> = [];
+  let summaryTableId = '';
+  let summaryRecordId = '';
 
   // [1/3] 先写多维表明细，获取 recordId 用于文档证据链接
   if (opts.withBitable) {
@@ -459,6 +478,8 @@ export async function main() {
         // 恢复：明细已写入，复用既有表与记录，不重传附件、不重写记录
         bitableTableId = receipt.artifacts.tableId;
         bitableRecordIds = receipt.artifacts.recordIds || [];
+        summaryTableId = receipt.artifacts.summaryTableId || '';
+        summaryRecordId = receipt.artifacts.summaryRecordId || '';
         for (const rec of bitableRecordIds) {
           recordUrls.set(rec.key, buildBitableRecordUrl(bitableConfig.appToken, bitableTableId, rec.recordId));
         }
@@ -499,7 +520,7 @@ export async function main() {
           }
         }
 
-        // 注意：此时 docUrl 尚未生成，多维表的 doc_url 字段将为空，文档创建后回填
+        // 注意：此时 docUrl 尚未生成，明细/汇总的报告链接字段将为空，文档创建后回填
         const written = await writeDeliveryRecords(
           client,
           tableId,
@@ -513,7 +534,22 @@ export async function main() {
         for (const rec of written.records) {
           recordUrls.set(rec.key, buildBitableRecordUrl(bitableConfig.appToken, tableId, rec.recordId));
         }
-        bitableInfo = { tableId, ...written };
+
+        // 批次汇总：一行一个 deliveryId，跨迭代对比通过率/问题数；随明细写入同一阶段
+        const summaryTable = await ensureDeliverySummaryTable(client, {
+          tableId: bitableConfig.deliverySummaryTableId || undefined,
+        });
+        if (summaryTable.created || summaryTable.addedFields.length) {
+          console.log(
+            `  汇总表 ${summaryTable.created ? '已创建' : '已存在'}${summaryTable.addedFields.length ? `，补建字段 ${summaryTable.addedFields.length} 个` : ''}`,
+          );
+        }
+        const summaryWritten = await writeDeliverySummaryRecord(client, summaryTable.tableId, payload);
+        summaryTableId = summaryTable.tableId;
+        summaryRecordId = summaryWritten.recordId;
+        console.log(`  批次汇总 ${summaryWritten.created ? '新增' : '更新'}: ${payload.deliveryId}`);
+
+        bitableInfo = { tableId, ...written, summaryTableId, summaryRecordId };
 
         // 同步问题到反馈表（UI采集反馈），只更新检测事实，不覆盖人工字段
         if (bitableConfig.feedbackTableId) {
@@ -521,9 +557,11 @@ export async function main() {
           console.log(`  反馈表同步：新增 ${feedbackResult.created} 条 · 更新 ${feedbackResult.updated} 条`);
         }
         if (receipt) {
-          completeStage(receipt, 'bitable-written', { tableId, created: written.created, updated: written.updated }, {
+          completeStage(receipt, 'bitable-written', { tableId, created: written.created, updated: written.updated, summaryTableId, summaryRecordId }, {
             tableId,
             recordIds: bitableRecordIds,
+            summaryTableId: summaryTableId || undefined,
+            summaryRecordId: summaryRecordId || undefined,
           });
         }
       }
@@ -543,12 +581,19 @@ export async function main() {
       console.warn('  分享链接未确认可用，请在飞书内核对「分享」后再发给客户。');
     }
 
-    // 回填多维表记录的 doc_url；独立于文档完成状态恢复。
+    // 回填多维表记录的报告链接；独立于文档完成状态恢复。
     if (isStageDone(receipt, 'doc-linked')) {
       console.log('  恢复回执：报告链接已回填，跳过');
     } else if (bitableClient && bitableTableId && bitableRecordIds.length > 0 && docUrl) {
-      await linkDocumentRecords(bitableClient, bitableTableId, bitableRecordIds, docUrl, receipt);
-      console.log(`  已回填 ${bitableRecordIds.length} 条多维表记录的报告链接`);
+      await linkDocumentRecords(
+        bitableClient,
+        bitableTableId,
+        bitableRecordIds,
+        docUrl,
+        receipt,
+        summaryTableId && summaryRecordId ? { tableId: summaryTableId, recordId: summaryRecordId } : undefined,
+      );
+      console.log(`  已回填 ${bitableRecordIds.length} 条明细记录${summaryRecordId ? ' + 1 条批次汇总' : ''}的报告链接`);
     }
   } else {
     console.log('\n[2/3] 跳过文档（--no-doc）');

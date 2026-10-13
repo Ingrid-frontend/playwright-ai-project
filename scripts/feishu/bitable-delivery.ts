@@ -39,7 +39,8 @@ export async function ensureDeliveryTable(
   const addedFields: string[] = [];
   for (const spec of DELIVERY_FIELD_SPECS) {
     if (existing.has(spec.name)) continue;
-    await client.createField(table.table_id, { name: spec.name, type: spec.type });
+    // property 必须透传，否则单选列建不出选项/颜色
+    await client.createField(table.table_id, { name: spec.name, type: spec.type, property: spec.property });
     addedFields.push(spec.name);
   }
 
@@ -52,18 +53,43 @@ export type DeliveryRecordContext = {
   tokens: Map<string, string>;
 };
 
+const COMPARE_IMAGE_ROLES = ['baseline', 'current', 'diff'] as const;
+
 function attachmentFor(
   item: DeliveryItem,
-  role: 'baseline' | 'current' | 'diff',
+  role: (typeof COMPARE_IMAGE_ROLES)[number],
   ctx: DeliveryRecordContext,
   resolvePath: (relPath: string) => string,
-): BitableAttachment[] | undefined {
+): BitableAttachment | undefined {
   const image = item.images.find((i) => i.role === role);
   if (!image) return undefined;
   const abs = resolvePath(image.relPath);
   const fileToken = ctx.tokens.get(abs);
   if (!fileToken) return undefined;
-  return [{ file_token: fileToken, name: `${item.title}-${image.label}.png` }];
+  const order = COMPARE_IMAGE_ROLES.indexOf(role) + 1;
+  return { file_token: fileToken, name: `${order}-${image.label}.png` };
+}
+
+/** 从多维表附件字段取出可回写的 file_token；读接口会带 url/size，回写只留 token 和文件名 */
+export function readAttachments(raw: unknown): BitableAttachment[] {
+  if (!Array.isArray(raw)) return [];
+  const out: BitableAttachment[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const token = (item as { file_token?: unknown }).file_token;
+    if (typeof token !== 'string' || !token) continue;
+    const name = (item as { name?: unknown }).name;
+    out.push(typeof name === 'string' && name ? { file_token: token, name } : { file_token: token });
+  }
+  return out;
+}
+
+/** 差异文本 "1.00%" → 数值 1；解析失败返回 undefined（该列不写） */
+export function parseDifferencePercent(label?: string | null): number | undefined {
+  if (!label) return undefined;
+  const n = Number.parseFloat(String(label).replace('%', '').trim());
+  if (!Number.isFinite(n)) return undefined;
+  return Number(n.toFixed(2));
 }
 
 /** 把一条交付项转成多维表记录字段；图片未上传成功时该附件列留空，不影响文字结论 */
@@ -73,31 +99,34 @@ export function buildDeliveryRecord(
   ctx: DeliveryRecordContext,
   resolvePath: (relPath: string) => string,
 ): BitableRecordFields {
+  const deliveredAt = Date.parse(payload.generatedAt);
   const fields: BitableRecordFields = {
-    页面: item.title,
+    [DELIVERY_FIELDS.page]: item.title,
     [DELIVERY_FIELDS.itemKey]: hashItemKey(item.key),
+    [DELIVERY_FIELDS.deliveryId]: payload.deliveryId,
     [DELIVERY_FIELDS.runId]: payload.runId || '',
     [DELIVERY_FIELDS.generatedAt]: payload.generatedAt,
+    [DELIVERY_FIELDS.deliveredAt]: Number.isFinite(deliveredAt) ? deliveredAt : undefined,
     [DELIVERY_FIELDS.env]: payload.envLabel || '',
     [DELIVERY_FIELDS.releaseTag]: payload.releaseTag || '',
     [DELIVERY_FIELDS.iteration]: payload.iteration || DEFAULT_DELIVERY_ITERATION,
     [DELIVERY_FIELDS.verdict]: item.verdictLabel,
     [DELIVERY_FIELDS.flow]: item.scriptLabel,
+    [DELIVERY_FIELDS.account]: item.account || '',
     [DELIVERY_FIELDS.step]: item.stepLabel,
     [DELIVERY_FIELDS.stepNumber]: item.stepNumber,
     [DELIVERY_FIELDS.browser]: item.browserLabel,
     [DELIVERY_FIELDS.difference]: item.differenceLabel,
+    [DELIVERY_FIELDS.differencePct]: parseDifferencePercent(item.differenceLabel),
     [DELIVERY_FIELDS.affectedSteps]: item.affectedSteps,
-    [DELIVERY_FIELDS.actionable]: item.actionable ? '是' : '否',
+    [DELIVERY_FIELDS.actionable]: Boolean(item.actionable),
     [DELIVERY_FIELDS.reason]: item.plainText || item.reason,
   };
 
-  const baseline = attachmentFor(item, 'baseline', ctx, resolvePath);
-  const current = attachmentFor(item, 'current', ctx, resolvePath);
-  const diff = attachmentFor(item, 'diff', ctx, resolvePath);
-  if (baseline) fields[DELIVERY_FIELDS.baselineImage] = baseline;
-  if (current) fields[DELIVERY_FIELDS.currentImage] = current;
-  if (diff) fields[DELIVERY_FIELDS.diffImage] = diff;
+  const images = COMPARE_IMAGE_ROLES
+    .map((role) => attachmentFor(item, role, ctx, resolvePath))
+    .filter((img): img is BitableAttachment => Boolean(img));
+  if (images.length) fields[DELIVERY_FIELDS.compareImages] = images;
 
   if (ctx.docUrl) fields[DELIVERY_FIELDS.docUrl] = { link: ctx.docUrl, text: '验收报告' };
 
@@ -133,4 +162,41 @@ export async function writeDeliveryRecords(
   }
 
   return result;
+}
+
+const COMPARE_IMAGE_SOURCES = [
+  { field: DELIVERY_FIELDS.baselineImage, name: '1-验收基线.png' },
+  { field: DELIVERY_FIELDS.currentImage, name: '2-本次截图.png' },
+  { field: DELIVERY_FIELDS.diffImage, name: '3-差异标注.png' },
+] as const;
+
+/** 把旧的三列附件收进「对比图」。已有对比图的行不覆盖。 */
+export async function mergeDeliveryImageColumns(
+  client: BitableClient,
+  tableId: string,
+): Promise<{ merged: number; skipped: number }> {
+  const records = await client.listRecords(tableId);
+  let merged = 0;
+  let skipped = 0;
+  for (const rec of records) {
+    const fields = rec.fields || {};
+    if (readAttachments(fields[DELIVERY_FIELDS.compareImages]).length > 0) {
+      skipped += 1;
+      continue;
+    }
+    const images: BitableAttachment[] = [];
+    for (const src of COMPARE_IMAGE_SOURCES) {
+      const hit = readAttachments(fields[src.field])[0];
+      if (hit) images.push({ file_token: hit.file_token, name: src.name });
+    }
+    if (!images.length || !rec.record_id) {
+      skipped += 1;
+      continue;
+    }
+    await client.updateRecord(tableId, rec.record_id, {
+      [DELIVERY_FIELDS.compareImages]: images,
+    });
+    merged += 1;
+  }
+  return { merged, skipped };
 }

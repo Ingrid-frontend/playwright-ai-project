@@ -58,6 +58,13 @@ const FLOW_REPORT_FILE = 'results/flow-screenshot-comparison.html';
 const MAX_ISSUES_TO_WRITE = Number.parseInt(process.env.FEISHU_BITABLE_MAX_ISSUES || '500', 10);
 
 /**
+ * 噪声问题（severity=noise）默认不写入问题明细表：严重度分布/图表会被噪声淹没，
+ * 且 run 表「噪声问题」列已记录运行事实。需要追溯旧行为时设 FEISHU_BITABLE_WRITE_NOISE=1。
+ * 日汇总/执行记录的统计口径不受影响（均来自本地 issuesReport，不读问题明细表）。
+ */
+const WRITE_NOISE_ISSUES = process.env.FEISHU_BITABLE_WRITE_NOISE === '1';
+
+/**
  * 数据新鲜度守卫：issues 报告缺文件 / 解析失败 / 过期时拒绝写入，
  * 杜绝「跑完不重新生成 → 多维表静默写旧数据」的口径漂移。
  * 过期阈值默认 24h，可用 FEISHU_BITABLE_MAX_STALE_HOURS 调整（'0' 关闭守卫）。
@@ -138,11 +145,16 @@ export async function writeBitableReport(input: BitableWriteInput = {}): Promise
 
   let issueRecordCount = 0;
   if (config.issueTableId && issuesReport?.issues?.length) {
-    const issues = issuesReport.issues.slice(0, Number.isFinite(MAX_ISSUES_TO_WRITE) ? MAX_ISSUES_TO_WRITE : 500);
+    const candidates = issuesReport.issues.slice(0, Number.isFinite(MAX_ISSUES_TO_WRITE) ? MAX_ISSUES_TO_WRITE : 500);
+    const issues = WRITE_NOISE_ISSUES ? candidates : candidates.filter((issue) => issue.severity !== 'noise');
+    const skippedNoise = candidates.length - issues.length;
     for (const issue of issues) {
       const fields = buildIssueFields(executionId, issue, runRecordUrl, runResult.recordId, issueLinkField);
       await client.upsertRecord(config.issueTableId, ISSUE_FIELDS.issueRecordId, String(fields[ISSUE_FIELDS.issueRecordId]), fields);
       issueRecordCount++;
+    }
+    if (skippedNoise > 0) {
+      console.log(`🔇 跳过 ${skippedNoise} 条噪声问题（FEISHU_BITABLE_WRITE_NOISE=1 可保留）`);
     }
     console.log(`📋 已写入/更新 ${issueRecordCount} 条 UI 问题明细`);
   }

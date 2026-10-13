@@ -35,6 +35,11 @@ export type DeliveryReceipt = {
   artifacts: {
     tableId?: string;
     recordIds?: Array<{ recordId: string; key: string }>;
+    /** 批次汇总表（UI 验收汇总）写入结果；旧回执无此字段时汇总漏写由迁移工具 --rebuild-summary 兜底 */
+    summaryTableId?: string;
+    summaryRecordId?: string;
+    /** doc-linked 阶段是否已回填汇总行报告链接 */
+    summaryLinked?: boolean;
     documentId?: string;
     docUrl?: string;
     writtenBlockCount?: number;

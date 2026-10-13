@@ -5,6 +5,7 @@ import { buildPageCardsFromCoverage, hasVisibleDifference, isDiffPage } from './
 import type { ScriptRunHistoryEntry, ScriptRunHistoryPreview } from './customer-report-run-meta.js';
 import { friendlyStepLabel } from './customer-report-naming.js';
 import { readGoldenMatchVerdictForScriptRun, type GoldenMatchVerdict } from './prune-flow-golden-runs.js';
+import { resolveCustomerReportConfig } from './ui-regression-config.js';
 
 const DEFAULT_MAX_RUNS = 30;
 
@@ -105,18 +106,49 @@ function rowFromGoldenVerdict(
       verdictLabel: '完全一致',
     };
   }
-  const regress = verdict.maxDifference > 0;
+
+  const cfg = resolveCustomerReportConfig();
+  const diff = verdict.maxDifference;
+  // prune-flow-golden-runs 用 identicalRatio 判定 match；这里把它展开为四级分级
+  if (diff <= cfg.identicalRatio) {
+    return {
+      ...row,
+      screenshotCount: shotCount,
+      screenshotsPruned: pruned || undefined,
+      comparedSteps: verdict.steps,
+      passSteps: verdict.steps,
+      minorSteps: 0,
+      regressSteps: 0,
+      maxDifference: diff,
+      verdict: 'pass',
+      verdictLabel: '完全一致',
+    };
+  }
+  if (diff <= cfg.multiSpotRegressRatio) {
+    return {
+      ...row,
+      screenshotCount: shotCount,
+      screenshotsPruned: pruned || undefined,
+      comparedSteps: verdict.steps,
+      passSteps: 0,
+      minorSteps: verdict.steps,
+      regressSteps: 0,
+      maxDifference: diff,
+      verdict: 'minor',
+      verdictLabel: '轻微变化',
+    };
+  }
   return {
     ...row,
     screenshotCount: shotCount,
     screenshotsPruned: pruned || undefined,
     comparedSteps: verdict.steps,
     passSteps: 0,
-    minorSteps: regress ? 0 : verdict.steps,
-    regressSteps: regress ? verdict.steps : 0,
-    maxDifference: verdict.maxDifference,
-    verdict: regress ? 'regress' : 'minor',
-    verdictLabel: regress ? '明显衰退' : '轻微变化',
+    minorSteps: 0,
+    regressSteps: verdict.steps,
+    maxDifference: diff,
+    verdict: 'regress',
+    verdictLabel: '明显衰退',
   };
 }
 

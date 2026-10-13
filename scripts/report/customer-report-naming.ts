@@ -101,9 +101,23 @@ const FLOW_SLUG_LABELS: Record<string, string> = {
 };
 
 /**
+ * `by-account/<slug>` 里的 slug 就是本次登录账号（手机号或邮箱转成的路径名）。
+ * 流程名不带它；验收明细用单独一列区分同一流程下的不同账号。
+ */
+export function extractLoginAccount(scriptKey: string): string {
+  const segs = String(scriptKey || '')
+    .split('/')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const idx = segs.findIndex((s) => s.toLowerCase() === 'by-account');
+  if (idx < 0) return '';
+  return segs[idx + 1] || '';
+}
+
+/**
  * 把脚本路径转成客户可读的业务流程名。
  * `flows/request-flow/dev/golden-regression/by-account/menma_comic_com` -> `DEV环境 · 申请单流程`
- * 内部截图树里 by-account 段后的测试账号是内部实现细节，一律不展示。
+ * 登录账号不进流程名，由 extractLoginAccount 单独取出。
  */
 export function friendlyScriptLabel(scriptKey: string): string {
   const segs = String(scriptKey || '')
@@ -123,7 +137,7 @@ export function friendlyScriptLabel(scriptKey: string): string {
   const rest: string[] = [];
   let prev = '';
   for (const seg of segs) {
-    // 账号目录段（by-account 后紧跟的一段）是内部测试身份，不进入客户可见文案
+    // 账号目录段不拼进流程名，单独进「登录账号」列
     if (prev.toLowerCase() === 'by-account') {
       prev = seg;
       continue;

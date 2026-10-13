@@ -462,17 +462,18 @@ function renderTrendPanel(model: CustomerReportModel): string {
     return `<tr>
       <td>${esc(date)}</td>
       <td>${e.stats.coveragePct}%</td>
-      <td>${e.stats.passRate}%</td>
+      <td>${e.stats.passSteps}</td>
       <td class="${e.stats.regressSteps > 0 ? 'n-red' : ''}">${e.stats.regressSteps}</td>
       <td>${e.stats.degradedSteps + e.stats.benignSteps}</td>
     </tr>`;
   }).join('');
 
   let deltaLine = '';
-  if (trend.previous) {
+  if (trend.previous && trend.current) {
     const fmt = (d: number, suffix = ''): string => `${d > 0 ? '+' : ''}${d}${suffix}`;
+    const passDelta = trend.current.stats.passSteps - trend.previous.stats.passSteps;
     deltaLine = `<div class="trend-delta">
-      较上次：覆盖率 ${fmt(trend.coverageDelta, '%')} · 通过率 ${fmt(trend.passRateDelta, '%')} · 衰退 ${fmt(trend.regressDelta)}
+      较上次：覆盖率 ${fmt(trend.coverageDelta, '%')} · 完全一致 ${fmt(passDelta)} · 衰退 ${fmt(trend.regressDelta)}
     </div>`;
   }
 
@@ -480,7 +481,7 @@ function renderTrendPanel(model: CustomerReportModel): string {
   <div class="trend-panel">
     <div class="trend-head">近期趋势（最近 ${trend.entries.length} 次交付）</div>
     <table class="trend-table">
-      <thead><tr><th>日期</th><th>覆盖率</th><th>通过率</th><th>衰退</th><th>需确认</th></tr></thead>
+      <thead><tr><th>日期</th><th>覆盖率</th><th>完全一致</th><th>衰退</th><th>需确认</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
     ${deltaLine}

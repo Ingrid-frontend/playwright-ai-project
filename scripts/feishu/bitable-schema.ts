@@ -1,4 +1,11 @@
 import fs from 'fs';
+import {
+  DELIVERY_BROWSER_OPTIONS,
+  DELIVERY_ENV_OPTIONS,
+  DELIVERY_ITERATION_OPTIONS,
+  DELIVERY_SHIP_ADVICE_OPTIONS,
+  DELIVERY_VERDICT_OPTIONS,
+} from './bitable-display.js';
 
 export type BitableTableConfig = {
   appToken: string;
@@ -9,6 +16,8 @@ export type BitableTableConfig = {
   feedbackTableId?: string;
   /** 客户验收交付明细表（含证据图附件） */
   deliveryTableId?: string;
+  /** 交付批次汇总表（一行一个 deliveryId） */
+  deliverySummaryTableId?: string;
   dashboardUrl?: string;
 };
 
@@ -208,6 +217,9 @@ export const FEEDBACK_FIELD_RENAMES: Record<string, string> = {
   retest_run_link: FEEDBACK_FIELDS.retestRunLink,
 };
 
+/** 勾选后记录只出现在「归档」视图，后续 upsert 会另起一行 */
+export const ARCHIVE_FIELD = '归档';
+
 /** 多维表字段类型（飞书官方枚举） */
 export const BITABLE_FIELD_TYPE = {
   text: 1,
@@ -234,31 +246,42 @@ export function buildIssueLinkFieldSpec(runTableId: string): {
   };
 }
 
-/** 客户验收交付明细表：一行一个检测项，含证据图附件 */
+/** 客户验收交付明细表：一行一个检测项，含证据图附件。
+ *  客户可见列中文化（判定/流程/步骤/浏览器/差异…），机器键保留英文名
+ *  （item_key 为 upsert 键、run_id/delivery_id/generated_at 供内部追溯）。
+ *  旧英文列名 → 新中文名的线上迁移由 migrate-delivery-bitable.ts 完成。 */
 export const DELIVERY_FIELDS = {
+  page: '页面',
   itemKey: 'item_key',
   deliveryId: 'delivery_id',
-  batchId: 'batch_id',
   runId: 'run_id',
   generatedAt: 'generated_at',
-  env: 'env',
-  releaseTag: 'release_tag',
+  /** 客户可读交付时间（日期类型，区别于 generated_at 的 ISO 机器文本） */
+  deliveredAt: '交付时间',
+  env: '环境',
+  releaseTag: '版本标签',
   /** 迭代标识（交付时 ITERATION 环境变量传入，如 202610-迭代2）；未传时用 DEFAULT_DELIVERY_ITERATION 兜底；列为中文名，客户可见 */
   iteration: '迭代',
-  verdict: 'verdict',
-  page: 'page',
-  flow: 'flow',
-  step: 'step',
-  stepNumber: 'step_number',
-  browser: 'browser',
-  difference: 'difference',
-  affectedSteps: 'affected_steps',
-  actionable: 'actionable',
-  reason: 'reason',
-  baselineImage: 'baseline_image',
-  currentImage: 'current_image',
-  diffImage: 'diff_image',
-  docUrl: 'doc_url',
+  /** 判定即问题分类：需要修复(regress)/无需处理(minor)/完全一致(pass)/待建基线(uncovered)，与 kind 一一映射 */
+  verdict: '判定',
+  flow: '流程',
+  /** 本次登录账号（by-account slug），与流程名分开，便于同一流程多账号筛选 */
+  account: '登录账号',
+  step: '步骤',
+  stepNumber: '步骤序号',
+  browser: '浏览器',
+  difference: '差异',
+  /** 差异数值（0-100，可排序/仪表盘聚合）；「差异」列保留客户可读文本 */
+  differencePct: '差异%',
+  affectedSteps: '受影响步骤数',
+  /** checkbox：是否需要客户动手处理 */
+  actionable: '需处理',
+  reason: '判定说明',
+  compareImages: '对比图',
+  baselineImage: '验收基线图',
+  currentImage: '本次截图',
+  diffImage: '差异标注图',
+  docUrl: '验收报告',
 } as const;
 
 export const DELIVERY_TABLE_NAME = 'UI 验收明细';
@@ -266,34 +289,89 @@ export const DELIVERY_TABLE_NAME = 'UI 验收明细';
 /** 交付所属迭代的兜底值：ITERATION 环境变量未传时统一填入，保证迭代列不留空 */
 export const DEFAULT_DELIVERY_ITERATION = '261016';
 
+/** 明细表已不再写入的旧列：actionable（文本「是/否」→ checkbox「需处理」）、batch_id（从未写入过）、三列证据图（已并入「对比图」） */
+export const DELIVERY_DEPRECATED_FIELDS = ['actionable', 'batch_id', '验收基线图', '本次截图', '差异标注图'] as const;
+
 /** 建表字段定义，首字段必须是索引列 */
 export const DELIVERY_FIELD_SPECS: Array<{
   name: string;
   type: number;
   property?: Record<string, unknown>;
 }> = [
-  { name: '页面', type: BITABLE_FIELD_TYPE.text },
+  { name: DELIVERY_FIELDS.page, type: BITABLE_FIELD_TYPE.text },
   { name: DELIVERY_FIELDS.itemKey, type: BITABLE_FIELD_TYPE.text },
   { name: DELIVERY_FIELDS.deliveryId, type: BITABLE_FIELD_TYPE.text },
-  { name: DELIVERY_FIELDS.batchId, type: BITABLE_FIELD_TYPE.text },
   { name: DELIVERY_FIELDS.runId, type: BITABLE_FIELD_TYPE.text },
   { name: DELIVERY_FIELDS.generatedAt, type: BITABLE_FIELD_TYPE.text },
-  { name: DELIVERY_FIELDS.env, type: BITABLE_FIELD_TYPE.text },
+  { name: DELIVERY_FIELDS.deliveredAt, type: BITABLE_FIELD_TYPE.dateTime, property: { date_formatter: 'yyyy/MM/dd HH:mm', auto_fill: false } },
+  { name: DELIVERY_FIELDS.env, type: BITABLE_FIELD_TYPE.singleSelect, property: { options: DELIVERY_ENV_OPTIONS } },
   { name: DELIVERY_FIELDS.releaseTag, type: BITABLE_FIELD_TYPE.text },
-  { name: DELIVERY_FIELDS.iteration, type: BITABLE_FIELD_TYPE.text },
-  { name: DELIVERY_FIELDS.verdict, type: BITABLE_FIELD_TYPE.text },
+  { name: DELIVERY_FIELDS.iteration, type: BITABLE_FIELD_TYPE.singleSelect, property: { options: DELIVERY_ITERATION_OPTIONS } },
+  { name: DELIVERY_FIELDS.verdict, type: BITABLE_FIELD_TYPE.singleSelect, property: { options: DELIVERY_VERDICT_OPTIONS } },
   { name: DELIVERY_FIELDS.flow, type: BITABLE_FIELD_TYPE.text },
+  { name: DELIVERY_FIELDS.account, type: BITABLE_FIELD_TYPE.text },
   { name: DELIVERY_FIELDS.step, type: BITABLE_FIELD_TYPE.text },
-  { name: DELIVERY_FIELDS.stepNumber, type: BITABLE_FIELD_TYPE.number },
-  { name: DELIVERY_FIELDS.browser, type: BITABLE_FIELD_TYPE.text },
+  { name: DELIVERY_FIELDS.stepNumber, type: BITABLE_FIELD_TYPE.number, property: { formatter: '0' } },
+  { name: DELIVERY_FIELDS.browser, type: BITABLE_FIELD_TYPE.singleSelect, property: { options: DELIVERY_BROWSER_OPTIONS } },
   { name: DELIVERY_FIELDS.difference, type: BITABLE_FIELD_TYPE.text },
-  { name: DELIVERY_FIELDS.affectedSteps, type: BITABLE_FIELD_TYPE.number },
-  { name: DELIVERY_FIELDS.actionable, type: BITABLE_FIELD_TYPE.text },
+  { name: DELIVERY_FIELDS.differencePct, type: BITABLE_FIELD_TYPE.number, property: { formatter: '0.00' } },
+  { name: DELIVERY_FIELDS.affectedSteps, type: BITABLE_FIELD_TYPE.number, property: { formatter: '0' } },
+  { name: DELIVERY_FIELDS.actionable, type: BITABLE_FIELD_TYPE.checkbox },
   { name: DELIVERY_FIELDS.reason, type: BITABLE_FIELD_TYPE.text },
-  { name: DELIVERY_FIELDS.baselineImage, type: BITABLE_FIELD_TYPE.attachment },
-  { name: DELIVERY_FIELDS.currentImage, type: BITABLE_FIELD_TYPE.attachment },
-  { name: DELIVERY_FIELDS.diffImage, type: BITABLE_FIELD_TYPE.attachment },
+  { name: DELIVERY_FIELDS.compareImages, type: BITABLE_FIELD_TYPE.attachment },
   { name: DELIVERY_FIELDS.docUrl, type: BITABLE_FIELD_TYPE.url },
+  { name: ARCHIVE_FIELD, type: BITABLE_FIELD_TYPE.checkbox },
+];
+
+/** 交付批次汇总表：一行一个 deliveryId（upsert 键），跨迭代对比通过率/问题数 */
+export const DELIVERY_SUMMARY_FIELDS = {
+  deliveryId: 'delivery_id',
+  iteration: '迭代',
+  env: '环境',
+  releaseTag: '版本标签',
+  deliveredAt: '交付时间',
+  expectedSteps: '检测步骤数',
+  comparedSteps: '已比对数',
+  passSteps: '通过数',
+  minorSteps: '无需处理数',
+  regressSteps: '需修复数',
+  uncoveredSteps: '待建基线数',
+  /** 通过率（0-100，payload.stats.passRate 为 0-1 需换算） */
+  passRate: '通过率%',
+  coveragePct: '覆盖率%',
+  totalIssueCount: '问题组数',
+  shipAdvice: '发布建议',
+  shipAdviceLabel: '结论',
+  remark: '备注',
+  docUrl: '报告链接',
+} as const;
+
+export const DELIVERY_SUMMARY_TABLE_NAME = 'UI 验收汇总';
+
+export const DELIVERY_SUMMARY_FIELD_SPECS: Array<{
+  name: string;
+  type: number;
+  property?: Record<string, unknown>;
+}> = [
+  { name: DELIVERY_SUMMARY_FIELDS.deliveryId, type: BITABLE_FIELD_TYPE.text },
+  { name: DELIVERY_SUMMARY_FIELDS.iteration, type: BITABLE_FIELD_TYPE.singleSelect, property: { options: DELIVERY_ITERATION_OPTIONS } },
+  { name: DELIVERY_SUMMARY_FIELDS.env, type: BITABLE_FIELD_TYPE.singleSelect, property: { options: DELIVERY_ENV_OPTIONS } },
+  { name: DELIVERY_SUMMARY_FIELDS.releaseTag, type: BITABLE_FIELD_TYPE.text },
+  { name: DELIVERY_SUMMARY_FIELDS.deliveredAt, type: BITABLE_FIELD_TYPE.dateTime, property: { date_formatter: 'yyyy/MM/dd HH:mm', auto_fill: false } },
+  { name: DELIVERY_SUMMARY_FIELDS.expectedSteps, type: BITABLE_FIELD_TYPE.number, property: { formatter: '0' } },
+  { name: DELIVERY_SUMMARY_FIELDS.comparedSteps, type: BITABLE_FIELD_TYPE.number, property: { formatter: '0' } },
+  { name: DELIVERY_SUMMARY_FIELDS.passSteps, type: BITABLE_FIELD_TYPE.number, property: { formatter: '0' } },
+  { name: DELIVERY_SUMMARY_FIELDS.minorSteps, type: BITABLE_FIELD_TYPE.number, property: { formatter: '0' } },
+  { name: DELIVERY_SUMMARY_FIELDS.regressSteps, type: BITABLE_FIELD_TYPE.number, property: { formatter: '0' } },
+  { name: DELIVERY_SUMMARY_FIELDS.uncoveredSteps, type: BITABLE_FIELD_TYPE.number, property: { formatter: '0' } },
+  { name: DELIVERY_SUMMARY_FIELDS.passRate, type: BITABLE_FIELD_TYPE.number, property: { formatter: '0.0' } },
+  { name: DELIVERY_SUMMARY_FIELDS.coveragePct, type: BITABLE_FIELD_TYPE.number, property: { formatter: '0.0' } },
+  { name: DELIVERY_SUMMARY_FIELDS.totalIssueCount, type: BITABLE_FIELD_TYPE.number, property: { formatter: '0' } },
+  { name: DELIVERY_SUMMARY_FIELDS.shipAdvice, type: BITABLE_FIELD_TYPE.singleSelect, property: { options: DELIVERY_SHIP_ADVICE_OPTIONS } },
+  { name: DELIVERY_SUMMARY_FIELDS.shipAdviceLabel, type: BITABLE_FIELD_TYPE.text },
+  { name: DELIVERY_SUMMARY_FIELDS.remark, type: BITABLE_FIELD_TYPE.text },
+  { name: DELIVERY_SUMMARY_FIELDS.docUrl, type: BITABLE_FIELD_TYPE.url },
+  { name: ARCHIVE_FIELD, type: BITABLE_FIELD_TYPE.checkbox },
 ];
 
 export const BITABLE_ENV_OPTIONS = [
@@ -370,6 +448,7 @@ export const FEEDBACK_FIELD_SPECS: Array<{
   },
   { name: FEEDBACK_FIELDS.acceptReason, type: BITABLE_FIELD_TYPE.text },
   { name: FEEDBACK_FIELDS.retestRunLink, type: BITABLE_FIELD_TYPE.url },
+  { name: ARCHIVE_FIELD, type: BITABLE_FIELD_TYPE.checkbox },
 ];
 
 export const DAILY_FIELDS = {
@@ -451,6 +530,7 @@ export function loadBitableRuntimeConfig(): BitableRuntimeConfig | null {
     dailySummaryTableId: process.env.FEISHU_BITABLE_DAILY_SUMMARY_TABLE_ID || bitable.dailySummaryTableId || '',
     feedbackTableId: process.env.FEISHU_BITABLE_FEEDBACK_TABLE_ID || bitable.feedbackTableId || '',
     deliveryTableId: process.env.FEISHU_BITABLE_DELIVERY_TABLE_ID || bitable.deliveryTableId || '',
+    deliverySummaryTableId: process.env.FEISHU_BITABLE_DELIVERY_SUMMARY_TABLE_ID || bitable.deliverySummaryTableId || '',
     dashboardUrl: process.env.FEISHU_BITABLE_DASHBOARD_URL || bitable.dashboardUrl || '',
   };
 

@@ -25,6 +25,8 @@ import { buildCustomerReportModel } from '../report/customer-report-model.js';
 import { renderCustomerReportHtml } from '../report/customer-report-render.js';
 import { checkReview, writeReview } from '../feishu/delivery-review.js';
 import { writeDeliveryRecords } from '../feishu/bitable-delivery.js';
+import { buildDeliverySummaryRecord, writeDeliverySummaryRecord } from '../feishu/bitable-delivery-summary.js';
+import { DELIVERY_SUMMARY_FIELDS } from '../feishu/bitable-schema.js';
 import { BitableClient } from '../feishu/bitable-client.js';
 
 function pass(name: string) {
@@ -480,6 +482,23 @@ function isolatedDir(label: string): string {
     const written = await writeDeliveryRecords(client, 'offline', many, { tokens: new Map() });
     assert.equal(written.created, 27);
     assert.equal(new Set(client.keys).size, 27);
+    // 批次汇总：一行一个 deliveryId，stats 全量映射 + 0-1 通过率换算 + upsert 键
+    const summaryFields = buildDeliverySummaryRecord(many, { docUrl: 'https://example.invalid/doc' });
+    assert.equal(summaryFields[DELIVERY_SUMMARY_FIELDS.deliveryId], many.deliveryId);
+    assert.equal(summaryFields[DELIVERY_SUMMARY_FIELDS.regressSteps], many.stats.regressSteps);
+    assert.equal(summaryFields[DELIVERY_SUMMARY_FIELDS.uncoveredSteps], many.stats.uncoveredSteps);
+    assert.equal(summaryFields[DELIVERY_SUMMARY_FIELDS.totalIssueCount], many.totalIssueCount);
+    assert.equal(typeof summaryFields[DELIVERY_SUMMARY_FIELDS.deliveredAt], 'number');
+    if (typeof many.stats.passRate === 'number') {
+      assert.ok(
+        Math.abs((summaryFields[DELIVERY_SUMMARY_FIELDS.passRate] as number) - many.stats.passRate * 100) < 0.11,
+        '汇总通过率%应为 0-1 换算',
+      );
+    }
+    assert.ok(summaryFields[DELIVERY_SUMMARY_FIELDS.docUrl], '汇总记录应支持报告链接回填');
+    const summaryWritten = await writeDeliverySummaryRecord(client, 'offline-summary', many);
+    assert.equal(summaryWritten.created, true);
+    assert.equal(client.keys[client.keys.length - 1], many.deliveryId, '汇总 upsert 键应为 delivery_id');
     assert.equal(check({ ...many, items: many.items.slice(0, 20) }, 'issue-completeness').passed, false);
     const passingModel = buildCustomerReportModel({
       ...coverage, regressSteps: 0, passSteps: 1,

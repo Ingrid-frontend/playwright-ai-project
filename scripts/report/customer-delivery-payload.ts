@@ -6,6 +6,7 @@ import { hasVisibleDifference } from './customer-report-model.js';
 import { buildCustomerReportSummary, type CustomerReportSummary } from './customer-report-summary.js';
 import { buildDeliveryTrend, type DeliveryTrendSummary } from './customer-delivery-history.js';
 import { parseRunMetaFromScreenshotPath } from './compare-screenshots-utils.js';
+import { extractLoginAccount } from './customer-report-naming.js';
 
 /**
  * 交付载荷：把 CustomerReportModel 压平成可 JSON 序列化的结构，
@@ -32,6 +33,8 @@ export type DeliveryItem = {
   verdictLabel: string;
   title: string;
   scriptLabel: string;
+  /** 登录账号 slug（by-account 段）；无多账号目录时为空。不进流程名。 */
+  account?: string;
   stepLabel: string;
   stepNumber: number;
   browserLabel: string;
@@ -137,9 +140,8 @@ function kindOf(page: CustomerPageCard): DeliveryItemKind {
 }
 
 /**
- * 交付到飞书的内容必须去掉内部测试账号。
- * 脚本标签形如「UAT环境 · 申请单流程 · 199702_comic_com」，末段是登录账号，
- * 客户不应看到。按段剔除账号样式片段（邮箱、纯数字、下划线拼接的账号名）。
+ * 流程名去掉登录账号；账号由 extractLoginAccount 写入「登录账号」列。
+ * 脚本标签形如「UAT环境 · 申请单流程 · 199702_comic_com」，末段是登录账号。
  */
 const ACCOUNT_SEGMENT = /^(?:[\w.+-]+@[\w.-]+|\d{6,}|[a-z0-9]+(?:[_-][a-z0-9]+)+)$/i;
 
@@ -280,6 +282,7 @@ export function buildCustomerDeliveryPayload(
       verdictLabel: VERDICT_LABEL[kind],
       title: page.pageTitle,
       scriptLabel: sanitizeScriptLabel(page.scriptLabel),
+      account: extractLoginAccount(page.scriptKey),
       stepLabel: page.stepLabel,
       stepNumber: page.stepNumber,
       browserLabel: card?.browserLabel ?? '',

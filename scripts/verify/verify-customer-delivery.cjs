@@ -20,14 +20,23 @@ const previewMod = tsxRequire(
 );
 const docMod = tsxRequire(path.join(__dirname, '../feishu/doc-delivery.ts'), __filename);
 const bitableMod = tsxRequire(path.join(__dirname, '../feishu/bitable-delivery.ts'), __filename);
+const schemaMod = tsxRequire(path.join(__dirname, '../feishu/bitable-schema.ts'), __filename);
+const summaryMod = tsxRequire(path.join(__dirname, '../feishu/bitable-delivery-summary.ts'), __filename);
 
 const envProfileMod = tsxRequire(path.join(__dirname, '../../src/utils/env-profile.ts'), __filename);
+const namingMod = tsxRequire(
+  path.join(__dirname, '../report/customer-report-naming.ts'),
+  __filename,
+);
 const { sanitizeScriptLabel, readCustomerDeliveryPayload, resolveDeliveryImagePath, assertDeliveryContentHash, SNAPSHOT_VERSION } = payloadMod;
+const { extractLoginAccount } = namingMod;
 const { runDeliveryGate, formatGateResult } = tsxRequire(path.join(__dirname, '../feishu/delivery-gate.ts'), __filename);
 const { resolveDeliveryPayloadPath } = envProfileMod;
 const { renderDeliveryPreview } = previewMod;
 const { buildCustomerDocBlocks, buildCustomerDocTitle } = docMod;
 const { buildDeliveryRecord, hashItemKey } = bitableMod;
+const { DELIVERY_FIELDS, DELIVERY_SUMMARY_FIELDS } = schemaMod;
+const { buildDeliverySummaryRecord } = summaryMod;
 
 const ACCOUNT_LIKE = /(?:^|\s)(?:[\w.+-]+@[\w.-]+|\d{6,}|[a-z0-9]+(?:[_-][a-z0-9]+)+)(?=\s|$)/i;
 const HASH_ITEM_KEY = /^[0-9a-f]{16}$/;
@@ -37,6 +46,8 @@ function isBenignOutgoingToken(seg) {
   if (!s) return true;
   if (/^\d{4}-\d{2}-\d{2}T[\d-]+Z$/i.test(s)) return true;
   if (/^\d{4}\/\d{1,2}\/\d{1,2}/.test(s)) return true;
+  // 迭代号是业务标识（如 261016 / 202610-迭代2），不是内部账号
+  if (/^\d{6}(?:-迭代\d+)?$/.test(s)) return true;
   return false;
 }
 
@@ -51,9 +62,11 @@ function assertNoAccountLeak(label, where) {
 }
 
 /** 多维表一条记录的全部外发文本（字符串字段 + 链接字段），供脱敏断言 */
-function collectOutgoingTexts(fields) {
+function collectOutgoingTexts(fields, skipKeys = []) {
+  const skip = new Set(skipKeys);
   const out = [];
-  for (const [, v] of Object.entries(fields)) {
+  for (const [k, v] of Object.entries(fields)) {
+    if (skip.has(k)) continue;
     if (typeof v === 'string') out.push(v);
     else if (v && typeof v === 'object' && typeof v.link === 'string') {
       out.push(v.link, v.text || '');
@@ -76,6 +89,40 @@ function main() {
     'Stage9084环境 · 申请单流程',
   );
   assert.strictEqual(sanitizeScriptLabel('申请单流程'), '申请单流程');
+  assert.strictEqual(
+    extractLoginAccount('flows/request-flow/uat/golden-regression/by-account/199702_comic_com'),
+    '199702_comic_com',
+  );
+  assert.strictEqual(
+    extractLoginAccount('flows/request-flow/stage9084/golden-regression/by-account/18600582279'),
+    '18600582279',
+  );
+  assert.strictEqual(extractLoginAccount('flows/request-flow/dev/golden-regression'), '');
+  const accountFields = buildDeliveryRecord(
+    {
+      key: 'k',
+      dedupeKey: 'd',
+      kind: 'pass',
+      verdictLabel: '完全一致',
+      title: '申请单列表',
+      scriptLabel: 'Stage9084环境 · 申请单流程',
+      account: '18600582279',
+      stepLabel: '申请单列表',
+      stepNumber: 1,
+      browserLabel: 'Chrome',
+      differenceLabel: '0.00%',
+      reason: '',
+      plainText: '',
+      affectedSteps: 1,
+      actionable: false,
+      images: [],
+    },
+    { generatedAt: '2026-10-12T00:00:00.000Z', deliveryId: 'd1', runId: 'r1', iteration: '261016' },
+    { tokens: new Map() },
+    (rel) => rel,
+  );
+  assert.strictEqual(accountFields[DELIVERY_FIELDS.account], '18600582279');
+  assert.strictEqual(accountFields[DELIVERY_FIELDS.flow], 'Stage9084环境 · 申请单流程');
 
   const env = process.argv.find((a) => a.startsWith('--env='))?.slice('--env='.length).trim().toLowerCase() || '';
   const payloadFile = env ? resolveDeliveryPayloadPath(env) : 'results/customer-delivery.json';
@@ -173,16 +220,43 @@ function main() {
     { tokens: new Map(), docUrl: 'https://example.invalid/doc' },
     resolveDeliveryImagePath,
   );
-  assert.strictEqual(fields['页面'], sample.title);
-  assert.strictEqual(fields['verdict'], sample.verdictLabel);
-  assert.ok(fields['doc_url'], '缺少报告链接字段');
+  assert.strictEqual(fields[DELIVERY_FIELDS.page], sample.title);
+  assert.strictEqual(fields[DELIVERY_FIELDS.verdict], sample.verdictLabel);
+  assert.strictEqual(fields[DELIVERY_FIELDS.deliveryId], payload.deliveryId, '明细记录应写入 delivery_id（批次汇总关联键）');
+  assert.ok(fields[DELIVERY_FIELDS.docUrl], '缺少报告链接字段');
+  // 5.0.1 新增规范列：差异% 数值可排序聚合、需处理为布尔、交付时间为时间戳
+  assert.strictEqual(typeof fields[DELIVERY_FIELDS.differencePct], 'number', '差异% 应为数值');
+  assert.strictEqual(typeof fields[DELIVERY_FIELDS.actionable], 'boolean', '需处理应为布尔');
+  assert.strictEqual(typeof fields[DELIVERY_FIELDS.deliveredAt], 'number', '交付时间应为时间戳');
+  assert.ok(fields[DELIVERY_FIELDS.iteration], '迭代列不应为空（ITERATION 未传时应有兜底值）');
+  assert.strictEqual(fields[DELIVERY_FIELDS.account] || '', sample.account || '', '登录账号列应写入 by-account slug');
   // 5.1 item_key 必须是哈希（原始 key 含内部路径/账号，不可外发）
   assert.ok(HASH_ITEM_KEY.test(fields['item_key']), `item_key 应为 16 位哈希: ${fields['item_key']}`);
   assert.strictEqual(fields['item_key'], hashItemKey(sample.key), 'item_key 应为 key 的哈希');
   // 5.2 多维表全部外发文本不得含内部账号/目录串
-  for (const text of collectOutgoingTexts(fields)) {
+  for (const text of collectOutgoingTexts(fields, [DELIVERY_FIELDS.account])) {
     assertNoAccountLeak(text, `多维表字段 item ${sample.title}`);
     assert.ok(!text.includes('by-account') && !text.includes('golden-regression'), `多维表外发内部路径: ${text}`);
+  }
+
+  // 5.2.1 批次汇总记录：一行一个 deliveryId，stats 映射完整可对比
+  const summaryFields = buildDeliverySummaryRecord(payload, { docUrl: 'https://example.invalid/doc' });
+  assert.strictEqual(summaryFields[DELIVERY_SUMMARY_FIELDS.deliveryId], payload.deliveryId);
+  assert.strictEqual(summaryFields[DELIVERY_SUMMARY_FIELDS.regressSteps], payload.stats.regressSteps, '汇总需修复数应等于 stats.regressSteps');
+  assert.strictEqual(summaryFields[DELIVERY_SUMMARY_FIELDS.passSteps], payload.stats.passSteps, '汇总通过数应等于 stats.passSteps');
+  assert.strictEqual(summaryFields[DELIVERY_SUMMARY_FIELDS.uncoveredSteps], payload.stats.uncoveredSteps, '汇总待建基线数应等于 stats.uncoveredSteps');
+  assert.strictEqual(summaryFields[DELIVERY_SUMMARY_FIELDS.expectedSteps], payload.stats.expectedSteps, '汇总检测步骤数应等于 stats.expectedSteps');
+  const summaryPassRate = summaryFields[DELIVERY_SUMMARY_FIELDS.passRate];
+  if (typeof payload.stats.passRate === 'number') {
+    assert.strictEqual(typeof summaryPassRate, 'number', '汇总通过率%应为数值');
+    assert.ok(Math.abs(summaryPassRate - payload.stats.passRate * 100) < 0.11, `汇总通过率%应为 0-1 换算（${summaryPassRate}）`);
+  } else {
+    assert.strictEqual(summaryPassRate, undefined, '无有效对比时汇总通过率%不应伪造数值');
+  }
+  assert.strictEqual(summaryFields[DELIVERY_SUMMARY_FIELDS.coveragePct], payload.stats.coveragePct, '汇总覆盖率%应等于 stats.coveragePct');
+  assert.ok(summaryFields[DELIVERY_SUMMARY_FIELDS.docUrl], '汇总记录应支持报告链接回填');
+  for (const text of collectOutgoingTexts(summaryFields)) {
+    assertNoAccountLeak(text, `多维表汇总字段 ${payload.deliveryId}`);
   }
 
   // 5.3 dry-run 执行计划若已生成，同样不得含原始 key / 图片路径

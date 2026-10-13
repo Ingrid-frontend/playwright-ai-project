@@ -61,7 +61,14 @@ function main(): void {
   }
 
   if (flags.has('--approve')) {
-    const actualHash = assertDeliveryContentHash(payload);
+    let actualHash: string;
+    try {
+      actualHash = assertDeliveryContentHash(payload);
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : err);
+      console.error(`基线或证据在载荷生成后有变化。请先执行 npm run deliver:ready -- --env=${env}，再审核。`);
+      process.exit(1);
+    }
     const review = approveDelivery(deliveryId, payload.envId || env, reviewer, notes, actualHash);
     console.log(`✅ 已审核通过：deliveryId=${deliveryId}, reviewer=${reviewer}, at=${review.reviewedAt}`);
     if (payload.contentHash) console.log(`   内容哈希：${payload.contentHash}`);

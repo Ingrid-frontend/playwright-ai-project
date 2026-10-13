@@ -55,11 +55,12 @@ check('首屏结论与统计口径一致', () => {
 
 check('三档之和 = 已对比步骤数，且步数差额有交代', () => {
   const start = html.indexOf('<div class="stats">');
-  const end = html.indexOf('<div class="verdict-foot">');
-  assert.ok(start > 0 && end > start, '应存在统计区与对账句');
+  const legend = html.indexOf('<div class="verdict-legend">');
+  const footStart = html.indexOf('<div class="verdict-foot">');
+  const end = legend > start ? legend : footStart;
+  assert.ok(start > 0 && footStart > start && end > start, '应存在统计区与对账句');
   const nums = [...html.slice(start, end).matchAll(/class="n[^"]*">(\d+)</g)].map((m) => Number(m[1]));
   assert.equal(nums.length, 4, '统计应为四格：需要修复 / 影响体验 / 可忽略 / 完全一致');
-  const footStart = html.indexOf('<div class="verdict-foot">');
   const foot = html.slice(footStart, html.indexOf('</div>', footStart));
   const m = foot.match(/已对比 (\d+) \/ 共 (\d+) 步/);
   assert.ok(m, '对账句应写明「已对比 N / 共 M 步」');

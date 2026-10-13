@@ -122,6 +122,7 @@
     "feishu:bitable-setup": "tsx scripts/feishu/setup-bitable-dashboard.ts",
     "feishu:bitable-maintain": "tsx scripts/feishu/maintain-bitable.ts",
     "feishu:bitable-backfill": "tsx scripts/feishu/backfill-bitable-history.ts",
+    "feishu:delivery-migrate": "tsx scripts/feishu/migrate-delivery-bitable.ts",
     "feishu:feedback-write": "tsx scripts/feishu/write-feedback-bitable.ts",
     "feishu:feedback-table-setup": "tsx scripts/feishu/create-feedback-table.ts",
     "feishu:grant-bitable-editor": "tsx scripts/feishu/grant-bitable-editor.ts",

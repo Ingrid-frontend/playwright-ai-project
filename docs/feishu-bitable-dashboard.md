@@ -306,7 +306,7 @@ npm run feedback:import -- --dry-run
 
 | 字段名 | 类型 | 用途 |
 |--------|------|------|
-| severity | 单选 | blocker / warning / noise |
+| severity | 单选 | blocker / warning / noise / info |
 | script_key | 文本 | 脚本 |
 | compare_kind | 单选 | golden / cross-browser / run-drift / structure / style-drift |
 | difference_percent | 数字 | 差异百分比 |
@@ -319,6 +319,15 @@ npm run feedback:import -- --dry-run
 | element_xpath | 文本 | XPath |
 | ai_doc_path | 文本 | AI 分析文档路径 |
 | ai_doc_url | 超链接 | AI 分析文档链接 |
+
+> **噪声口径**：`noise` 级问题**默认不写入**问题明细表（严重度分布/图表不被噪声淹没），
+> run 表「噪声问题」列仍记录运行事实；日汇总不受影响（统计来自本地报告，不读表）。
+> 需要恢复旧行为时设 `FEISHU_BITABLE_WRITE_NOISE=1`。存量噪声行清理：
+> `npm run feishu:bitable-maintain -- --prune-issue-noise-only`（dry-run 预览，加 `--apply` 执行）。
+
+### 执行记录（run）——关于「重复记录」
+
+CLI 直跑（`compare-screenshots` → `feishu:bitable`）时 `execution_id` 含生成时间戳，每跑一次生成一条新记录——这是**真实多次执行**的语义，不是重复噪声；test-job 场景 `runId` 稳定、重试会 upsert 同一条。日汇总已按 `countedExecutions` 去重，KPI 不受影响。看「最近执行」时建议按「任务」分组、执行时间降序。
 
 ### 日汇总（daily）
 
@@ -335,6 +344,12 @@ npm run feedback:import -- --dry-run
 ### UI 采集反馈（feedback）
 
 见 [第三节](#三ui-采集反馈表-setup手动登记)。
+
+### UI 验收明细（delivery）/ UI 验收汇总（delivery-summary）
+
+交付链路两张表：明细一行一个检测项（单选判定/浏览器/迭代带语义色、差异% 数值列可排序聚合），
+汇总一行一个交付批次（通过率%/覆盖率%/问题数，跨迭代对比）。字段全表与迁移 runbook见
+[feishu-customer-delivery.md §6](./feishu-customer-delivery.md#6-多维表字段)。
 
 ---
 
@@ -494,10 +509,11 @@ https://xxx.feishu.cn/base/{appToken}?block={blockId}
 
 | 脚本 | 类型 |
 |------|------|
-| `scripts/feishu/write-bitable-report.ts` | 日常写入（执行记录 / 问题明细 / 日汇总） |
+| `scripts/feishu/write-bitable-report.ts` | 日常写入（执行记录 / 问题明细 / 日汇总；noise 默认过滤） |
 | `scripts/feishu/write-feedback-bitable.ts` | 手动反馈写入飞书 |
-| `scripts/feishu/setup-bitable-dashboard.ts` | 一次性 / 排障 |
+| `scripts/feishu/setup-bitable-dashboard.ts` | 一次性 / 排障（含 UI 验收汇总表校验） |
 | `scripts/feishu/grant-bitable-editor.ts` | 一次性 / 按人 onboarding |
+| `scripts/feishu/migrate-delivery-bitable.ts` | 一次性迁移：明细列中文化/类型规范化/历史回填/汇总重建（`feishu:delivery-migrate`） |
 | `scripts/feedback/import-feedback.ts` | 反馈 → 回归规则 |
 | `scripts/feedback/submit-manual-feedback.ts` | CLI 登记反馈 |
 | `scripts/report/ui-feedback-doc.ts` | AI 分析文档生成 |

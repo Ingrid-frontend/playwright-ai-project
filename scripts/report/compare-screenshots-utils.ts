@@ -108,7 +108,7 @@ export function parseRunMetaFromScreenshotPath(imagePath: string): {
 } {
   const norm = imagePath.replace(/\\/g, '/');
   const stepFileName = path.basename(norm);
-  const m = norm.match(/\/run-(?:chromium|webkit|firefox|safari|edge)-optimized\/([^/]+)\//i);
+  const m = norm.match(/\/run-(?:chromium|webkit|firefox|safari|edge)-(?:optimized|flow)\/([^/]+)\//i);
   return { runTimestamp: m?.[1], stepFileName };
 }
 
