@@ -3,12 +3,14 @@ import {
   type Browser,
   type BrowserContext,
   type Page,
+  type TestInfo,
 } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'node:url';
 import { savePlaywrightVideo } from '../../src/runtime/flow-replay.js';
 import { appendApiFailures, flowRunsDir, initWorkerRun } from '../../src/utils/flow-run-report.js';
+import { readLoginStateMeta } from '../../src/utils/storage-state-meta.js';
 import { HomePage } from '../pages/home.page';
 import { LoginPage } from '../pages/login.page';
 import { ApiGuard, createApiGuard, type ApiFailure } from '../utils/api-guard';
@@ -88,6 +90,16 @@ export function createFlowFixtures<Extra extends Record<string, unknown>>(
     (process.env.FLOW_DEBUG_FAST === '1' && process.env.FLOW_CONFIG_TRY_RUN !== '1');
 
   let workerRun: ReturnType<typeof initWorkerRun> | null = null;
+  let loginSkip = '';
+  const LOGIN_SKIP = '登录态失效，跳过登录';
+
+  function markLoginSkip(info: TestInfo) {
+    // page.close 已经让用例体失败，teardown 里 test.skip() 改不了状态
+    info.annotations.push({ type: 'skip', description: loginSkip });
+    info.expectedStatus = 'skipped';
+    info.status = 'skipped';
+    info.errors.splice(0, info.errors.length);
+  }
 
   const workerScoped = {
     _flowWorkerRun: [
@@ -197,8 +209,18 @@ export function createFlowFixtures<Extra extends Record<string, unknown>>(
       async (
         { apiGuard }: { apiGuard: ApiGuard },
         use: (r: void) => Promise<void>,
-        testInfo: { title: string; annotations: Array<{ type: string }> },
+        testInfo: TestInfo,
       ) => {
+        if (!loginSkip) {
+          const stored = resolveStorageState();
+          const meta = stored
+            ? (readLoginStateMeta(stored) as { invalidatedAt?: string } | null)
+            : null;
+          if (meta?.invalidatedAt) loginSkip = LOGIN_SKIP;
+        }
+        if (loginSkip) {
+          test.skip(true, loginSkip);
+        }
         const skip = testInfo.annotations.some((a) => a.type === 'skip-api-guard');
         if (!skip) {
           apiGuard.start();
@@ -208,6 +230,19 @@ export function createFlowFixtures<Extra extends Record<string, unknown>>(
           await use();
         } catch (e) {
           testErr = e;
+        }
+        if (apiGuard.getAbortError()) {
+          loginSkip = LOGIN_SKIP;
+        }
+        if (loginSkip) {
+          if (testInfo.status !== 'skipped') markLoginSkip(testInfo);
+          return;
+        }
+        const skippedRun = testInfo.status === 'skipped'
+          || (testErr instanceof Error && testErr.name === 'TestSkipError');
+        if (skippedRun) {
+          if (testErr) throw testErr;
+          return;
         }
         if (!skip) {
           const failures = apiGuard.getFailures();
@@ -226,13 +261,10 @@ export function createFlowFixtures<Extra extends Record<string, unknown>>(
               })),
             );
           }
-          if (apiGuard.getAbortError()) {
-            await apiGuard.assertNoFailures(`[${testInfo.title}]`);
-          } else if (testErr) {
+          if (testErr) {
             throw testErr;
-          } else {
-            await apiGuard.assertNoFailures(`[${testInfo.title}]`);
           }
+          await apiGuard.assertNoFailures(`[${testInfo.title}]`);
         } else if (testErr) {
           throw testErr;
         }
@@ -247,6 +279,11 @@ export function createFlowFixtures<Extra extends Record<string, unknown>>(
       const storageState = resolveStorageState();
       const loginPage = new LoginPage(page);
       if (storageState) {
+        const meta = readLoginStateMeta(storageState) as { invalidatedAt?: string } | null;
+        if (meta?.invalidatedAt) {
+          loginSkip = LOGIN_SKIP;
+          test.skip(true, LOGIN_SKIP);
+        }
         if (!/\/main\b/.test(page.url())) {
           await page.goto('/main', { waitUntil: 'domcontentloaded', timeout: 60_000 });
         }

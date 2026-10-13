@@ -40,6 +40,9 @@ const DEFAULT_URL_INCLUDES: RegExp[] = [
 const DEFAULT_URL_IGNORES: RegExp[] = [
   /\.(?:js|css|mjs|map|png|jpe?g|gif|svg|webp|ico|woff2?|ttf|eot|mp4|webm)(?:\?|$)/i,
   /(?:sensorsdata|google-analytics|googletagmanager|gtag\/|hm\.baidu|sentry\.io|browser-intake)/i,
+  // 自建/代理 Sentry：/api/4/store、/api/n/envelope?sentry_key=…，失败不影响业务
+  /\/api\/\d+\/(?:store|envelope)\b/i,
+  /[?&]sentry_key=/i,
   /(?:hotjar|fullstory|segment\.io|clarity\.ms|facebook\.net|doubleclick)/i,
   /\/tongji\b|\/analysis\/track/i,
   // 性能/埋点监控，失败不影响业务用例（如 call minos fail）
@@ -54,6 +57,10 @@ const DEFAULT_URL_IGNORES: RegExp[] = [
   /\/api\/company\/apportion\/template\/hit\/use\b/i,
   // 打印/埋点日志，headless 切页时偶发 ERR_NETWORK_IO_SUSPENDED，不影响业务
   /\/api\/common\/print\/log\b/i,
+  // 登录协议同意查询：nginx 偶发 502，不阻断列表/详情 Golden
+  /\/auth\/api\/tenant\/protocol\/agree\b/i,
+  // 借款单详情预算说明：无预算数据或网关 502 时不把审批 Golden 判成未通过
+  /\/budget-service\/api\/budget\/explain\b/i,
 ];
 
 /** 展示用 URL：保留 path + 有意义的 query，去掉 hlyRequestID 等噪声 */
@@ -336,7 +343,7 @@ export class ApiGuard {
         : ' 已作废登录态。'
       : '';
     this.abortError = new Error(
-      `登录态失效，接口返回 401，已终止用例：${method} ${shortUrl}${detail}。${clearedHint}请重新登录后重试。`,
+      `登录态失效，跳过登录：${method} ${shortUrl}${detail}。${clearedHint}`,
     );
     void this.page.close({ runBeforeUnload: false }).catch(() => undefined);
   }
