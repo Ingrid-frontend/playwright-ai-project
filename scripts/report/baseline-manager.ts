@@ -202,7 +202,120 @@ export function resolveSourceRunDir(opts: {
   for (const dir of candidates) {
     if (fs.existsSync(dir) && fs.statSync(dir).isDirectory()) return dir;
   }
-  throw new Error(`源运行目录不存在: ${candidates[0]}`);
+  throw new Error(
+    `源运行目录不存在（scriptKey 可能与 run 不一致）:\n  - ${candidates.join('\n  - ')}`,
+  );
+}
+
+function normalizeFlowScriptKey(key: string): string {
+  const k = key.replace(/\\/g, '/').replace(/^\/+/, '');
+  if (!k) return '';
+  if (k.startsWith('flows/')) return k;
+  if (/-flow\//.test(k)) return `flows/${k}`;
+  return k;
+}
+
+/** 从 results/flow-runs/<flowId>/<runTs>/manifest.json 取真实 scriptKey */
+export function lookupScriptKeyByRunId(runTs: string, flowRunsRoot = 'results/flow-runs'): string | null {
+  if (!runTs || !fs.existsSync(flowRunsRoot)) return null;
+  for (const flowId of fs.readdirSync(flowRunsRoot)) {
+    const manifestPath = path.join(flowRunsRoot, flowId, runTs, 'manifest.json');
+    if (!fs.existsSync(manifestPath)) continue;
+    try {
+      const m = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as {
+        scriptKey?: string;
+        boundScriptKey?: string;
+      };
+      const key = normalizeFlowScriptKey(String(m.scriptKey || m.boundScriptKey || ''));
+      if (key) return key;
+    } catch {
+      /* ignore */
+    }
+  }
+  return null;
+}
+
+/** 在 screenshots 下按 run 时间戳反查 scriptKey（manifest 缺失时兜底） */
+export function findScriptKeyByRunTimestamp(
+  runTs: string,
+  browser = 'chrome',
+  screenshotsRoot = 'screenshots',
+): string | null {
+  if (!runTs) return null;
+  const flowSeg = browserToFlowRunSegment(browser);
+  const optSeg = browserToRunSegment(browser);
+  const flowsRoot = path.join(screenshotsRoot, 'flows');
+  if (!fs.existsSync(flowsRoot)) return null;
+
+  const stack = [flowsRoot];
+  while (stack.length) {
+    const dir = stack.pop()!;
+    let entries: string[];
+    try {
+      entries = fs.readdirSync(dir);
+    } catch {
+      continue;
+    }
+    for (const name of entries) {
+      const abs = path.join(dir, name);
+      let st: fs.Stats;
+      try {
+        st = fs.statSync(abs);
+      } catch {
+        continue;
+      }
+      if (!st.isDirectory()) continue;
+      if (name === flowSeg || name === optSeg) {
+        const hit = path.join(abs, runTs);
+        if (fs.existsSync(hit) && fs.statSync(hit).isDirectory()) {
+          const rel = path.relative(screenshotsRoot, path.dirname(abs)).replace(/\\/g, '/');
+          return normalizeFlowScriptKey(rel);
+        }
+        continue;
+      }
+      if (name.startsWith('run-')) continue;
+      stack.push(abs);
+    }
+  }
+  return null;
+}
+
+/** 解析 promote 源目录；scriptKey 与 run 不一致时自动纠正 */
+export function resolvePromoteSource(opts: {
+  scriptKey: string;
+  sourceRunTimestamp: string;
+  browser?: string;
+  screenshotsRoot?: string;
+}): { scriptKey: string; sourceDir: string; corrected: boolean } {
+  const screenshotsRoot = opts.screenshotsRoot || 'screenshots';
+  const browser = opts.browser || 'chrome';
+  const ts = opts.sourceRunTimestamp;
+  const tryKeys: string[] = [];
+  const push = (k: string) => {
+    const n = normalizeFlowScriptKey(k);
+    if (n && !tryKeys.includes(n)) tryKeys.push(n);
+  };
+  push(opts.scriptKey);
+  const fromManifest = lookupScriptKeyByRunId(ts);
+  if (fromManifest) push(fromManifest);
+  const fromScan = findScriptKeyByRunTimestamp(ts, browser, screenshotsRoot);
+  if (fromScan) push(fromScan);
+
+  let lastErr: Error | null = null;
+  for (const scriptKey of tryKeys) {
+    try {
+      const sourceDir = resolveSourceRunDir({
+        scriptKey,
+        sourceRunTimestamp: ts,
+        browser,
+        screenshotsRoot,
+      });
+      return { scriptKey, sourceDir, corrected: scriptKey !== normalizeFlowScriptKey(opts.scriptKey) };
+    } catch (e) {
+      lastErr = e instanceof Error ? e : new Error(String(e));
+    }
+  }
+  throw lastErr || new Error(`源运行目录不存在: ${opts.scriptKey} @ ${ts}`);
 }
 
 export function findLatestRunTimestamp(
@@ -312,20 +425,27 @@ export function promoteRunToGolden(opts: {
   screenshotsRoot?: string;
   expectedRevision?: number;
   promotedBy?: string;
-}): { copied: number; goldenDir: string; revision: number } {
+}): { copied: number; goldenDir: string; revision: number; scriptKey: string } {
   const screenshotsRoot = opts.screenshotsRoot || 'screenshots';
   const browser = opts.browser || 'chrome';
   const runSegment = browserToRunSegment(browser);
-  const sourceDir = resolveSourceRunDir({
+  const resolved = resolvePromoteSource({
     scriptKey: opts.scriptKey,
     sourceRunTimestamp: opts.sourceRunTimestamp,
     browser,
     screenshotsRoot,
   });
+  if (resolved.corrected) {
+    console.warn(
+      `[promote-baseline] scriptKey 已按 run 纠正: ${opts.scriptKey} → ${resolved.scriptKey}`,
+    );
+  }
+  const scriptKey = resolved.scriptKey;
+  const sourceDir = resolved.sourceDir;
 
   assertRunEligibleForGolden(sourceDir);
 
-  const goldenDir = goldenDirForScript(opts.scriptKey, runSegment);
+  const goldenDir = goldenDirForScript(scriptKey, runSegment);
   acquireBaselineLock(goldenDir, opts.promotedBy);
   const prevRevision = assertExpectedRevision(goldenDir, opts.expectedRevision);
 
@@ -356,10 +476,10 @@ export function promoteRunToGolden(opts: {
 
     const manifest = loadManifest();
     manifest.entries = manifest.entries.filter(
-      (e) => !(e.scriptKey === opts.scriptKey && e.browser === browser),
+      (e) => !(e.scriptKey === scriptKey && e.browser === browser),
     );
     manifest.entries.push({
-      scriptKey: opts.scriptKey,
+      scriptKey,
       browser,
       runSegment,
       sourceRunTimestamp: opts.sourceRunTimestamp,
@@ -373,7 +493,7 @@ export function promoteRunToGolden(opts: {
       sourceRun: opts.sourceRunTimestamp,
     }, prevRevision);
 
-    return { copied, goldenDir, revision: meta.revision };
+    return { copied, goldenDir, revision: meta.revision, scriptKey };
   } catch (err) {
     // 失败时回滚：恢复备份、清理临时目录
     if (bakDir && fs.existsSync(bakDir) && !fs.existsSync(goldenDir)) {
@@ -396,16 +516,23 @@ export function promoteStepsToGolden(opts: {
   screenshotsRoot?: string;
   expectedRevision?: number;
   promotedBy?: string;
-}): { copied: number; goldenDir: string; revision: number } {
+}): { copied: number; goldenDir: string; revision: number; scriptKey: string } {
   const screenshotsRoot = opts.screenshotsRoot || 'screenshots';
   const browser = opts.browser || 'chrome';
   const runSegment = browserToRunSegment(browser);
-  const sourceDir = resolveSourceRunDir({
+  const resolved = resolvePromoteSource({
     scriptKey: opts.scriptKey,
     sourceRunTimestamp: opts.sourceRunTimestamp,
     browser,
     screenshotsRoot,
   });
+  if (resolved.corrected) {
+    console.warn(
+      `[promote-baseline] scriptKey 已按 run 纠正: ${opts.scriptKey} → ${resolved.scriptKey}`,
+    );
+  }
+  const scriptKey = resolved.scriptKey;
+  const sourceDir = resolved.sourceDir;
 
   const names = [...new Set(opts.stepFileNames.map((n) => path.basename(n)).filter((n) => n.endsWith('.png')))];
   if (!names.length) {
@@ -414,7 +541,7 @@ export function promoteStepsToGolden(opts: {
 
   assertStepMetasEligibleForGolden(sourceDir, names);
 
-  const goldenDir = goldenDirForScript(opts.scriptKey, runSegment);
+  const goldenDir = goldenDirForScript(scriptKey, runSegment);
   acquireBaselineLock(goldenDir, opts.promotedBy);
   const prevRevision = assertExpectedRevision(goldenDir, opts.expectedRevision);
   try {
@@ -443,13 +570,13 @@ export function promoteStepsToGolden(opts: {
   }
 
   const manifest = loadManifest();
-  const existing = manifest.entries.find((e) => e.scriptKey === opts.scriptKey && e.browser === browser);
+  const existing = manifest.entries.find((e) => e.scriptKey === scriptKey && e.browser === browser);
   const prevSteps = existing?.promotedSteps || [];
   manifest.entries = manifest.entries.filter(
-    (e) => !(e.scriptKey === opts.scriptKey && e.browser === browser),
+    (e) => !(e.scriptKey === scriptKey && e.browser === browser),
   );
   manifest.entries.push({
-    scriptKey: opts.scriptKey,
+    scriptKey,
     browser,
     runSegment,
     sourceRunTimestamp: opts.sourceRunTimestamp,
@@ -464,7 +591,7 @@ export function promoteStepsToGolden(opts: {
     sourceRun: opts.sourceRunTimestamp,
   }, prevRevision);
 
-  return { copied, goldenDir, revision: meta.revision };
+  return { copied, goldenDir, revision: meta.revision, scriptKey };
   } finally {
     releaseBaselineLock(goldenDir);
   }

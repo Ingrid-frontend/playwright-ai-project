@@ -1690,6 +1690,8 @@
                   <span class="btn-label" id="btnRequestTocRunAllLabel">检测全部</span>
                 </button>
                 <button type="button" class="btn" id="btnRequestTocReport" onclick="openRequestFlowCustomerReport()" style="border-color:rgba(52,211,153,.4);color:var(--green,#34d399)">客户验收报告</button>
+                <button type="button" class="btn" id="btnRequestTocPromoteBaseline" onclick="promoteRequestFlowBaseline()" style="border-color:rgba(52,211,153,.45);color:var(--green,#34d399)" title="将本次检测全部角色的步骤截图写入基线">更新基线</button>
+                <button type="button" class="btn" id="btnRequestTocDeliverFeishu" onclick="applyDeliverFeishu()" style="border-color:rgba(250,204,21,.35);color:#facc15" title="确认预览无误后写入飞书文档与多维表">写入飞书</button>
                 <button type="button" class="btn" id="btnRequestTocRunUiAudit" onclick="runFlowUiAudit('request-flow')" style="border-color:rgba(167,139,250,.45);color:var(--purple,#a78bfa)">
                   <span class="btn-label">运行 AI 审计</span>
                 </button>
@@ -1856,6 +1858,8 @@
                   <span class="btn-label" id="btnApprovalTocRunAllLabel">检测全部</span>
                 </button>
                 <button type="button" class="btn" id="btnApprovalTocReport" onclick="openApprovalFlowCustomerReport()" style="border-color:rgba(52,211,153,.4);color:var(--green,#34d399)">客户验收报告</button>
+                <button type="button" class="btn" id="btnApprovalTocPromoteBaseline" onclick="promoteApprovalFlowBaseline()" style="border-color:rgba(52,211,153,.45);color:var(--green,#34d399)" title="将本次检测全部角色的步骤截图写入基线">更新基线</button>
+                <button type="button" class="btn" id="btnApprovalTocDeliverFeishu" onclick="applyDeliverFeishu()" style="border-color:rgba(250,204,21,.35);color:#facc15" title="确认预览无误后写入飞书文档与多维表">写入飞书</button>
                 <button type="button" class="btn" id="btnApprovalTocRunUiAudit" onclick="runFlowUiAudit('approval-flow')" style="border-color:rgba(167,139,250,.45);color:var(--purple,#a78bfa)">
                   <span class="btn-label">运行 AI 审计</span>
                 </button>
@@ -2003,6 +2007,8 @@
                   <span class="btn-label" id="btnExpenseTocRunAllLabel">检测全部</span>
                 </button>
                 <button type="button" class="btn" id="btnExpenseTocReport" onclick="openExpenseFlowCustomerReport()" style="border-color:rgba(52,211,153,.4);color:var(--green,#34d399)">客户验收报告</button>
+                <button type="button" class="btn" id="btnExpenseTocPromoteBaseline" onclick="promoteExpenseFlowBaseline()" style="border-color:rgba(52,211,153,.45);color:var(--green,#34d399)" title="将本次检测全部角色的步骤截图写入基线">更新基线</button>
+                <button type="button" class="btn" id="btnExpenseTocDeliverFeishu" onclick="applyDeliverFeishu()" style="border-color:rgba(250,204,21,.35);color:#facc15" title="确认预览无误后写入飞书文档与多维表">写入飞书</button>
                 <button type="button" class="btn" id="btnExpenseTocRunUiAudit" onclick="runFlowUiAudit('expense-flow')" style="border-color:rgba(167,139,250,.45);color:var(--purple,#a78bfa)">
                   <span class="btn-label">运行 AI 审计</span>
                 </button>
@@ -2187,6 +2193,7 @@
           <button type="button" class="btn" onclick="openFailureSpec()">打开用例</button>
           <button type="button" class="btn" id="btnFailureOpenReport" style="display:none" onclick="openFailureReport()">打开报告</button>
           <button type="button" class="btn" id="btnFailureOpenReplay" style="display:none;border-color:rgba(77,159,255,.45);color:var(--blue,#4d9fff)" onclick="openFailureReplay()">查看回放</button>
+          <button type="button" class="btn" id="btnFailurePromoteBaseline" style="display:none;border-color:rgba(52,211,153,.45);color:var(--green,#34d399)" onclick="promoteFailureBaseline()" title="将本次 run 截图写入 screenshots-baseline（数据波动时可更新预期画面）">更新基线</button>
         </div>
         <div id="failureDiagnosticsList"></div>
       </div>
@@ -2689,7 +2696,6 @@ function syncCompareHubButtons() {
   const openCustomerBtn = document.getElementById('btnHubOpenCustomer');
   const openPreviewBtn = document.getElementById('btnHubOpenPreview');
   const regenCustomerBtn = document.getElementById('btnHubCustomer');
-  const deliverFeishuBtn = document.getElementById('btnHubDeliverFeishu');
   const busy = busyState.repoCompare;
   if (openBtn) {
     openBtn.disabled = busy;
@@ -2721,11 +2727,19 @@ function syncCompareHubButtons() {
       ? '运行 deliver:ready 并打开客户报告'
       : 'screenshots/ 下未检测到 PNG';
   }
-  if (deliverFeishuBtn) {
-    deliverFeishuBtn.disabled = busy;
-    deliverFeishuBtn.title = repoState.hasDeliveryPreview
-      ? '确认预览无误后写入飞书（不会自动发送给客户）'
-      : '请先生成交付预览包';
+  const deliverTitle = repoState.hasDeliveryPreview
+    ? '将当前环境检测结果写入飞书文档与多维表（不会自动发给客户）'
+    : '写入飞书文档与多维表；尚无预览时会先生成再写入';
+  for (const id of [
+    'btnHubDeliverFeishu',
+    'btnRequestTocDeliverFeishu',
+    'btnApprovalTocDeliverFeishu',
+    'btnExpenseTocDeliverFeishu',
+  ]) {
+    const btn = document.getElementById(id);
+    if (!btn) continue;
+    btn.disabled = busy;
+    btn.title = deliverTitle;
   }
   if (cancelBtn) cancelBtn.disabled = !busy;
 }
@@ -3341,6 +3355,36 @@ function renderFailureDiagnosticsPanel(bundle) {
   if (replayBtn) {
     replayBtn.style.display = bundle.artifacts?.replayRel ? '' : 'none';
   }
+  const promoteBtn = document.getElementById('btnFailurePromoteBaseline');
+  if (promoteBtn) {
+    const canPromote =
+      bundle.kind === 'request-flow' ||
+      bundle.kind === 'approval-flow' ||
+      bundle.kind === 'expense-flow' ||
+      Boolean(bundle.specRelative);
+    promoteBtn.style.display = canPromote ? '' : 'none';
+  }
+}
+
+function promoteFailureBaseline() {
+  const bundle = lastFailureBundle;
+  if (!bundle) {
+    showToast('无失败信息可更新基线', 'err');
+    return;
+  }
+  if (bundle.kind === 'request-flow') {
+    promoteRequestFlowBaseline();
+    return;
+  }
+  if (bundle.kind === 'approval-flow') {
+    promoteApprovalFlowBaseline();
+    return;
+  }
+  if (bundle.kind === 'expense-flow') {
+    promoteExpenseFlowBaseline();
+    return;
+  }
+  promoteGoldenBaseline();
 }
 
 function copyFailureSummary() {
@@ -4023,12 +4067,11 @@ function openDeliveryPreview() {
 }
 
 function applyDeliverFeishu() {
-  if (!repoState.hasDeliveryPreview) {
-    showToast('请先生成交付预览包', 'err');
+  if (!envState.current) {
+    showToast('请先选择运行环境', 'err');
     return;
   }
-  if (!confirm('确认预览内容无误，写入飞书文档与多维表？（不会自动发给客户）')) return;
-  openReportHub('compare');
+  if (!confirm('确认将当前环境的检测结果写入飞书文档与多维表？（不会自动发给客户）')) return;
   busyState.repoCompare = true;
   syncCompareHubButtons();
   send('repo:deliver-feishu', {});
@@ -7844,9 +7887,13 @@ function handleMessage(msg) {
       break;
     case 'repo:promote-baseline:done':
       setRequestFlowBusy(false);
+      setApprovalFlowBusy(false);
+      setExpenseFlowBusy(false);
       if (msg.ok) {
-        showToast('Golden 基线已更新', 'ok');
-        toast('Golden 基线已更新', 'ok');
+        const n = Number(msg.count) || 1;
+        const text = n > 1 ? `已全量更新 ${n} 个角色的基线` : 'Golden 基线已更新';
+        showToast(text, 'ok');
+        toast(text, 'ok');
       } else {
         toast('Promote 失败', 'err');
       }
@@ -8256,10 +8303,7 @@ function handleMessage(msg) {
       }
       refreshRequestFlowStatus(true);
       if (msg.ok) {
-        showToast(
-          msg.customerReportOpenPath ? '全部 Golden 角色回归完成，客户汇总报告已生成' : '全部 Golden 角色回归完成',
-          'ok',
-        );
+        showToast('全部 Golden 角色回归完成，可全量更新基线或写入飞书', 'ok');
       }
       else if (!msg.cancelled) {
         const batchStats = goldenBatchStats(msg.goldenBatch);
@@ -8590,10 +8634,7 @@ function handleMessage(msg) {
       }
       refreshExpenseFlowStatus(true);
       if (msg.ok) {
-        showToast(
-          msg.customerReportOpenPath ? '报销 Golden 全角色回归完成，客户汇总报告已生成' : '报销 Golden 全角色回归完成',
-          'ok',
-        );
+        showToast('报销 Golden 全角色回归完成，可全量更新基线或写入飞书', 'ok');
       } else if (!msg.cancelled) {
         const batchStats = goldenBatchStats(msg.goldenBatch);
         showToast(
@@ -8901,6 +8942,9 @@ function handleMessage(msg) {
       busyState.repoCompare = false;
       syncCompareHubButtons();
       if (msg.ok) {
+        if (msg.bitableOk === false) {
+          log('warn', '[repo] 验收明细已写入，执行记录同步失败');
+        }
         if (msg.shareDegraded) {
           showToast('飞书已写入，分享链接需在飞书内手动公开', 'warn');
         } else if (msg.docUrl) {
@@ -9774,7 +9818,7 @@ function refreshUiAuditStatus() {
 }
 
 function setRequestFlowBusy(busy) {
-  ['btnRequestProbe', 'btnRequestPresetPreview', 'btnRequestPresetReadOnly', 'btnRequestPresetWrite', 'btnRequestPresetSubmitApprove', 'btnRequestRunSelected', 'btnRequestGoldenRun', 'btnRequestGoldenRunAll', 'btnRequestTravelProbe', 'btnRequestProbeFlow', 'btnRequestTravelProbeChain', 'btnRequestProbeChain', 'btnRequestProbeRunUiAudit', 'btnRequestPromoteBaseline', 'btnRequestClearBaseline', 'btnAddGoldenProfile', 'btnAddWriteProfile', 'btnRequestTocRun', 'btnRequestTocRunAll', 'btnRequestTocReport', 'btnRequestTocRunUiAudit', 'btnRequestTocUiAudit', 'btnRequestTocReplay', 'btnRequestTocAiDebug'].forEach((id) => {
+  ['btnRequestProbe', 'btnRequestPresetPreview', 'btnRequestPresetReadOnly', 'btnRequestPresetWrite', 'btnRequestPresetSubmitApprove', 'btnRequestRunSelected', 'btnRequestGoldenRun', 'btnRequestGoldenRunAll', 'btnRequestTravelProbe', 'btnRequestProbeFlow', 'btnRequestTravelProbeChain', 'btnRequestProbeChain', 'btnRequestProbeRunUiAudit', 'btnRequestPromoteBaseline', 'btnRequestClearBaseline', 'btnAddGoldenProfile', 'btnAddWriteProfile', 'btnRequestTocRun', 'btnRequestTocRunAll', 'btnRequestTocReport', 'btnRequestTocPromoteBaseline', 'btnRequestTocDeliverFeishu', 'btnRequestTocRunUiAudit', 'btnRequestTocUiAudit', 'btnRequestTocReplay', 'btnRequestTocAiDebug'].forEach((id) => {
     const btn = document.getElementById(id);
     if (!btn) return;
     btn.disabled = busy;
@@ -10630,6 +10674,93 @@ function requestFlowScriptKeyFromDom(spec) {
   return key;
 }
 
+/** 优先用最近一次 run 的 scriptKey，避免 DOM 下拉仍是 full-flow 却带着 golden 的 runId */
+function resolveFlowBaselineTarget(last, fallbackScriptKey) {
+  const runTs = String(last?.runId || last?.boundRunId || '').trim();
+  let scriptKey = String(last?.scriptKey || '').trim();
+  if (!scriptKey && last?.boundScriptKey) {
+    const bound = String(last.boundScriptKey).trim();
+    scriptKey = bound.startsWith('flows/') ? bound : `flows/${bound}`;
+  }
+  if (!scriptKey) scriptKey = String(fallbackScriptKey || '').trim();
+  return { scriptKey, runTs };
+}
+
+function flowBatchPromoteTargets(last, flowId) {
+  const batch = last?.goldenBatch;
+  const results = Array.isArray(batch?.results) ? batch.results : [];
+  if (!results.length) return [];
+  const runId = String(last?.runId || last?.boundRunId || '').trim();
+  const inBatch = Boolean(runId && results.some((item) => item?.runId === runId));
+  if (!last?.goldenBatchAttached && !inBatch) return [];
+  const env = String(batch.env || last?.env || '').trim();
+  if (!env) return [];
+  const targets = [];
+  for (const item of results) {
+    if (!item || item.ok !== true || item.skipped || item.skippedOnly) continue;
+    const slug = String(item.roleSlug || '').trim();
+    const runTimestamp = String(item.runId || '').trim();
+    if (!slug || !runTimestamp) continue;
+    targets.push({
+      scriptKey: `flows/${flowId}/${env}/golden-regression/by-account/${slug}`,
+      runTimestamp,
+    });
+  }
+  return targets;
+}
+
+async function ensureFlowGoldenBatch(flowId, current) {
+  if (current?.goldenBatch?.results?.length) return current;
+  try {
+    const res = await fetch(`/repo-report/results/flow-runs/${encodeURIComponent(flowId)}/last-golden-batch.json`, {
+      cache: 'no-store',
+    });
+    if (!res.ok) return current;
+    const batch = await res.json();
+    if (!batch || typeof batch !== 'object') return current;
+    return { ...(current || {}), goldenBatch: batch, env: batch.env || current?.env };
+  } catch {
+    return current;
+  }
+}
+
+async function promoteFlowBaseline(flowId, last, setBusy, fallbackScriptKey) {
+  last = await ensureFlowGoldenBatch(flowId, last);
+  const targets = flowBatchPromoteTargets(last, flowId);
+  if (targets.length > 1) {
+    const env = last?.goldenBatch?.env || last?.env || '当前';
+    if (!confirm(`将 ${env} 环境本次检测的 ${targets.length} 个角色截图全量写入基线？`)) return last;
+    setBusy(true);
+    if (!send('repo:promote-baseline', { targets, onlyIfMissing: false })) setBusy(false);
+    return last;
+  }
+  const { scriptKey, runTs } = resolveFlowBaselineTarget(last, fallbackScriptKey);
+  if (!scriptKey) {
+    showToast('无法解析脚本键，请先完成一次 Golden 运行', 'err');
+    return last;
+  }
+  setBusy(true);
+  if (!send('repo:promote-baseline', { scriptKey, runTimestamp: runTs, latest: !runTs, onlyIfMissing: false })) {
+    setBusy(false);
+  }
+  return last;
+}
+
+async function ensureFlowLastRun(flowId, current) {
+  if (current?.scriptKey || current?.boundScriptKey) return current;
+  try {
+    const res = await fetch(`/repo-report/results/flow-runs/${encodeURIComponent(flowId)}/last-run.json`, {
+      cache: 'no-store',
+    });
+    if (!res.ok) return current;
+    const data = await res.json();
+    if (!data || typeof data !== 'object') return current;
+    return normalizeFlowRunDoneMsg(data, flowId);
+  } catch {
+    return current;
+  }
+}
+
 function runRequestFlowGoldenDirect() {
   switchToRequestFlowSubTab('golden');
   const p = getSelectedGoldenProfile();
@@ -10748,21 +10879,28 @@ function runRequestFlowProbeUiAudit() {
   runFlowUiAudit('request-flow', limit);
 }
 
-function promoteRequestFlowBaseline() {
+async function promoteRequestFlowBaseline() {
   switchToRequestFlowSubTab('golden');
-  const spec = document.getElementById('requestFlowSpec')?.value?.trim() || 'request/golden-regression.spec.ts';
-  const scriptKey = requestFlowScriptKeyFromDom(spec);
-  const runTs = lastRequestFlowRun?.runId || '';
-  setRequestFlowBusy(true);
-  if (!send('repo:promote-baseline', { scriptKey, runTimestamp: runTs, latest: !runTs, onlyIfMissing: false })) {
-    setRequestFlowBusy(false);
-  }
+  lastRequestFlowRun = await ensureFlowLastRun('request-flow', lastRequestFlowRun);
+  lastRequestFlowRun = await promoteFlowBaseline(
+    'request-flow',
+    lastRequestFlowRun,
+    setRequestFlowBusy,
+    requestFlowScriptKeyFromDom('request/golden-regression.spec.ts'),
+  );
 }
 
-function clearRequestFlowBaseline() {
+async function clearRequestFlowBaseline() {
   switchToRequestFlowSubTab('golden');
-  const spec = document.getElementById('requestFlowSpec')?.value?.trim() || 'request/golden-regression.spec.ts';
-  const scriptKey = requestFlowScriptKeyFromDom(spec);
+  lastRequestFlowRun = await ensureFlowLastRun('request-flow', lastRequestFlowRun);
+  const { scriptKey } = resolveFlowBaselineTarget(
+    lastRequestFlowRun,
+    requestFlowScriptKeyFromDom('request/golden-regression.spec.ts'),
+  );
+  if (!scriptKey) {
+    showToast('无法解析脚本键', 'err');
+    return;
+  }
   if (!confirm(`确认清空该脚本的 Golden 基线与 run 截图？\n\n${scriptKey}\n\n将删除 screenshots-baseline、screenshots 下对应目录及 results/diffs 缓存，不可恢复。`)) return;
   setRequestFlowBusy(true);
   if (!send('repo:clear-baseline', { scriptKey })) setRequestFlowBusy(false);
@@ -10782,7 +10920,7 @@ function cancelRequestFlowRun() {
 }
 
 function setApprovalFlowBusy(busy) {
-  ['btnApprovalProbe', 'btnApprovalPresetPreview', 'btnApprovalPresetReadOnly', 'btnApprovalPresetFilter', 'btnApprovalRunSelected', 'btnApprovalGoldenRun', 'btnApprovalGoldenRunAll', 'btnApprovalPromoteBaseline', 'btnApprovalClearBaseline', 'btnApprovalTocRun', 'btnApprovalTocRunAll', 'btnApprovalTocReport', 'btnApprovalTocRunUiAudit', 'btnApprovalTocUiAudit', 'btnApprovalTocReplay', 'btnApprovalTocAiDebug'].forEach((id) => {
+  ['btnApprovalProbe', 'btnApprovalPresetPreview', 'btnApprovalPresetReadOnly', 'btnApprovalPresetFilter', 'btnApprovalRunSelected', 'btnApprovalGoldenRun', 'btnApprovalGoldenRunAll', 'btnApprovalPromoteBaseline', 'btnApprovalClearBaseline', 'btnApprovalTocRun', 'btnApprovalTocRunAll', 'btnApprovalTocReport', 'btnApprovalTocPromoteBaseline', 'btnApprovalTocDeliverFeishu', 'btnApprovalTocRunUiAudit', 'btnApprovalTocUiAudit', 'btnApprovalTocReplay', 'btnApprovalTocAiDebug'].forEach((id) => {
     const btn = document.getElementById(id);
     if (!btn) return;
     btn.disabled = busy;
@@ -11198,21 +11336,28 @@ function runApprovalFlowGoldenAll() {
   runApprovalFlowGoldenAllDirect();
 }
 
-function promoteApprovalFlowBaseline() {
+async function promoteApprovalFlowBaseline() {
   switchToApprovalFlowSubTab('golden');
-  const spec = 'approval/golden-regression.spec.ts';
-  const scriptKey = approvalFlowScriptKeyFromDom(spec);
-  const runTs = lastApprovalFlowRun?.runId || '';
-  setApprovalFlowBusy(true);
-  if (!send('repo:promote-baseline', { scriptKey, runTimestamp: runTs, latest: !runTs, onlyIfMissing: false })) {
-    setApprovalFlowBusy(false);
-  }
+  lastApprovalFlowRun = await ensureFlowLastRun('approval-flow', lastApprovalFlowRun);
+  lastApprovalFlowRun = await promoteFlowBaseline(
+    'approval-flow',
+    lastApprovalFlowRun,
+    setApprovalFlowBusy,
+    approvalFlowScriptKeyFromDom('approval/golden-regression.spec.ts'),
+  );
 }
 
-function clearApprovalFlowBaseline() {
+async function clearApprovalFlowBaseline() {
   switchToApprovalFlowSubTab('golden');
-  const spec = 'approval/golden-regression.spec.ts';
-  const scriptKey = approvalFlowScriptKeyFromDom(spec);
+  lastApprovalFlowRun = await ensureFlowLastRun('approval-flow', lastApprovalFlowRun);
+  const { scriptKey } = resolveFlowBaselineTarget(
+    lastApprovalFlowRun,
+    approvalFlowScriptKeyFromDom('approval/golden-regression.spec.ts'),
+  );
+  if (!scriptKey) {
+    showToast('无法解析脚本键', 'err');
+    return;
+  }
   if (!confirm(`确认清空该脚本的 Golden 基线与 run 截图？\n\n${scriptKey}\n\n将删除 screenshots-baseline、screenshots 下对应目录及 results/diffs 缓存，不可恢复。`)) return;
   setApprovalFlowBusy(true);
   if (!send('repo:clear-baseline', { scriptKey })) setApprovalFlowBusy(false);
@@ -11273,7 +11418,7 @@ function switchToExpenseFlowSubTab(mode) {
 }
 
 function setExpenseFlowBusy(busy) {
-  ['btnExpenseProbe', 'btnExpensePresetPreview', 'btnExpensePresetReadOnly', 'btnExpenseRunSelected', 'btnExpenseGoldenRun', 'btnExpenseGoldenRunAll', 'btnExpensePromoteBaseline', 'btnExpenseClearBaseline', 'btnExpenseTocRun', 'btnExpenseTocRunAll', 'btnExpenseTocReport', 'btnExpenseTocRunUiAudit', 'btnExpenseTocOpenUiAudit', 'btnExpenseTocReplay', 'btnExpenseTocAiDebug'].forEach((id) => {
+  ['btnExpenseProbe', 'btnExpensePresetPreview', 'btnExpensePresetReadOnly', 'btnExpenseRunSelected', 'btnExpenseGoldenRun', 'btnExpenseGoldenRunAll', 'btnExpensePromoteBaseline', 'btnExpenseClearBaseline', 'btnExpenseTocRun', 'btnExpenseTocRunAll', 'btnExpenseTocReport', 'btnExpenseTocPromoteBaseline', 'btnExpenseTocDeliverFeishu', 'btnExpenseTocRunUiAudit', 'btnExpenseTocOpenUiAudit', 'btnExpenseTocReplay', 'btnExpenseTocAiDebug'].forEach((id) => {
     const btn = document.getElementById(id);
     if (!btn) return;
     btn.disabled = busy;
@@ -11675,21 +11820,28 @@ function runExpenseFlowGoldenAll() {
   runExpenseFlowGoldenAllDirect();
 }
 
-function promoteExpenseFlowBaseline() {
+async function promoteExpenseFlowBaseline() {
   switchToExpenseFlowSubTab('golden');
-  const spec = 'expense/golden-regression.spec.ts';
-  const scriptKey = expenseFlowScriptKeyFromDom(spec);
-  const runTs = lastExpenseFlowRun?.runId || '';
-  setExpenseFlowBusy(true);
-  if (!send('repo:promote-baseline', { scriptKey, runTimestamp: runTs, latest: !runTs, onlyIfMissing: false })) {
-    setExpenseFlowBusy(false);
-  }
+  lastExpenseFlowRun = await ensureFlowLastRun('expense-flow', lastExpenseFlowRun);
+  lastExpenseFlowRun = await promoteFlowBaseline(
+    'expense-flow',
+    lastExpenseFlowRun,
+    setExpenseFlowBusy,
+    expenseFlowScriptKeyFromDom('expense/golden-regression.spec.ts'),
+  );
 }
 
-function clearExpenseFlowBaseline() {
+async function clearExpenseFlowBaseline() {
   switchToExpenseFlowSubTab('golden');
-  const spec = 'expense/golden-regression.spec.ts';
-  const scriptKey = expenseFlowScriptKeyFromDom(spec);
+  lastExpenseFlowRun = await ensureFlowLastRun('expense-flow', lastExpenseFlowRun);
+  const { scriptKey } = resolveFlowBaselineTarget(
+    lastExpenseFlowRun,
+    expenseFlowScriptKeyFromDom('expense/golden-regression.spec.ts'),
+  );
+  if (!scriptKey) {
+    showToast('无法解析脚本键', 'err');
+    return;
+  }
   if (!confirm(`确认清空该脚本的 Golden 基线与 run 截图？\n\n${scriptKey}\n\n将删除 screenshots-baseline、screenshots 下对应目录及 results/diffs 缓存，不可恢复。`)) return;
   setExpenseFlowBusy(true);
   if (!send('repo:clear-baseline', { scriptKey })) setExpenseFlowBusy(false);

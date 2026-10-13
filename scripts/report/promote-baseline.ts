@@ -7,6 +7,7 @@
  *   npm run promote-baseline -- --script 260612/xxx --latest --only-if-missing
  *   npm run promote-baseline -- --script 260612/xxx --latest --step=step-2-approval-list__normal.png
  */
+import { archiveBaselineDelivery } from '../feishu/archive-baseline-delivery.js';
 import { findLatestRunTimestamp, hasGoldenBaseline, promoteRunToGolden, promoteStepsToGolden, revertGolden, clearGoldenBaseline, clearFlowGoldenBaselines } from './baseline-manager.js';
 
 function printHelp(): void {
@@ -109,7 +110,22 @@ function parseArgs(argv: string[]): {
   return { script, run, browser, revert, clear, scope, latest, onlyIfMissing, steps, expectedRevision, promotedBy };
 }
 
-function main(): void {
+async function archivePromotedBaseline(scriptKey: string, copied: number): Promise<void> {
+  if (copied <= 0) return;
+  try {
+    const result = await archiveBaselineDelivery(scriptKey);
+    if (result.skipped) {
+      console.log(`ℹ️  未归档飞书验收明细：${result.reason}`);
+      return;
+    }
+    const who = scriptKey.split('/').filter(Boolean).pop() || scriptKey;
+    console.log(`📦 已归档 ${result.archived} 条该基线的验收明细（${who}）`);
+  } catch (error) {
+    console.warn(`⚠️  基线已更新，飞书归档失败：${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+async function main(): Promise<void> {
   const opts = parseArgs(process.argv.slice(2));
 
   if (opts.clear && opts.scope === 'flows') {
@@ -152,7 +168,7 @@ function main(): void {
   }
 
   if (opts.steps.length) {
-    const { copied, goldenDir, revision } = promoteStepsToGolden({
+    const { copied, goldenDir, revision, scriptKey } = promoteStepsToGolden({
       scriptKey: opts.script,
       sourceRunTimestamp: runTs,
       browser: opts.browser,
@@ -162,10 +178,11 @@ function main(): void {
     });
     console.log(`✅ 已提升 Golden：${copied} 张截图（按 step），revision=${revision}`);
     console.log(`   目录: ${goldenDir}`);
+    await archivePromotedBaseline(scriptKey, copied);
     return;
   }
 
-  const { copied, goldenDir, revision } = promoteRunToGolden({
+  const { copied, goldenDir, revision, scriptKey } = promoteRunToGolden({
     scriptKey: opts.script,
     sourceRunTimestamp: runTs,
     browser: opts.browser,
@@ -175,6 +192,10 @@ function main(): void {
 
   console.log(`✅ 已提升 Golden：${copied} 张截图，revision=${revision}`);
   console.log(`   目录: ${goldenDir}`);
+  await archivePromotedBaseline(scriptKey, copied);
 }
 
-main();
+main().catch((error: unknown) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+});
