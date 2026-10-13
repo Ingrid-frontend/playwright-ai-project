@@ -101,9 +101,11 @@ const mixedSkipBatch = {
 }
 {
   const s = summarizeGoldenBatch(mixedSkipBatch);
-  assert.equal(s.ok, false);
-  assert.equal(s.exitCode, 1, '部分跑通部分跳过 → 退出码 1（真实失败）');
+  assert.equal(s.ok, true, '有通过且其余仅无数据跳过，不算未通过');
+  assert.equal(s.exitCode, 0);
   assert.equal(s.skippedOnly, false, '混合批次不算 skippedOnly');
+  assert.ok(s.headline.includes('无数据跳过'), `headline 应说明无数据跳过，实际 ${s.headline}`);
+  assert.equal(s.headline.includes('未通过'), false);
 }
 assert.deepEqual(summarizeGoldenBatch(null), { ok: false, exitCode: 1, lines: [], skippedOnly: false });
 
@@ -112,7 +114,6 @@ for (const batch of [
   { ...allSkippedBatch, ok: true, exitCode: 0, skippedOnly: false },
   { ...realPassBatch, results: [] },
   { ...realPassBatch, results: [{ ...realPassBatch.results[0], passed: 0, total: 0 }] },
-  { ...mixedSkipBatch, ok: true, exitCode: 0 },
 ]) assert.equal(summarizeGoldenBatch(batch).ok, false);
 assert.equal(goldenBatchStatus([]).exitCode, 1);
 

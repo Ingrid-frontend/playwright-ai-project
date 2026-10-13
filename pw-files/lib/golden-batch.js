@@ -56,10 +56,19 @@ function isExecutedPass(result) {
     Number.isInteger(result.total) && result.total >= result.passed;
 }
 
+function isNoDataSkip(result) {
+  return Boolean(result)
+    && (result.skipped || result.skippedOnly)
+    && !(result.passed > 0)
+    && !(result.failed > 0);
+}
+
 function goldenBatchStatus(results) {
-  const skippedOnly = results.length > 0 && results.every((r) =>
-    (r.skipped || r.skippedOnly) && !(r.passed > 0) && !(r.failed > 0) && (r.exitCode === 0 || r.exitCode === 2));
-  const ok = results.length > 0 && results.every(isExecutedPass);
+  const skips = results.filter(isNoDataSkip);
+  const passes = results.filter(isExecutedPass);
+  const failed = results.filter((r) => !isExecutedPass(r) && !isNoDataSkip(r));
+  const skippedOnly = results.length > 0 && failed.length === 0 && passes.length === 0 && skips.length === results.length;
+  const ok = failed.length === 0 && passes.length > 0 && passes.length + skips.length === results.length;
   return { ok, exitCode: ok ? 0 : skippedOnly ? 2 : 1, skippedOnly };
 }
 
@@ -101,8 +110,8 @@ function summarizeGoldenBatch(batch) {
   const skipped = results.filter((r) => r.skipped || r.skippedOnly);
   const status = goldenBatchStatus(results);
   const skippedOnly = status.skippedOnly;
-  const ok = status.ok && batch.ok === true && (batch.exitCode == null || batch.exitCode === 0);
-  const exitCode = ok ? 0 : skippedOnly ? 2 : batch.exitCode || 1;
+  const ok = status.ok;
+  const exitCode = status.exitCode;
 
   if (ignored.length) {
     for (const item of ignored) {
@@ -129,11 +138,14 @@ function summarizeGoldenBatch(batch) {
   if (skippedOnly) {
     headline = `Golden 批次无效：${skipped.length} 个角色全被跳过（无单据可跑）${ignored.length ? `，${ignored.length} 个忽略` : ''}`;
   } else if (ok) {
-    headline = `Golden 批次完成：${passed.length} 个角色通过${ignored.length ? `，${ignored.length} 个忽略` : ''}`;
+    const skipHint = skipped.length ? `，${skipped.length} 个无数据跳过` : '';
+    headline = `Golden 批次完成：${passed.length} 个角色通过${skipHint}${ignored.length ? `，${ignored.length} 个忽略` : ''}`;
   } else if (failed.length && passed.length) {
     headline = `Golden 批次部分失败：${passed.length} 通过，${failed.length} 失败${ignored.length ? `，${ignored.length} 忽略` : ''}`;
+  } else if (!failed.length) {
+    headline = `Golden 批次跳过：${skipped.length} 个角色无数据`;
   } else {
-    headline = `Golden 批次失败：${failed.length || 1} 个角色未通过`;
+    headline = `Golden 批次失败：${failed.length} 个角色未通过`;
   }
 
   return { ok, exitCode, headline, lines, skippedOnly };

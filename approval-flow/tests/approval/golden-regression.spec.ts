@@ -58,7 +58,12 @@ test.describe('审批列表 · Golden 回归', () => {
 
     await flowStep('打开审批列表', async () => {
       await approval.goto();
-      await approval.expectGoldenLoaded();
+      try {
+        await approval.expectGoldenLoaded();
+      } catch (err) {
+        if (await approval.isPendingGoldenEmpty().catch(() => false)) test.skip(true, GOLDEN_SKIP_MSG);
+        throw err;
+      }
       await prepareGolden(approval);
     }, { snapshot: 'approval-list', step: 1 });
 

@@ -3788,21 +3788,41 @@ function handleRequestFlowFailureFromMsg(msg) {
   renderFailureDiagnosticsPanel(bundle);
 }
 
+function isNoDataSkipResult(item) {
+  return Boolean(item)
+    && (item.skipped || item.skippedOnly)
+    && !(Number(item.passed) > 0)
+    && !(Number(item.failed) > 0);
+}
+
 function goldenBatchStats(batch) {
   const results = batch?.results || [];
-  const passed = results.filter((r) => r.ok && !r.skipped);
-  const failed = results.filter((r) => !r.ok && !r.skipped);
+  const passed = results.filter((r) => r.ok === true && !r.skipped && !r.skippedOnly);
+  const skipped = results.filter(isNoDataSkipResult);
+  const failed = results.filter((r) => !passed.includes(r) && !skipped.includes(r));
   const ignored = batch?.ignored || [];
   const partial = passed.length > 0 && failed.length > 0;
-  return { passed, failed, ignored, partial };
+  const skippedOnly = results.length > 0 && failed.length === 0 && passed.length === 0 && skipped.length === results.length;
+  return { passed, failed, skipped, ignored, partial, skippedOnly };
+}
+
+function isNoDataSkipRun(msg) {
+  if (!msg || msg.cancelled) return false;
+  const stats = goldenBatchStats(msg.goldenBatch);
+  if (stats.failed.length > 0) return false;
+  if (stats.skippedOnly) return true;
+  if (stats.skipped.length > 0 && stats.passed.length === 0) return true;
+  const failed = Number(msg.failed) || 0;
+  const skipped = Number(msg.skipped) || 0;
+  return Number(msg.exitCode) === 2 && failed === 0 && skipped > 0 && !(msg.failures || []).length;
 }
 
 function logGoldenBatchOutcome(prefix, msg) {
   const batch = msg.goldenBatch;
   if (!batch) return false;
-  const { passed, failed, ignored, partial } = goldenBatchStats(batch);
+  const { passed, failed, skipped, ignored, partial, skippedOnly } = goldenBatchStats(batch);
   if (msg.batchHeadline) {
-    log(partial ? 'warn' : failed.length ? 'err' : 'info', `[${prefix}] ${msg.batchHeadline}`);
+    log(partial || skippedOnly ? 'warn' : failed.length ? 'err' : 'info', `[${prefix}] ${msg.batchHeadline}`);
   }
   for (const item of ignored) {
     log(
@@ -3820,6 +3840,12 @@ function logGoldenBatchOutcome(prefix, msg) {
     log(
       'err',
       `[${prefix}] 失败 ${item.profileId}${item.roleSlug ? ` (${item.roleSlug})` : ''}: ${item.error || `${item.passed ?? 0}/${item.total ?? '?'}`}`,
+    );
+  }
+  for (const item of skipped) {
+    log(
+      'warn',
+      `[${prefix}] 跳过 ${item.profileId}${item.roleSlug ? ` (${item.roleSlug})` : ''}: ${item.reason || '无数据'}`,
     );
   }
   return true;
@@ -3853,7 +3879,7 @@ function buildApprovalFlowFailureBundle(msg) {
 }
 
 function handleApprovalFlowFailureFromMsg(msg) {
-  if (msg.ok || msg.cancelled) {
+  if (msg.ok || msg.cancelled || isNoDataSkipRun(msg)) {
     hideFailureDiagnosticsPanel();
     return;
   }
@@ -4539,7 +4565,13 @@ function handleFlowDeliveryLoopRunDone(flowId, msg) {
   }
   if (!msg.ok) {
     clearFlowDeliveryLoop(flowId);
-    showToast('Golden 未通过，交付闭环已停止', 'err');
+    if (isNoDataSkipRun(msg)) {
+      const skipLabel = flowId === 'approval-flow' ? '无审批数据，已跳过' : '无单据数据，已跳过';
+      showToast(skipLabel, 'warn');
+      log('warn', `[${flowId}] ${skipLabel}，不记为未通过`);
+    } else {
+      showToast('Golden 未通过，交付闭环已停止', 'err');
+    }
     return true;
   }
   runFlowDeliveryLoopDeliver(flowId);
@@ -4987,6 +5019,8 @@ function normalizeFlowRunDoneMsg(msg, flowId) {
     videoReportOpenPath: msg.videoReportOpenPath || last.videoReportOpenPath || '',
     reportOpenPath: msg.reportOpenPath || last.reportOpenPath || '',
     customerReportOpenPath: msg.customerReportOpenPath || last.customerReportOpenPath || '',
+    goldenBatch: msg.goldenBatch || last.goldenBatch || null,
+    goldenBatchAttached: Boolean(msg.goldenBatch?.results?.length),
     compareReportOpenPath: msg.compareReportOpenPath || last.compareReportOpenPath || '',
     uiAuditReportOpenPath: msg.uiAuditReportOpenPath || last.uiAuditReportOpenPath || '',
     summaryReportOpenPath: msg.summaryReportOpenPath || last.summaryReportOpenPath || '',
@@ -8394,10 +8428,14 @@ function handleMessage(msg) {
       }
       refreshApprovalFlowStatus(true);
       if (msg.ok) {
-        showToast(
-          msg.customerReportOpenPath ? '审批 Golden 全角色回归完成，客户汇总报告已生成' : '审批 Golden 全角色回归完成',
-          'ok',
-        );
+        const batchStats = goldenBatchStats(msg.goldenBatch);
+        const skipNote = batchStats.skipped.length ? `，${batchStats.skipped.length} 个无数据已跳过` : '';
+        showToast(`审批 Golden 全角色回归完成${skipNote}，可全量更新基线或写入飞书`, 'ok');
+        if (batchStats.skipped.length) logGoldenBatchOutcome('approval-flow', msg);
+      }
+      else if (!msg.cancelled && isNoDataSkipRun(msg)) {
+        showToast(msg.batchHeadline || '无审批数据，已跳过', 'warn');
+        logGoldenBatchOutcome('approval-flow', msg);
       }
       else if (!msg.cancelled) {
         const batchStats = goldenBatchStats(msg.goldenBatch);
@@ -8446,6 +8484,10 @@ function handleMessage(msg) {
           showToast(`审批流程用例通过${skipNote}`, 'ok');
         }
         log('ok', `[approval-flow] 用例通过 · mode=${msg.mode || ''}`);
+      } else if (isNoDataSkipRun(lastApprovalFlowRun)) {
+        showToast('无审批数据，已跳过', 'warn');
+        log('warn', '[approval-flow] 无审批数据，已跳过，不记为未通过');
+        if (lastApprovalFlowRun.goldenBatch) logGoldenBatchOutcome('approval-flow', lastApprovalFlowRun);
       } else if (!lastApprovalFlowRun.cancelled) {
         const batchStats = goldenBatchStats(lastApprovalFlowRun.goldenBatch);
         if (lastApprovalFlowRun.goldenBatch && logGoldenBatchOutcome('approval-flow', lastApprovalFlowRun)) {
