@@ -97,7 +97,8 @@ function markStepDone(ctx: FlowStepCtx, stepNum: number, name: string, snap: str
   if (!runId) return;
   const finishedAt = new Date().toISOString();
   const prev = readFlowRunProgress(ctx.runDir, resolveFlowId(), runId);
-  const done = { num: stepNum, name, snapshot: snap, startedAt: finishedAt, finishedAt };
+  const startedAt = prev?.currentStep?.startedAt ?? finishedAt;
+  const done = { num: stepNum, name, snapshot: snap, startedAt, finishedAt };
   writeFlowRunProgress(ctx.runDir, {
     runId,
     flowId: resolveFlowId(),

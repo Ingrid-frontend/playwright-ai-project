@@ -76,6 +76,38 @@ function flushManifestRun(repoRoot, manifest) {
   fs.writeFileSync(lastTmp, body, 'utf-8');
   fs.renameSync(lastTmp, lastRunPath);
   appendHistoryManifest(repoRoot, manifest);
+
+  // 同步把 progress.json 终态收敛，避免排查包一直读到 status: running
+  try {
+    const scriptKey = flowScriptKey(manifest.flowId, manifest.env, manifest.spec, manifest.roleSlug);
+    const shotRunDir = path.join(repoRoot, 'screenshots', scriptKey, 'run-chromium-flow', manifest.runId);
+    const progressFiles = [
+      path.join(shotRunDir, '.run-progress.json'),
+      path.join(runDir, 'progress.json'),
+    ];
+    const status = manifest.ok === false ? 'failed' : 'done';
+    const finishedAt = manifest.finishedAt || new Date().toISOString();
+    for (const p of progressFiles) {
+      if (!fs.existsSync(p)) continue;
+      const cur = readJsonSafe(p) || {};
+      fs.writeFileSync(
+        p,
+        JSON.stringify(
+          {
+            ...cur,
+            status,
+            currentStep: cur.currentStep,
+            updatedAt: finishedAt,
+          },
+          null,
+          2,
+        ),
+        'utf-8',
+      );
+    }
+  } catch (err) {
+    console.warn(`[flow] progress 终态回写失败: ${err.message}`);
+  }
 }
 
 function readApiFailures(repoRoot, flowId, runId) {
