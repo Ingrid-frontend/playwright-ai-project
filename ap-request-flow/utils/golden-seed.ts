@@ -1,5 +1,13 @@
+import { createGoldenSeedResolver } from '../../flow-kit/utils/golden-seed';
+
 /**
- * 已迁移到共享包 flow-kit（见 docs/flow-kit-and-flow-new.md）。
- * 这里保留转发，避免改动既有 import。
+ * 对公申请单 Golden 种子：ap-request-flow/datasource/golden-seeds.json
+ * { "<env>": { "<roleSlug>": { apRequestDocNo } } }
  */
-export * from '../../flow-kit/utils/golden-seed';
+export const resolveGoldenSeed = createGoldenSeedResolver({
+  seedsRel: 'ap-request-flow/datasource/golden-seeds.json',
+  docNoKeys: ['apRequestDocNo', 'docNo'],
+  keywordKeys: ['apRequestFilterKeyword', 'keyword'],
+});
+
+export type { GoldenSeed } from '../../flow-kit/utils/golden-seed';

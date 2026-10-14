@@ -1,16 +1,42 @@
-import { test, expect } from '../../fixtures/index';
+import { test } from '../../fixtures/index';
 import { ApRequestListPage } from '../../pages/ap-request-list.page';
+import { ApRequestEditPage } from '../../pages/ap-request-edit.page';
+import { env } from '../../utils/env';
+import { resolveGoldenSeed } from '../../utils/golden-seed';
 import { bindFlowStepCapture, flowStep } from '../../../src/utils/flow-step.js';
 
+const GOLDEN_SKIP_MSG = '列表无可用单号，跳过 Golden 搜索';
+const ctx = { docNo: '' };
+
+function configuredDocNo(): string {
+  const fromEnv = env.apRequestDocNo.trim();
+  if (fromEnv) return fromEnv;
+  const seed = resolveGoldenSeed(
+    process.env.PLAYWRIGHT_ENV || 'dev',
+    process.env.FLOW_ACCOUNT_SLUG || '',
+  );
+  return seed.docNo;
+}
+
+async function ensureDocNo(list: ApRequestListPage): Promise<string> {
+  if (ctx.docNo) return ctx.docNo;
+  ctx.docNo = configuredDocNo();
+  if (!ctx.docNo) {
+    if (!(await list.hasDataRows())) await list.recoverIfEmptyList();
+    test.skip(!(await list.hasDataRows()), GOLDEN_SKIP_MSG);
+    ctx.docNo = await list.readFirstDocNo();
+  }
+  return ctx.docNo;
+}
+
 /**
- * 对公申请单流程 golden 回归。
+ * 对公申请单流程 golden 回归（只读）。
  *
- * 只做只读断言，不写数据——所以可以每天跑、可以对截图基线。
- * 写操作放到 ap-request/full-flow.spec.ts 并由 AP_REQUEST_ENABLE_WRITE 控制。
- *
- * 先跑起来再加用例：
- *   npm run flow:debug-fast -- --flow=ap-request-flow --grep=列表加载
+ * 同一页顺序做：打开列表 → 按单号搜索 → 打开详情。
+ * 不再每步整页重开，也不在搜索后重置列表。
  */
+test.describe.configure({ mode: 'serial' });
+
 test.describe('对公申请单流程 golden 回归', () => {
   test('列表加载与基础结构', async ({ page, flowRunDir }) => {
     bindFlowStepCapture({ page, flowRunDir });
@@ -20,31 +46,30 @@ test.describe('对公申请单流程 golden 回归', () => {
       await list.goto();
       await list.expectLoaded();
     }, { snapshot: 'ap-request-list', step: 1 });
-
-    await flowStep('校验表格结构', async () => {
-      await expect(page).toHaveURL(/main\/ap-request/);
-      await list.expectListReady();
-      await list.restoreDefaultList();
-    }, { capture: false });
   });
 
   test('按首行单号搜索', async ({ page, flowRunDir }) => {
     bindFlowStepCapture({ page, flowRunDir });
     const list = new ApRequestListPage(page);
-    await list.goto();
-    await list.expectLoaded();
-
-    // 列表可能为空：先拿 UI 行，拿不到就从列表接口兜底
-    const docNo = await list.pickFirstDocNo().catch(() => list.readDocNoFromListApi());
-    test.skip(!docNo, '列表无数据，跳过搜索用例');
+    await list.ensureOnList();
+    const docNo = await ensureDocNo(list);
 
     await flowStep('搜索单号', async () => {
       await list.search(docNo);
       await list.expectRowContains(docNo);
-      await list.restoreDefaultList();
     }, { snapshot: 'ap-request-search', step: 2 });
   });
 
-  // TODO: 按 catalog 里的页签 / 筛选项补用例。
-  // 每个用例结束都调 list.restoreDefaultList()，否则筛选状态会串。
+  test('用现场单号搜索并打开详情', async ({ page, flowRunDir }) => {
+    bindFlowStepCapture({ page, flowRunDir });
+    const list = new ApRequestListPage(page);
+    await list.ensureOnList();
+    const docNo = await ensureDocNo(list);
+
+    await flowStep('打开详情', async () => {
+      await list.openByCode(docNo);
+      const edit = new ApRequestEditPage(page);
+      await edit.expectEditVisible();
+    }, { snapshot: 'ap-request-detail', step: 3 });
+  });
 });

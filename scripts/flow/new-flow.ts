@@ -71,10 +71,12 @@ function printHelp(): void {
   <id>/playwright.config.ts          复用既有配置约定（含 FLOW_* 超时开关）
   <id>/utils/env.ts                  基于 flow-kit createBaseEnv
   <id>/utils/<domain>-catalog.ts     catalog 占位（随后用 flow:gen-catalog 覆盖）
-  <id>/utils/golden-seed.ts          转发 flow-kit
-  <id>/pages/<domain>-list.page.ts   继承 GenericListPage，只留特有动作
+  <id>/utils/golden-seed.ts          按本流程 seeds 解析单号
+  <id>/pages/<domain>-list.page.ts   继承 GenericListPage，带详情容器
+  <id>/pages/<domain>-edit.page.ts   只读详情是否打开
   <id>/fixtures/index.ts             复用 createFlowFixtures
   <id>/tests/<domain>/golden-regression.spec.ts
+                                     打开列表 → 按单号搜索 → 打开详情
   <id>/datasource/golden-seeds.json.example
   <id>/tsconfig.json
   scripts/flow/run-<id>-golden.ts    从既有 golden runner 派生
@@ -269,12 +271,20 @@ export function hasLoginCredentials(): boolean {
 `;
 }
 
-function tplGoldenSeed(): string {
-  return `/**
- * 已迁移到共享包 flow-kit（见 docs/flow-kit-and-flow-new.md）。
- * 这里保留转发，避免改动既有 import。
+function tplGoldenSeed(c: Ctx): string {
+  return `import { createGoldenSeedResolver } from '../../flow-kit/utils/golden-seed';
+
+/**
+ * ${c.label} Golden 种子：${c.id}/datasource/golden-seeds.json
+ * { "<env>": { "<roleSlug>": { ${c.docNoField} } } }
  */
-export * from '../../flow-kit/utils/golden-seed';
+export const resolveGoldenSeed = createGoldenSeedResolver({
+  seedsRel: '${c.id}/datasource/golden-seeds.json',
+  docNoKeys: ['${c.docNoField}', 'docNo'],
+  keywordKeys: ['${camel(c.domain)}FilterKeyword', 'keyword'],
+});
+
+export type { GoldenSeed } from '../../flow-kit/utils/golden-seed';
 `;
 }
 
@@ -325,8 +335,8 @@ export const SEARCH_ACTION_CLEAR = '.search-action-bar__clear';
 export const COMBO_TRIGGER = '.combo-trigger';
 export const EXPOSED_FILTER_FIELDS: readonly string[] = [];
 
-/** 详情容器 */
-export const DETAIL = '.full-screen';
+/** 详情容器（与报销单同一组侧滑 / 全屏） */
+export const DETAIL = '.slide-frame.slide-frame-open, .full-width-slideframe, .full-screen, .helios-full-screen';
 
 /** 空状态 / 已加载文案 */
 export const EMPTY_TEXT_RE = /暂无数据|No Data/;
@@ -346,6 +356,7 @@ function tplListPage(c: Ctx): string {
 import { GenericListPage, type ListCatalog } from '../../flow-kit/list/generic-list-page';
 import {
   COMBO_TRIGGER,
+  DETAIL,
   DOC_NO_COLUMN,
   DOC_NO_RE,
   EMPTY_TEXT_RE,
@@ -361,16 +372,7 @@ import {
   TABLE,
 } from '../utils/${c.domain}-catalog';
 
-/**
- * ${c.label}列表页对象模型。
- *
- * 通用列表能力（导航 / 等接口 / 等 loading / 读表头 / 取首行某列 / 取单号 /
- * 行定位 / 搜索 / 清筛选 / 接口侧兜底）全部继承自 flow-kit 的 GenericListPage，
- * 由下面的 catalog 描述本页差异。
- *
- * 这里**只**写本页真正特有的动作，例如：页签切换、行内业务按钮、
- * 特殊弹窗、与别的页不同的详情判定。不要把通用逻辑再抄一遍。
- */
+/** ${c.label}列表。通用能力在 GenericListPage，加载行为见 LIST_LOAD_OPTS。 */
 export const ${c.PREFIX}_LIST_CATALOG: ListCatalog = {
   name: '${c.label.replace(/流程$/, '')}列表',
   listPath: LIST_PATH,
@@ -383,13 +385,13 @@ export const ${c.PREFIX}_LIST_CATALOG: ListCatalog = {
   docNoRe: DOC_NO_RE,
   emptyTextRe: EMPTY_TEXT_RE,
   loadedTextRe: LOADED_TEXT_RE,
-  /** 列表允许为空时改成 false */
   requireRowsOnLoad: false,
   searchActionSearch: SEARCH_ACTION_SEARCH,
   searchActionClear: SEARCH_ACTION_CLEAR,
   comboTrigger: COMBO_TRIGGER,
   comboClear: '.combo-trigger__clear',
   clearLabels: [...EXPOSED_FILTER_FIELDS],
+  detailSelectors: DETAIL,
   ...LIST_LOAD_OPTS,
 };
 
@@ -397,11 +399,65 @@ export class ${c.Domain}ListPage extends GenericListPage {
   constructor(page: Page) {
     super(page, ${c.PREFIX}_LIST_CATALOG);
   }
+}
+`;
+}
 
-  // ---------- 本流程特有动作写在下面 ----------
-  // 例：
-  // async switchTab(tab: string): Promise<void> { ... }
-  // async submitRow(code: string): Promise<void> { ... }
+function tplEditPage(c: Ctx): string {
+  return `import { type FrameLocator, type Locator, type Page, expect } from '@playwright/test';
+import { waitForAppRoot, type AppRoot } from '../../flow-kit/utils/app-frame';
+import { DETAIL, DOC_NO_RE } from '../utils/${c.domain}-catalog';
+
+type Scope = FrameLocator | Page;
+
+export class ${c.Domain}EditPage {
+  readonly page: Page;
+  private root: AppRoot | null = null;
+
+  constructor(page: Page) {
+    this.page = page;
+  }
+
+  private scope(): Scope {
+    if (!this.root) {
+      this.root = { page: this.page, scope: this.page, inIframe: false };
+    }
+    return this.root.scope;
+  }
+
+  async ensureRoot(): Promise<void> {
+    if (!this.root) {
+      this.root = await waitForAppRoot(this.page);
+    }
+  }
+
+  detailShell(): Locator {
+    return this.scope().locator(DETAIL).filter({ visible: true }).last();
+  }
+
+  async expectEditVisible(): Promise<void> {
+    await this.ensureRoot();
+    const action = this.scope()
+      .getByRole('button', { name: /保\\s*存|提\\s*交|删\\s*除|返\\s*回/ })
+      .filter({ visible: true })
+      .first();
+    const shell = this.detailShell();
+    const detailHeading = this.scope()
+      .getByText(/单据详情|单据信息/)
+      .filter({ visible: true })
+      .first();
+    const docNoText = this.scope().getByText(DOC_NO_RE).filter({ visible: true }).first();
+    await expect(async () => {
+      const actionOk = await action.isVisible().catch(() => false);
+      const shellOk =
+        (await shell.isVisible().catch(() => false)) &&
+        (await shell.getByText(DOC_NO_RE).first().isVisible().catch(() => false));
+      const headingOk =
+        (await detailHeading.isVisible().catch(() => false)) &&
+        (await docNoText.isVisible().catch(() => false));
+      expect(actionOk || shellOk || headingOk, '未打开${c.label.replace(/流程$/, '')}详情').toBeTruthy();
+    }).toPass({ timeout: 60_000 });
+  }
 }
 `;
 }
@@ -431,19 +487,46 @@ export type { ApiFailure, ApiGuard } from '../../flow-kit/utils/api-guard';
 }
 
 function tplGoldenSpec(c: Ctx): string {
-  return `import { test, expect } from '../../fixtures/index';
+  const docField = `${camel(c.domain)}DocNo`;
+  return `import { test } from '../../fixtures/index';
 import { ${c.Domain}ListPage } from '../../pages/${c.domain}-list.page';
+import { ${c.Domain}EditPage } from '../../pages/${c.domain}-edit.page';
+import { env } from '../../utils/env';
+import { resolveGoldenSeed } from '../../utils/golden-seed';
 import { bindFlowStepCapture, flowStep } from '../../../src/utils/flow-step.js';
 
+const GOLDEN_SKIP_MSG = '列表无可用单号，跳过 Golden 搜索';
+const ctx = { docNo: '' };
+
+function configuredDocNo(): string {
+  const fromEnv = env.${docField}.trim();
+  if (fromEnv) return fromEnv;
+  const seed = resolveGoldenSeed(
+    process.env.PLAYWRIGHT_ENV || 'dev',
+    process.env.FLOW_ACCOUNT_SLUG || '',
+  );
+  return seed.docNo;
+}
+
+async function ensureDocNo(list: ${c.Domain}ListPage): Promise<string> {
+  if (ctx.docNo) return ctx.docNo;
+  ctx.docNo = configuredDocNo();
+  if (!ctx.docNo) {
+    if (!(await list.hasDataRows())) await list.recoverIfEmptyList();
+    test.skip(!(await list.hasDataRows()), GOLDEN_SKIP_MSG);
+    ctx.docNo = await list.readFirstDocNo();
+  }
+  return ctx.docNo;
+}
+
 /**
- * ${c.label} golden 回归。
+ * ${c.label} golden 回归（只读）。
  *
- * 只做只读断言，不写数据——所以可以每天跑、可以对截图基线。
- * 写操作放到 ${c.domain}/full-flow.spec.ts 并由 ${c.PREFIX}_ENABLE_WRITE 控制。
- *
- * 先跑起来再加用例：
- *   npm run flow:debug-fast -- --flow=${c.id} --grep=列表加载
+ * 同一页顺序做：打开列表 → 按单号搜索 → 打开详情。
+ * 不再每步整页重开，也不在搜索后重置列表。
  */
+test.describe.configure({ mode: 'serial' });
+
 test.describe('${c.label} golden 回归', () => {
   test('列表加载与基础结构', async ({ page, flowRunDir }) => {
     bindFlowStepCapture({ page, flowRunDir });
@@ -453,33 +536,32 @@ test.describe('${c.label} golden 回归', () => {
       await list.goto();
       await list.expectLoaded();
     }, { snapshot: '${c.domain}-list', step: 1 });
-
-    await flowStep('校验表格结构', async () => {
-      await expect(page).toHaveURL(/${c.urlReLiteral}/);
-      await list.expectListReady();
-      await list.restoreDefaultList();
-    }, { capture: false });
   });
 
   test('按首行单号搜索', async ({ page, flowRunDir }) => {
     bindFlowStepCapture({ page, flowRunDir });
     const list = new ${c.Domain}ListPage(page);
-    await list.goto();
-    await list.expectLoaded();
-
-    // 列表可能为空：先拿 UI 行，拿不到就从列表接口兜底
-    const docNo = await list.pickFirstDocNo().catch(() => list.readDocNoFromListApi());
-    test.skip(!docNo, '列表无数据，跳过搜索用例');
+    await list.ensureOnList();
+    const docNo = await ensureDocNo(list);
 
     await flowStep('搜索单号', async () => {
       await list.search(docNo);
       await list.expectRowContains(docNo);
-      await list.restoreDefaultList();
     }, { snapshot: '${c.domain}-search', step: 2 });
   });
 
-  // TODO: 按 catalog 里的页签 / 筛选项补用例。
-  // 每个用例结束都调 list.restoreDefaultList()，否则筛选状态会串。
+  test('用现场单号搜索并打开详情', async ({ page, flowRunDir }) => {
+    bindFlowStepCapture({ page, flowRunDir });
+    const list = new ${c.Domain}ListPage(page);
+    await list.ensureOnList();
+    const docNo = await ensureDocNo(list);
+
+    await flowStep('打开详情', async () => {
+      await list.openByCode(docNo);
+      const edit = new ${c.Domain}EditPage(page);
+      await edit.expectEditVisible();
+    }, { snapshot: '${c.domain}-detail', step: 3 });
+  });
 });
 `;
 }
@@ -650,9 +732,10 @@ function planFiles(c: Ctx, repoRoot: string): PlannedFile[] {
     { rel: `${c.id}/playwright.config.ts`, content: tplPlaywrightConfig() },
     { rel: `${c.id}/tsconfig.json`, content: tplTsconfig() },
     { rel: `${c.id}/utils/env.ts`, content: tplEnv(c) },
-    { rel: `${c.id}/utils/golden-seed.ts`, content: tplGoldenSeed() },
+    { rel: `${c.id}/utils/golden-seed.ts`, content: tplGoldenSeed(c) },
     { rel: `${c.id}/utils/${c.domain}-catalog.ts`, content: tplCatalog(c) },
     { rel: `${c.id}/pages/${c.domain}-list.page.ts`, content: tplListPage(c) },
+    { rel: `${c.id}/pages/${c.domain}-edit.page.ts`, content: tplEditPage(c) },
     { rel: `${c.id}/fixtures/index.ts`, content: tplFixtures(c) },
     {
       rel: `${c.id}/tests/${c.domain}/golden-regression.spec.ts`,

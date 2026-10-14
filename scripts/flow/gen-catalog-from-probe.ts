@@ -221,9 +221,11 @@ export function buildCatalogCode(opts: {
 
   const tabsRaw = (dom.tabs || []).length ? dom.tabs || [] : dom.radios || [];
   // 登录页的「账号登录/二维码登录」不是业务页签，别写进 catalog
-  const tabs = isLogin
+  const tabsAll = isLogin
     ? []
     : Array.from(new Set(tabsRaw.map(cleanTabLabel).filter(Boolean)));
+  // 工作台 / 系统管理是整站侧栏，不是列表页签
+  const tabs = tabsAll.some((t) => t === '工作台' || t === '系统管理') ? [] : tabsAll;
 
   const { api, confident } = guessListApi(snapshot);
   if (!confident) warnings.push(`列表接口不确定（推断为 ${api}），必须人工确认 LIST_API。`);
@@ -300,15 +302,15 @@ export const TAB = '.ant-tabs-tab';
 export const ROW_ACTIONS = ${arr(rowActions)};${rowActions.length ? '' : `  ${TODO} 未探到行内按钮（列表可能为空），按实机补全`}
 
 /** 搜索区动作 */
-export const SEARCH_ACTION_SEARCH = '.search-action-search';  ${TODO} 确认实机类名
-export const SEARCH_ACTION_CLEAR = '.search-action-clear';  ${TODO} 确认实机类名
+export const SEARCH_ACTION_SEARCH = '.search-action-bar__search, button:has-text("搜")';
+export const SEARCH_ACTION_CLEAR = '.search-action-bar__clear';
 
 /** 外露筛选 */
 export const COMBO_TRIGGER = '.combo-trigger';
 export const EXPOSED_FILTER_FIELDS: readonly string[] = ${arr(headers.slice(0, 3))};  ${TODO} 按实机外露筛选项改
 
-/** 详情容器 */
-export const DETAIL = '.full-screen';  ${TODO} 确认详情容器（.approve-entrance / .ant-modal / .slide-frame）
+/** 详情容器（与报销单同一组侧滑 / 全屏） */
+export const DETAIL = '.slide-frame.slide-frame-open, .full-width-slideframe, .full-screen, .helios-full-screen';
 
 /** 空状态 / 已加载文案 */
 export const EMPTY_TEXT_RE = ${emptyTextRe};

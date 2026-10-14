@@ -12420,8 +12420,8 @@ function setApRequestFlowBusy(busy) {
 }
 
 const AP_REQUEST_FLOW_PRESETS = {
-  preview: { spec: 'expense/full-flow.spec.ts', grep: '搜索并打开详情', mode: 'headed' },
-  readOnly: { spec: 'expense/full-flow.spec.ts', grep: '加载|搜索', mode: 'headless' },
+  preview: { spec: 'ap-request/golden-regression.spec.ts', grep: '打开详情', mode: 'headed' },
+  readOnly: { spec: 'ap-request/golden-regression.spec.ts', grep: '加载|搜索|详情', mode: 'headless' },
   golden: { spec: 'ap-request/golden-regression.spec.ts', grep: '', mode: 'headless', pipeline: 'golden', accountProfile: 'golden' },
 };
 let apRequestFlowDraft = null;
@@ -12476,7 +12476,7 @@ function applyApRequestFlowDraftToDom() {
 function fillApRequestFlowSpecSelect(specs, selected) {
   const sel = document.getElementById('apRequestFlowSpec');
   if (!sel) return;
-  const list = Array.isArray(specs) && specs.length ? specs : ['expense/full-flow.spec.ts'];
+  const list = Array.isArray(specs) && specs.length ? specs : ['ap-request/golden-regression.spec.ts'];
   const prev = selected || sel.value || list[0];
   const same =
     sel.options.length === list.length && list.every((rel, i) => sel.options[i]?.value === rel);
@@ -12671,7 +12671,7 @@ function runSelectedApRequestFlow(mode, opts = {}) {
     : (isGolden && !writeEnabled
       ? (document.getElementById('apRequestGoldenDocNo')?.value?.trim() || '')
       : (document.getElementById('apRequestDocNo')?.value?.trim() || ''));
-  const spec = document.getElementById('apRequestFlowSpec')?.value?.trim() || (isGolden && !writeEnabled ? 'ap-request/golden-regression.spec.ts' : 'expense/full-flow.spec.ts');
+  const spec = document.getElementById('apRequestFlowSpec')?.value?.trim() || 'ap-request/golden-regression.spec.ts';
   const grep = opts.grep != null ? opts.grep : (document.getElementById('apRequestFlowTest')?.value?.trim() || '');
   const runMode = mode || getApRequestFlowMode();
   const presetCfg = AP_REQUEST_FLOW_PRESETS[opts.preset] || null;

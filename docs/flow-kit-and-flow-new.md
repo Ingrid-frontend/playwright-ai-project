@@ -43,7 +43,7 @@ npm run flow:gen-catalog -- --flow=expense-flow --force
 npm run flow:debug-fast -- --flow=expense-flow --grep=列表加载
 ```
 
-骨架自带「列表加载」与「按首行单号搜索」两个用例。跑通后按 catalog 里的页签 / 筛选项补业务用例。
+骨架自带三条只读用例，同一页串行：打开列表 → 按首行单号搜索 → 打开详情。不在中途重开页面，也不在搜索后重置。跑通后再按页签 / 筛选项补业务用例。
 
 ### Studio 配置模式：先解析入口，再探活
 
