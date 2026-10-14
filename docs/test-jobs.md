@@ -82,6 +82,25 @@ results/jobs/<jobId>/
 - CLI：`npm run test-job -- run --id=<jobId> [--background]`
 - GitHub Actions：[`.github/workflows/scheduled-test-jobs.yml`](../.github/workflows/scheduled-test-jobs.yml) → **Run workflow**（`workflow_dispatch`）或 CI cron 自动触发
 
+## 本机定时
+
+`scheduler: "local"` 的任务不由 GitHub 触发。`npm run studio` 起来后每分钟执行 `npm run test-job -- tick`，cron 按任务的 `timezone` 解释（北京时间）。Studio 没开着就错过该分钟，不补跑。
+
+| Job ID | 调度 | 北京时间 | 做什么 |
+|--------|------|----------|--------|
+| `golden-all-flows` | `30 10 * * 1-5` | 工作日 10:30 | `dev`、`uat`、`stage9084` 上，申请单、审批、报销、对公申请单各做一次「检测全部」 |
+
+每个流程只跑自己的 `golden-regression.spec.ts`，已登录的 golden 账号串行。不跑 `full-flow`，不跑 `deliver:feishu`，不先探活。某一条或某一个环境失败会继续后面的。退出码 1（用例失败、崩溃、没有已登录账号）算整轮失败；退出码 2（有登录态但无单据）只记跳过。该环境至少一条通过后跑一次 `deliver:ready`，并在有新的 `results/flow-ui-issues.json` 时写入现有飞书多维表。多维表写入失败不算整轮失败。有硬失败或预览失败时，结束再发一条飞书，只列失败和跳过项。
+
+手动与到点是同一条编排：
+
+```bash
+npm run test-job -- run --id=golden-all-flows
+npm run test-job -- run --id=golden-all-flows --background
+```
+
+Studio 侧栏「定时任务」里点前台或后台运行也可以。这次调用带上的 `--env`、`--profile` 不会把范围收成单个环境。已经有一轮在跑时再次启动会被锁跳过。手动运行不写 `schedule-fired.json`，当天 10:30 仍会再跑；那一轮还没结束时手动再点不会启动。
+
 ## Playwright Studio
 
 侧栏 **工作模式 → 定时任务** 进入独立工作区（非折叠面板）：

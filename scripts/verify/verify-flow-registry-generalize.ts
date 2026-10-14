@@ -125,10 +125,10 @@ if (fs.existsSync(catalogAbs)) {
 
 console.log('\n⑤ job 分发表注册');
 const runnerKeys = listJobRunnerKeys();
-for (const key of ['ai-smoke-patrol', 'approval-flow-golden', 'approval-flow-write', 'catalog-drift-check', 'expense-flow-golden', 'expense-flow-write', 'intent-batch', 'request-flow-golden', 'request-flow-write']) {
+for (const key of ['ai-smoke-patrol', 'ap-request-flow-golden', 'approval-flow-golden', 'approval-flow-write', 'catalog-drift-check', 'expense-flow-golden', 'expense-flow-write', 'golden-all-flows', 'intent-batch', 'request-flow-golden', 'request-flow-write']) {
   assert(runnerKeys.includes(key), `分发表已注册 ${key}`);
 }
-assert(runnerKeys.length === 9, `分发表共 9 个 key（实际 ${runnerKeys.length}）`);
+assert(runnerKeys.length === 11, `分发表共 11 个 key（实际 ${runnerKeys.length}）`);
 
 console.log('');
 if (failures) {

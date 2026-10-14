@@ -16,6 +16,7 @@ import { listJobs, loadTestJobsConfig, resolveJob, resolveJobRunEnv, countJobSpe
 import { countResolvedSpecs, formatRunId } from './job-utils.js';
 import { formatFlowGoldenSpecsLabel, formatApprovalFlowGoldenSpecsLabel } from './flow-golden-count.js';
 import { resolveFlowRunnerKey } from './flow-runner-registry.js';
+import { clockSlot, cronMatches, readFiredSlot, writeFiredSlot } from './job-schedule.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const CLI_PATH = path.resolve(__filename);
@@ -29,6 +30,7 @@ function printHelp(): void {
   status    查看 Job 运行状态
   stop      停止后台 Job
   logs      查看最近一次运行日志
+  tick      检查本机定时任务是否到期，到期则后台启动
 
 run 选项:
   --id=<jobId>              必填（run 时）
@@ -50,6 +52,7 @@ run 选项:
   npm run test-job -- status --id=nightly-regression
   npm run test-job -- stop --id=nightly-regression
   npm run test-job -- logs --id=nightly-regression
+  npm run test-job -- tick
 `);
 }
 
@@ -196,7 +199,11 @@ function spawnBackground(
   fs.closeSync(logFd);
 
   console.log(`🚀 Job「${jobId}」已在后台启动`);
-  console.log(`   env:   ${effectiveEnv}${playwrightEnv && playwrightEnv !== job.playwrightEnv ? `（覆盖 ${job.playwrightEnv}）` : ''}`);
+  if (job.envs.length) {
+    console.log(`   env:   ${job.envs.join(', ')}`);
+  } else {
+    console.log(`   env:   ${effectiveEnv}${playwrightEnv && playwrightEnv !== job.playwrightEnv ? `（覆盖 ${job.playwrightEnv}）` : ''}`);
+  }
   if (effectiveProfile && effectiveProfile !== 'all') {
     console.log(`   profile: ${effectiveProfile}`);
   }
@@ -259,9 +266,11 @@ function cmdList(): void {
     const running = isJobRunning(job.id) ? '🟢 运行中' : job.enabled ? '⚪ 空闲' : '⏸️  已禁用';
     const schedule = job.schedule ? `cron: ${job.schedule} (${job.timezone})` : '仅手动';
     const profileNote = job.accountProfile ? ` · profile=${JSON.stringify(job.accountProfile)}` : '';
+    const envLabel = job.envs.length ? job.envs.join(', ') : job.playwrightEnv;
     const runnerKey = resolveFlowRunnerKey(job.runner, job.id);
-    const specsLabel =
-      runnerKey === 'request-flow-golden'
+    const specsLabel = job.flows.length
+      ? job.flows.join('、')
+      : runnerKey === 'request-flow-golden'
         ? formatFlowGoldenSpecsLabel(process.cwd(), job.playwrightEnv, job.accountProfile)
         : runnerKey === 'approval-flow-golden'
           ? formatApprovalFlowGoldenSpecsLabel(process.cwd(), job.playwrightEnv, job.accountProfile)
@@ -275,7 +284,7 @@ function cmdList(): void {
     console.log(`  ${job.id}`);
     console.log(`    状态: ${running}`);
     console.log(`    说明: ${job.description || '—'}`);
-    console.log(`    环境: ${job.playwrightEnv}${profileNote}`);
+    console.log(`    环境: ${envLabel}${profileNote}`);
     console.log(`    调度: ${schedule}`);
     console.log(`    用例: ${specsLabel}`);
     console.log('');
@@ -326,6 +335,31 @@ function cmdStatus(jobId?: string): void {
         console.log(`  原因: ${reasons.join('；')}`);
       }
     }
+  }
+}
+
+function cmdTick(): void {
+  const now = new Date();
+  const jobs = listJobs().filter((job) => job.enabled && job.scheduler === 'local' && job.schedule);
+  if (!jobs.length) {
+    console.log('ℹ️  没有 scheduler=local 的定时任务');
+    return;
+  }
+  for (const job of jobs) {
+    const zone = job.timezone || 'Asia/Shanghai';
+    if (!cronMatches(job.schedule || '', now, zone)) continue;
+    const slot = clockSlot(now, zone);
+    if (readFiredSlot(job.id) === slot) {
+      console.log(`[tick] ${job.id} 本分钟已启动`);
+      continue;
+    }
+    if (isJobRunning(job.id)) {
+      console.log(`[tick] ${job.id} 仍在运行，跳过`);
+      continue;
+    }
+    writeFiredSlot(job.id, slot);
+    console.log(`[tick] 启动 ${job.id} slot=${slot}`);
+    spawnBackground(job.id, formatRunId(), 'schedule', false);
   }
 }
 
@@ -381,6 +415,9 @@ async function main(): Promise<void> {
       break;
     case 'logs':
       cmdLogs(args.jobId, args.tailLines);
+      break;
+    case 'tick':
+      cmdTick();
       break;
     default:
       console.error(`❌ 未知命令: ${args.command}`);

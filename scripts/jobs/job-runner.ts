@@ -84,6 +84,10 @@ export function registerJobRunner(runner: string, handler: JobRunnerHandler): vo
 registerJobRunner('catalog-drift-check', runCatalogDriftJob);
 registerJobRunner('ai-smoke-patrol', runSmokePatrolJob);
 registerJobRunner('intent-batch', runIntentBatchJob);
+registerJobRunner('golden-all-flows', async (job, ctx) => {
+  const { runGoldenAllFlows } = await import('./run-golden-all-flows.js');
+  return runGoldenAllFlows(job, ctx);
+});
 for (const flowRunnerKey of Object.keys(FLOW_RUNNER_SCRIPTS)) {
   registerJobRunner(flowRunnerKey, (job, ctx) => runFlowJob(job, ctx));
 }

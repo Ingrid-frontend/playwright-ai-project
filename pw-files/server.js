@@ -517,4 +517,29 @@ server.listen(PORT, '127.0.0.1', () => {
     console.log(line);
   }
   console.log('');
+  startLocalJobTick();
 });
+
+function startLocalJobTick() {
+  const { spawn: spawnTick } = require('child_process');
+  const fsTick = require('fs');
+  const repoRoot = resolveRepoRoot();
+  const tsxBin = path.join(repoRoot, 'node_modules', '.bin', 'tsx');
+  const cli = path.join(repoRoot, 'scripts', 'jobs', 'test-job-cli.ts');
+  let busy = false;
+  const run = () => {
+    if (busy || !fsTick.existsSync(tsxBin)) return;
+    busy = true;
+    const proc = spawnTick(tsxBin, [cli, 'tick'], {
+      cwd: repoRoot,
+      stdio: 'ignore',
+      detached: true,
+      env: process.env,
+    });
+    proc.unref();
+    const done = () => { busy = false; };
+    proc.on('close', done);
+    proc.on('error', done);
+  };
+  setInterval(run, 60_000);
+}

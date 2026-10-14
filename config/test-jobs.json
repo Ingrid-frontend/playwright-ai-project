@@ -171,6 +171,24 @@
       "notifyOn": ["failure", "success"]
     },
     {
+      "id": "golden-all-flows",
+      "enabled": true,
+      "description": "本机定时：dev、uat、stage9084 上申请单、审批、报销、对公申请单各做一次检测全部",
+      "scheduler": "local",
+      "schedule": "30 10 * * 1-5",
+      "timezone": "Asia/Shanghai",
+      "playwrightEnv": "dev",
+      "envs": ["dev", "uat", "stage9084"],
+      "accountProfile": null,
+      "flows": ["request-flow", "approval-flow", "expense-flow", "ap-request-flow"],
+      "specs": [],
+      "steps": {
+        "writeFeishuBitable": false,
+        "uiAuditGate": false
+      },
+      "notifyOn": ["failure"]
+    },
+    {
       "id": "catalog-drift-check",
       "enabled": true,
       "description": "L2 catalog 漂移检测（dev，每日 09:00 北京，先于 10:00 golden 发现 UI 变更）",

@@ -56,6 +56,12 @@ export type TestJobDefinition = {
   runner?: string | null;
   /** 仅执行指定账号档案的用例；不传则跑全部并按 meta 分组 login */
   accountProfile?: AccountProfileFilter;
+  /** local：本机 Studio tick 到点执行；缺省不参与本机定时 */
+  scheduler?: 'local' | null;
+  /** scheduler=local 时按此顺序跑环境，忽略单次 --env */
+  envs?: string[];
+  /** scheduler=local 时按此顺序跑流程 */
+  flows?: string[];
   stopOnTestFailure?: boolean;
   stopOnCompareGate?: boolean;
   runCompareAfterAbort?: boolean;
@@ -79,6 +85,9 @@ export type ResolvedTestJob = TestJobDefaults & {
   specs: JobSpecs;
   runner: string | null;
   accountProfile: AccountProfileFilter;
+  scheduler: 'local' | null;
+  envs: string[];
+  flows: string[];
 };
 
 const CONFIG_PATH = path.join(process.cwd(), 'config/test-jobs.json');
@@ -165,6 +174,19 @@ export function resolveJob(jobId: string): ResolvedTestJob {
     throw new Error(`Job「${jobId}」feishuMode 无效: ${String(feishuMode)}`);
   }
 
+  const scheduler = job.scheduler === 'local' ? 'local' : null;
+  const envs = Array.isArray(job.envs) ? job.envs.map((id) => String(id).trim()).filter(Boolean) : [];
+  const flows = Array.isArray(job.flows) ? job.flows.map((id) => String(id).trim()).filter(Boolean) : [];
+  if (scheduler === 'local') {
+    if (!envs.length) throw new Error(`Job「${jobId}」scheduler=local 需要 envs`);
+    if (!flows.length) throw new Error(`Job「${jobId}」scheduler=local 需要 flows`);
+    for (const envId of envs) {
+      if (!isKnownEnv(envId)) {
+        throw new Error(`Job「${jobId}」未知环境: ${envId}（请在 datasource/base-config.json 中配置）`);
+      }
+    }
+  }
+
   return {
     id: job.id,
     enabled: job.enabled !== false,
@@ -172,6 +194,9 @@ export function resolveJob(jobId: string): ResolvedTestJob {
     schedule: job.schedule ?? null,
     timezone: job.timezone ?? 'Asia/Shanghai',
     playwrightEnv: job.playwrightEnv ?? d.playwrightEnv,
+    scheduler,
+    envs,
+    flows,
     projects: job.projects?.length ? [...job.projects] : [...d.projects],
     optimizedDir: job.optimizedDir ?? d.optimizedDir,
     specs: job.specs ?? 'all',
