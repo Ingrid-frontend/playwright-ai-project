@@ -54,7 +54,7 @@ export type ListCatalog = {
   clearLabels?: string[];
   /** 单元格取值为 '-' 时是否视为空（申请单列表需要） */
   dashIsEmpty?: boolean;
-  /** 进入后需点「搜索」才查列表（advanced-table 常见，如报销单） */
+  /** 进入后需点「搜索」才查列表。为 true 时重置/清空不等列表接口 */
   clickSearchOnLoad?: boolean;
   /** expectLoaded 前先「重置」并清外露筛选 */
   resetFiltersOnLoad?: boolean;
@@ -203,6 +203,11 @@ export class GenericListPage {
     await this.expectListReady();
   }
 
+  /** 只有点「搜索」才查数时，重置/清空不要空等列表接口 */
+  private searchClickOnly(): boolean {
+    return this.catalog.clickSearchOnLoad === true;
+  }
+
   /** 无数据入口或纯前端筛选可能不发查询，响应等待超时返回 null。 */
   async waitListApi(timeout = 20_000) {
     return this.page
@@ -216,10 +221,11 @@ export class GenericListPage {
       .catch(() => null);
   }
 
-  /** 等 loading 遮罩消失 */
+  /** 等 loading 遮罩消失。点搜索才查数的列表遮罩经常不消失，不能空等满 60 秒 */
   async waitListSettled(): Promise<void> {
+    const timeout = this.searchClickOnly() ? 3_000 : 60_000;
     const spin = this.scope().locator('.ant-spin-spinning');
-    await spin.waitFor({ state: 'hidden', timeout: 60_000 }).catch(() => undefined);
+    await spin.waitFor({ state: 'hidden', timeout }).catch(() => undefined);
   }
 
   /** 列表已就绪：有数据行，或出现空状态 */
@@ -456,6 +462,10 @@ export class GenericListPage {
     await input.click();
     await input.fill('');
     await input.fill(keyword);
+    if (this.searchClickOnly()) {
+      await this.clickFilterSearch();
+      return;
+    }
 
     const icon = this.scope()
       .getByRole('img', { name: /search/i })
@@ -496,14 +506,14 @@ export class GenericListPage {
       )
       .locator('.ant-input-clear-icon, .anticon-close-circle')
       .first();
-    const respP = this.waitListApi();
+    const respP = this.searchClickOnly() ? null : this.waitListApi();
     if (await clearBtn.isVisible({ timeout: 500 }).catch(() => false)) {
       await clearBtn.click({ force: true });
     } else {
       await input.fill('');
       await input.press('Enter').catch(() => undefined);
     }
-    await respP;
+    if (respP) await respP;
     await this.waitListSettled();
     await this.expectSearchEmpty();
   }
@@ -517,7 +527,7 @@ export class GenericListPage {
       .filter({ visible: true })
       .first();
     if (!(await btn.isVisible({ timeout: 1_000 }).catch(() => false))) return;
-    const respP = this.waitListApi();
+    const respP = this.waitListApi(this.searchClickOnly() ? 3_000 : 20_000);
     await btn.click({ force: true });
     await respP;
     await this.waitListSettled();
@@ -527,6 +537,11 @@ export class GenericListPage {
   async resetFilters(): Promise<void> {
     const btn = this.scope().getByRole('button', { name: /重\s*置/ }).first();
     if (!(await btn.isVisible({ timeout: 2_000 }).catch(() => false))) return;
+    if (this.searchClickOnly()) {
+      await btn.click({ force: true });
+      await this.waitListSettled();
+      return;
+    }
     const respP = this.waitListApi();
     await btn.click({ force: true });
     await respP;
@@ -554,9 +569,9 @@ export class GenericListPage {
     for (const clear of clears) {
       const btn = clear.filter({ visible: true }).first();
       if (!(await btn.isVisible({ timeout: 300 }).catch(() => false))) continue;
-      const response = this.waitListApi(3_000);
+      const response = this.searchClickOnly() ? null : this.waitListApi(3_000);
       await btn.click({ force: true });
-      await response;
+      if (response) await response;
       await this.waitListSettled();
       return true;
     }
@@ -603,9 +618,9 @@ export class GenericListPage {
           .filter({ visible: true })
           .first();
         if (!(await clear.isVisible({ timeout: 300 }).catch(() => false))) break;
-        const respP = this.waitListApi(3_000);
+        const respP = this.searchClickOnly() ? null : this.waitListApi(3_000);
         await clear.click({ force: true });
-        await respP.catch(() => null);
+        if (respP) await respP.catch(() => null);
         // 接口响应 + loading 消失已是完整事件信号，末尾盲等删去
         await this.waitListSettled();
       }
@@ -623,6 +638,11 @@ export class GenericListPage {
   protected async clearExposedFilters(): Promise<void> {
     const btn = this.scope().locator(this.catalog.searchActionClear).first();
     if (!(await btn.isVisible({ timeout: 1_000 }).catch(() => false))) return;
+    if (this.searchClickOnly()) {
+      await btn.click({ force: true });
+      await this.waitListSettled();
+      return;
+    }
     const respP = this.waitListApi();
     await btn.click({ force: true });
     await respP;

@@ -82,7 +82,6 @@ export function buildDeliverySummaryRecord(
     [DELIVERY_SUMMARY_FIELDS.coveragePct]: typeof s.coveragePct === 'number' ? Number(s.coveragePct.toFixed(1)) : undefined,
     [DELIVERY_SUMMARY_FIELDS.totalIssueCount]: payload.totalIssueCount,
     [DELIVERY_SUMMARY_FIELDS.shipAdvice]: formatShipAdviceLabel(payload.shipAdvice) || undefined,
-    [DELIVERY_SUMMARY_FIELDS.shipAdviceLabel]: payload.shipAdviceLabel || '',
   };
   if (opts?.remark) fields[DELIVERY_SUMMARY_FIELDS.remark] = opts.remark;
   if (opts?.docUrl) fields[DELIVERY_SUMMARY_FIELDS.docUrl] = { link: opts.docUrl, text: '验收报告' };

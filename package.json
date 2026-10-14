@@ -175,7 +175,9 @@
     "expense-flow:write": "tsx scripts/flow/run-expense-flow-write.ts",
     "expense-flow:stability-gate": "tsx scripts/flow/run-expense-flow-stability-gate.ts",
     "prune:flow-videos": "tsx scripts/report/prune-flow-videos.ts",
-    "prune:flow-history": "tsx scripts/report/prune-flow-history.ts"
+    "prune:flow-history": "tsx scripts/report/prune-flow-history.ts",
+    "ap-request-flow:golden": "tsx scripts/flow/run-ap-request-flow-golden.ts",
+    "ap-request-flow:debug-fast": "tsx scripts/flow/flow-debug-fast.ts --flow=ap-request-flow"
   },
   "keywords": [
     "playwright",

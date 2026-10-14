@@ -124,6 +124,25 @@ const RAW: FlowDescriptor[] = [
     tabbed: false,
     kind: 'golden-flow',
   },
+  {
+    id: 'ap-request-flow',
+    label: '对公申请单流程',
+    domain: 'ap-request',
+    entry: '/main/ap-request',
+    configRel: 'ap-request-flow/playwright.config.ts',
+    goldenSpec: 'ap-request/golden-regression.spec.ts',
+    fullFlowSpec: 'ap-request/full-flow.spec.ts',
+    reportDir: 'ap-request-flow/playwright-report',
+    goldenRunner: 'run-ap-request-flow-golden.ts',
+    writeRunner: null,
+    docNoEnv: 'AP_REQUEST_DOC_NO',
+    keywordEnv: 'AP_REQUEST_FILTER_KEYWORD',
+    defaultKeyword: '',
+    writeEnvVar: 'AP_REQUEST_ENABLE_WRITE',
+    seedsRel: 'ap-request-flow/datasource/golden-seeds.json',
+    tabbed: false,
+    kind: 'golden-flow',
+  },
 ];
 
 /**

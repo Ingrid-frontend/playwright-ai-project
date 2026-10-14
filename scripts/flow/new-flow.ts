@@ -260,7 +260,7 @@ export const env = {
   ...createBaseEnv({ writeEnvVar: '${c.PREFIX}_ENABLE_WRITE' }),
 
   /** 指定一条单号用于搜索 / 打开；不填则用列表第一条 */
-  ${c.domain}DocNo: process.env.${c.PREFIX}_DOC_NO || '',
+  ${camel(c.domain)}DocNo: process.env.${c.PREFIX}_DOC_NO || '',
 };
 
 export function hasLoginCredentials(): boolean {
@@ -421,7 +421,7 @@ export const test = createFlowFixtures({
   env,
   hasLoginCredentials,
   pages: {
-    ${c.domain}ListPage: (page) => new ${c.Domain}ListPage(page),
+    ${camel(c.domain)}ListPage: (page) => new ${c.Domain}ListPage(page),
   },
 });
 
@@ -578,6 +578,8 @@ export function deriveGoldenRunner(donorSrc: string, c: Ctx): string {
       // ⑤ 字符串里的流程名：日志前缀 + 报告目录（这类最容易漏，统一按 flow 目录名替换）
       .replace(/\[approval-flow:golden\]/g, `[${c.id}:golden]`)
       .replace(/approval-flow\/playwright-report/g, `${c.id}/playwright-report`)
+      .replace(/approval-flow\/datasource\//g, `${c.id}/datasource/`)
+      .replace(/\breadApprovalSnapshotDocNo\b/g, `read${c.Domain}SnapshotDocNo`)
   );
 }
 
@@ -620,9 +622,10 @@ export function injectFlowRegistry(src: string, c: Ctx): string {
     writeEnvVar: '${c.PREFIX}_ENABLE_WRITE',
     seedsRel: '${c.id}/datasource/golden-seeds.json',
     tabbed: false,
+    kind: 'golden-flow',
   },
 `;
-  const marker = '\n];\n\n/** 流程 ID → 描述对象 */';
+  const marker = '\n];\n\n/**\n * 外部流程登记';
   const idx = src.indexOf(marker);
   if (idx === -1) {
     throw new Error('flow-registry.ts 结构变了，找不到 RAW 数组结尾，请手工追加 FlowDescriptor。');

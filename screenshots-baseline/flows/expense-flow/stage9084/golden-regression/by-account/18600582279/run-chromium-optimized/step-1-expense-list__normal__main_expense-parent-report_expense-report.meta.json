@@ -1,0 +1,123 @@
+{
+  "capturedAt": "2026-10-14T08:32:28.827Z",
+  "viewport": {
+    "name": "desktop",
+    "width": 1280,
+    "height": 720,
+    "deviceScaleFactor": 1
+  },
+  "imageWidth": 1280,
+  "imageHeight": 720,
+  "layout": {
+    "horizontalOverflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280
+  },
+  "domHash": "BODY|1|",
+  "sections": [
+    {
+      "key": "intent-approve-tabs",
+      "structureHash": "17331612225f9e6c",
+      "textHash": "dce15a44cb59e78e",
+      "nodeCount": 35,
+      "childTags": "DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "intent-approve-toolbar",
+      "structureHash": "76afb338c6e0590a",
+      "textHash": "e3b0c44298fc1c14",
+      "nodeCount": 8,
+      "childTags": "SPAN,INPUT,SPAN"
+    },
+    {
+      "key": "intent-approve-table",
+      "structureHash": "4102fe98522bfe3d",
+      "textHash": "06c34ef7eefd7b3d",
+      "nodeCount": 283,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "golden-approve-tabs",
+      "structureHash": "17331612225f9e6c",
+      "textHash": "dce15a44cb59e78e",
+      "nodeCount": 35,
+      "childTags": "DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "golden-approve-table",
+      "structureHash": "4102fe98522bfe3d",
+      "textHash": "06c34ef7eefd7b3d",
+      "nodeCount": 283,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "request-list-root",
+      "structureHash": "b6ccad46a61afbcb",
+      "textHash": "7f345a57329a3d5c",
+      "nodeCount": 113,
+      "childTags": "DIV"
+    },
+    {
+      "key": "request-list-table",
+      "structureHash": "4102fe98522bfe3d",
+      "textHash": "06c34ef7eefd7b3d",
+      "nodeCount": 283,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "request-search-table",
+      "structureHash": "4102fe98522bfe3d",
+      "textHash": "06c34ef7eefd7b3d",
+      "nodeCount": 283,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV,DIV"
+    }
+  ],
+  "textSections": [
+    {
+      "key": "intent-approve-tabs",
+      "text": "工作台消费平台数据分析e档案",
+      "textHash": "079c6caac7ea5dc3",
+      "charCount": 14
+    },
+    {
+      "key": "intent-approve-table",
+      "text": "序号 提交日期 申请人 单据名称 事由 单号 币种 金额 本币币种 本币金额 收单状态 摘要信息 当前处理人 状态 <NUM> <NUM>-<NUM>-<NUM> 韩青青 日常报销单（HK） <NUM> BXD<NUM> CNY <NUM>.<NUM> CNY <NUM>.<NUM> 未收单 - - 编辑中 操作 复制 删除 联查",
+      "textHash": "fb72828bd0771809",
+      "charCount": 166
+    },
+    {
+      "key": "golden-approve-tabs",
+      "text": "工作台消费平台数据分析e档案",
+      "textHash": "079c6caac7ea5dc3",
+      "charCount": 14
+    },
+    {
+      "key": "golden-approve-table",
+      "text": "序号 提交日期 申请人 单据名称 事由 单号 币种 金额 本币币种 本币金额 收单状态 摘要信息 当前处理人 状态 <NUM> <NUM>-<NUM>-<NUM> 韩青青 日常报销单（HK） <NUM> BXD<NUM> CNY <NUM>.<NUM> CNY <NUM>.<NUM> 未收单 - - 编辑中 操作 复制 删除 联查",
+      "textHash": "fb72828bd0771809",
+      "charCount": 166
+    },
+    {
+      "key": "request-list-root",
+      "text": "重 置 搜 索 新建报销单 序号 提交日期 申请人 单据名称 事由 单号 币种 金额 本币币种 本币金额 收单状态 摘要信息 当前处理人 状态 <NUM> <NUM>-<NUM>-<NUM> 韩青青 日常报销单（HK） <NUM> BXD<NUM> CNY <NUM>.<NUM> CNY <NUM>.<NUM> 未收单 - - 编辑中 操作 复制 删除 联查 已选择<NUM> 批量打印 共<NUM>条 <NUM> <NUM> 条/页",
+      "textHash": "dd4cdac8056a89c3",
+      "charCount": 218
+    },
+    {
+      "key": "request-list-table",
+      "text": "序号 提交日期 申请人 单据名称 事由 单号 币种 金额 本币币种 本币金额 收单状态 摘要信息 当前处理人 状态 <NUM> <NUM>-<NUM>-<NUM> 韩青青 日常报销单（HK） <NUM> BXD<NUM> CNY <NUM>.<NUM> CNY <NUM>.<NUM> 未收单 - - 编辑中 操作 复制 删除 联查",
+      "textHash": "fb72828bd0771809",
+      "charCount": 166
+    },
+    {
+      "key": "request-search-table",
+      "text": "序号 提交日期 申请人 单据名称 事由 单号 币种 金额 本币币种 本币金额 收单状态 摘要信息 当前处理人 状态 <NUM> <NUM>-<NUM>-<NUM> 韩青青 日常报销单（HK） <NUM> BXD<NUM> CNY <NUM>.<NUM> CNY <NUM>.<NUM> 未收单 - - 编辑中 操作 复制 删除 联查",
+      "textHash": "fb72828bd0771809",
+      "charCount": 166
+    }
+  ],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "snapshotName": "expense-list",
+  "state": "normal"
+}

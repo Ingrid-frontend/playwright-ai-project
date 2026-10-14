@@ -6,11 +6,14 @@
  *   npm run feishu:bitable-maintain -- --apply           # 全部执行
  *   npm run feishu:bitable-maintain -- --apply --clean-daily-only
  *   npm run feishu:bitable-maintain -- --apply --prune-issue-noise-only   # 仅删 issue 表噪声行
- *   npm run feishu:bitable-maintain -- --apply --drop-delivery-fields-only # 仅删明细表废弃列
+ *   npm run feishu:bitable-maintain -- --apply --drop-delivery-fields-only # 仅删明细/汇总表废弃列
  *   npm run feishu:bitable-maintain -- --apply --tidy-only                 # 删空表 + 收窄日常视图 + 废弃列/噪声
  *   npm run feishu:bitable-maintain -- --apply --dashboard-views           # 只改仪表盘明细视图的可见列
+ *   npm run feishu:bitable-maintain -- --apply --slim-views-only          # 只收窄日常视图的可见列（不删表/不删噪声行）
  *   npm run feishu:bitable-maintain -- --apply --promote-index             # 把索引列从空的「多行文本」换成业务键
  *   npm run feishu:bitable-maintain -- --apply --archive-current           # 现有行进「归档」视图，当前视图只接新写入
+ *   npm run feishu:bitable-maintain -- --apply --normalize-enums-only      # 单选枚举值中文化（对比类型/严重度/状态：英文→中文）
+ *   npm run feishu:bitable-maintain -- --apply --fix-env-dirty-only        # 清理验收明细「环境」拼接脏值并从流程推导回填
  */
 import dotenv from 'dotenv';
 import {
@@ -29,6 +32,13 @@ import {
   RUN_FIELDS,
   RUN_FIELD_RENAMES,
   DELIVERY_DEPRECATED_FIELDS,
+  DELIVERY_SUMMARY_DEPRECATED_FIELDS,
+  BITABLE_COMPARE_KIND_OPTIONS,
+  BITABLE_SEVERITY_OPTIONS,
+  BITABLE_STATUS_OPTIONS,
+  formatCompareKindLabel,
+  formatSeverityLabel,
+  formatStatusLabel,
   calcUiPassRate,
   explainMissingBitableConfig,
   loadBitableRuntimeConfig,
@@ -50,6 +60,9 @@ type MaintainOptions = {
   promoteIndex: boolean;
   archiveCurrent: boolean;
   dashboardViews: boolean;
+  slimViewsOnly: boolean;
+  enumNormalizeOnly: boolean;
+  fixEnvDirtyOnly: boolean;
 };
 
 function parseArgs(): MaintainOptions {
@@ -66,6 +79,9 @@ function parseArgs(): MaintainOptions {
     promoteIndex: args.includes('--promote-index'),
     archiveCurrent: args.includes('--archive-current'),
     dashboardViews: args.includes('--dashboard-views'),
+    slimViewsOnly: args.includes('--slim-views-only'),
+    enumNormalizeOnly: args.includes('--normalize-enums-only'),
+    fixEnvDirtyOnly: args.includes('--fix-env-dirty-only'),
   };
 }
 
@@ -111,7 +127,6 @@ const SLIM_VIEWS: Record<string, SlimView> = {
       DELIVERY_SUMMARY_FIELDS.passRate,
       DELIVERY_SUMMARY_FIELDS.coveragePct,
       DELIVERY_SUMMARY_FIELDS.shipAdvice,
-      DELIVERY_SUMMARY_FIELDS.shipAdviceLabel,
       DELIVERY_SUMMARY_FIELDS.docUrl,
     ],
   },
@@ -143,7 +158,6 @@ const SLIM_VIEWS: Record<string, SlimView> = {
     label: '日汇总',
     viewName: '表格视图 1',
     visible: [
-      DAILY_FIELDS.dateText,
       DAILY_FIELDS.passRate,
       DAILY_FIELDS.blockerCount,
       DAILY_FIELDS.warningCount,
@@ -536,6 +550,197 @@ async function pruneIssueNoiseRecords(
   return { scanned: records.length, noise: noiseRecords.length, deleted: apply ? noiseRecords.length : 0 };
 }
 
+type EnumNormalizePlan = {
+  label: string;
+  fieldName: string;
+  /** 旧英文值 → 规整显示名；未命中的值原样保留 */
+  map: Record<string, string>;
+  /** 规整后的最终选项（英文旧选项会被移除，未知值会保留） */
+  options: Array<{ name: string }>;
+};
+
+/** 单选枚举值中文化计划。映射目标与 bitable-display.ts 的 format*Label 保持一致（写入侧已用中文，此处回填存量英文） */
+const ENUM_NORMALIZE_PLAN: Record<'issueCompareKind' | 'issueSeverity' | 'runStatus', EnumNormalizePlan> = {
+  issueCompareKind: {
+    label: '问题明细「对比类型」',
+    fieldName: ISSUE_FIELDS.compareKind,
+    map: {
+      golden: formatCompareKindLabel('golden'),
+      structure: formatCompareKindLabel('structure'),
+      'last-green': formatCompareKindLabel('last-green'),
+      'cross-browser': formatCompareKindLabel('cross-browser'),
+      'run-drift': formatCompareKindLabel('run-drift'),
+    },
+    options: BITABLE_COMPARE_KIND_OPTIONS,
+  },
+  issueSeverity: {
+    label: '问题明细「严重度」',
+    fieldName: ISSUE_FIELDS.severity,
+    map: {
+      blocker: formatSeverityLabel('blocker'),
+      warning: formatSeverityLabel('warning'),
+      noise: formatSeverityLabel('noise'),
+      info: formatSeverityLabel('info'),
+    },
+    options: BITABLE_SEVERITY_OPTIONS,
+  },
+  runStatus: {
+    label: '执行记录「状态」',
+    fieldName: RUN_FIELDS.status,
+    map: {
+      success: formatStatusLabel('success'),
+      failed: formatStatusLabel('failed'),
+      aborted: formatStatusLabel('aborted'),
+      skipped: formatStatusLabel('skipped'),
+    },
+    options: BITABLE_STATUS_OPTIONS,
+  },
+};
+
+async function normalizeSingleSelectEnums(
+  client: BitableClient,
+  tableId: string,
+  plan: EnumNormalizePlan,
+  apply: boolean,
+): Promise<{ scanned: number; mapped: number }> {
+  const field = (await client.listFields(tableId)).find(
+    (item) => item.field_name === plan.fieldName && item.type === BITABLE_FIELD_TYPE.singleSelect,
+  );
+
+  console.log(`\n🏷️  ${plan.label} 枚举值中文化`);
+  if (!field) {
+    console.log('   未找到该单选列，跳过');
+    return { scanned: 0, mapped: 0 };
+  }
+
+  const records = await client.listRecords(tableId);
+  const canonical = new Set(plan.options.map((item) => item.name));
+  const englishKeys = new Set(Object.keys(plan.map));
+
+  const distinct = new Set<string>();
+  const toUpdate: Array<{ recordId: string; value: string }> = [];
+  for (const record of records) {
+    const raw = readCellText(record.fields?.[plan.fieldName]);
+    if (!raw) continue;
+    distinct.add(raw);
+    const mapped = plan.map[raw];
+    if (mapped && mapped !== raw) toUpdate.push({ recordId: record.record_id, value: mapped });
+  }
+
+  const unknown = [...distinct].filter((value) => !englishKeys.has(value) && !canonical.has(value)).sort();
+  const finalOptions = [...plan.options, ...unknown.map((name) => ({ name }))];
+  const finalNames = new Set(finalOptions.map((item) => item.name));
+
+  // 陈旧选项 = 字段当前选项里不在规整集里的（英文旧选项、已废弃标签等），与是否有记录引用无关
+  const currentOptions = (field.property?.options as Array<{ name?: string }> | undefined) ?? [];
+  const stale = currentOptions
+    .map((item) => item.name)
+    .filter((name): name is string => !!name && !finalNames.has(name));
+
+  const mappedPairs = Object.entries(plan.map).filter(([key]) => distinct.has(key));
+  console.log(`   映射 ${mappedPairs.map(([key, value]) => `${key}→${value}`).join('、') || '无'}`);
+  if (unknown.length) console.log(`   保留未知值: ${unknown.join('、')}`);
+  if (stale.length) console.log(`   将移除陈旧选项: ${stale.join('、')}`);
+
+  if (!toUpdate.length && !stale.length) {
+    console.log('   已规整，无需处理');
+    return { scanned: records.length, mapped: 0 };
+  }
+
+  if (!apply) {
+    console.log(`   预览：回填 ${toUpdate.length} 条 · 选项集替换为 ${finalOptions.map((item) => item.name).join('、')}，加 --apply 执行`);
+    return { scanned: records.length, mapped: toUpdate.length };
+  }
+
+  // 先回填记录值（单选写入新值会自动建档中文选项），再替换选项集移除英文旧选项
+  if (toUpdate.length) {
+    await client.batchUpdateRecords(
+      tableId,
+      toUpdate.map((item) => ({ recordId: item.recordId, fields: { [plan.fieldName]: item.value } })),
+    );
+  }
+  await client.updateField(tableId, field.field_id, {
+    name: field.field_name,
+    type: field.type,
+    property: { options: finalOptions },
+  });
+  console.log(`   ✅ 已回填 ${toUpdate.length} 条 · 选项集已替换`);
+
+  return { scanned: records.length, mapped: toUpdate.length };
+}
+
+/** 历史批次把环境写成全部环境拼接值，逐条从「流程」首段推导真实环境 */
+const DELIVERY_ENV_DIRTY = '预发布环境、Stage9084环境、UAT环境、DEV环境';
+
+async function fixDeliveryEnvDirtyOption(
+  client: BitableClient,
+  tableId: string,
+  apply: boolean,
+): Promise<{ scanned: number; fixed: number }> {
+  const field = (await client.listFields(tableId)).find(
+    (item) => item.field_name === DELIVERY_FIELDS.env && item.type === BITABLE_FIELD_TYPE.singleSelect,
+  );
+
+  console.log(`\n🧹 UI 验收明细「环境」脏选项清理`);
+  if (!field) {
+    console.log('   未找到环境单选列，跳过');
+    return { scanned: 0, fixed: 0 };
+  }
+
+  const currentOptions = (field.property?.options as Array<{ name?: string; id?: string; color?: number }> | undefined) ?? [];
+  const validLabels = new Set(
+    currentOptions.filter((item) => item.name && item.name !== DELIVERY_ENV_DIRTY).map((item) => item.name as string),
+  );
+
+  const records = await client.listRecords(tableId);
+  const toFix: Array<{ recordId: string; value: string }> = [];
+  for (const record of records) {
+    const raw = readCellText(record.fields?.[DELIVERY_FIELDS.env]);
+    if (raw !== DELIVERY_ENV_DIRTY) continue;
+    // 流程形如「UAT环境 · 申请单流程」，首段即真实环境
+    const derived = readCellText(record.fields?.[DELIVERY_FIELDS.flow]).split(' · ')[0]?.trim() || '';
+    if (!validLabels.has(derived)) {
+      const flow = readCellText(record.fields?.[DELIVERY_FIELDS.flow]) || '空';
+      console.log(`   ⚠️ 无法从流程推导环境，跳过 ${record.record_id}（流程=${flow}）`);
+      continue;
+    }
+    toFix.push({ recordId: record.record_id, value: derived });
+  }
+
+  const hasDirtyOption = currentOptions.some((item) => item.name === DELIVERY_ENV_DIRTY);
+  const finalOptions = currentOptions.filter((item) => item.name !== DELIVERY_ENV_DIRTY);
+
+  console.log(`   脏值命中 ${toFix.length} 条${hasDirtyOption ? '' : ' · 脏选项已不存在'}`);
+  if (toFix.length) console.log(`   推导 ${[...new Set(toFix.map((item) => item.value))].join('、')}`);
+
+  if (!toFix.length && !hasDirtyOption) {
+    console.log('   已清理，无需处理');
+    return { scanned: records.length, fixed: 0 };
+  }
+
+  if (!apply) {
+    console.log(`   预览：回填 ${toFix.length} 条${hasDirtyOption ? ' · 移除脏选项' : ''}，加 --apply 执行`);
+    return { scanned: records.length, fixed: toFix.length };
+  }
+
+  if (toFix.length) {
+    await client.batchUpdateRecords(
+      tableId,
+      toFix.map((item) => ({ recordId: item.recordId, fields: { [DELIVERY_FIELDS.env]: item.value } })),
+    );
+  }
+  if (hasDirtyOption) {
+    await client.updateField(tableId, field.field_id, {
+      name: field.field_name,
+      type: field.type,
+      property: { options: finalOptions },
+    });
+  }
+  console.log(`   ✅ 已回填 ${toFix.length} 条${hasDirtyOption ? ' · 脏选项已移除' : ''}`);
+
+  return { scanned: records.length, fixed: toFix.length };
+}
+
 async function dropEmptyDefaultTable(
   client: BitableClient,
   keepIds: ReadonlySet<string>,
@@ -876,8 +1081,13 @@ async function main(): Promise<void> {
     opts.tidyOnly ||
     opts.promoteIndex ||
     opts.archiveCurrent ||
-    opts.dashboardViews;
+    opts.dashboardViews ||
+    opts.slimViewsOnly ||
+    opts.enumNormalizeOnly ||
+    opts.fixEnvDirtyOnly;
   const runRename = opts.renameFieldsOnly || !anyOnly;
+  const runEnumNormalize = opts.enumNormalizeOnly || !anyOnly;
+  const runFixEnvDirty = opts.fixEnvDirtyOnly || !anyOnly;
   const runPassRate = opts.passRateOnly || !anyOnly;
   const runDropFields = opts.dropIssueFieldsOnly || opts.tidyOnly || !anyOnly;
   const runCleanDaily = opts.cleanDailyOnly || !anyOnly;
@@ -885,6 +1095,7 @@ async function main(): Promise<void> {
   const runDropDeliveryFields = opts.dropDeliveryFieldsOnly || opts.tidyOnly || !anyOnly;
   const runTidy = opts.tidyOnly || !anyOnly;
   const runDashboardViews = opts.dashboardViews || opts.tidyOnly || !anyOnly;
+  const runSlimViews = opts.slimViewsOnly || !anyOnly;
   const runPromote = opts.promoteIndex || opts.tidyOnly || !anyOnly;
   const runArchive = opts.archiveCurrent;
 
@@ -903,6 +1114,29 @@ async function main(): Promise<void> {
     }
     if (config.feedbackTableId) {
       await renameTableFields(client, 'UI采集反馈', config.feedbackTableId, FEEDBACK_FIELD_RENAMES, opts.apply);
+    }
+  }
+
+  if (runEnumNormalize) {
+    const targets: Array<[string | undefined, EnumNormalizePlan]> = [
+      [config.issueTableId, ENUM_NORMALIZE_PLAN.issueCompareKind],
+      [config.issueTableId, ENUM_NORMALIZE_PLAN.issueSeverity],
+      [config.runTableId, ENUM_NORMALIZE_PLAN.runStatus],
+    ];
+    for (const [tableId, plan] of targets) {
+      if (!tableId) {
+        console.log(`⚠️  未配置${plan.label}，跳过枚举值中文化`);
+        continue;
+      }
+      await normalizeSingleSelectEnums(client, tableId, plan, opts.apply);
+    }
+  }
+
+  if (runFixEnvDirty) {
+    if (!config.deliveryTableId) {
+      console.log('⚠️  未配置 UI 验收明细表，跳过环境脏选项清理');
+    } else {
+      await fixDeliveryEnvDirtyOption(client, config.deliveryTableId, opts.apply);
     }
   }
 
@@ -944,6 +1178,11 @@ async function main(): Promise<void> {
     } else {
       await dropDeprecatedFields(client, 'UI 验收明细', config.deliveryTableId, DELIVERY_DEPRECATED_FIELDS, opts.apply);
     }
+    if (!config.deliverySummaryTableId) {
+      console.log('⚠️  未配置 UI 验收汇总表，跳过废弃列删除');
+    } else {
+      await dropDeprecatedFields(client, 'UI 验收汇总', config.deliverySummaryTableId, DELIVERY_SUMMARY_DEPRECATED_FIELDS, opts.apply);
+    }
   }
 
   if (runTidy) {
@@ -958,6 +1197,9 @@ async function main(): Promise<void> {
       ].filter((id): id is string => Boolean(id)),
     );
     await dropEmptyDefaultTable(client, keepIds, opts.apply);
+  }
+
+  if (runSlimViews) {
     const slimTargets: Array<[string | undefined, SlimView]> = [
       [config.deliveryTableId, SLIM_VIEWS.delivery],
       [config.deliverySummaryTableId, SLIM_VIEWS.summary],
@@ -1029,11 +1271,17 @@ async function main(): Promise<void> {
   if (!opts.apply) {
     const flag = opts.archiveCurrent
       ? ' --archive-current'
-      : opts.promoteIndex
-        ? ' --promote-index'
+      : opts.fixEnvDirtyOnly
+        ? ' --fix-env-dirty-only'
+        : opts.enumNormalizeOnly
+          ? ' --normalize-enums-only'
+          : opts.promoteIndex
+            ? ' --promote-index'
         : opts.dashboardViews
           ? ' --dashboard-views'
-          : opts.tidyOnly
+          : opts.slimViewsOnly
+            ? ' --slim-views-only'
+            : opts.tidyOnly
             ? ' --tidy-only'
             : '';
     console.log(`\n💡 确认无误后执行: npm run feishu:bitable-maintain -- --apply${flag}`);

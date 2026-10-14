@@ -73,12 +73,12 @@ function renderSlider(card: CustomerBrowserCard, opts?: { stepLabel?: string }):
   }
   return `
     <div class="view-btns">
-      <button type="button" class="view-btn active" data-view="side">并排对比</button>
+      <button type="button" class="view-btn" data-view="side">并排对比</button>
       <button type="button" class="view-btn" data-view="marked">标注变化</button>
       <button type="button" class="view-btn" data-view="slider">拖动对比</button>
-      <button type="button" class="view-btn" data-view="overlay">像素差异</button>
+      <button type="button" class="view-btn active" data-view="overlay">像素差异</button>
     </div>
-    <div class="diff-view-panel active" data-view="side">
+    <div class="diff-view-panel" data-view="side">
       ${renderSideBySideView(card, opts?.stepLabel)}
     </div>
     <div class="diff-view-panel" data-view="marked">
@@ -95,7 +95,7 @@ function renderSlider(card: CustomerBrowserCard, opts?: { stepLabel?: string }):
       </div>
       <div class="view-hint">左侧为「${esc(opts?.stepLabel || '本步骤')}」验收基线，右侧为同一步骤本次结果</div>
     </div>
-    <div class="diff-view-panel" data-view="overlay">${renderOverlayView(card)}</div>
+    <div class="diff-view-panel active" data-view="overlay">${renderOverlayView(card)}</div>
   `;
 }
 

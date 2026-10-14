@@ -1,0 +1,136 @@
+{
+  "capturedAt": "2026-10-14T08:32:35.395Z",
+  "viewport": {
+    "name": "desktop",
+    "width": 1280,
+    "height": 720,
+    "deviceScaleFactor": 1
+  },
+  "imageWidth": 1280,
+  "imageHeight": 720,
+  "layout": {
+    "horizontalOverflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280
+  },
+  "domHash": "BODY|1|",
+  "sections": [
+    {
+      "key": "intent-approve-tabs",
+      "structureHash": "17331612225f9e6c",
+      "textHash": "dce15a44cb59e78e",
+      "nodeCount": 35,
+      "childTags": "DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "intent-approve-toolbar",
+      "structureHash": "76afb338c6e0590a",
+      "textHash": "e3b0c44298fc1c14",
+      "nodeCount": 8,
+      "childTags": "SPAN,INPUT,SPAN"
+    },
+    {
+      "key": "intent-approve-table",
+      "structureHash": "4102fe98522bfe3d",
+      "textHash": "06c34ef7eefd7b3d",
+      "nodeCount": 283,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "golden-approve-tabs",
+      "structureHash": "17331612225f9e6c",
+      "textHash": "dce15a44cb59e78e",
+      "nodeCount": 35,
+      "childTags": "DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "golden-approve-table",
+      "structureHash": "4102fe98522bfe3d",
+      "textHash": "06c34ef7eefd7b3d",
+      "nodeCount": 283,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "request-list-root",
+      "structureHash": "b6ccad46a61afbcb",
+      "textHash": "7f345a57329a3d5c",
+      "nodeCount": 113,
+      "childTags": "DIV"
+    },
+    {
+      "key": "request-list-table",
+      "structureHash": "4102fe98522bfe3d",
+      "textHash": "06c34ef7eefd7b3d",
+      "nodeCount": 283,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "request-search-table",
+      "structureHash": "4102fe98522bfe3d",
+      "textHash": "06c34ef7eefd7b3d",
+      "nodeCount": 283,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "request-detail-slide",
+      "structureHash": "b63cfea95d8ebccd",
+      "textHash": "51119aee46a604ea",
+      "nodeCount": 34,
+      "childTags": "DIV"
+    }
+  ],
+  "textSections": [
+    {
+      "key": "intent-approve-tabs",
+      "text": "工作台消费平台数据分析e档案",
+      "textHash": "079c6caac7ea5dc3",
+      "charCount": 14
+    },
+    {
+      "key": "intent-approve-table",
+      "text": "序号 提交日期 申请人 单据名称 事由 单号 币种 金额 本币币种 本币金额 收单状态 摘要信息 当前处理人 状态 <NUM> <NUM>-<NUM>-<NUM> 韩青青 日常报销单（HK） <NUM> BXD<NUM> CNY <NUM>.<NUM> CNY <NUM>.<NUM> 未收单 - - 编辑中 操作 复制 删除 联查",
+      "textHash": "fb72828bd0771809",
+      "charCount": 166
+    },
+    {
+      "key": "golden-approve-tabs",
+      "text": "工作台消费平台数据分析e档案",
+      "textHash": "079c6caac7ea5dc3",
+      "charCount": 14
+    },
+    {
+      "key": "golden-approve-table",
+      "text": "序号 提交日期 申请人 单据名称 事由 单号 币种 金额 本币币种 本币金额 收单状态 摘要信息 当前处理人 状态 <NUM> <NUM>-<NUM>-<NUM> 韩青青 日常报销单（HK） <NUM> BXD<NUM> CNY <NUM>.<NUM> CNY <NUM>.<NUM> 未收单 - - 编辑中 操作 复制 删除 联查",
+      "textHash": "fb72828bd0771809",
+      "charCount": 166
+    },
+    {
+      "key": "request-list-root",
+      "text": "重 置 搜 索 新建报销单 序号 提交日期 申请人 单据名称 事由 单号 币种 金额 本币币种 本币金额 收单状态 摘要信息 当前处理人 状态 <NUM> <NUM>-<NUM>-<NUM> 韩青青 日常报销单（HK） <NUM> BXD<NUM> CNY <NUM>.<NUM> CNY <NUM>.<NUM> 未收单 - - 编辑中 操作 复制 删除 联查 已选择<NUM> 批量打印 共<NUM>条 <NUM> <NUM> 条/页",
+      "textHash": "dd4cdac8056a89c3",
+      "charCount": 218
+    },
+    {
+      "key": "request-list-table",
+      "text": "序号 提交日期 申请人 单据名称 事由 单号 币种 金额 本币币种 本币金额 收单状态 摘要信息 当前处理人 状态 <NUM> <NUM>-<NUM>-<NUM> 韩青青 日常报销单（HK） <NUM> BXD<NUM> CNY <NUM>.<NUM> CNY <NUM>.<NUM> 未收单 - - 编辑中 操作 复制 删除 联查",
+      "textHash": "fb72828bd0771809",
+      "charCount": 166
+    },
+    {
+      "key": "request-search-table",
+      "text": "序号 提交日期 申请人 单据名称 事由 单号 币种 金额 本币币种 本币金额 收单状态 摘要信息 当前处理人 状态 <NUM> <NUM>-<NUM>-<NUM> 韩青青 日常报销单（HK） <NUM> BXD<NUM> CNY <NUM>.<NUM> CNY <NUM>.<NUM> 未收单 - - 编辑中 操作 复制 删除 联查",
+      "textHash": "fb72828bd0771809",
+      "charCount": 166
+    },
+    {
+      "key": "request-detail-slide",
+      "text": "日常报销单（HK） 创建日期：<NUM>-<NUM>-<NUM> 制单人：韩青青 单号：BXD<NUM> 申请人 韩青青<NUM>北京向上一心科技有限公司老虎国际|财务部|财务控制中心 展开 单据金额 CNY <NUM>.<NUM> 付款金额 CNY <NUM>.<NUM> 单据状态 编辑中 单据详情 单据信息 编 辑 无需支付 是 出差申请单号 <NUM> 费用承担公司 北京向上一心科技有限公司 费用承担部门 老虎国际|财务部|财务控制中心 币种 CNY 人民币 业务线 集团平台 目的 <NUM> 附件 - 预算执行情况 查看 费用明细 * 账本费用 手录费用 发票生成费用 普通模式 费用类型：全部费用 数量：<NUM> 总金额：CNY <NUM>.<NUM> 序号 费用类型 日期 币种 金额 汇率 本位币金额 摘要信息 事由说明 附件 费用归属人 发票张数 付款信息序号 费用编号 暂无数据 操作 收款信息 数量：<NUM> 应收金额总计： <NUM>.<NUM> 序号 收款币种 收款金额 收款方类型 收款方 付款属性 备注 暂无数据 操作 基本信息 单据信息 费用明细* 收款信息 提",
+      "textHash": "3d5f533ec9692136",
+      "charCount": 501
+    }
+  ],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "snapshotName": "expense-detail",
+  "state": "normal"
+}

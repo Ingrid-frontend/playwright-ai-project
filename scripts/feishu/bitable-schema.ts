@@ -187,9 +187,9 @@ export const FEEDBACK_FIELDS = {
   firstFoundAt: '首次发现',
   lastFoundAt: '最近发现',
   deadline: '截止时间',
-  closedAt: '关闭时间',
+  closedAt: '修复时间',
   acceptReason: '接受差异原因',
-  retestRunLink: '复测运行',
+  retestRunLink: '确认运行',
 } as const;
 
 export const FEEDBACK_FIELD_RENAMES: Record<string, string> = {
@@ -215,6 +215,9 @@ export const FEEDBACK_FIELD_RENAMES: Record<string, string> = {
   closed_at: FEEDBACK_FIELDS.closedAt,
   accept_reason: FEEDBACK_FIELDS.acceptReason,
   retest_run_link: FEEDBACK_FIELDS.retestRunLink,
+  // 状态机改名（一次性迁移：旧中文列已存在时改，改后无匹配即跳过）
+  '关闭时间': FEEDBACK_FIELDS.closedAt,
+  '复测运行': FEEDBACK_FIELDS.retestRunLink,
 };
 
 /** 勾选后记录只出现在「归档」视图，后续 upsert 会另起一行 */
@@ -341,7 +344,6 @@ export const DELIVERY_SUMMARY_FIELDS = {
   coveragePct: '覆盖率%',
   totalIssueCount: '问题组数',
   shipAdvice: '发布建议',
-  shipAdviceLabel: '结论',
   remark: '备注',
   docUrl: '报告链接',
 } as const;
@@ -368,11 +370,13 @@ export const DELIVERY_SUMMARY_FIELD_SPECS: Array<{
   { name: DELIVERY_SUMMARY_FIELDS.coveragePct, type: BITABLE_FIELD_TYPE.number, property: { formatter: '0.0' } },
   { name: DELIVERY_SUMMARY_FIELDS.totalIssueCount, type: BITABLE_FIELD_TYPE.number, property: { formatter: '0' } },
   { name: DELIVERY_SUMMARY_FIELDS.shipAdvice, type: BITABLE_FIELD_TYPE.singleSelect, property: { options: DELIVERY_SHIP_ADVICE_OPTIONS } },
-  { name: DELIVERY_SUMMARY_FIELDS.shipAdviceLabel, type: BITABLE_FIELD_TYPE.text },
   { name: DELIVERY_SUMMARY_FIELDS.remark, type: BITABLE_FIELD_TYPE.text },
   { name: DELIVERY_SUMMARY_FIELDS.docUrl, type: BITABLE_FIELD_TYPE.url },
   { name: ARCHIVE_FIELD, type: BITABLE_FIELD_TYPE.checkbox },
 ];
+
+/** 汇总表已不再写入的旧列：结论（文字结论已并入「发布建议」单选） */
+export const DELIVERY_SUMMARY_DEPRECATED_FIELDS = ['结论'] as const;
 
 export const BITABLE_ENV_OPTIONS = [
   { name: 'dev' },
@@ -408,11 +412,11 @@ export const FEEDBACK_FIELD_SPECS: Array<{
     type: BITABLE_FIELD_TYPE.singleSelect,
     property: {
       options: [
-        { name: '待确认' },
+        { name: '待处理' },
         { name: '处理中' },
-        { name: '待复测' },
-        { name: '已关闭' },
+        { name: '已修复' },
         { name: '忽略' },
+        { name: '待确认' },
       ],
     },
   },

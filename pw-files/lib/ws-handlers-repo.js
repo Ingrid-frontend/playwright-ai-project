@@ -23,6 +23,13 @@ const {
   runExpenseFlowTests,
   cancelExpenseFlow,
 } = require('./expense-flow-run');
+const {
+  sendApRequestFlowStatus,
+  sendApRequestFlowTestList,
+  runApRequestFlowProbe,
+  runApRequestFlowTests,
+  cancelApRequestFlow,
+} = require('./ap-request-flow-run');
 const { flowSearchRuns, flowDeleteRuns } = require('./flow-run-marker-actions');
 const {
   sendFlowConfigList,
@@ -604,6 +611,49 @@ function createRepoHandlers(ctx) {
     'cancel:expense-flow': async (ws, session) => {
       cancelExpenseFlow(session, ws);
       send(ws, 'expense-flow:cancel:ack', {});
+    },
+
+    'ap-request-flow:status': async (ws, session, _sessionId, msg) => {
+      sendApRequestFlowStatus(ws, session, {
+        resolveRepoRoot,
+        getSessionPlaywrightEnv,
+        getSessionAccountProfile,
+        buildRepoSpawnEnv,
+      }, msg);
+    },
+
+    'ap-request-flow:list-tests': async (ws, session, _sessionId, msg) => {
+      sendApRequestFlowTestList(ws, session, {
+        resolveRepoRoot,
+        getSessionPlaywrightEnv,
+        getSessionAccountProfile,
+        buildRepoSpawnEnv,
+      }, msg);
+    },
+
+    'ap-request-flow:probe': async (ws, session, _sessionId, msg) => {
+      await runApRequestFlowProbe(ws, session, msg, {
+        resolveRepoRoot,
+        spawn,
+        getSessionPlaywrightEnv,
+        getSessionAccountProfile,
+        buildRepoSpawnEnv,
+      });
+    },
+
+    'ap-request-flow:run': async (ws, session, _sessionId, msg) => {
+      await runApRequestFlowTests(ws, session, msg, {
+        resolveRepoRoot,
+        spawn,
+        getSessionPlaywrightEnv,
+        getSessionAccountProfile,
+        buildRepoSpawnEnv,
+      });
+    },
+
+    'cancel:ap-request-flow': async (ws, session) => {
+      cancelApRequestFlow(session, ws);
+      send(ws, 'ap-request-flow:cancel:ack', {});
     },
 
     'flow:search-runs': async (ws, _session, _sessionId, msg) => {

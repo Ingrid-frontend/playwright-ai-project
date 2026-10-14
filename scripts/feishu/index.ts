@@ -76,6 +76,7 @@ export {
   DELIVERY_SUMMARY_FIELDS,
   DELIVERY_SUMMARY_FIELD_SPECS,
   DELIVERY_SUMMARY_TABLE_NAME,
+  DELIVERY_SUMMARY_DEPRECATED_FIELDS,
   loadBitableRuntimeConfig,
   explainMissingBitableConfig,
 } from './bitable-schema.js';

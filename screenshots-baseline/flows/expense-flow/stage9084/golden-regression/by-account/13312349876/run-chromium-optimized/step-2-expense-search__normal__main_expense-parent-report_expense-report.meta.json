@@ -1,0 +1,123 @@
+{
+  "capturedAt": "2026-10-14T08:29:09.545Z",
+  "viewport": {
+    "name": "desktop",
+    "width": 1280,
+    "height": 720,
+    "deviceScaleFactor": 1
+  },
+  "imageWidth": 1280,
+  "imageHeight": 720,
+  "layout": {
+    "horizontalOverflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280
+  },
+  "domHash": "BODY|1|",
+  "sections": [
+    {
+      "key": "intent-approve-tabs",
+      "structureHash": "5df3af64077c1e50",
+      "textHash": "ced2aa0f1f4902ca",
+      "nodeCount": 43,
+      "childTags": "DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "intent-approve-toolbar",
+      "structureHash": "76afb338c6e0590a",
+      "textHash": "e3b0c44298fc1c14",
+      "nodeCount": 8,
+      "childTags": "SPAN,INPUT,SPAN"
+    },
+    {
+      "key": "intent-approve-table",
+      "structureHash": "a8a71c0f4135854f",
+      "textHash": "d692c2071069c7e1",
+      "nodeCount": 287,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "golden-approve-tabs",
+      "structureHash": "5df3af64077c1e50",
+      "textHash": "ced2aa0f1f4902ca",
+      "nodeCount": 43,
+      "childTags": "DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "golden-approve-table",
+      "structureHash": "a8a71c0f4135854f",
+      "textHash": "d692c2071069c7e1",
+      "nodeCount": 287,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "request-list-root",
+      "structureHash": "b6ccad46a61afbcb",
+      "textHash": "f5ca8c41aa627ef4",
+      "nodeCount": 113,
+      "childTags": "DIV"
+    },
+    {
+      "key": "request-list-table",
+      "structureHash": "a8a71c0f4135854f",
+      "textHash": "d692c2071069c7e1",
+      "nodeCount": 287,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "request-search-table",
+      "structureHash": "a8a71c0f4135854f",
+      "textHash": "d692c2071069c7e1",
+      "nodeCount": 287,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV,DIV"
+    }
+  ],
+  "textSections": [
+    {
+      "key": "intent-approve-tabs",
+      "text": "工作台 消费平台财务管理数据分析AI能力中心系统管理",
+      "textHash": "7be9a1843481eedb",
+      "charCount": 26
+    },
+    {
+      "key": "intent-approve-table",
+      "text": "+ 序号 提交日期 申请人 单据名称 事由 单号 币种 金额 本币币种 本币金额 收单状态 摘要信息 当前处理人 状态 <NUM> <NUM>-<NUM>-<NUM> yuka 非差旅报销单 测试 ER<NUM> CNY <NUM>.<NUM> CNY <NUM>.<NUM> 未收单 - - 已撤回 操作 复制 删除 联查",
+      "textHash": "c3e374b11e80df3a",
+      "charCount": 162
+    },
+    {
+      "key": "golden-approve-tabs",
+      "text": "工作台 消费平台财务管理数据分析AI能力中心系统管理",
+      "textHash": "7be9a1843481eedb",
+      "charCount": 26
+    },
+    {
+      "key": "golden-approve-table",
+      "text": "+ 序号 提交日期 申请人 单据名称 事由 单号 币种 金额 本币币种 本币金额 收单状态 摘要信息 当前处理人 状态 <NUM> <NUM>-<NUM>-<NUM> yuka 非差旅报销单 测试 ER<NUM> CNY <NUM>.<NUM> CNY <NUM>.<NUM> 未收单 - - 已撤回 操作 复制 删除 联查",
+      "textHash": "c3e374b11e80df3a",
+      "charCount": 162
+    },
+    {
+      "key": "request-list-root",
+      "text": "重 置 搜 索 新建报销单 代理报销单 + 序号 提交日期 申请人 单据名称 事由 单号 币种 金额 本币币种 本币金额 收单状态 摘要信息 当前处理人 状态 <NUM> <NUM>-<NUM>-<NUM> yuka 非差旅报销单 测试 ER<NUM> CNY <NUM>.<NUM> CNY <NUM>.<NUM> 未收单 - - 已撤回 操作 复制 删除 联查 已选择<NUM> 批量打印 共<NUM>条 <NUM> <NUM> 条/页",
+      "textHash": "9852f4492554c710",
+      "charCount": 220
+    },
+    {
+      "key": "request-list-table",
+      "text": "+ 序号 提交日期 申请人 单据名称 事由 单号 币种 金额 本币币种 本币金额 收单状态 摘要信息 当前处理人 状态 <NUM> <NUM>-<NUM>-<NUM> yuka 非差旅报销单 测试 ER<NUM> CNY <NUM>.<NUM> CNY <NUM>.<NUM> 未收单 - - 已撤回 操作 复制 删除 联查",
+      "textHash": "c3e374b11e80df3a",
+      "charCount": 162
+    },
+    {
+      "key": "request-search-table",
+      "text": "+ 序号 提交日期 申请人 单据名称 事由 单号 币种 金额 本币币种 本币金额 收单状态 摘要信息 当前处理人 状态 <NUM> <NUM>-<NUM>-<NUM> yuka 非差旅报销单 测试 ER<NUM> CNY <NUM>.<NUM> CNY <NUM>.<NUM> 未收单 - - 已撤回 操作 复制 删除 联查",
+      "textHash": "c3e374b11e80df3a",
+      "charCount": 162
+    }
+  ],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "snapshotName": "expense-search",
+  "state": "normal"
+}

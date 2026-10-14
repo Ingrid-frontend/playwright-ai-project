@@ -1,0 +1,123 @@
+{
+  "capturedAt": "2026-10-14T08:42:38.896Z",
+  "viewport": {
+    "name": "desktop",
+    "width": 1280,
+    "height": 720,
+    "deviceScaleFactor": 1
+  },
+  "imageWidth": 1280,
+  "imageHeight": 720,
+  "layout": {
+    "horizontalOverflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280
+  },
+  "domHash": "BODY|1|",
+  "sections": [
+    {
+      "key": "intent-approve-tabs",
+      "structureHash": "0baf4d93744717ec",
+      "textHash": "a1ca0a2df1ba04ae",
+      "nodeCount": 46,
+      "childTags": "DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "intent-approve-toolbar",
+      "structureHash": "76afb338c6e0590a",
+      "textHash": "e3b0c44298fc1c14",
+      "nodeCount": 8,
+      "childTags": "SPAN,INPUT,SPAN"
+    },
+    {
+      "key": "intent-approve-table",
+      "structureHash": "ac87050a12cfb809",
+      "textHash": "e138f90997a8bf70",
+      "nodeCount": 1118,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "golden-approve-tabs",
+      "structureHash": "0baf4d93744717ec",
+      "textHash": "a1ca0a2df1ba04ae",
+      "nodeCount": 46,
+      "childTags": "DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "golden-approve-table",
+      "structureHash": "ac87050a12cfb809",
+      "textHash": "e138f90997a8bf70",
+      "nodeCount": 1118,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "request-list-root",
+      "structureHash": "b6ccad46a61afbcb",
+      "textHash": "ee5a1d6470224cf3",
+      "nodeCount": 113,
+      "childTags": "DIV"
+    },
+    {
+      "key": "request-list-table",
+      "structureHash": "ac87050a12cfb809",
+      "textHash": "e138f90997a8bf70",
+      "nodeCount": 1118,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "request-search-table",
+      "structureHash": "ac87050a12cfb809",
+      "textHash": "e138f90997a8bf70",
+      "nodeCount": 1118,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV,DIV"
+    }
+  ],
+  "textSections": [
+    {
+      "key": "intent-approve-tabs",
+      "text": "工作台 消费平台财务管理数据分析AI能力中心e档案系统管理",
+      "textHash": "ef0266769073e345",
+      "charCount": 29
+    },
+    {
+      "key": "intent-approve-table",
+      "text": "+ 序号 提交日期 申请人 单据名称 事由 单号 币种 金额 本币币种 本币金额 收单状态 摘要信息 当前处理人 状态 <NUM> <NUM>-<NUM>-<NUM> 管理员 国内差旅费报销单 <NUM> <ID><NUM> CNY <NUM>.<NUM> CNY <NUM>.<NUM> 未收单 - - 编辑中 <NUM> <NUM>-<NUM>-<NUM> 管理员 费用报销单 <NUM> FYBXD<NUM> CNY <NUM>,<NUM>.<NUM> CNY <NUM>,<NUM>.<NUM> 未收单 - - 已撤回 <NUM> <NUM>-<NUM>-<NUM> 管理员 费用报销单 - FYBXD<NUM> USD <NUM>.<NUM> USD <NUM>.<NUM> 未收单 - - 编辑中 <NUM> <NUM>-<NUM>-<NUM> 管理员 费用报销单 - FYBXD<NUM> CNY <NUM>.<NUM> CNY <NUM>.<NUM> 未收单 - - 付款中 <NUM> <NUM>-<NUM>-<NUM> 管理员 费用报销单 - FYBXD<NUM>",
+      "textHash": "a328af7a7072f945",
+      "charCount": 492
+    },
+    {
+      "key": "golden-approve-tabs",
+      "text": "工作台 消费平台财务管理数据分析AI能力中心e档案系统管理",
+      "textHash": "ef0266769073e345",
+      "charCount": 29
+    },
+    {
+      "key": "golden-approve-table",
+      "text": "+ 序号 提交日期 申请人 单据名称 事由 单号 币种 金额 本币币种 本币金额 收单状态 摘要信息 当前处理人 状态 <NUM> <NUM>-<NUM>-<NUM> 管理员 国内差旅费报销单 <NUM> <ID><NUM> CNY <NUM>.<NUM> CNY <NUM>.<NUM> 未收单 - - 编辑中 <NUM> <NUM>-<NUM>-<NUM> 管理员 费用报销单 <NUM> FYBXD<NUM> CNY <NUM>,<NUM>.<NUM> CNY <NUM>,<NUM>.<NUM> 未收单 - - 已撤回 <NUM> <NUM>-<NUM>-<NUM> 管理员 费用报销单 - FYBXD<NUM> USD <NUM>.<NUM> USD <NUM>.<NUM> 未收单 - - 编辑中 <NUM> <NUM>-<NUM>-<NUM> 管理员 费用报销单 - FYBXD<NUM> CNY <NUM>.<NUM> CNY <NUM>.<NUM> 未收单 - - 付款中 <NUM> <NUM>-<NUM>-<NUM> 管理员 费用报销单 - FYBXD<NUM>",
+      "textHash": "a328af7a7072f945",
+      "charCount": 492
+    },
+    {
+      "key": "request-list-root",
+      "text": "重 置 搜 索 新建报销单 代理报销单 + 序号 提交日期 申请人 单据名称 事由 单号 币种 金额 本币币种 本币金额 收单状态 摘要信息 当前处理人 状态 <NUM> <NUM>-<NUM>-<NUM> 管理员 国内差旅费报销单 <NUM> <ID><NUM> CNY <NUM>.<NUM> CNY <NUM>.<NUM> 未收单 - - 编辑中 <NUM> <NUM>-<NUM>-<NUM> 管理员 费用报销单 <NUM> FYBXD<NUM> CNY <NUM>,<NUM>.<NUM> CNY <NUM>,<NUM>.<NUM> 未收单 - - 已撤回 <NUM> <NUM>-<NUM>-<NUM> 管理员 费用报销单 - FYBXD<NUM> USD <NUM>.<NUM> USD <NUM>.<NUM> 未收单 - - 编辑中 <NUM> <NUM>-<NUM>-<NUM> 管理员 费用报销单 - FYBXD<NUM> CNY <NUM>.<NUM> CNY <NUM>.<NUM> 未收单 - - 付款中 <NUM> <NUM>-<NUM>-<NUM> 管理员 费用报销单",
+      "textHash": "093434976a93a272",
+      "charCount": 499
+    },
+    {
+      "key": "request-list-table",
+      "text": "+ 序号 提交日期 申请人 单据名称 事由 单号 币种 金额 本币币种 本币金额 收单状态 摘要信息 当前处理人 状态 <NUM> <NUM>-<NUM>-<NUM> 管理员 国内差旅费报销单 <NUM> <ID><NUM> CNY <NUM>.<NUM> CNY <NUM>.<NUM> 未收单 - - 编辑中 <NUM> <NUM>-<NUM>-<NUM> 管理员 费用报销单 <NUM> FYBXD<NUM> CNY <NUM>,<NUM>.<NUM> CNY <NUM>,<NUM>.<NUM> 未收单 - - 已撤回 <NUM> <NUM>-<NUM>-<NUM> 管理员 费用报销单 - FYBXD<NUM> USD <NUM>.<NUM> USD <NUM>.<NUM> 未收单 - - 编辑中 <NUM> <NUM>-<NUM>-<NUM> 管理员 费用报销单 - FYBXD<NUM> CNY <NUM>.<NUM> CNY <NUM>.<NUM> 未收单 - - 付款中 <NUM> <NUM>-<NUM>-<NUM> 管理员 费用报销单 - FYBXD<NUM>",
+      "textHash": "a328af7a7072f945",
+      "charCount": 492
+    },
+    {
+      "key": "request-search-table",
+      "text": "+ 序号 提交日期 申请人 单据名称 事由 单号 币种 金额 本币币种 本币金额 收单状态 摘要信息 当前处理人 状态 <NUM> <NUM>-<NUM>-<NUM> 管理员 国内差旅费报销单 <NUM> <ID><NUM> CNY <NUM>.<NUM> CNY <NUM>.<NUM> 未收单 - - 编辑中 <NUM> <NUM>-<NUM>-<NUM> 管理员 费用报销单 <NUM> FYBXD<NUM> CNY <NUM>,<NUM>.<NUM> CNY <NUM>,<NUM>.<NUM> 未收单 - - 已撤回 <NUM> <NUM>-<NUM>-<NUM> 管理员 费用报销单 - FYBXD<NUM> USD <NUM>.<NUM> USD <NUM>.<NUM> 未收单 - - 编辑中 <NUM> <NUM>-<NUM>-<NUM> 管理员 费用报销单 - FYBXD<NUM> CNY <NUM>.<NUM> CNY <NUM>.<NUM> 未收单 - - 付款中 <NUM> <NUM>-<NUM>-<NUM> 管理员 费用报销单 - FYBXD<NUM>",
+      "textHash": "a328af7a7072f945",
+      "charCount": 492
+    }
+  ],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "snapshotName": "expense-list",
+  "state": "normal"
+}

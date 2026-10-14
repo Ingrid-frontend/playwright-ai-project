@@ -52,7 +52,6 @@ function buildGoldenCliDonePayload(repoRoot, flowId, result, base) {
   const replayReportOpenPath = resolveReplayOpenPath(repoRoot, flowId, lastRun, manifest);
   const videoReportOpenPath = lastRun.videoReportOpenPath || '';
   const spec = manifest?.spec || base.spec || '';
-  const flowDir = flowId === 'approval-flow' ? 'approval-flow' : 'request-flow';
   return {
     ...base,
     runId,
@@ -66,7 +65,7 @@ function buildGoldenCliDonePayload(repoRoot, flowId, result, base) {
     failures: manifest?.failures || [],
     pipeline: manifest?.pipeline || 'golden',
     runMarker: manifest?.runMarker,
-    specRelative: spec ? `${flowDir}/tests/${spec}` : undefined,
+    specRelative: spec ? `${flowId}/tests/${spec}` : undefined,
     roleSlug: manifest?.roleSlug,
     accountProfile: manifest?.accountProfile,
     compareReportOpenPath: lastRun.compareReportOpenPath || '',
@@ -84,7 +83,18 @@ function buildGoldenCliDonePayload(repoRoot, flowId, result, base) {
 const GOLDEN_NPM_SCRIPTS = {
   'request-flow': 'request-flow:golden',
   'approval-flow': 'approval-flow:golden',
+  'expense-flow': 'expense-flow:golden',
+  'ap-request-flow': 'ap-request-flow:golden',
 };
+
+function goldenSessionKeys(flowId) {
+  const camel = String(flowId || '').replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+  return {
+    eventPrefix: flowId,
+    cancelKey: `${camel}Cancelled`,
+    procKey: `${camel}Proc`,
+  };
+}
 
 function isGoldenSpec(spec) {
   return /golden-regression\.spec\.ts$/i.test(String(spec || ''));
@@ -252,9 +262,7 @@ async function runStudioGoldenRun(ws, session, flowId, msg, deps, hooks = {}) {
     msg.filterKeyword != null ? String(msg.filterKeyword).trim() : '';
   const mode = String(msg.mode || 'headless').trim();
   const spec = String(msg.spec || '').trim();
-  const eventPrefix = flowId === 'approval-flow' ? 'approval-flow' : 'request-flow';
-  const cancelKey = flowId === 'approval-flow' ? 'approvalFlowCancelled' : 'requestFlowCancelled';
-  const procKey = flowId === 'approval-flow' ? 'approvalFlowProc' : 'requestFlowProc';
+  const { eventPrefix, cancelKey, procKey } = goldenSessionKeys(flowId);
 
   send(ws, `${eventPrefix}:run:start`, {
     env: envId,

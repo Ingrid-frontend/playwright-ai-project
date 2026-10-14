@@ -1222,6 +1222,9 @@
         <div class="tab studio-detect-only" onclick="switchTab('expense-flow',this)">
           报销流程
         </div>
+        <div class="tab studio-detect-only" onclick="switchTab('ap-request-flow',this)">
+          对公申请单流程
+        </div>
         <div class="tab studio-compact-hide studio-config-tools-tab" onclick="switchTab('jobs',this)">
           定时任务
         </div>
@@ -2044,6 +2047,155 @@
           </div>
         </div>
 
+        <div class="editor-pane studio-detect-only" id="pane-ap-request-flow">
+          <div class="editor-pane-body">
+            <div style="display:flex;flex-direction:column;gap:12px;max-width:820px">
+              <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg2)">
+                <div style="font-weight:600;color:var(--text);margin-bottom:6px">对公申请单 · UI 检测</div>
+                <p class="sidebar-hint studio-toc-only" style="margin:0;line-height:1.7;color:var(--text-secondary)">
+                  选择环境并登录后，一键检测对公申请单页面是否正常显示。
+                </p>
+              </div>
+
+              <div id="apRequestFlowStatus" class="sidebar-hint studio-compact-hide" style="padding:10px 12px;border:1px dashed var(--border);border-radius:8px;line-height:1.7;color:var(--text-secondary)">
+                连接后自动加载状态…
+              </div>
+
+              <div class="studio-compact-hide">
+              <div>
+                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">前端仓库（SSH 地址或本地路径）</label>
+                <input type="text" class="url-input" id="apRequestFrontendRepo" spellcheck="false"
+                  placeholder="gogsio@code.huilianyi.com:huilianyi/huilianyi-refactoring.git"
+                  style="width:100%;color:var(--text)">
+              </div>
+
+              <div>
+                <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">执行模式</label>
+                <select class="url-input" id="apRequestFlowMode" style="width:100%;color:var(--text);margin-bottom:8px">
+                  <option value="headless">无头（headless，默认）</option>
+                  <option value="headed">有头（headed，可见浏览器）</option>
+                  <option value="debug">调试（debug，逐步）</option>
+                  <option value="ui">UI 模式（Playwright UI）</option>
+                </select>
+              </div>
+              </div>
+
+              <div class="request-flow-sub-tabs studio-compact-hide" role="tablist" aria-label="对公申请单流程子模式">
+                <button type="button" class="request-flow-sub-tab active" data-sub="golden" id="apRequestFlowSubGolden" onclick="setApRequestFlowSubTab('golden', this)">Golden 回归</button>
+                <button type="button" class="request-flow-sub-tab" data-sub="probe" id="apRequestFlowSubProbe" onclick="setApRequestFlowSubTab('probe', this)">流程调试</button>
+              </div>
+
+              <div class="request-flow-pane active" id="apRequestFlowPaneGolden" data-sub="golden">
+                <div style="padding:10px 12px;border:1px solid rgba(52,211,153,.35);border-radius:8px;background:var(--bg2);margin-bottom:8px">
+                  <p class="sidebar-hint studio-compact-hide" style="margin:0 0 8px;line-height:1.6;color:var(--text-secondary)">
+                    入口 <code>/main/ap-request</code>：列表 → 搜索 → 打开详情。
+                    Golden 登录态与申请单流程共用（<code>by-account/&lt;slug&gt;</code>），数据须稳定，<strong>默认禁止写操作</strong>。
+                  </p>
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+                    <span class="sidebar-hint" style="margin:0;color:var(--text-secondary)">检测账号（与申请单共用）</span>
+                    <button type="button" class="btn" style="font-size:var(--fs-xs);padding:4px 10px;border-color:rgba(52,211,153,.45);color:var(--green)" onclick="addGoldenProfileEntry()">新增账号</button>
+                  </div>
+                  <div id="apRequestFlowGoldenProfileStorage" class="sidebar-hint" style="padding:10px 12px;border:1px dashed var(--border);border-radius:8px;line-height:1.7;color:var(--text-secondary);margin-bottom:8px">
+                    加载中…
+                  </div>
+                  <label style="display:block;margin-bottom:4px;color:var(--text-secondary);font-size:var(--fs-xs)">当前账号</label>
+                  <select class="url-input" id="apRequestGoldenRoleSelect" style="width:100%;margin-bottom:8px;color:var(--text)">
+                    <option value="">加载中…</option>
+                  </select>
+                  <div class="studio-compact-hide">
+                    <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">指定对公申请单号（可选）</label>
+                    <input type="text" class="url-input" id="apRequestGoldenDocNo" spellcheck="false" placeholder="留空则用列表首行 / golden-seeds"
+                      style="width:100%;color:var(--text);margin-bottom:8px">
+                  </div>
+                  <div class="studio-compact-hide" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <button type="button" class="btn" id="btnApRequestGoldenRun" onclick="runApRequestFlowGolden()" style="border-color:rgba(52,211,153,.45);color:var(--green)">Golden 回归</button>
+                    <button type="button" class="btn" id="btnApRequestGoldenRunAll" onclick="runApRequestFlowGoldenAll()" style="border-color:rgba(52,211,153,.35);color:var(--green)">全部 Golden 角色</button>
+                    <button type="button" class="btn" id="btnApRequestPromoteBaseline" onclick="promoteApRequestFlowBaseline()">晋升 Golden 基线</button>
+                    <button type="button" class="btn" id="btnApRequestClearBaseline" onclick="clearApRequestFlowBaseline()" style="border-color:rgba(229,72,77,.35);color:var(--red,#e5484d)">清空基线</button>
+                    <button type="button" class="btn" id="btnApRequestGoldenOpenCustomer" onclick="openApRequestFlowCustomerReport()" style="border-color:rgba(52,211,153,.4);color:var(--green,#34d399)">打开客户报告</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="request-flow-pane studio-compact-hide" id="apRequestFlowPaneProbe" data-sub="probe">
+                <div style="padding:10px 12px;border:1px solid rgba(167,139,250,.35);border-radius:8px;background:var(--bg2);margin-bottom:8px">
+                  <p class="sidebar-hint" style="margin:0 0 8px;line-height:1.6;color:var(--text-secondary)">
+                    调试列表 / 搜索 / 详情；单号不写死，运行时从列表 <code>pickFirstDocNo()</code> 取。
+                  </p>
+                  <div>
+                    <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">用例文件</label>
+                    <select class="url-input" id="apRequestFlowSpec" style="width:100%;color:var(--text);margin-bottom:8px"
+                      onchange="onApRequestFlowSpecChange()"></select>
+                  </div>
+                  <div>
+                    <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">用例（单条 / 组合 grep）</label>
+                    <select class="url-input" id="apRequestFlowTest" style="width:100%;color:var(--text);margin-bottom:8px"></select>
+                  </div>
+                  <div>
+                    <label style="display:block;margin-bottom:4px;color:var(--text-secondary)">指定单号（可选）</label>
+                    <input type="text" class="url-input" id="apRequestDocNo" spellcheck="false" placeholder="留空则用列表首行"
+                      style="width:100%;color:var(--text);margin-bottom:8px">
+                  </div>
+                  <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);cursor:pointer;margin-bottom:8px">
+                    <input type="checkbox" id="apRequestWriteEnabled">
+                    <span>开启写操作（新建 / 提交，设置 AP_REQUEST_ENABLE_WRITE=1）</span>
+                  </label>
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+                    <span style="color:var(--text-secondary);font-size:var(--fs-xs)">快捷选例：</span>
+                    <button type="button" class="btn" id="btnApRequestPresetPreview" onclick="applyApRequestFlowPreset('preview')">快速预览</button>
+                    <button type="button" class="btn" id="btnApRequestPresetReadOnly" onclick="applyApRequestFlowPreset('readOnly')">完整只读</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="flow-toc-actions studio-toc-only" id="apRequestFlowTocActions">
+                <button type="button" class="btn btn-run" id="btnApRequestTocRun" onclick="runApRequestFlowGolden()">
+                  <span class="btn-label" id="btnApRequestTocRunLabel">开始检测</span>
+                </button>
+                <button type="button" class="btn btn-run" id="btnApRequestTocDeliveryLoop" onclick="startFlowDeliveryLoop('ap-request-flow')" style="border-color:rgba(77,159,255,.5);color:var(--blue,#4d9fff)" title="探活 → Golden（对比+AI审计）→ deliver:ready 校验">
+                  <span class="btn-label" id="btnApRequestTocDeliveryLoopLabel">一键交付闭环</span>
+                </button>
+                <button type="button" class="btn" id="btnApRequestTocRunAll" onclick="runApRequestFlowGoldenAll()" style="border-color:rgba(52,211,153,.35);color:var(--green)">
+                  <span class="btn-label" id="btnApRequestTocRunAllLabel">检测全部</span>
+                </button>
+                <button type="button" class="btn" id="btnApRequestTocReport" onclick="openApRequestFlowCustomerReport()" style="border-color:rgba(52,211,153,.4);color:var(--green,#34d399)">客户验收报告</button>
+                <button type="button" class="btn" id="btnApRequestTocPromoteBaseline" onclick="promoteApRequestFlowBaseline()" style="border-color:rgba(52,211,153,.45);color:var(--green,#34d399)" title="将本次检测全部角色的步骤截图写入基线">更新基线</button>
+                <button type="button" class="btn" id="btnApRequestTocDeliverFeishu" onclick="applyDeliverFeishu()" style="border-color:rgba(250,204,21,.35);color:#facc15" title="确认预览无误后写入飞书文档与多维表">写入飞书</button>
+                <button type="button" class="btn" id="btnApRequestTocRunUiAudit" onclick="runFlowUiAudit('ap-request-flow')" style="border-color:rgba(167,139,250,.45);color:var(--purple,#a78bfa)">
+                  <span class="btn-label">运行 AI 审计</span>
+                </button>
+                <button type="button" class="btn" id="btnApRequestTocOpenUiAudit" onclick="openApRequestFlowUiAuditReport()" style="border-color:rgba(167,139,250,.45);color:var(--purple,#a78bfa)">AI 审计报告</button>
+                <button type="button" class="btn" id="btnApRequestTocReplay" style="display:none;border-color:rgba(77,159,255,.45);color:var(--blue,#4d9fff)" onclick="openApRequestFlowReplay()">查看回放</button>
+                <button type="button" class="btn" id="btnApRequestTocAiDebug" style="display:none;border-color:rgba(167,139,250,.45);color:var(--purple,#a78bfa)" onclick="copyApRequestFlowAiDebug()">AI 排查</button>
+                <button type="button" class="btn" id="btnApRequestTocCancel" style="display:none" onclick="cancelApRequestFlowRun()">取消</button>
+              </div>
+
+              <div class="studio-compact-hide" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <button type="button" class="btn" id="btnApRequestProbe" onclick="startApRequestFlowProbe()">实机探活</button>
+                <button type="button" class="btn btn-run" id="btnApRequestDeliveryLoop" onclick="startFlowDeliveryLoop('ap-request-flow')" style="border-color:rgba(77,159,255,.5);color:var(--blue,#4d9fff)" title="探活 → Golden（对比+AI审计）→ deliver:ready 校验">
+                  <span class="btn-label">一键交付闭环</span>
+                </button>
+                <button type="button" class="btn btn-run" id="btnApRequestRunSelected" onclick="runSelectedApRequestFlow()">
+                  <span class="btn-label">运行</span>
+                </button>
+                <button type="button" class="btn" id="btnApRequestCancel" style="display:none" onclick="cancelApRequestFlowRun()">取消</button>
+                <button type="button" class="btn" id="btnApRequestOpenCompare" style="display:none" onclick="openApRequestFlowCompareReport()">截图对比</button>
+                <button type="button" class="btn" id="btnApRequestOpenCustomer" style="display:none" onclick="openApRequestFlowCustomerReport()">客户报告</button>
+                <button type="button" class="btn" id="btnApRequestOpenProbeReport" style="display:none" onclick="openApRequestFlowProbeReport()">调试报告</button>
+                <button type="button" class="btn" id="btnApRequestOpenSummary" style="display:none" onclick="openApRequestFlowSummaryReport()">运行汇总</button>
+                <button type="button" class="btn" id="btnApRequestOpenReplay" style="display:none" onclick="openApRequestFlowReplay()">查看回放</button>
+                <button type="button" class="btn" id="btnApRequestFeishuWeeklyDoc" onclick="writeFlowFeishuWeeklyDoc('ap-request-flow')" title="将最近一次运行追加到当周飞书周报文档">飞书周报</button>
+                <button type="button" class="btn" onclick="openFlowRunManage()" style="border-color:rgba(248,113,113,.35);color:var(--red,#f87171)">按标记删 run</button>
+              </div>
+              <p class="sidebar-hint studio-compact-hide" id="apRequestFlowHint" style="margin:8px 0 0;color:var(--text-tertiary)">
+                Golden 模式跑 <code>ap-request/golden-regression.spec.ts</code>；流程调试可选手动选例。确认后点绿色「运行」或 Golden 区按钮。
+              </p>
+              <pre id="apRequestFlowSnapshot" class="url-input studio-compact-hide" readonly spellcheck="false"
+                style="display:none;width:100%;min-height:120px;resize:vertical;color:var(--text);line-height:1.5;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;margin:0"></pre>
+            </div>
+          </div>
+        </div>
+
         <div class="editor-pane studio-config-only" id="pane-flow-config">
           <div class="editor-pane-body" style="display:flex;flex-direction:column;min-height:0;flex:1">
             <div class="flow-config-layout">
@@ -2426,6 +2578,7 @@ function getActiveEditorTab() {
   if (document.getElementById('pane-request-flow')?.classList.contains('active')) return 'request-flow';
   if (document.getElementById('pane-approval-flow')?.classList.contains('active')) return 'approval-flow';
   if (document.getElementById('pane-expense-flow')?.classList.contains('active')) return 'expense-flow';
+  if (document.getElementById('pane-ap-request-flow')?.classList.contains('active')) return 'ap-request-flow';
   if (document.getElementById('pane-jobs')?.classList.contains('active')) return 'jobs';
   return 'raw';
 }
@@ -2434,12 +2587,12 @@ function getActiveScriptCode() {
   const tab = getActiveEditorTab();
   if (tab === 'opt') return document.getElementById('optCode')?.value?.trim() || '';
   if (tab === 'raw') return document.getElementById('rawCode')?.value?.trim() || '';
-  if (tab === 'intent-run' || tab === 'ego-audit' || tab === 'request-flow' || tab === 'approval-flow' || tab === 'expense-flow' || tab === 'jobs') return '';
+  if (tab === 'intent-run' || tab === 'ego-audit' || tab === 'request-flow' || tab === 'approval-flow' || tab === 'expense-flow' || tab === 'ap-request-flow' || tab === 'jobs') return '';
   return '';
 }
 
 function syncEditorRunHint() {
-  if (['diff', 'figma', 'intent-run', 'ego-audit', 'request-flow', 'approval-flow', 'expense-flow', 'jobs'].includes(getActiveEditorTab())) return;
+  if (['diff', 'figma', 'intent-run', 'ego-audit', 'request-flow', 'approval-flow', 'expense-flow', 'ap-request-flow', 'jobs'].includes(getActiveEditorTab())) return;
   if (busyState.run && pendingRunKind !== 'repo') return;
   setEditorRunStatus('', '');
 }
@@ -2758,6 +2911,9 @@ function refreshCompareReportStatus() {
   if (document.getElementById('pane-expense-flow')?.classList.contains('active')) {
     refreshExpenseFlowStatus();
   }
+  if (document.getElementById('pane-ap-request-flow')?.classList.contains('active')) {
+    refreshApRequestFlowStatus();
+  }
 }
 
 let promoteGoldenPending = null;
@@ -3036,6 +3192,8 @@ function formatFailureSummaryText(bundle) {
         ? (bundle.summary.incomplete ? '【审批流程未完成摘要】' : '【审批流程执行失败摘要】')
       : bundle.kind === 'expense-flow'
         ? (bundle.summary.incomplete ? '【报销流程未完成摘要】' : '【报销流程执行失败摘要】')
+      : bundle.kind === 'ap-request-flow'
+        ? (bundle.summary.incomplete ? '【对公申请单流程未完成摘要】' : '【对公申请单流程执行失败摘要】')
         : '【Playwright 执行失败摘要】';
   const skipHint = s.skipped > 0 ? `, ${s.skipped} 跳过` : '';
   const lines = [
@@ -3317,6 +3475,8 @@ function renderFailureDiagnosticsPanel(bundle) {
             ? (s.incomplete ? '审批流程未完成' : '审批流程执行失败')
           : bundle.kind === 'expense-flow'
             ? (s.incomplete ? '报销流程未完成' : '报销流程执行失败')
+          : bundle.kind === 'ap-request-flow'
+            ? (s.incomplete ? '对公申请单流程未完成' : '对公申请单流程执行失败')
             : '执行失败';
   }
   const skipHint = s.skipped > 0 ? `，${s.skipped} 跳过` : '';
@@ -3348,7 +3508,7 @@ function renderFailureDiagnosticsPanel(bundle) {
   }
   const reportBtn = document.getElementById('btnFailureOpenReport');
   if (reportBtn) {
-    const showReport = (bundle.kind === 'request-flow' || bundle.kind === 'approval-flow' || bundle.kind === 'expense-flow') && bundle.artifacts?.playwrightReportDir;
+    const showReport = (bundle.kind === 'request-flow' || bundle.kind === 'approval-flow' || bundle.kind === 'expense-flow' || bundle.kind === 'ap-request-flow') && bundle.artifacts?.playwrightReportDir;
     reportBtn.style.display = showReport ? '' : 'none';
   }
   const replayBtn = document.getElementById('btnFailureOpenReplay');
@@ -3361,6 +3521,7 @@ function renderFailureDiagnosticsPanel(bundle) {
       bundle.kind === 'request-flow' ||
       bundle.kind === 'approval-flow' ||
       bundle.kind === 'expense-flow' ||
+      bundle.kind === 'ap-request-flow' ||
       Boolean(bundle.specRelative);
     promoteBtn.style.display = canPromote ? '' : 'none';
   }
@@ -3382,6 +3543,10 @@ function promoteFailureBaseline() {
   }
   if (bundle.kind === 'expense-flow') {
     promoteExpenseFlowBaseline();
+    return;
+  }
+  if (bundle.kind === 'ap-request-flow') {
+    promoteApRequestFlowBaseline();
     return;
   }
   promoteGoldenBaseline();
@@ -3439,6 +3604,10 @@ function openFailureReport() {
   }
   if (lastFailureBundle?.kind === 'expense-flow') {
     openExpenseFlowReport();
+    return;
+  }
+  if (lastFailureBundle?.kind === 'ap-request-flow') {
+    openApRequestFlowReport();
     return;
   }
   const dir = lastFailureBundle?.artifacts?.playwrightReportDir;
@@ -3547,7 +3716,8 @@ function hasFlowReplayPath(msg) {
   return Boolean(
     resolveFlowReplayPath(msg, 'request-flow')
     || resolveFlowReplayPath(msg, 'approval-flow')
-    || resolveFlowReplayPath(msg, 'expense-flow'),
+    || resolveFlowReplayPath(msg, 'expense-flow')
+    || resolveFlowReplayPath(msg, 'ap-request-flow'),
   );
 }
 
@@ -3580,6 +3750,16 @@ const EXPENSE_FLOW_REPORT_BTNS = [
   { id: 'btnExpenseOpenProbeReport', path: (m) => m.probeReportOpenPath || '/repo-report/results/flow-probe-report.html', probeOnly: true },
   { id: 'btnExpenseOpenSummary', path: (m) => m.summaryReportOpenPath, always: true },
   { id: 'btnExpenseOpenReplay', path: (m) => m.replayReportOpenPath || m.videoReportOpenPath, always: true },
+];
+
+const AP_REQUEST_FLOW_REPORT_BTNS = [
+  { id: 'btnApRequestTocReport', path: (m) => m.customerReportOpenPath, always: true },
+  { id: 'btnApRequestTocOpenUiAudit', path: (m) => m.uiAuditReportOpenPath, always: true },
+  { id: 'btnApRequestOpenCompare', path: (m) => m.compareReportOpenPath },
+  { id: 'btnApRequestOpenCustomer', path: (m) => m.customerReportOpenPath },
+  { id: 'btnApRequestOpenProbeReport', path: (m) => m.probeReportOpenPath || '/repo-report/results/flow-probe-report.html', probeOnly: true },
+  { id: 'btnApRequestOpenSummary', path: (m) => m.summaryReportOpenPath, always: true },
+  { id: 'btnApRequestOpenReplay', path: (m) => m.replayReportOpenPath || m.videoReportOpenPath, always: true },
 ];
 
 function setFlowReportButtons(config, msg, subTab) {
@@ -3711,6 +3891,51 @@ function openExpenseFlowProbeReport() {
 
 function openExpenseFlowReplay() {
   const path = resolveFlowReplayPath(lastExpenseFlowRun, 'expense-flow');
+  if (!path) {
+    showToast('本次运行没有流程回放', 'err');
+    return;
+  }
+  openFlowReplay(path);
+}
+
+function updateApRequestFlowReportBtn(msg) {
+  const merged = normalizeFlowRunDoneMsg(msg || lastApRequestFlowRun, 'ap-request-flow');
+  setFlowReportButtons(AP_REQUEST_FLOW_REPORT_BTNS, merged, apRequestFlowSubTab);
+  syncFlowRunAiDebugBtn('ap-request-flow', merged, 'btnApRequestTocAiDebug', lastApRequestFlowRun);
+  syncFlowRunReplayBtn(merged, 'btnApRequestTocReplay', 'ap-request-flow');
+}
+
+let lastApRequestFlowRun = null;
+
+function openApRequestFlowReport() {
+  openFlowReportPath(lastApRequestFlowRun?.reportOpenPath, 'Playwright 报告');
+}
+
+function openApRequestFlowCompareReport() {
+  openFlowReportPath(lastApRequestFlowRun?.compareReportOpenPath, '截图对比报告');
+}
+
+function openApRequestFlowCustomerReport() {
+  openFlowReportPath(lastApRequestFlowRun?.customerReportOpenPath, '客户报告');
+}
+
+function openApRequestFlowUiAuditReport() {
+  openFlowReportPath(lastApRequestFlowRun?.uiAuditReportOpenPath, 'AI 审计报告');
+}
+
+function openApRequestFlowSummaryReport() {
+  openFlowReportPath(lastApRequestFlowRun?.summaryReportOpenPath, '运行汇总');
+}
+
+function openApRequestFlowProbeReport() {
+  openFlowReportPath(
+    lastApRequestFlowRun?.probeReportOpenPath || '/repo-report/results/flow-probe-report.html',
+    '调试报告',
+  );
+}
+
+function openApRequestFlowReplay() {
+  const path = resolveFlowReplayPath(lastApRequestFlowRun, 'ap-request-flow');
   if (!path) {
     showToast('本次运行没有流程回放', 'err');
     return;
@@ -3965,6 +4190,43 @@ function handleExpenseFlowFailureFromMsg(msg) {
     return;
   }
   const bundle = buildExpenseFlowFailureBundle(msg);
+  if (!bundle.failures?.length && msg.exitCode == null) return;
+  renderFailureDiagnosticsPanel(bundle);
+}
+
+function buildApRequestFlowFailureBundle(msg) {
+  const specRel = msg.specRelative || (msg.spec ? `ap-request-flow/tests/${msg.spec}` : '');
+  const pwFailures = msg.failures || [];
+  const skipItems = flowSkipsToFailureItems(msg.skips);
+  let failures = pwFailures.length ? [...pwFailures] : skipItems;
+  if (pwFailures.length && skipItems.length) failures = pwFailures.concat(skipItems);
+  const skipped = Number(msg.skipped) || skipItems.length || 0;
+  return buildFailureBundle({
+    kind: 'ap-request-flow',
+    specRelative: specRel,
+    playwrightEnv: msg.env || envState.current,
+    runMode: `mode=${msg.mode || ''}`,
+    summary: {
+      passed: msg.passed ?? (msg.ok ? 1 : 0),
+      failed: msg.failed ?? (msg.ok ? 0 : 1),
+      skipped,
+      total: msg.total ?? 1,
+      duration: msg.duration ?? '',
+      exitCode: msg.exitCode ?? (msg.ok ? 0 : 1),
+      incomplete: !msg.ok && Number(msg.exitCode) === 0 && skipped > 0 && !(msg.failed > 0),
+    },
+    failures,
+    playwrightReportDir: msg.playwrightReportDir || 'ap-request-flow/playwright-report',
+    replayRel: msg.replayReportOpenPath || msg.replayReportRel || '',
+  });
+}
+
+function handleApRequestFlowFailureFromMsg(msg) {
+  if (msg.ok || msg.cancelled) {
+    hideFailureDiagnosticsPanel();
+    return;
+  }
+  const bundle = buildApRequestFlowFailureBundle(msg);
   if (!bundle.failures?.length && msg.exitCode == null) return;
   renderFailureDiagnosticsPanel(bundle);
 }
@@ -4301,7 +4563,7 @@ function restoreEditorTab() {
     }
     let name = 'request-flow';
     if (saved === 'ai-validate') name = 'ego-audit';
-    else if (saved === 'figma' || saved === 'intent-run' || saved === 'ego-audit' || saved === 'request-flow' || saved === 'approval-flow' || saved === 'expense-flow' || saved === 'jobs') {
+    else if (saved === 'figma' || saved === 'intent-run' || saved === 'ego-audit' || saved === 'request-flow' || saved === 'approval-flow' || saved === 'expense-flow' || saved === 'ap-request-flow' || saved === 'jobs') {
       name = saved;
     }
     if (isStudioCompact() && STUDIO_COMPACT_HIDDEN_TABS.has(name)) name = 'request-flow';
@@ -4312,6 +4574,7 @@ function restoreEditorTab() {
       'request-flow': '申请单流程',
       'approval-flow': '审批流程',
       'expense-flow': '报销流程',
+      'ap-request-flow': '对公申请单流程',
       jobs: '定时任务',
     };
     const tab = Array.from(document.querySelectorAll('.tab')).find((t) =>
@@ -4446,6 +4709,11 @@ const FLOW_DELIVERY_UI = {
     tocLabel: 'btnExpenseTocDeliveryLoopLabel',
     advBtn: 'btnExpenseDeliveryLoop',
   },
+  'ap-request-flow': {
+    tocBtn: 'btnApRequestTocDeliveryLoop',
+    tocLabel: 'btnApRequestTocDeliveryLoopLabel',
+    advBtn: 'btnApRequestDeliveryLoop',
+  },
 };
 
 function getFlowDeliveryApi(flowId) {
@@ -4469,6 +4737,17 @@ function getFlowDeliveryApi(flowId) {
       setBusy: setExpenseFlowBusy,
       renderStatus: renderExpenseFlowStatus,
       cancelRun: cancelExpenseFlowRun,
+    };
+  }
+  if (flowId === 'ap-request-flow') {
+    return {
+      switchTab: switchToApRequestFlowTab,
+      startProbe: startApRequestFlowProbe,
+      runGoldenDirect: runApRequestFlowGoldenDirect,
+      getGolden: getSelectedApRequestGoldenProfile,
+      setBusy: setApRequestFlowBusy,
+      renderStatus: renderApRequestFlowStatus,
+      cancelRun: cancelApRequestFlowRun,
     };
   }
   return {
@@ -5123,6 +5402,10 @@ function copyExpenseFlowAiDebug() {
   return copyFlowRunAiDebug('expense-flow', lastExpenseFlowRun?.runId, 'btnExpenseTocAiDebug', 'expense-flow');
 }
 
+function copyApRequestFlowAiDebug() {
+  return copyFlowRunAiDebug('ap-request-flow', lastApRequestFlowRun?.runId, 'btnApRequestTocAiDebug', 'ap-request-flow');
+}
+
 function openFlowConfigReplay() {
   openFlowReplay(flowConfigState.replayUrl);
 }
@@ -5589,6 +5872,9 @@ function applyEnvChanged(msg) {
   }
   if (envChanged && document.getElementById('pane-expense-flow')?.classList.contains('active')) {
     refreshExpenseFlowStatus(true);
+  }
+  if (envChanged && document.getElementById('pane-ap-request-flow')?.classList.contains('active')) {
+    refreshApRequestFlowStatus(true);
   }
 }
 
@@ -6967,6 +7253,7 @@ function connectWS() {
     setApprovalFlowBusy(false);
     setExpenseFlowBusy(false);
     setRequestFlowBusy(false);
+    setApRequestFlowBusy(false);
     setFlowConfigBusy(false);
     dateCategoryState.loaded = false;
     dateCategoryState.loading = false;
@@ -7004,6 +7291,7 @@ function connectWS() {
     setApprovalFlowBusy(false);
     setExpenseFlowBusy(false);
     setRequestFlowBusy(false);
+    setApRequestFlowBusy(false);
     setFlowConfigBusy(false);
     updateGlobalTaskBar();
     resetPipelineRunning();
@@ -7083,7 +7371,7 @@ function syncActionButtons() {
   }
   if (!busyState.run) {
     const tab = getActiveEditorTab();
-    btnRun.disabled = ['diff', 'intent-run', 'ego-audit', 'request-flow', 'approval-flow', 'expense-flow', 'jobs'].includes(tab) || !getActiveScriptCode();
+    btnRun.disabled = ['diff', 'intent-run', 'ego-audit', 'request-flow', 'approval-flow', 'expense-flow', 'ap-request-flow', 'jobs'].includes(tab) || !getActiveScriptCode();
   }
   else if (pendingRunKind === 'repo') btnRun.disabled = true;
   if (btnRecord) btnRecord.disabled = busyState.optimize || busyState.run || busyState.repoPipeline;
@@ -8216,6 +8504,9 @@ function handleMessage(msg) {
       } else if (msg.openPath && flowUiAuditTarget === 'expense-flow') {
         lastExpenseFlowRun = { ...(lastExpenseFlowRun || {}), uiAuditReportOpenPath: msg.openPath };
         updateExpenseFlowReportBtn(lastExpenseFlowRun);
+      } else if (msg.openPath && flowUiAuditTarget === 'ap-request-flow') {
+        lastApRequestFlowRun = { ...(lastApRequestFlowRun || {}), uiAuditReportOpenPath: msg.openPath };
+        updateApRequestFlowReportBtn(lastApRequestFlowRun);
       }
       flowUiAuditTarget = '';
       if (msg.openPath) {
@@ -8714,6 +9005,155 @@ function handleMessage(msg) {
         }
       }
       if (lastExpenseFlowRun.runMarker) fillFlowRunSearchQuery(lastExpenseFlowRun.runMarker, false);
+      break;
+    case 'ap-request-flow:status':
+      renderApRequestFlowStatus(msg);
+      break;
+    case 'ap-request-flow:tests':
+      applyApRequestFlowTestList(msg);
+      break;
+    case 'ap-request-flow:probe:start':
+      setApRequestFlowBusy(true);
+      switchToApRequestFlowTab();
+      if (apRequestFlowProbeChain) {
+        const tocLabel = document.getElementById('btnApRequestTocRunLabel');
+        if (tocLabel) tocLabel.textContent = '探活中…';
+        const tocAllLabel = document.getElementById('btnApRequestTocRunAllLabel');
+        if (tocAllLabel) tocAllLabel.textContent = '探活中…';
+      }
+      log('info', `[ap-request-flow] 探活开始 · env=${msg.env || 'dev'}`);
+      break;
+    case 'ap-request-flow:probe:done':
+      if (handleFlowDeliveryLoopProbeDone('ap-request-flow', msg)) break;
+      if (msg.ok) markProbeDone('ap-request-flow', msg.env || envState.current);
+      if (apRequestFlowProbeChain) {
+        const chain = apRequestFlowProbeChain;
+        apRequestFlowProbeChain = null;
+        renderApRequestFlowStatus(msg, { skipSelects: true });
+        if (msg.ok) {
+          log('ok', `[ap-request-flow] 探活完成 · ${msg.snapshotRel || 'live-snapshot.json'}，开始 Golden 检测…`);
+          if (chain === 'goldenAll') runApRequestFlowGoldenAllDirect();
+          else runApRequestFlowGoldenDirect();
+        } else {
+          setApRequestFlowBusy(false);
+          showToast(msg.cancelled ? '探活已取消，检测未执行' : '探活失败，检测已取消', msg.cancelled ? 'warn' : 'err');
+          if (msg.cancelled) log('warn', '[ap-request-flow] 探活已取消');
+          else log('err', '[ap-request-flow] 探活失败，已取消 Golden 检测');
+        }
+        break;
+      }
+      setApRequestFlowBusy(false);
+      renderApRequestFlowStatus(msg, { skipSelects: true });
+      if (msg.ok) {
+        showToast('对公申请单列表探活完成', 'ok');
+        log('ok', `[ap-request-flow] 探活完成 · ${msg.snapshotRel || 'live-snapshot.json'}`);
+      } else if (msg.cancelled) {
+        showToast('探活已取消', 'warn');
+        log('warn', '[ap-request-flow] 探活已取消');
+      } else {
+        showToast('探活失败', 'err');
+      }
+      break;
+    case 'ap-request-flow:cancel:ack':
+      log('warn', '[ap-request-flow] 取消指令已送达，正在终止进程…');
+      break;
+    case 'ap-request-flow:golden-all:start':
+      setApRequestFlowBusy(true);
+      switchToApRequestFlowTab();
+      log('info', `[ap-request-flow] Golden 全角色回归开始（${msg.total || 0} 个）`);
+      break;
+    case 'ap-request-flow:golden-all:done':
+      setApRequestFlowBusy(false);
+      if (msg.customerReportOpenPath) {
+        lastApRequestFlowRun = {
+          ...(lastApRequestFlowRun || {}),
+          reportBatchId: msg.reportBatchId || '',
+          customerReportOpenPath: msg.customerReportOpenPath,
+        };
+        updateApRequestFlowReportBtn(lastApRequestFlowRun);
+      }
+      refreshApRequestFlowStatus(true);
+      if (msg.ok) {
+        showToast('对公申请单 Golden 全角色回归完成，可全量更新基线或写入飞书', 'ok');
+      } else if (!msg.cancelled) {
+        const batchStats = goldenBatchStats(msg.goldenBatch);
+        showToast(
+          msg.batchHeadline || (batchStats.partial ? 'Golden 部分角色失败' : '对公申请单 Golden 全角色回归未全部完成'),
+          batchStats.partial ? 'warn' : 'err',
+        );
+        logGoldenBatchOutcome('ap-request-flow', msg);
+      }
+      break;
+    case 'ap-request-flow:run:start':
+      setApRequestFlowBusy(true);
+      switchToApRequestFlowTab();
+      log('info', `[ap-request-flow] 运行开始 · mode=${msg.mode || ''} · ${msg.spec || ''}`);
+      break;
+    case 'ap-request-flow:run:done':
+      setApRequestFlowBusy(false);
+      lastApRequestFlowRun = normalizeFlowRunDoneMsg(msg, 'ap-request-flow');
+      updateApRequestFlowReportBtn(lastApRequestFlowRun);
+      handleApRequestFlowFailureFromMsg(lastApRequestFlowRun);
+      maybeAutoOpenFlowReplay(lastApRequestFlowRun, 'ap-request-flow');
+      if (handleFlowDeliveryLoopRunDone('ap-request-flow', msg)) break;
+      if (!msg.cancelled) {
+        if (msg.apiFailureCount > 0) {
+          log('warn', `[ap-request-flow] 接口报错 ${msg.apiFailureCount} 条，见运行汇总`);
+        }
+        if (msg.startedAt) {
+          log('info', `[ap-request-flow] 运行 ${msg.startedAt} → ${msg.finishedAt || '?'}`);
+        }
+        if (msg.skipped > 0) {
+          log('warn', `[ap-request-flow] ${msg.skipped} 个用例已跳过，见运行汇总`);
+          for (const s of msg.skips || []) {
+            log('warn', `[ap-request-flow] 跳过 · ${s.title} — ${s.reason}`);
+          }
+        }
+      }
+      if (msg.ok) {
+        const skipNote = msg.skipped > 0 ? `（跳过 ${msg.skipped}）` : '';
+        if (isStudioCompact() && (msg.pipeline === 'golden' || !msg.pipeline)) {
+          showToast(
+            hasFlowReplayPath(lastApRequestFlowRun) ? '交付检测完成，已打开回放' : '交付检测完成，可查看验收与审计报告',
+            'ok',
+          );
+        } else {
+          showToast(`对公申请单流程用例通过${skipNote}`, 'ok');
+        }
+        log('ok', `[ap-request-flow] 用例通过 · mode=${msg.mode || ''}`);
+      } else if (!lastApRequestFlowRun.cancelled) {
+        const batchStats = goldenBatchStats(lastApRequestFlowRun.goldenBatch);
+        if (lastApRequestFlowRun.goldenBatch && logGoldenBatchOutcome('ap-request-flow', lastApRequestFlowRun)) {
+          const replayHint = hasFlowReplayPath(lastApRequestFlowRun) ? '，可点「查看回放」' : '';
+          showToast(
+            `${lastApRequestFlowRun.batchHeadline || (batchStats.partial ? 'Golden 部分角色失败' : 'Golden 批次失败')}${replayHint}`,
+            batchStats.partial ? 'warn' : 'err',
+          );
+          if (!batchStats.partial) {
+            log('err', `[ap-request-flow] 用例失败 · exit=${lastApRequestFlowRun.exitCode ?? '?'}`);
+          }
+        } else {
+          const passN = Number(lastApRequestFlowRun.passed) || 0;
+          const totalN = Number(lastApRequestFlowRun.total) || 0;
+          const skipN = Number(lastApRequestFlowRun.skipped) || 0;
+          const incomplete = lastApRequestFlowRun.exitCode === 0 && skipN > 0 && passN < (totalN || passN + skipN + 1);
+          const replayHint = hasFlowReplayPath(lastApRequestFlowRun) ? '，可点「查看回放」' : '';
+          showToast(
+            incomplete
+              ? `对公申请单流程未完成（${passN}/${totalN || passN + skipN}，${skipN} 跳过）${replayHint}`
+              : `对公申请单流程用例失败（退出码 ${lastApRequestFlowRun.exitCode ?? '?' }）${replayHint}`,
+            incomplete ? 'warn' : 'err',
+          );
+          log('err', `[ap-request-flow] 用例失败 · exit=${lastApRequestFlowRun.exitCode ?? '?'}`);
+        }
+        if (lastApRequestFlowRun.reportOpenPath) {
+          log('info', `[ap-request-flow] 报告 ${lastApRequestFlowRun.reportOpenPath}`);
+        }
+        if (hasFlowReplayPath(lastApRequestFlowRun)) {
+          log('info', `[ap-request-flow] 回放 ${lastApRequestFlowRun.replayReportOpenPath || lastApRequestFlowRun.videoReportOpenPath}`);
+        }
+      }
+      if (lastApRequestFlowRun.runMarker) fillFlowRunSearchQuery(lastApRequestFlowRun.runMarker, false);
       break;
     case 'flow:config:list:done':
       if (msg.ok) {
@@ -9319,14 +9759,14 @@ function setEditorRunStatus(text, status) {
 
 function syncEditorRunBarVisibility() {
   const bar = document.getElementById('editorRunBar');
-  const noRun = ['diff','figma','intent-run','ego-audit','request-flow','approval-flow','expense-flow','jobs','flow-config'].some((n) => document.getElementById('pane-' + n)?.classList.contains('active'));
+  const noRun = ['diff','figma','intent-run','ego-audit','request-flow','approval-flow','expense-flow','ap-request-flow','jobs','flow-config'].some((n) => document.getElementById('pane-' + n)?.classList.contains('active'));
   if (bar) bar.style.display = noRun || isStudioConfigMode() ? 'none' : 'block';
 }
 
 function syncSidebarAccountLoginVisibility() {
   const block = document.getElementById('sidebarAccountLoginBlock');
   const storagePill = document.getElementById('statusStorage');
-  const hideSidebarAccount = !isStudioConfigMode() && ['request-flow', 'approval-flow', 'expense-flow', 'jobs'].some((n) =>
+  const hideSidebarAccount = !isStudioConfigMode() && ['request-flow', 'approval-flow', 'expense-flow', 'ap-request-flow', 'jobs'].some((n) =>
     document.getElementById(`pane-${n}`)?.classList.contains('active'),
   );
   if (block) block.classList.toggle('studio-hidden', hideSidebarAccount);
@@ -9356,6 +9796,7 @@ function switchTab(name, el) {
   if (name === 'request-flow') refreshRequestFlowStatus(true);
   if (name === 'approval-flow') refreshApprovalFlowStatus(true);
   if (name === 'expense-flow') refreshExpenseFlowStatus(true);
+  if (name === 'ap-request-flow') refreshApRequestFlowStatus(true);
   if (name === 'intent-run') {
     refreshIntentList();
     refreshDraftsList();
@@ -9790,7 +10231,9 @@ function runFlowUiAudit(flowId, limit = 6) {
     ? lastApprovalFlowRun
     : flowId === 'expense-flow'
       ? lastExpenseFlowRun
-      : lastRequestFlowRun;
+      : flowId === 'ap-request-flow'
+        ? lastApRequestFlowRun
+        : lastRequestFlowRun;
   const manifest = last?.manifest || {};
   const scriptKey = last?.boundScriptKey || last?.scriptKey || manifest.boundScriptKey || manifest.scriptKey || '';
   const runId = last?.boundRunId || last?.runId || manifest.boundRunId || manifest.runId || '';
@@ -9856,6 +10299,7 @@ let requestFlowSubTab = 'golden';
 let requestFlowProbeChain = null;
 let approvalFlowProbeChain = null;
 let expenseFlowProbeChain = null;
+let apRequestFlowProbeChain = null;
 let flowProfileLoginTarget = '';
 let pendingGoldenProfileLogin = false;
 let pendingWriteProfileLogin = false;
@@ -9875,6 +10319,7 @@ let flowProfileControlsBound = false;
 let requestFlowStatusLastAt = 0;
 let approvalFlowStatusLastAt = 0;
 let expenseFlowStatusLastAt = 0;
+let apRequestFlowStatusLastAt = 0;
 const FLOW_STATUS_MIN_MS = 2500;
 
 function isRequestFlowPaneActive() {
@@ -9887,6 +10332,10 @@ function isApprovalFlowPaneActive() {
 
 function isExpenseFlowPaneActive() {
   return document.getElementById('pane-expense-flow')?.classList.contains('active');
+}
+
+function isApRequestFlowPaneActive() {
+  return document.getElementById('pane-ap-request-flow')?.classList.contains('active');
 }
 
 function bindFlowProfileControls() {
@@ -9914,6 +10363,10 @@ function bindFlowProfileControls() {
   });
   document.getElementById('expenseGoldenRoleSelect')?.addEventListener('change', () => {
     refreshExpenseFlowStatus(true);
+    updateStudioStatusBar();
+  });
+  document.getElementById('apRequestGoldenRoleSelect')?.addEventListener('change', () => {
+    refreshApRequestFlowStatus(true);
     updateStudioStatusBar();
   });
   document.getElementById('requestWriteRoleSelect')?.addEventListener('change', () => {
@@ -10069,6 +10522,30 @@ function renderRequestFlowProfileStorage(list) {
       if (firstReady) expenseRoleSel.value = firstReady.id;
     }
   }
+  const apRequestGoldenEl = document.getElementById('apRequestFlowGoldenProfileStorage');
+  if (apRequestGoldenEl) {
+    if (goldenItems.length) {
+      apRequestGoldenEl.innerHTML = goldenItems.map((p) => row(p, 'var(--green)', { hideProfileId: true, allowDelete: true })).join('');
+    } else {
+      apRequestGoldenEl.innerHTML = `<div style="color:var(--amber)">未配置 golden* 档案（与申请单流程共用）</div>`;
+    }
+  }
+  const apRequestRoleSel = document.getElementById('apRequestGoldenRoleSelect');
+  if (apRequestRoleSel) {
+    const prevApRequest = apRequestRoleSel.value;
+    const apRequestOpts = goldenItems.map((p) => {
+      const hasRemark = p.label && p.loginAccount && p.label !== p.loginAccount;
+      const label = hasRemark ? `${p.label} · ${p.loginAccount}` : (p.roleLabel || p.label || p.id);
+      const suffix = p.hasStorage ? '' : ' · 未登录';
+      return `<option value="${escHtml(p.id)}"${p.hasStorage ? '' : ' disabled'}>${escHtml(label)}${suffix}</option>`;
+    });
+    apRequestRoleSel.innerHTML = apRequestOpts.length ? apRequestOpts.join('') : '<option value="">无 golden* 档案</option>';
+    if ([...apRequestRoleSel.options].some((o) => o.value === prevApRequest && !o.disabled)) apRequestRoleSel.value = prevApRequest;
+    else {
+      const firstReady = goldenItems.find((p) => p.hasStorage);
+      if (firstReady) apRequestRoleSel.value = firstReady.id;
+    }
+  }
   const writeSel = document.getElementById('requestWriteRoleSelect');
   if (writeSel) {
     const prevWrite = writeSel.value;
@@ -10097,6 +10574,13 @@ function getSelectedApprovalGoldenProfile() {
 
 function getSelectedExpenseGoldenProfile() {
   const sel = document.getElementById('expenseGoldenRoleSelect');
+  const id = sel?.value?.trim() || '';
+  if (id && requestFlowProfileState[id]) return requestFlowProfileState[id];
+  return getSelectedGoldenProfile();
+}
+
+function getSelectedApRequestGoldenProfile() {
+  const sel = document.getElementById('apRequestGoldenRoleSelect');
   const id = sel?.value?.trim() || '';
   if (id && requestFlowProfileState[id]) return requestFlowProfileState[id];
   return getSelectedGoldenProfile();
@@ -10512,6 +10996,7 @@ function switchToRequestFlowTab() {
 const SS_REQUEST_FLOW_SUB_TAB = 'pw_studio_request_flow_sub_tab';
 const SS_APPROVAL_FLOW_SUB_TAB = 'pw_studio_approval_flow_sub_tab';
 const SS_EXPENSE_FLOW_SUB_TAB = 'pw_studio_expense_flow_sub_tab';
+const SS_AP_REQUEST_FLOW_SUB_TAB = 'pw_studio_ap_request_flow_sub_tab';
 const SS_REQUEST_DOC_NO = 'pw_studio_request_doc_no';
 
 function requestDocNoStorageKey() {
@@ -11857,6 +12342,490 @@ function cancelExpenseFlowRun() {
   log('warn', '[expense-flow] 已请求取消，正在终止…');
   showToast('已请求取消，正在终止…', 'warn');
   const cancel = document.getElementById('btnExpenseCancel');
+  if (cancel) cancel.disabled = true;
+}
+
+function setApRequestFlowSubTab(mode, el, opts = {}) {
+  const next = mode === 'probe' && isStudioCompact() ? 'golden' : mode === 'probe' ? 'probe' : 'golden';
+  apRequestFlowSubTab = next;
+  document.querySelectorAll('#pane-ap-request-flow .request-flow-sub-tab').forEach((tab) => {
+    tab.classList.toggle('active', tab.dataset.sub === next);
+  });
+  document.querySelectorAll('#pane-ap-request-flow .request-flow-pane').forEach((pane) => {
+    pane.classList.toggle('active', pane.dataset.sub === next);
+  });
+  try {
+    sessionStorage.setItem(SS_AP_REQUEST_FLOW_SUB_TAB, next);
+  } catch {
+    /* ignore */
+  }
+  updateApRequestFlowReportBtn(lastApRequestFlowRun);
+  if (opts.refreshStatus !== false) refreshApRequestFlowStatus(true);
+  updateStudioStatusBar();
+}
+
+function restoreApRequestFlowSubTab() {
+  if (isStudioCompact()) {
+    const tabEl = document.querySelector('#pane-ap-request-flow .request-flow-sub-tab[data-sub="golden"]');
+    setApRequestFlowSubTab('golden', tabEl, { refreshStatus: false });
+    return;
+  }
+  let saved = 'golden';
+  try {
+    saved = sessionStorage.getItem(SS_AP_REQUEST_FLOW_SUB_TAB) || 'golden';
+  } catch {
+    /* ignore */
+  }
+  const tabEl = document.querySelector(`#pane-ap-request-flow .request-flow-sub-tab[data-sub="${saved === 'probe' ? 'probe' : 'golden'}"]`);
+  setApRequestFlowSubTab(saved === 'probe' ? 'probe' : 'golden', tabEl, { refreshStatus: false });
+}
+
+function switchToApRequestFlowSubTab(mode) {
+  switchToApRequestFlowTab();
+  const tabEl = document.querySelector(`#pane-ap-request-flow .request-flow-sub-tab[data-sub="${mode === 'probe' ? 'probe' : 'golden'}"]`);
+  setApRequestFlowSubTab(mode === 'probe' ? 'probe' : 'golden', tabEl);
+}
+
+function setApRequestFlowBusy(busy) {
+  ['btnApRequestProbe', 'btnApRequestPresetPreview', 'btnApRequestPresetReadOnly', 'btnApRequestRunSelected', 'btnApRequestGoldenRun', 'btnApRequestGoldenRunAll', 'btnApRequestPromoteBaseline', 'btnApRequestClearBaseline', 'btnApRequestTocRun', 'btnApRequestTocRunAll', 'btnApRequestTocReport', 'btnApRequestTocPromoteBaseline', 'btnApRequestTocDeliverFeishu', 'btnApRequestTocRunUiAudit', 'btnApRequestTocOpenUiAudit', 'btnApRequestTocReplay', 'btnApRequestTocAiDebug'].forEach((id) => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.disabled = busy;
+    btn.style.opacity = busy ? 0.6 : 1;
+  });
+  const modeSel = document.getElementById('apRequestFlowMode');
+  if (modeSel) modeSel.disabled = busy;
+  const runBtn = document.getElementById('btnApRequestRunSelected');
+  const label = runBtn?.querySelector('.btn-label');
+  if (label) label.textContent = busy ? '运行中…' : '运行';
+  const tocLabel = document.getElementById('btnApRequestTocRunLabel');
+  if (tocLabel) tocLabel.textContent = busy ? '检测中…' : '开始检测';
+  const tocAllLabel = document.getElementById('btnApRequestTocRunAllLabel');
+  if (tocAllLabel) tocAllLabel.textContent = busy ? '检测中…' : '检测全部';
+  const cancel = document.getElementById('btnApRequestCancel');
+  const tocCancel = document.getElementById('btnApRequestTocCancel');
+  if (isStudioCompact()) {
+    if (cancel) cancel.style.display = 'none';
+    if (tocCancel) {
+      tocCancel.style.display = busy ? '' : 'none';
+      tocCancel.disabled = false;
+    }
+  } else {
+    if (tocCancel) tocCancel.style.display = 'none';
+    if (cancel) {
+      cancel.style.display = busy ? '' : 'none';
+      cancel.disabled = false;
+    }
+  }
+}
+
+const AP_REQUEST_FLOW_PRESETS = {
+  preview: { spec: 'expense/full-flow.spec.ts', grep: '搜索并打开详情', mode: 'headed' },
+  readOnly: { spec: 'expense/full-flow.spec.ts', grep: '加载|搜索', mode: 'headless' },
+  golden: { spec: 'ap-request/golden-regression.spec.ts', grep: '', mode: 'headless', pipeline: 'golden', accountProfile: 'golden' },
+};
+let apRequestFlowDraft = null;
+let apRequestFlowSubTab = 'golden';
+
+function ensureApRequestFlowSpecOption(spec) {
+  const sel = document.getElementById('apRequestFlowSpec');
+  if (!sel || !spec) return;
+  if ([...sel.options].some((o) => o.value === spec)) return;
+  sel.add(new Option(spec, spec));
+}
+
+function clearApRequestFlowPresetActive() {
+  ['btnApRequestPresetPreview', 'btnApRequestPresetReadOnly'].forEach((id) => {
+    document.getElementById(id)?.classList.remove('btn-preset-active');
+  });
+}
+
+function setApRequestFlowPresetActive(preset) {
+  const map = { preview: 'btnApRequestPresetPreview', readOnly: 'btnApRequestPresetReadOnly' };
+  clearApRequestFlowPresetActive();
+  const id = map[preset];
+  if (id) document.getElementById(id)?.classList.add('btn-preset-active');
+}
+
+function updateApRequestFlowHintFromDom(presetKey) {
+  const hint = document.getElementById('apRequestFlowHint');
+  if (!hint) return;
+  const spec = document.getElementById('apRequestFlowSpec')?.value?.trim() || '';
+  const grep = document.getElementById('apRequestFlowTest')?.value?.trim() || '';
+  const modeLabel = document.getElementById('apRequestFlowMode')?.selectedOptions?.[0]?.textContent || getApRequestFlowMode();
+  const presetLabel = presetKey ? `「${presetKey}」` : '当前选择';
+  hint.textContent = `已套用${presetLabel}：${spec}${grep ? ` · grep=${grep}` : ''} · 模式=${modeLabel}。确认后点「运行」。`;
+}
+
+function applyApRequestFlowDraftToDom() {
+  if (!apRequestFlowDraft) return;
+  const { spec, grep, mode, preset } = apRequestFlowDraft;
+  ensureApRequestFlowSpecOption(spec);
+  const specSel = document.getElementById('apRequestFlowSpec');
+  if (specSel && spec) specSel.value = spec;
+  const testSel = document.getElementById('apRequestFlowTest');
+  if (testSel && grep != null) {
+    if (!grep || [...testSel.options].some((o) => o.value === grep)) testSel.value = grep;
+  }
+  const modeSel = document.getElementById('apRequestFlowMode');
+  if (modeSel && mode) modeSel.value = mode;
+  setApRequestFlowPresetActive(preset);
+  updateApRequestFlowHintFromDom(preset);
+}
+
+function fillApRequestFlowSpecSelect(specs, selected) {
+  const sel = document.getElementById('apRequestFlowSpec');
+  if (!sel) return;
+  const list = Array.isArray(specs) && specs.length ? specs : ['expense/full-flow.spec.ts'];
+  const prev = selected || sel.value || list[0];
+  const same =
+    sel.options.length === list.length && list.every((rel, i) => sel.options[i]?.value === rel);
+  if (same) {
+    if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
+    else sel.value = list[0];
+    return;
+  }
+  sel.innerHTML = list.map((rel) => `<option value="${escHtml(rel)}">${escHtml(rel)}</option>`).join('');
+  if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
+  else sel.value = list[0];
+}
+
+function fillApRequestFlowTestSelect(tests, selectedGrep) {
+  const sel = document.getElementById('apRequestFlowTest');
+  if (!sel) return;
+  const prev = selectedGrep != null ? selectedGrep : sel.value;
+  const items = tests || [];
+  const same =
+    sel.options.length === items.length + 1
+    && sel.options[0]?.value === ''
+    && items.every((t, i) => {
+      const grep = String(t.grep || '');
+      return sel.options[i + 1]?.value === grep;
+    });
+  if (same) {
+    if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
+    else sel.selectedIndex = 0;
+    return;
+  }
+  const opts = ['<option value="">（全部用例）</option>'];
+  items.forEach((t) => {
+    const grep = String(t.grep || '');
+    const label = String(t.label || grep);
+    opts.push(`<option value="${escHtml(grep)}">${escHtml(label)}</option>`);
+  });
+  sel.innerHTML = opts.join('');
+  if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
+  else sel.selectedIndex = 0;
+}
+
+function onApRequestFlowSpecChange() {
+  const spec = document.getElementById('apRequestFlowSpec')?.value?.trim();
+  if (apRequestFlowDraft && apRequestFlowDraft.spec !== spec) {
+    apRequestFlowDraft = null;
+    clearApRequestFlowPresetActive();
+  }
+  if (!spec || !ws || ws.readyState !== 1) return;
+  send('ap-request-flow:list-tests', { env: envState.current, spec });
+  clearTimeout(apRequestFlowStatusTimer);
+}
+
+function applyApRequestFlowTestList(msg) {
+  if (!msg) return;
+  const keepGrep = apRequestFlowDraft && msg.spec === apRequestFlowDraft.spec
+    ? apRequestFlowDraft.grep
+    : document.getElementById('apRequestFlowTest')?.value;
+  fillApRequestFlowTestSelect(msg.tests || [], keepGrep ?? '');
+  if (apRequestFlowDraft && msg.spec === apRequestFlowDraft.spec) applyApRequestFlowDraftToDom();
+  const hint = document.getElementById('apRequestFlowHint');
+  if (hint && msg.error) hint.textContent = `用例列表加载失败：${msg.error}`;
+}
+
+function renderApRequestFlowStatus(msg, opts = {}) {
+  const el = document.getElementById('apRequestFlowStatus');
+  const snapEl = document.getElementById('apRequestFlowSnapshot');
+  if (!el || !msg) return;
+  const storage = msg.hasStorage
+    ? `<span style="color:var(--green)">已就绪</span> · ${escHtml(msg.storageState || '')}`
+    : '<span style="color:var(--amber)">缺失</span> · 请先在侧栏登录';
+  const snap = msg.snapshot;
+  const snapAt = parseProbeIso(snap?.probedAt);
+  setFlowSnapshotAt('ap-request-flow', msg.env, snapAt);
+  let snapLine = '暂无 live-snapshot，可先点「实机探活」';
+  if (snap) {
+    snapLine = `样例单号 ${snap.sampleDocNo || '—'}`;
+    const left = probeTtlMinutesLeft('ap-request-flow', snapAt);
+    if (left > 0) snapLine += ` · ${left} 分钟内免重复探活`;
+  }
+  const catalog = msg.catalogCheck;
+  let catalogLine = '';
+  if (catalog && Array.isArray(catalog.warnings) && catalog.warnings.length) {
+    const color = catalog.ok ? 'var(--text-secondary)' : 'var(--amber)';
+    catalogLine = `<div><strong>catalog</strong> <span style="color:${color}">${catalog.ok ? '通过' : '漂移'} · ${escHtml(catalog.warnings.slice(0, 2).join('；'))}${catalog.warnings.length > 2 ? '…' : ''}</span></div>`;
+  }
+  el.innerHTML = [
+    `<div><strong>环境</strong> ${escHtml(msg.env || 'dev')} · <strong>BASE_URL</strong> ${escHtml(msg.baseURL || '')}</div>`,
+    `<div><strong>登录态</strong> ${storage}</div>`,
+    `<div><strong>配置</strong> ${msg.ready ? escHtml(msg.configRel || '') : '<span style="color:var(--red)">未找到 ap-request-flow</span>'}</div>`,
+    `<div><strong>探活</strong> ${escHtml(snapLine)}</div>`,
+    catalogLine,
+  ].filter(Boolean).join('');
+  if (snapEl) {
+    if (snap) {
+      snapEl.style.display = 'block';
+      snapEl.textContent = JSON.stringify(snap, null, 2);
+    } else {
+      snapEl.style.display = 'none';
+      snapEl.textContent = '';
+    }
+  }
+  const repoInput = document.getElementById('apRequestFrontendRepo');
+  if (repoInput && !repoInput.value.trim() && msg.frontendRepoDefault) {
+    repoInput.value = msg.frontendRepoDefault;
+  }
+  if (msg.profileStorage) renderRequestFlowProfileStorage(msg.profileStorage);
+  if (!opts.skipSelects) {
+    const keepSpec = apRequestFlowDraft?.spec || document.getElementById('apRequestFlowSpec')?.value?.trim() || msg.spec;
+    const keepGrep = apRequestFlowDraft?.grep ?? document.getElementById('apRequestFlowTest')?.value ?? '';
+    fillApRequestFlowSpecSelect(msg.specs, keepSpec);
+    if (!msg.skipTests) fillApRequestFlowTestSelect(msg.tests, keepGrep);
+    if (apRequestFlowDraft) applyApRequestFlowDraftToDom();
+  }
+  if (msg.testsError) {
+    const hint = document.getElementById('apRequestFlowHint');
+    if (hint) hint.textContent = `用例列表：${msg.testsError}`;
+  }
+  if (msg.lastRun) {
+    lastApRequestFlowRun = msg.lastRun;
+    updateApRequestFlowReportBtn(lastApRequestFlowRun);
+  }
+}
+
+let apRequestFlowStatusTimer = null;
+
+function refreshApRequestFlowStatus(force) {
+  clearTimeout(apRequestFlowStatusTimer);
+  apRequestFlowStatusTimer = setTimeout(() => {
+    if (!force && !isApRequestFlowPaneActive()) return;
+    const now = Date.now();
+    if (!force && now - apRequestFlowStatusLastAt < FLOW_STATUS_MIN_MS) return;
+    const spec = document.getElementById('apRequestFlowSpec')?.value?.trim() || '';
+    const golden = getSelectedApRequestGoldenProfile();
+    const payload = { env: envState.current, spec, withTests: Boolean(force) };
+    if (golden?.id) payload.accountProfile = golden.id;
+    if (ws && ws.readyState === 1) {
+      apRequestFlowStatusLastAt = now;
+      send('ap-request-flow:status', payload);
+    }
+  }, 120);
+}
+
+function switchToApRequestFlowTab() {
+  if (document.getElementById('pane-ap-request-flow')?.classList.contains('active')) return;
+  const tab = Array.from(document.querySelectorAll('.tab')).find((t) => t.textContent.includes('对公申请单流程'));
+  if (tab) switchTab('ap-request-flow', tab);
+}
+
+function startApRequestFlowProbe() {
+  switchToApRequestFlowTab();
+  const frontendRepo = document.getElementById('apRequestFrontendRepo')?.value?.trim() || '';
+  const golden = getSelectedApRequestGoldenProfile();
+  const payload = { frontendRepo, env: envState.current };
+  if (golden?.id) payload.accountProfile = golden.id;
+  setApRequestFlowBusy(true);
+  if (!send('ap-request-flow:probe', payload)) setApRequestFlowBusy(false);
+}
+
+function getApRequestFlowMode() {
+  return document.getElementById('apRequestFlowMode')?.value?.trim() || 'headless';
+}
+
+function applyApRequestFlowPreset(preset) {
+  switchToApRequestFlowTab();
+  const cfg = AP_REQUEST_FLOW_PRESETS[preset] || AP_REQUEST_FLOW_PRESETS.preview;
+  apRequestFlowDraft = {
+    preset,
+    spec: cfg.spec,
+    grep: cfg.grep ?? '',
+    mode: cfg.mode || 'headless',
+  };
+  ensureApRequestFlowSpecOption(cfg.spec);
+  applyApRequestFlowDraftToDom();
+  onApRequestFlowSpecChange();
+}
+
+function runSelectedApRequestFlow(mode, opts = {}) {
+  switchToApRequestFlowTab();
+  apRequestFlowDraft = null;
+  const onGoldenTab = apRequestFlowSubTab === 'golden';
+  const writeEnabled = opts.writeEnabled != null
+    ? opts.writeEnabled
+    : (onGoldenTab ? false : Boolean(document.getElementById('apRequestWriteEnabled')?.checked));
+  const isGolden = opts.preset === 'golden' || opts.pipeline === 'golden' || (onGoldenTab && !writeEnabled);
+  if (isGolden) {
+    switchToApRequestFlowSubTab('golden');
+  } else if (writeEnabled) {
+    switchToApRequestFlowSubTab('probe');
+  }
+  const docNo = opts.docNo != null
+    ? opts.docNo
+    : (isGolden && !writeEnabled
+      ? (document.getElementById('apRequestGoldenDocNo')?.value?.trim() || '')
+      : (document.getElementById('apRequestDocNo')?.value?.trim() || ''));
+  const spec = document.getElementById('apRequestFlowSpec')?.value?.trim() || (isGolden && !writeEnabled ? 'ap-request/golden-regression.spec.ts' : 'expense/full-flow.spec.ts');
+  const grep = opts.grep != null ? opts.grep : (document.getElementById('apRequestFlowTest')?.value?.trim() || '');
+  const runMode = mode || getApRequestFlowMode();
+  const presetCfg = AP_REQUEST_FLOW_PRESETS[opts.preset] || null;
+  let accountProfile = opts.accountProfile || presetCfg?.accountProfile || '';
+  if (!accountProfile && isGolden && !writeEnabled) {
+    const goldenProf = getSelectedApRequestGoldenProfile();
+    if (!goldenProf?.hasStorage) {
+      showToast('请先选择并已登录 Golden 角色', 'err');
+      return;
+    }
+    accountProfile = goldenProf.id;
+  }
+  const payload = {
+    mode: runMode,
+    env: envState.current,
+    writeEnabled,
+    docNo,
+    spec,
+    grep,
+    preset: opts.preset || 'custom',
+    pipeline: opts.pipeline || presetCfg?.pipeline || '',
+    runUiAudit: Boolean(opts.runUiAudit),
+    uiAuditLimit: Number(opts.uiAuditLimit) || 24,
+    accountProfile,
+  };
+  setApRequestFlowBusy(true);
+  if (!send('ap-request-flow:run', payload)) setApRequestFlowBusy(false);
+}
+
+function apRequestFlowScriptKeyFromDom(spec) {
+  const base = (spec || '').split('/').pop()?.replace(/\.spec\.ts$/, '').replace(/\.spec$/, '') || 'flow';
+  const specSlug = base.replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]+/g, '-').slice(0, 60) || 'flow';
+  const golden = getSelectedApRequestGoldenProfile();
+  const roleSlug = golden?.roleSlug || '';
+  let key = `flows/ap-request-flow/${envState.current}/${specSlug}`;
+  if (roleSlug) key += `/by-account/${roleSlug}`;
+  return key;
+}
+
+function runApRequestFlowGoldenDirect() {
+  switchToApRequestFlowSubTab('golden');
+  const p = getSelectedApRequestGoldenProfile();
+  if (!p?.hasStorage) {
+    showToast('请先选择并已登录 Golden 角色', 'err');
+    return;
+  }
+  applyApRequestFlowPreset('golden');
+  runSelectedApRequestFlow('headless', {
+    preset: 'golden',
+    pipeline: 'golden',
+    runUiAudit: true,
+    uiAuditLimit: 6,
+    writeEnabled: false,
+    accountProfile: p.id,
+    spec: 'ap-request/golden-regression.spec.ts',
+    grep: '',
+  });
+}
+
+function runApRequestFlowGolden() {
+  switchToApRequestFlowSubTab('golden');
+  const p = getSelectedApRequestGoldenProfile();
+  if (!p?.hasStorage) {
+    showToast('请先选择并已登录 Golden 角色', 'err');
+    return;
+  }
+  if (shouldProbeBeforeCompactGolden('ap-request-flow')) {
+    apRequestFlowProbeChain = 'golden';
+    log('info', '[ap-request-flow] 检测模式：先探活再跑 Golden…');
+    startApRequestFlowProbe();
+    return;
+  }
+  if (isStudioCompact() && isProbeFresh('ap-request-flow', getFlowSnapshotAt('ap-request-flow', envState.current))) {
+    log('info', `[ap-request-flow] 探活快照仍有效（${probeTtlMinutesLeft('ap-request-flow', getFlowSnapshotAt('ap-request-flow', envState.current))} 分钟内），跳过探活`);
+  }
+  runApRequestFlowGoldenDirect();
+}
+
+function runApRequestFlowGoldenAllDirect() {
+  switchToApRequestFlowSubTab('golden');
+  const ready = Object.values(requestFlowProfileState).filter((p) => isGoldenProfileId(p.id) && p.hasStorage);
+  if (!ready.length) {
+    showToast('请先为至少一个 golden* 档案完成登录', 'err');
+    return;
+  }
+  applyApRequestFlowPreset('golden');
+  const docNoEl = document.getElementById('apRequestGoldenDocNo');
+  setApRequestFlowBusy(true);
+  if (!send('ap-request-flow:run', {
+    goldenAll: true,
+    env: envState.current,
+    docNo: docNoEl?.value?.trim() || '',
+    spec: 'ap-request/golden-regression.spec.ts',
+  })) {
+    setApRequestFlowBusy(false);
+  }
+}
+
+function runApRequestFlowGoldenAll() {
+  switchToApRequestFlowSubTab('golden');
+  const ready = Object.values(requestFlowProfileState).filter((p) => isGoldenProfileId(p.id) && p.hasStorage);
+  if (!ready.length) {
+    showToast('请先为至少一个 golden* 档案完成登录', 'err');
+    return;
+  }
+  if (shouldProbeBeforeCompactGolden('ap-request-flow')) {
+    apRequestFlowProbeChain = 'goldenAll';
+    log('info', '[ap-request-flow] 检测模式：先探活再跑全部 Golden…');
+    startApRequestFlowProbe();
+    return;
+  }
+  if (isStudioCompact() && isProbeFresh('ap-request-flow', getFlowSnapshotAt('ap-request-flow', envState.current))) {
+    log('info', `[ap-request-flow] 探活快照仍有效（${probeTtlMinutesLeft('ap-request-flow', getFlowSnapshotAt('ap-request-flow', envState.current))} 分钟内），跳过探活`);
+  }
+  runApRequestFlowGoldenAllDirect();
+}
+
+async function promoteApRequestFlowBaseline() {
+  switchToApRequestFlowSubTab('golden');
+  lastApRequestFlowRun = await ensureFlowLastRun('ap-request-flow', lastApRequestFlowRun);
+  lastApRequestFlowRun = await promoteFlowBaseline(
+    'ap-request-flow',
+    lastApRequestFlowRun,
+    setApRequestFlowBusy,
+    apRequestFlowScriptKeyFromDom('ap-request/golden-regression.spec.ts'),
+  );
+}
+
+async function clearApRequestFlowBaseline() {
+  switchToApRequestFlowSubTab('golden');
+  lastApRequestFlowRun = await ensureFlowLastRun('ap-request-flow', lastApRequestFlowRun);
+  const { scriptKey } = resolveFlowBaselineTarget(
+    lastApRequestFlowRun,
+    apRequestFlowScriptKeyFromDom('ap-request/golden-regression.spec.ts'),
+  );
+  if (!scriptKey) {
+    showToast('无法解析脚本键', 'err');
+    return;
+  }
+  if (!confirm(`确认清空该脚本的 Golden 基线与 run 截图？\n\n${scriptKey}\n\n将删除 screenshots-baseline、screenshots 下对应目录及 results/diffs 缓存，不可恢复。`)) return;
+  setApRequestFlowBusy(true);
+  if (!send('repo:clear-baseline', { scriptKey })) setApRequestFlowBusy(false);
+}
+
+function cancelApRequestFlowRun() {
+  clearFlowDeliveryLoop('ap-request-flow');
+  apRequestFlowProbeChain = null;
+  if (!send('cancel:ap-request-flow', {})) {
+    showToast('未连接 Studio 服务', 'err');
+    return;
+  }
+  log('warn', '[ap-request-flow] 已请求取消，正在终止…');
+  showToast('已请求取消，正在终止…', 'warn');
+  const cancel = document.getElementById('btnApRequestCancel');
   if (cancel) cancel.disabled = true;
 }
 

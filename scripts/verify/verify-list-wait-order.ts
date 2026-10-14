@@ -57,6 +57,30 @@ for (const clickSearch of [false, true]) {
   await navigation;
 }
 
+{
+  const f = fixture();
+  const list = new f.List(true);
+  const done = list.resetFilters();
+  await f.clicked.promise;
+  const atClick = [...f.events];
+  f.response.resolve();
+  await done;
+  assert.deepEqual(atClick, ['click']);
+  assert.deepEqual(f.events, ['click', 'settled']);
+}
+
+{
+  const f = fixture();
+  const list = new f.List(true);
+  const done = list.clearCombo();
+  await f.clicked.promise;
+  const atClick = [...f.events];
+  f.response.resolve();
+  await done;
+  assert.deepEqual(atClick, ['click']);
+  assert.deepEqual(f.events, ['click', 'settled']);
+}
+
 for (const action of ['search', 'clear'] as const) {
   const f = fixture();
   const list = new f.List();

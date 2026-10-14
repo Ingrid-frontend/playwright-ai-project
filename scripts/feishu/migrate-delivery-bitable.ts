@@ -351,7 +351,6 @@ async function rebuildSummaryFromHistory(
       [DELIVERY_SUMMARY_FIELDS.passRate]: passRatePct,
       [DELIVERY_SUMMARY_FIELDS.coveragePct]: entry.stats.coveragePct,
       [DELIVERY_SUMMARY_FIELDS.shipAdvice]: formatShipAdviceLabel(entry.shipAdvice) || undefined,
-      [DELIVERY_SUMMARY_FIELDS.shipAdviceLabel]: entry.verdict || '',
       [DELIVERY_SUMMARY_FIELDS.remark]: '历史重建',
     };
     console.log(`   · ${entry.deliveryId}（${entry.generatedAt.slice(0, 10)}）`);

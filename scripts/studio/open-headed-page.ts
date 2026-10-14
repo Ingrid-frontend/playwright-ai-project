@@ -23,27 +23,40 @@ async function main(): Promise<void> {
   }
 
   const browser = await chromium.launch({ headless: false });
-  const contextOpts: Parameters<typeof browser.newContext>[0] = {
-    baseURL,
-    locale: 'zh-CN',
-    viewport: null,
-  };
-  if (storageState && fs.existsSync(storageState)) {
-    contextOpts.storageState = storageState;
+  try {
+    const contextOpts: Parameters<typeof browser.newContext>[0] = {
+      baseURL,
+      locale: 'zh-CN',
+      viewport: null,
+    };
+    if (storageState && fs.existsSync(storageState)) {
+      contextOpts.storageState = storageState;
+    }
+
+    const context = await browser.newContext(contextOpts);
+    const page = await context.newPage();
+    const path = entry.startsWith('/') ? entry : `/${entry}`;
+    const closed = new Promise<void>((resolve) => {
+      page.once('close', () => resolve());
+      browser.once('disconnected', () => resolve());
+    });
+    try {
+      await page.goto(path, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+    } catch (e) {
+      if (!page.isClosed()) throw e;
+    }
+    if (!page.isClosed()) {
+      console.log(`[headed-debug] 已打开 ${baseURL.replace(/\/$/, '')}${path}`);
+      await closed;
+    }
+  } finally {
+    await browser.close().catch(() => undefined);
   }
-
-  const context = await browser.newContext(contextOpts);
-  const page = await context.newPage();
-  const path = entry.startsWith('/') ? entry : `/${entry}`;
-  await page.goto(path, { waitUntil: 'domcontentloaded', timeout: 60_000 });
-  console.log(`[headed-debug] 已打开 ${baseURL.replace(/\/$/, '')}${path}`);
-
-  await new Promise<void>((resolve) => {
-    browser.on('disconnected', () => resolve());
-  });
 }
 
-main().catch((e) => {
-  console.error('[headed-debug] 启动失败:', e instanceof Error ? e.message : e);
-  process.exit(1);
-});
+main()
+  .then(() => process.exit(0))
+  .catch((e) => {
+    console.error('[headed-debug] 启动失败:', e instanceof Error ? e.message : e);
+    process.exit(1);
+  });
