@@ -1,3 +1,5 @@
+import { getFlow } from '../flow/flow-registry.js';
+
 const SEVERITY_LABELS: Record<string, string> = {
   blocker: '阻断',
   warning: '警告',
@@ -105,7 +107,7 @@ export function formatScriptLabel(scriptKey?: string | null): string {
   if (!scriptKey) return '';
   const parts = scriptKey.replace(/\\/g, '/').split('/').filter(Boolean);
   const flowRaw = parts.find((item) => item.endsWith('-flow')) || parts[0] || '';
-  const flow = FLOW_LABELS[flowRaw] || flowRaw.replace(/-flow$/, '');
+  const flow = FLOW_LABELS[flowRaw] || getFlow(flowRaw)?.label || flowRaw.replace(/-flow$/, '');
   const spec = parts.find((item) => /golden|full-flow|travel|approve/i.test(item)) || parts[2] || '';
   const specShort = spec
     .replace(/-regression$/, '')

@@ -88,7 +88,7 @@ function truncate(text: string, max: number): string {
 /**
  * 识别常见业务失败体：
  * - success === false
- * - code / errorCode 表示失败（非 0/200/"0"/"OK"）
+ * - code / errorCode 表示失败（非 0/200/0000/"0"/"OK"）
  * - HTTP 已是 4xx/5xx 时也会附带 message 摘要
  */
 export function detectBusinessFailure(data: unknown): string | null {
@@ -105,7 +105,7 @@ export function detectBusinessFailure(data: unknown): string | null {
 
   const code = obj.code ?? obj.errorCode ?? obj.errCode;
   if (code !== undefined && code !== null && code !== '') {
-    const okCodes = new Set([0, 200, '0', '200', 'OK', 'ok', 'SUCCESS', 'success']);
+    const okCodes = new Set([0, 200, '0', '200', '0000', 'OK', 'ok', 'SUCCESS', 'success']);
     if (!okCodes.has(code as string | number)) {
       if (typeof code === 'number' || (typeof code === 'string' && /^\d+$/.test(code))) {
         const msg = pickMessage(obj);

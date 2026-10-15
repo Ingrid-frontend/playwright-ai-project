@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { createRequire } from 'module';
+import { getFlow } from '../../scripts/flow/flow-registry.js';
 import { flowRolePathSegment } from './account-slug.js';
 
 const require = createRequire(import.meta.url);
@@ -85,7 +86,7 @@ const FLOW_LABELS: Record<string, string> = {
 const RUN_SEGMENT = 'run-chromium-flow';
 
 export function flowLabel(flowId: FlowId): string {
-  return FLOW_LABELS[flowId] || flowId;
+  return getFlow(flowId)?.label || FLOW_LABELS[flowId] || flowId;
 }
 
 export function flowScreenshotEnabled(): boolean {

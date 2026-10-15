@@ -214,13 +214,18 @@ export async function runGoldenAllFlows(
             })
           : 1;
         if (aborted) break;
+        const headline = script ? batchHeadline(repoRoot, flowId, startedAt) : '未知流程';
         rows.push({
           env: envId,
           flow: flowId,
           exitCode,
-          headline: script ? batchHeadline(repoRoot, flowId, startedAt) : '未知流程',
+          headline,
         });
         flush();
+        if (/503/.test(headline)) {
+          console.log(`[golden-all-flows] ${envId} 返回 503，跳过该环境剩余流程`);
+          break;
+        }
       }
       if (aborted) break;
 

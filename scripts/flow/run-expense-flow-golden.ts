@@ -18,7 +18,7 @@ const { finalizeFlowRun, flowScriptKey } = require("../../pw-files/lib/flow-run-
 const { makeRunMarker, writeRunMarkerFile } = require("../../pw-files/lib/flow-run-marker.js");
 const { resolveFlowGoldenSeed } = require("../../pw-files/lib/flow-golden-seed.js");
 const { logConcisePlaywrightFailures } = require("../../pw-files/lib/failure-report.js");
-const { parseGoldenExecution, finalizeGoldenExecution, goldenBatchStatus, writeGoldenBatch } = require("../../pw-files/lib/golden-batch.js");
+const { parseGoldenExecution, finalizeGoldenExecution, goldenBatchStatus, writeGoldenBatch, isUnavailable } = require("../../pw-files/lib/golden-batch.js");
 
 const FLOW_ID = "expense-flow";
 const FLOW_LABEL = "报销流程";
@@ -174,7 +174,12 @@ function runOne(repoRoot: string, envId: string, profileId: string, grep: string
   // 报销 Golden 保持全用例通过的要求，部分跳过也不放宽。
   execution.ok = execution.ok && passed === total;
   const ok = execution.ok;
-  if (ok) {
+  if (allSkipped) {
+    console.warn(`[expense-flow:golden] 跳过 ${skipped}/${total} · ${duration}s`);
+    for (const item of skips.slice(0, 5)) {
+      console.warn(`[expense-flow:golden] 跳过 · ${item.title} — ${item.reason}`);
+    }
+  } else if (ok) {
     const skipHint = skipped > 0 ? `，跳过 ${skipped}` : "";
     console.log(`[expense-flow:golden] 通过 ${passed}/${total}${skipHint} · ${duration}s`);
     for (const item of skips.slice(0, 5)) {
@@ -264,7 +269,12 @@ function main(): void {
 
   const results: RunOneResult[] = [];
   for (const profileId of profiles) {
-    results.push(runOne(repoRoot, env, profileId, grep));
+    const result = runOne(repoRoot, env, profileId, grep);
+    results.push(result);
+    if (isUnavailable(result)) {
+      console.warn(`[expense-flow:golden] 环境 503，跳过其余角色`);
+      break;
+    }
   }
   const batchStatus = goldenBatchStatus(results);
   writeGoldenBatch(repoRoot, FLOW_ID, {

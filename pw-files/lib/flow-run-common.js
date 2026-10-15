@@ -383,7 +383,7 @@ function finalizeFlowRun(repoRoot, flowId, flowLabel, payload) {
 
     hasShots = hasFlowScreenshots(repoRoot);
     if (fullPass && hasShots && (pipeline === 'golden' || pipeline === 'default')) {
-      const cmpArgs = pipeline === 'golden' ? ['--gate'] : [];
+      const cmpArgs = pipeline === 'golden' ? ['--gate', `--script=${boundScriptKey}`] : [];
       const cmp = runNpmScript(repoRoot, 'compare-flow-screenshots', cmpArgs);
       if (pipeline === 'golden' && hasShots && !cmp.ok) compareGateFailed = true;
       if (cmp.ok && fs.existsSync(path.join(repoRoot, FLOW_COMPARE_REL))) {

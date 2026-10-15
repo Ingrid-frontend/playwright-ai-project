@@ -1,3 +1,4 @@
+import { getFlow } from '../flow/flow-registry.js';
 import {
   envIdSortKey as profileEnvSortKey,
   envLabelFromProfile,
@@ -100,6 +101,10 @@ const FLOW_SLUG_LABELS: Record<string, string> = {
   'expense-flow': '报销流程',
 };
 
+function slugLabel(seg: string): string {
+  return getFlow(seg)?.label || FLOW_SLUG_LABELS[seg] || '';
+}
+
 /**
  * `by-account/<slug>` 里的 slug 就是本次登录账号（手机号或邮箱转成的路径名）。
  * 流程名不带它；验收明细用单独一列区分同一流程下的不同账号。
@@ -127,8 +132,9 @@ export function friendlyScriptLabel(scriptKey: string): string {
 
   let flowName = '';
   for (const seg of segs) {
-    if (FLOW_SLUG_LABELS[seg]) {
-      flowName = FLOW_SLUG_LABELS[seg];
+    const named = slugLabel(seg);
+    if (named) {
+      flowName = named;
       break;
     }
   }
@@ -151,7 +157,7 @@ export function friendlyScriptLabel(scriptKey: string): string {
       prev = seg;
       continue;
     }
-    if (FLOW_SLUG_LABELS[seg]) {
+    if (slugLabel(seg)) {
       prev = seg;
       continue;
     }

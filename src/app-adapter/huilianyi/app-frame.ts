@@ -72,6 +72,10 @@ export async function waitForAppRoot(
 
   const deadline = Date.now() + timeout;
   let lastError: unknown;
+  const htmlNow = await page.content().catch(() => '');
+  if (/503 Service Unavailable|<h1>\s*503\b/i.test(htmlNow)) {
+    throw new Error(`503 Service Unavailable（url=${page.url()}）`);
+  }
 
   while (Date.now() < deadline) {
     try {
@@ -79,6 +83,10 @@ export async function waitForAppRoot(
       if (await iframe.count()) {
         const scope = appFrame(page);
         await scope.locator('body').waitFor({ timeout: 5_000 });
+        const frameText = ((await scope.locator('body').innerText({ timeout: 2_000 }).catch(() => '')) || '').trim();
+        if (/无权限访问本页面/.test(frameText)) {
+          throw new Error(`无权限访问本页面（url=${page.url()}）`);
+        }
         if (!requireBiz || (await iframeHasBiz(scope))) {
           return { page, scope, inIframe: true };
         }
@@ -86,10 +94,14 @@ export async function waitForAppRoot(
 
       // 无 iframe：登录页或已登录主站直接渲染在顶层
       const bodyText = await page.locator('body').innerText({ timeout: 2_000 }).catch(() => '');
+      if (/无权限访问本页面/.test(bodyText)) {
+        throw new Error(`无权限访问本页面（url=${page.url()}）`);
+      }
       if (TOP_LEVEL_MARKERS.test(bodyText)) {
         return { page, scope: page, inIframe: false };
       }
     } catch (e) {
+      if (/无权限访问本页面/.test(String(e))) throw e;
       lastError = e;
     }
     await page.waitForTimeout(500);

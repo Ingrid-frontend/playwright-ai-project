@@ -144,6 +144,9 @@ export class GenericListPage {
     const recoverEmpty = c.recoverEmptyOnLoad === true;
 
     await expect(this.page).toHaveURL(c.urlPattern, { timeout: 60_000 });
+    if (await this.scope().getByText('无权限访问本页面').count().catch(() => 0)) {
+      throw new Error(`无权限访问本页面（url=${this.page.url()}）`);
+    }
     if (c.loadedSelector) {
       await expect(this.scope().locator(c.loadedSelector).first()).toBeVisible({ timeout: 60_000 });
     } else {
@@ -154,7 +157,6 @@ export class GenericListPage {
     await expect(this.scope().locator(c.table).first()).toBeVisible({ timeout: 60_000 });
     if (resetOnLoad) {
       await this.resetFilters().catch(() => undefined);
-      await this.clearAllExposedComboFilters().catch(() => undefined);
     }
     if (clickSearch) {
       await this.clickFilterSearch();
@@ -182,9 +184,60 @@ export class GenericListPage {
     await this.waitListSettled();
   }
 
+  /** 提交日期收在标签里、不允许清空时，把区间拉长再搜 */
+  private async widenSubmitDate(): Promise<boolean> {
+    const input = this.scope().locator('.date-range-picker input').first();
+    if (!(await input.count().catch(() => 0))) return false;
+    const show = new Function(
+      'el',
+      `var node = el.parentElement;
+       for (var i = 0; i < 8 && node; i++) {
+         var box = node.getBoundingClientRect();
+         if (box.width > 0 && box.height > 0) break;
+         node.style.setProperty('display', 'block', 'important');
+         node.style.setProperty('visibility', 'visible', 'important');
+         node.style.setProperty('overflow', 'visible', 'important');
+         node = node.parentElement;
+       }`,
+    ) as (el: HTMLInputElement) => void;
+    await input.evaluate(show).catch(() => undefined);
+    if (!(await input.isVisible().catch(() => false))) return false;
+
+    const search = this.scope()
+      .locator(this.catalog.searchActionSearch)
+      .or(this.scope().getByRole('button', { name: /搜\s*索|查\s*询/ }))
+      .filter({ visible: true })
+      .first();
+    for (const label of ['6个月', '本年', '去年']) {
+      await input.click({ force: true }).catch(() => undefined);
+      const opened = this.scope().getByText('起始日期', { exact: true });
+      if (!(await opened.isVisible({ timeout: 1_500 }).catch(() => false))) continue;
+      const chip = this.scope().getByText(label, { exact: true }).last();
+      if (!(await chip.isVisible({ timeout: 1_000 }).catch(() => false))) continue;
+      const before = await input.inputValue().catch(() => '');
+      await chip.click({ force: true }).catch(() => undefined);
+      let value = await input.inputValue().catch(() => '');
+      if (value === before) {
+        await chip.evaluate(new Function('el', 'el.click()') as (el: HTMLElement) => void).catch(() => undefined);
+        value = await input.inputValue().catch(() => '');
+      }
+      if (value === before) continue;
+      if (await search.isVisible({ timeout: 1_000 }).catch(() => false)) {
+        await search.click({ force: true }).catch(() => undefined);
+      }
+      await expect
+        .poll(async () => this.hasDataRows(), { timeout: 5_000 })
+        .toBeTruthy()
+        .catch(() => undefined);
+      if (await this.hasDataRows()) return true;
+    }
+    return false;
+  }
+
   /** 列表因残留筛选为空时，尝试去掉条件并重新搜索 */
   async recoverIfEmptyList(): Promise<boolean> {
     if (await this.hasDataRows()) return true;
+    if (await this.widenSubmitDate()) return true;
     await this.dismissChrome();
     await this.clearDocNoSearch().catch(() => undefined);
     await this.clearExposedFilters().catch(() => undefined);

@@ -36,7 +36,7 @@ import {
   attachReportContext,
 } from './ui-issues-index.js';
 import { buildCoverageStats, toCustomerCoverageMetrics } from './coverage-stats.js';
-import { gateShouldFail } from './ui-issues.js';
+import { gateShouldFail, type UiIssuesReport } from './ui-issues.js';
 import { applyTriageToReport } from './issue-triage.js';
 import { isCompareCrossBrowserEnabled } from './compare-screenshots-engine.js';
 import { appendHistorySnapshot } from './ui-regression-history.js';
@@ -48,6 +48,20 @@ dotenv.config({ path: path.join(process.cwd(), '.env') });
 const FLOW_SCREENSHOTS_ROOT = path.join('screenshots', 'flows');
 const DEFAULT_OUT = 'results/flow-screenshot-comparison.html';
 const DEFAULT_ISSUES = 'results/flow-ui-issues.json';
+
+function gateScriptFromArgs(args: string[]): string {
+  const raw = args.find((a) => a.startsWith('--script='))?.slice('--script='.length).trim() || '';
+  return raw.replace(/\\/g, '/').replace(/^flows\//, '');
+}
+
+function issuesForGate(report: UiIssuesReport, script: string): UiIssuesReport {
+  if (!script) return report;
+  const issues = report.issues.filter((issue) => {
+    const key = String(issue.scriptKey || '').replace(/\\/g, '/').replace(/^flows\//, '');
+    return key === script || key.startsWith(`${script}/`);
+  });
+  return { ...report, issues };
+}
 
 function filterFlowTargets(targets: ReturnType<typeof discoverFlowScriptScanTargets>) {
   return targets.filter(
@@ -62,6 +76,7 @@ function filterFlowTargets(targets: ReturnType<typeof discoverFlowScriptScanTarg
 async function main() {
   const args = process.argv.slice(2);
   const gateMode = args.includes('--gate');
+  const gateScript = gateScriptFromArgs(args);
   const positional = args.filter((a) => !a.startsWith('--'));
   const outputPath = positional[0] || DEFAULT_OUT;
   const issuesOut = process.env.FLOW_UI_ISSUES_OUT || DEFAULT_ISSUES;
@@ -208,12 +223,16 @@ async function main() {
     }
   }
 
-  if (gateMode && gateShouldFail(issuesReport)) {
-    console.error(`\n❌ --gate：流程 UI 存在 blocker 级问题，退出码 1`);
+  const gateReport = issuesForGate(issuesReport, gateScript);
+  if (gateScript) {
+    console.log(`   门禁范围: ${gateScript}（${gateReport.issues.length} 项）`);
+  }
+  if (gateMode && gateShouldFail(gateReport)) {
+    console.error(`\n❌ --gate：${gateScript || '流程 UI'} 存在 blocker 级问题，退出码 1`);
     process.exit(1);
   }
 
-  if (gateMode && !gateShouldFail(issuesReport) && testDirComparisons.length) {
+  if (gateMode && !gateShouldFail(gateReport) && testDirComparisons.length) {
     const keys = [...new Set(testDirComparisons.map((t) => t.testDir.replace(/\\/g, '/')))].slice(0, 3);
     console.log(`\n💡 compare gate 通过 · 可 promote 基线：`);
     for (const key of keys) {

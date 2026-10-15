@@ -14,7 +14,7 @@ const { finalizeFlowRun, flowScriptKey } = require("../../pw-files/lib/flow-run-
 const { makeRunMarker, writeRunMarkerFile } = require("../../pw-files/lib/flow-run-marker.js");
 const { resolveGoldenSeed } = require("../../pw-files/lib/golden-seed.js");
 const { logConcisePlaywrightFailures } = require("../../pw-files/lib/failure-report.js");
-const { parseGoldenExecution, finalizeGoldenExecution, goldenBatchStatus, writeGoldenBatch, summarizeGoldenBatch } = require("../../pw-files/lib/golden-batch.js");
+const { parseGoldenExecution, finalizeGoldenExecution, goldenBatchStatus, writeGoldenBatch, summarizeGoldenBatch, isUnavailable } = require("../../pw-files/lib/golden-batch.js");
 
 const FLOW_ID = "request-flow";
 const FLOW_LABEL = "申请单流程";
@@ -312,7 +312,12 @@ function runEnv(
   const ignored = listIgnoredProfiles(repoRoot, envId, profile || undefined);
   const results: RunOneResult[] = [];
   for (const profileId of profiles) {
-    results.push(runOne(repoRoot, envId, profileId, filterKeyword, grep));
+    const result = runOne(repoRoot, envId, profileId, filterKeyword, grep);
+    results.push(result);
+    if (isUnavailable(result)) {
+      console.warn(`[request-flow:golden] 环境 503，跳过其余角色`);
+      break;
+    }
   }
 
   const batchStatus = goldenBatchStatus(results);

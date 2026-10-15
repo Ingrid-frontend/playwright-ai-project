@@ -137,6 +137,57 @@ for (const gate of ['compareGateFailed', 'uiAuditGateFailed', 'apiFailureCount']
 }
 assert.equal(finalizeGoldenExecution(parseGoldenExecution(report(0, 2), 0), { ok: false }).exitCode, 2);
 assert.equal(parseGoldenExecution(report(1), 1).ok, false);
+const unavailableRun = parseGoldenExecution(JSON.stringify({
+  stats: { expected: 0, skipped: 0, unexpected: 1, flaky: 0 },
+  suites: [{
+    title: '申请单',
+    specs: [{
+      title: '列表',
+      ok: false,
+      tests: [{
+        status: 'unexpected',
+        results: [{ status: 'failed', error: { message: '503 Service Unavailable（url=https://stage9084.example/main/request）' } }],
+      }],
+    }],
+  }],
+}), 1);
+assert.equal(unavailableRun.allSkipped, true);
+assert.equal(unavailableRun.failed, 0);
+assert.equal(finalizeGoldenExecution(unavailableRun, { ok: false }).exitCode, 2);
+assert.ok(summarizeGoldenBatch({
+  results: [{ ok: false, skipped: true, skippedOnly: true, exitCode: 2, passed: 0, failed: 0, profileId: 'golden', reason: '503 Service Unavailable' }],
+}).headline.includes('503'));
+const noPermRun = parseGoldenExecution(JSON.stringify({
+  stats: { expected: 0, skipped: 2, unexpected: 1, flaky: 0 },
+  suites: [{
+    title: '对公申请单',
+    specs: [{
+      title: '列表加载与基础结构',
+      ok: false,
+      tests: [{
+        status: 'unexpected',
+        results: [{ status: 'failed', error: { message: '无权限访问本页面（url=https://stage9084.example/main/ap-request）' } }],
+      }],
+    }],
+  }],
+}), 1);
+assert.equal(noPermRun.allSkipped, true);
+assert.equal(noPermRun.failed, 0);
+assert.equal(noPermRun.exitCode, 2);
+assert.equal(finalizeGoldenExecution(noPermRun, { ok: false }).exitCode, 2);
+assert.equal(finalizeGoldenExecution(noPermRun, { ok: false }).reason, '无权限访问本页面');
+const noPermBatch = summarizeGoldenBatch({
+  results: [
+    { ok: false, skipped: true, skippedOnly: true, exitCode: 2, passed: 0, failed: 0, profileId: 'golden', reason: '无权限访问本页面' },
+    { ok: true, skipped: false, profileId: 'golden_4', exitCode: 0, passed: 3, failed: 0, total: 3 },
+  ],
+});
+assert.equal(noPermBatch.ok, true);
+assert.equal(noPermBatch.exitCode, 0);
+assert.ok(noPermBatch.headline.includes('无权限跳过'), noPermBatch.headline);
+assert.ok(summarizeGoldenBatch({
+  results: [{ ok: false, skipped: true, skippedOnly: true, exitCode: 2, passed: 0, failed: 0, profileId: 'golden', reason: '无权限访问本页面' }],
+}).headline.includes('无页面权限'));
 
 const successfulRound = { ok: true, exitCode: 0, failureType: null };
 assert.equal(summarizeGoldenRounds([successfulRound, successfulRound], 2).ok, true);
@@ -347,6 +398,7 @@ async function verifyGoldenListData(): Promise<void> {
           [`${flow[0].toUpperCase()}${flow.slice(1)}ListPage`]: ListPage,
         },
         '../../pages/request-edit.page': { RequestEditPage: class { async expectEditVisible() {} } },
+        '../../pages/expense-edit.page': { ExpenseEditPage: class { async expectEditVisible() {} } },
         '../../utils/approval-catalog': { TABS: { pending: 'pending', approved: 'approved', cc: 'cc' } },
         '../../utils/env': { env: {
           [`${flow}DocNo`]: scenario === 'configured' ? expectedDocNo : '', requestFilterKeyword: '无匹配关键字',
@@ -367,7 +419,7 @@ async function verifyGoldenListData(): Promise<void> {
         },
         process: { env: { PLAYWRIGHT_ENV: 'stage9084', FLOW_ACCOUNT_SLUG: 'offline' } },
       }, { timeout: 5_000 });
-      assert.equal(cases.length, flow === 'request' ? 4 : flow === 'approval' ? 1 : 2);
+      assert.equal(cases.length, flow === 'request' ? 4 : flow === 'approval' ? 1 : 3);
       const context = { page: {}, authenticatedPage: {}, flowRunDir: '/offline' };
       const run = async () => { for (const body of cases) await body(context); };
       const label = `${flow}: ${scenario}`;

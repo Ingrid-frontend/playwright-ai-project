@@ -20,6 +20,29 @@ function parseGoldenExecution(stdout, exitCode) {
     failures = parsePlaywrightFailures(result, null, exitCode);
     parsedResult = result;
     if (total === 0) failures.push({ message: 'Playwright 未执行任何测试（total=0），请检查 grep / spec / project' });
+    const failureText = failures.map((item) => item.message || '').join('\n');
+    const blob = `${failureText}\n${stdout}`;
+    const skipReason = passed === 0 && failed > 0
+      ? (/503 Service Unavailable/.test(blob) ? '503 Service Unavailable'
+        : /无权限访问本页面/.test(blob) ? '无权限访问本页面' : '')
+      : '';
+    if (skipReason) {
+      return {
+        ok: false,
+        allSkipped: true,
+        exitCode: 2,
+        passed: 0,
+        failed: 0,
+        total: total || failed,
+        skipped: total || failed,
+        skips: (failures.length ? failures : [{ title: '' }]).map((item) => ({
+          title: item.title || '',
+          reason: skipReason,
+        })),
+        failures: [],
+        parsedResult,
+      };
+    }
   } catch (error) {
     passed = 0;
     failed = 0;
@@ -54,6 +77,14 @@ function isExecutedPass(result) {
   return result.ok === true && !result.skipped && !result.skippedOnly && result.exitCode === 0 &&
     Number.isInteger(result.passed) && result.passed > 0 && result.failed === 0 &&
     Number.isInteger(result.total) && result.total >= result.passed;
+}
+
+function isUnavailable(result) {
+  return /503 Service Unavailable/.test(`${result?.reason || ''} ${result?.error || ''}`);
+}
+
+function isNoPermission(result) {
+  return /无权限访问本页面/.test(`${result?.reason || ''} ${result?.error || ''}`);
 }
 
 function isNoDataSkip(result) {
@@ -135,10 +166,18 @@ function summarizeGoldenBatch(batch) {
   }
 
   let headline;
-  if (skippedOnly) {
+  const unavailable = skipped.length > 0 && skipped.every((item) => isUnavailable(item));
+  const noPerm = skipped.length > 0 && skipped.every((item) => isNoPermission(item));
+  if (skippedOnly && unavailable) {
+    headline = `环境返回 503，已跳过：${skipped.length} 个角色`;
+  } else if (skippedOnly && noPerm) {
+    headline = `无页面权限，已跳过：${skipped.length} 个角色`;
+  } else if (skippedOnly) {
     headline = `Golden 批次无效：${skipped.length} 个角色全被跳过（无单据可跑）${ignored.length ? `，${ignored.length} 个忽略` : ''}`;
   } else if (ok) {
-    const skipHint = skipped.length ? `，${skipped.length} 个无数据跳过` : '';
+    const skipHint = !skipped.length ? ''
+      : skipped.every((item) => isNoPermission(item)) ? `，${skipped.length} 个无权限跳过`
+        : `，${skipped.length} 个无数据跳过`;
     headline = `Golden 批次完成：${passed.length} 个角色通过${skipHint}${ignored.length ? `，${ignored.length} 个忽略` : ''}`;
   } else if (failed.length && passed.length) {
     headline = `Golden 批次部分失败：${passed.length} 通过，${failed.length} 失败${ignored.length ? `，${ignored.length} 忽略` : ''}`;
@@ -154,6 +193,7 @@ function summarizeGoldenBatch(batch) {
 module.exports = {
   parseGoldenExecution,
   finalizeGoldenExecution,
+  isUnavailable,
   goldenBatchStatus,
   summarizeGoldenRounds,
   goldenBatchAbs,
