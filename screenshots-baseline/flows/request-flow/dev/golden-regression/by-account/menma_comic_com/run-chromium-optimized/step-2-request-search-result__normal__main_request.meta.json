@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-09-03T09:02:15.521Z",
+  "capturedAt": "2026-10-15T08:24:18.446Z",
   "viewport": {
     "name": "desktop",
     "width": 1280,
@@ -53,7 +53,7 @@
     {
       "key": "request-list-root",
       "structureHash": "5ef98138ea50b0b0",
-      "textHash": "64c64c681c337336",
+      "textHash": "9c6071d162920080",
       "nodeCount": 110,
       "childTags": "DIV"
     },
@@ -99,9 +99,9 @@
     },
     {
       "key": "request-list-root",
-      "text": "初始 视图<NUM> 单据名称 请选择 创建日期 申请人 请选择 单据公司 请选择 事由 参与人 请选择 项目任务 请选择 币种 请选择 金额范围 提交日期 状态 全部 编辑中 已撤回 已驳回 审批中 已通过 已关闭 已报废 状态 : 全部 重置<NUM> 搜 索 新建申请单 代理申请单 序号 创建日期 申请人 单据名称 事由 单号 币种 金额 本币金额 当前处理人 状态 提交日期 <NUM> <NUM>-<NUM>-<NUM> <NUM>worker <NUM>差旅一屏式-单段 单段测试 comic<NUM> - - - - 编辑中 - <NUM> <NUM>-<NUM>-<NUM> <NUM>worker <NUM>差旅一屏式-多段 多段测试 comic<NUM> - - - - 编辑中 - 操作 删除 复制 删除 复制 共<NUM>条 <NUM> <NUM> 条/页",
-      "textHash": "15d395844cf79f3b",
-      "charCount": 391
+      "text": "初始 视图<NUM> 状态 : 全部 重置<NUM> 搜 索 新建申请单 代理申请单 序号 创建日期 申请人 单据名称 事由 单号 币种 金额 本币金额 当前处理人 状态 提交日期 <NUM> <NUM>-<NUM>-<NUM> <NUM>worker <NUM>差旅一屏式-单段 单段测试 comic<NUM> - - - - 编辑中 - <NUM> <NUM>-<NUM>-<NUM> <NUM>worker <NUM>差旅一屏式-多段 多段测试 comic<NUM> - - - - 编辑中 - 操作 删除 复制 删除 复制 共<NUM>条 <NUM> <NUM> 条/页",
+      "textHash": "320c74d105edf8d9",
+      "charCount": 289
     },
     {
       "key": "request-list-table",
@@ -116,13 +116,8 @@
       "charCount": 222
     }
   ],
-  "selectors": {
-    "request-filter-panel": {
-      "exists": false
-    }
-  },
   "consoleErrors": [],
   "pageErrors": [],
-  "snapshotName": "request-filter",
+  "snapshotName": "request-search-result",
   "state": "normal"
 }

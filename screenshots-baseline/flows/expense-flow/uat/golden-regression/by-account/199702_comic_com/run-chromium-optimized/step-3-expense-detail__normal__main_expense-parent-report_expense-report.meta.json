@@ -1,0 +1,136 @@
+{
+  "capturedAt": "2026-10-14T10:51:21.437Z",
+  "viewport": {
+    "name": "desktop",
+    "width": 1280,
+    "height": 720,
+    "deviceScaleFactor": 1
+  },
+  "imageWidth": 1280,
+  "imageHeight": 720,
+  "layout": {
+    "horizontalOverflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280
+  },
+  "domHash": "BODY|1|",
+  "sections": [
+    {
+      "key": "intent-approve-tabs",
+      "structureHash": "5df3af64077c1e50",
+      "textHash": "230440c9681a82e4",
+      "nodeCount": 43,
+      "childTags": "DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "intent-approve-toolbar",
+      "structureHash": "76afb338c6e0590a",
+      "textHash": "e3b0c44298fc1c14",
+      "nodeCount": 8,
+      "childTags": "SPAN,INPUT,SPAN"
+    },
+    {
+      "key": "intent-approve-table",
+      "structureHash": "4102fe98522bfe3d",
+      "textHash": "a7cf5dea1c7457e0",
+      "nodeCount": 283,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "golden-approve-tabs",
+      "structureHash": "5df3af64077c1e50",
+      "textHash": "230440c9681a82e4",
+      "nodeCount": 43,
+      "childTags": "DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "golden-approve-table",
+      "structureHash": "4102fe98522bfe3d",
+      "textHash": "a7cf5dea1c7457e0",
+      "nodeCount": 283,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "request-list-root",
+      "structureHash": "fe4dea0f288afeba",
+      "textHash": "b881295fbe5f145f",
+      "nodeCount": 120,
+      "childTags": "DIV"
+    },
+    {
+      "key": "request-list-table",
+      "structureHash": "4102fe98522bfe3d",
+      "textHash": "a7cf5dea1c7457e0",
+      "nodeCount": 283,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "request-search-table",
+      "structureHash": "4102fe98522bfe3d",
+      "textHash": "a7cf5dea1c7457e0",
+      "nodeCount": 283,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "request-detail-slide",
+      "structureHash": "b1a25e28a2e25141",
+      "textHash": "43ecbd6a61a5a6e2",
+      "nodeCount": 33,
+      "childTags": "DIV"
+    }
+  ],
+  "textSections": [
+    {
+      "key": "intent-approve-tabs",
+      "text": "工作台 AI能力中心预订商旅<NUM>财务管理数据分析系统管理",
+      "textHash": "2ae382083e80a075",
+      "charCount": 31
+    },
+    {
+      "key": "intent-approve-table",
+      "text": "序号 提交日期 申请人报销单 单据名称 事由 单号 币种 金额 本币币种 本币金额 收单状态 摘要信息 当前处理人 状态 <NUM> <NUM>-<NUM>-<NUM> <NUM>小号测试 <NUM>-测试供应商 <NUM> <NUM> CNY <NUM>.<NUM> CNY <NUM>.<NUM> 未收单 - - 编辑中 操作 复制 删除 联查",
+      "textHash": "2dccfdc5f748fb0a",
+      "charCount": 174
+    },
+    {
+      "key": "golden-approve-tabs",
+      "text": "工作台 AI能力中心预订商旅<NUM>财务管理数据分析系统管理",
+      "textHash": "2ae382083e80a075",
+      "charCount": 31
+    },
+    {
+      "key": "golden-approve-table",
+      "text": "序号 提交日期 申请人报销单 单据名称 事由 单号 币种 金额 本币币种 本币金额 收单状态 摘要信息 当前处理人 状态 <NUM> <NUM>-<NUM>-<NUM> <NUM>小号测试 <NUM>-测试供应商 <NUM> <NUM> CNY <NUM>.<NUM> CNY <NUM>.<NUM> 未收单 - - 编辑中 操作 复制 删除 联查",
+      "textHash": "2dccfdc5f748fb0a",
+      "charCount": 174
+    },
+    {
+      "key": "request-list-root",
+      "text": "本周 一月 视图<NUM> <NUM>月-视图<NUM>-优先级<NUM> 单据名称 请选择 提交日期 收单状态 请选择 提交日期 : <NUM>-<NUM>-<NUM> ~ <NUM>-<NUM>-<NUM> 重置 搜 索 新建报销单 代理报销单 序号 提交日期 申请人报销单 单据名称 事由 单号 币种 金额 本币币种 本币金额 收单状态 摘要信息 当前处理人 状态 <NUM> <NUM>-<NUM>-<NUM> <NUM>小号测试 <NUM>-测试供应商 <NUM> <NUM> CNY <NUM>.<NUM> CNY <NUM>.<NUM> 未收单 - - 编辑中 操作 复制 删除 联查 已选择<NUM> 批量打印 共<NUM>条 <NUM> <NUM> 条/页",
+      "textHash": "5d88d7ffbb7352a4",
+      "charCount": 337
+    },
+    {
+      "key": "request-list-table",
+      "text": "序号 提交日期 申请人报销单 单据名称 事由 单号 币种 金额 本币币种 本币金额 收单状态 摘要信息 当前处理人 状态 <NUM> <NUM>-<NUM>-<NUM> <NUM>小号测试 <NUM>-测试供应商 <NUM> <NUM> CNY <NUM>.<NUM> CNY <NUM>.<NUM> 未收单 - - 编辑中 操作 复制 删除 联查",
+      "textHash": "2dccfdc5f748fb0a",
+      "charCount": 174
+    },
+    {
+      "key": "request-search-table",
+      "text": "序号 提交日期 申请人报销单 单据名称 事由 单号 币种 金额 本币币种 本币金额 收单状态 摘要信息 当前处理人 状态 <NUM> <NUM>-<NUM>-<NUM> <NUM>小号测试 <NUM>-测试供应商 <NUM> <NUM> CNY <NUM>.<NUM> CNY <NUM>.<NUM> 未收单 - - 编辑中 操作 复制 删除 联查",
+      "textHash": "2dccfdc5f748fb0a",
+      "charCount": 174
+    },
+    {
+      "key": "request-detail-slide",
+      "text": "<NUM>-测试供应商 创建日期：<NUM>-<NUM>-<NUM> 制单人：<NUM>小号测试 单号：<NUM> 申请人报销单 <NUM>小号测试<NUM>公司<NUM>测试用修改-en 单据金额 CNY <NUM>.<NUM> 付款金额 CNY <NUM>.<NUM> 单据状态 编辑中 单据详情 单据信息 编 辑 参与人员详情 <NUM>小号测试 外部参与人 - 附件 - 部门 测试用修改-en 收款单位/个人 测试V<NUM> | <NUM> 收款方 <NUM>小号测试 银行卡号 时间日期 - 事由 <NUM> 自选审批人 <NUM>,<NUM>外部员工<NUM>,<NUM>,<NUM>解绑测试,<NUM>小号测试,<NUM>外部员工<NUM>,<NUM>,张三<NUM>,孔容容,<ID><NUM> 费用明细 * 账本费用 手录费用 批量导入费用 发票生成费用 普通模式 费用类型：全部费用 数量：<NUM> 总金额：CNY <NUM>.<NUM> 序号 费用类型 日期 币种 金额 汇率 本位币金额 摘要信息 事由说明 附件 费用归属人 发票张数 付款信息序号 费用编号 暂无数据 操作 收款信息",
+      "textHash": "d9fb55f3da3fbb91",
+      "charCount": 507
+    }
+  ],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "snapshotName": "expense-detail",
+  "state": "normal"
+}

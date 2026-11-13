@@ -51,16 +51,16 @@ export async function lockViewportForSnapshot(page: Page, viewport: SnapshotView
 
 export async function waitForScreenshotStable(page: Page): Promise<void> {
   if (!resolveScreenshotWaitFonts()) return;
-  try {
-    await page.evaluate(async () => {
+  for (const frame of page.frames()) {
+    if (frame.isDetached()) continue;
+    await frame.evaluate(async () => {
       try {
         if (document.fonts?.ready) await document.fonts.ready;
       } catch {
         /* ignore */
       }
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
     });
-  } catch {
-    /* frame 可能已销毁 */
   }
 }
 
@@ -157,8 +157,6 @@ export function normalizeScreenshotToCssViewport(
   }
   return { width: png.width, height: png.height, cropped };
 }
-
-let freezeAnimationsApplied = false;
 
 const pageDiag = new WeakMap<Page, { consoleErrors: string[]; pageErrors: string[] }>();
 
@@ -540,7 +538,6 @@ export async function captureScreenshotAtViewports(
 }
 
 export async function applyScreenshotStabilityStyles(page: Page): Promise<void> {
-  if (freezeAnimationsApplied) return;
   let enabled = process.env.SCREENSHOT_FREEZE_ANIMATIONS !== '0';
   try {
     const cfgPath = path.join(__dirname, '../../config/ui-regression.json');
@@ -555,17 +552,19 @@ export async function applyScreenshotStabilityStyles(page: Page): Promise<void> 
     /* use env default */
   }
   if (!enabled) return;
-  try {
-    await page.addStyleTag({
-      content: `*, *::before, *::after {
+  for (const frame of page.frames()) {
+    if (frame.isDetached()) continue;
+    await frame.evaluate(() => {
+      if (document.getElementById('ui-regression-stability-style')) return;
+      const style = document.createElement('style');
+      style.id = 'ui-regression-stability-style';
+      style.textContent = `*, *::before, *::after {
         animation-duration: 0s !important;
         animation-delay: 0s !important;
         transition-duration: 0s !important;
         transition-delay: 0s !important;
-      }`,
+      }`;
+      document.head.appendChild(style);
     });
-    freezeAnimationsApplied = true;
-  } catch {
-    /* frame 可能已销毁 */
   }
 }

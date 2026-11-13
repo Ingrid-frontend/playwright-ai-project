@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { isDisabledViewportScreenshot } from './ui-regression-config.js';
+import { extractEnvId, extractLoginAccount } from './customer-report-naming.js';
 import {
   formatDisplayTimestampFromRunDir,
   isLoginScreenshotCandidate,
@@ -100,6 +101,33 @@ export function discoverGoldenScriptScanTargets(screenshotsDir: string): ScriptS
   return discoverScriptScanTargets(screenshotsDir).filter((t) => isGoldenRegressionTarget(t.testDir));
 }
 
+/** 档案里解析不出登录 slug 时返回 null，调用方保持原目录，避免把报告扫空。 */
+export function loginSlugsFromRoleSlugs(pairs: Array<{ id: string; slug: string }>): Set<string> | null {
+  const slugs = new Set<string>();
+  for (const pair of pairs) {
+    const id = pair.id.trim();
+    const slug = pair.slug.trim();
+    if (!slug || slug === id) continue;
+    slugs.add(slug);
+  }
+  return slugs.size ? slugs : null;
+}
+
+export function filterTargetsByAccountSlugs(
+  targets: ScriptScanTarget[],
+  slugsByEnv: ReadonlyMap<string, ReadonlySet<string> | null>,
+): ScriptScanTarget[] {
+  return targets.filter((target) => {
+    const slug = extractLoginAccount(target.testDir);
+    if (!slug) return true;
+    const envId = extractEnvId(target.testDir);
+    if (!envId || !slugsByEnv.has(envId)) return true;
+    const slugs = slugsByEnv.get(envId);
+    if (!slugs?.size) return true;
+    return slugs.has(slug);
+  });
+}
+
 export function discoverScriptScanTargets(screenshotsDir: string): ScriptScanTarget[] {
   const skipTop = new Set(['results', 'diffs', 'pom']);
   const targets: ScriptScanTarget[] = [];
@@ -154,6 +182,7 @@ export function getAllScreenshots(dir: string, type: 'pom' | 'optimized', output
       if (entry.isDirectory()) {
         scanDirectory(fullPath, relativePath);
       } else if (entry.isFile() && entry.name.endsWith('.png')) {
+        if (entry.name.includes('-stuck')) return;
         if (isDisabledViewportScreenshot(entry.name)) return;
         const match = entry.name.match(/step-(\d+)-(.+)\.png/);
         if (match) {

@@ -13,8 +13,10 @@ import { buildJobFailReasons } from '../jobs/job-notify.js';
 import {
   discoverGoldenScriptScanTargets,
   discoverScriptScanTargets,
+  filterTargetsByAccountSlugs,
   getAllScreenshots,
   isGoldenRegressionTarget,
+  loginSlugsFromRoleSlugs,
 } from '../report/compare-screenshots-scan.js';
 import { pickLatestRunGroup } from '../report/ui-audit-history.js';
 import { classifyComparisonSeverity } from '../report/ui-issues-index.js';
@@ -196,12 +198,39 @@ const shotTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pw-shot-'));
 const runDir = path.join(shotTmp, 'run-chromium-optimized');
 fs.mkdirSync(runDir, { recursive: true });
 fs.writeFileSync(path.join(runDir, 'step-1-home.png'), '');
+fs.writeFileSync(path.join(runDir, 'step-1-home-stuck.png'), '');
+fs.writeFileSync(
+  path.join(runDir, 'step-1-home-stuck.meta.json'),
+  JSON.stringify({ snapshotName: 'home', state: 'normal', selectors: { root: { exists: false } } }),
+);
 const shots = getAllScreenshots(shotTmp, 'optimized', path.join(shotTmp, 'results', 'out.html'));
 assert.equal(shots.get(1)?.length, 1);
 assert.equal(shots.get(1)?.[0]?.browser, 'chrome');
 assert.equal(shots.get(1)?.[0]?.stepName, 'home');
+assert.equal(shots.get(1)?.some((s) => s.path.includes('-stuck')), false);
 fs.rmSync(shotTmp, { recursive: true, force: true });
 pass('getAllScreenshots');
+
+const accountTargets = [
+  { testDir: 'flows/request-flow/stage9084/golden-regression/by-account/800187_hoymiles_com', scriptPath: 'a' },
+  { testDir: 'flows/request-flow/stage9084/golden-regression/by-account/13312349876', scriptPath: 'b' },
+  { testDir: 'flows/request-flow/stage9084/golden-regression', scriptPath: 'c' },
+  { testDir: 'flows/request-flow/dev/golden-regression/by-account/menma_comic_com', scriptPath: 'd' },
+];
+const stageSlugs = new Map<string, Set<string> | null>([
+  ['stage9084', new Set(['13312349876'])],
+  ['dev', null],
+]);
+assert.deepEqual(
+  filterTargetsByAccountSlugs(accountTargets, stageSlugs).map((t) => t.scriptPath),
+  ['b', 'c', 'd'],
+);
+assert.equal(loginSlugsFromRoleSlugs([{ id: 'golden', slug: 'golden' }]), null);
+assert.deepEqual(
+  [...(loginSlugsFromRoleSlugs([{ id: 'golden', slug: '13312349876' }, { id: 'golden_2', slug: 'golden_2' }]) || [])],
+  ['13312349876'],
+);
+pass('filterTargetsByAccountSlugs');
 
 assert.equal(extractCalendarDayKey('2026-08-14_10-00-00'), '2026-08-14');
 assert.equal(extractCalendarDayKey('foo'), null);

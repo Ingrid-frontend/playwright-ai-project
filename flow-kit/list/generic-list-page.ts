@@ -236,6 +236,7 @@ export class GenericListPage {
 
   /** 列表因残留筛选为空时，尝试去掉条件并重新搜索 */
   async recoverIfEmptyList(): Promise<boolean> {
+    await this.expectListReady();
     if (await this.hasDataRows()) return true;
     if (await this.widenSubmitDate()) return true;
     await this.dismissChrome();

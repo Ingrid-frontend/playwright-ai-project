@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>申请单 · 页面变化复核</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f5f9;color:#233047;font:16px/1.6 system-ui,-apple-system,sans-serif}main{max-width:1160px;margin:auto;padding:28px 24px}h1{font-size:28px;margin:4px 0}h2{font-size:21px;margin:8px 0}p{margin:8px 0}.muted,figcaption{font-size:14px;color:#5d6b80}.card{background:white;border:1px solid #dce2eb;border-radius:12px;padding:22px;margin:20px 0}.badge{display:inline-block;background:#fff0cf;color:#795000;border-radius:5px;padding:2px 9px;font-size:13px}.blue{background:#eaf0ff;color:#28559d}.action{padding:12px 16px;background:#f4f7fc;border-left:3px solid #4776c5;margin:14px 0}.pair{display:grid;grid-template-columns:1fr 1fr;gap:16px}figure{margin:0}svg{display:block;width:100%;background:#f8f9fb;border:1px solid #dae0e9}figcaption{margin:5px 0}a{color:#235bb2}.compare{position:relative;aspect-ratio:16/9;overflow:hidden;border:1px solid #c9d1de;--split:50%}.compare img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}.compare .after{clip-path:inset(0 0 0 var(--split))}.divider{position:absolute;left:var(--split);top:0;bottom:0;border-left:2px solid #2468db;pointer-events:none}.label{position:absolute;top:8px;background:#14223ae6;color:white;padding:3px 10px;font-size:13px;border-radius:4px}.left{left:8px}.right{right:8px}.control{display:flex;align-items:center;gap:12px;font-size:14px;padding:8px 0}.control input{flex:1;min-width:60px;accent-color:#2468db}details{margin-top:14px;font-size:14px}summary{cursor:pointer;color:#235bb2}table{border-collapse:collapse;width:100%;font-size:14px}td,th{text-align:left;padding:10px;border-bottom:1px solid #e3e8ef;vertical-align:top}code{overflow-wrap:anywhere}ul{padding-left:22px}@media(max-width:700px){main{padding:16px}.card{padding:16px}.pair{grid-template-columns:1fr}h1{font-size:24px}}@media print{.control{display:none}.card{break-inside:avoid}}
+</style>
+</head>
+<body><main>
+<div class="muted">内部样例 · dev / 申请单 / 账号 A · 2026-10-15 10:00（北京时间）</div>
+<h1>发现页面变化，需确认是否符合预期</h1>
+<p><strong>先看导航菜单，再看顶部图标。</strong>目前未人工确认缺陷，不能据此决定发布。</p>
+
+<section class="card">
+<span class="badge">待测试 / 前端确认</span>
+<h2>01 · 菜单项变了，后续条目位置随之变化</h2>
+<p>当前增加了“申请单关闭”，底部不再显示“我的代理”。请确认是否为预期的菜单或权限调整。</p>
+<div class="evidence" data-evidence="filter">
+<div class="control" role="group" aria-label="筛选页面查看方式"><button type="button" data-image="assets/filter-diff-overlay.png" aria-pressed="true">像素差异</button><button type="button" data-image="assets/filter-current.png" aria-pressed="false">当前截图</button><button type="button" data-image="assets/filter-baseline.png" aria-pressed="false">基线截图</button></div>
+<a class="evidence-link" href="assets/filter-diff-overlay.png"><img class="evidence-image" style="display:block;width:100%;border:1px solid #dce2eb" src="assets/filter-diff-overlay.png" alt="筛选页面像素差异：红色标出变化像素和差异区域"></a>
+<p class="muted">红色像素表示变化，红框圈出变化区域；不代表已确认缺陷。点击图片查看原尺寸。</p>
+</div>
+<div class="pair">
+<figure><a href="assets/filter-baseline.png"><img style="display:block;width:100%" src="assets/filter-baseline.png" alt="筛选页面基线截图"></a><figcaption>基线 · 09-03（点击看原图）</figcaption></figure>
+<figure><a href="assets/filter-current.png"><img style="display:block;width:100%" src="assets/filter-current.png" alt="筛选页面当前截图"></a><figcaption>当前 · 10-15（点击看原图）</figcaption></figure>
+</div>
+<details open><summary>局部放大：菜单与顶部图标（可收起）</summary>
+<div class="pair">
+<figure><svg style="height:440px" viewBox="0 285 150 395" role="img" aria-label="基线左侧菜单放大"><image href="assets/filter-baseline.png" width="1280" height="720"/></svg><figcaption>基线 · 09-03：底部可见“我的代理”</figcaption></figure>
+<figure><svg style="height:440px" viewBox="0 285 150 395" role="img" aria-label="当前左侧菜单放大"><image href="assets/filter-current.png" width="1280" height="720"/></svg><figcaption>当前 · 10-15：出现“申请单关闭”</figcaption></figure>
+</div>
+<p class="muted">以上为同一区域放大；位置变化本身不等于错位缺陷。底部计数变化不作为本项缺陷依据。</p>
+<h2>02 · 顶部右侧图标有变化</h2>
+<div class="pair">
+<figure><svg viewBox="900 0 260 42" role="img" aria-label="基线顶部图标放大"><image href="assets/filter-baseline.png" width="1280" height="720"/></svg><figcaption>基线 · 09-03</figcaption></figure>
+<figure><svg viewBox="900 0 260 42" role="img" aria-label="当前顶部图标放大"><image href="assets/filter-current.png" width="1280" height="720"/></svg><figcaption>当前 · 10-15</figcaption></figure>
+</div>
+</details>
+<div class="action"><strong>需要确认：</strong>菜单和图标调整是否在本次版本或权限变更范围内？符合预期则审核更新基线；不符合则登记问题。</div>
+<details><summary>查看整页：拖动对比线</summary>
+<p class="muted">蓝线左边显示基线，右边显示当前。也可分别打开原尺寸图片。</p>
+<div class="compare" id="filter-compare"><img src="assets/filter-baseline.png" alt="筛选展开态基线整页"><img class="after" src="assets/filter-current.png" alt="筛选展开态当前整页"><div class="divider"></div><span class="label left">基线 09-03</span><span class="label right">当前 10-15</span></div>
+<label class="control">对比线位置<input type="range" min="0" max="100" value="50" aria-label="筛选页面对比线位置" data-compare="filter-compare"></label>
+<a href="assets/filter-baseline.png">打开基线图</a> · <a href="assets/filter-current.png">打开当前图</a>
+</details>
+</section>
+
+<section class="card">
+<span class="badge blue">工具维护者处理 · 不计入产品缺陷</span>
+<h2>筛选区可见，但自动检查未识别</h2>
+<p>当前截图能看到“单据名称、事由、状态”等筛选字段。自动检查没有找到对应元素，尚不能判断页面缺失。</p>
+<figure><svg viewBox="145 70 1135 305" role="img" aria-label="当前可见的筛选字段区域"><image href="assets/filter-current.png" width="1280" height="720"/></svg><figcaption>当前截图 · 筛选展开区域</figcaption></figure>
+<div class="action"><strong>下一步：</strong>工具维护者核对定位规则和截图状态；暂不要求前端修改页面。</div>
+<details><summary>检查依据</summary><p>截图元数据：<code>request-filter-panel.exists=false</code>。检查使用可选选择器 <code>.advanced-table-search-form, .advanced-search-filter-pop</code>。此信号不能独立证明视觉缺陷，需核对实际组件。</p></details>
+</section>
+
+<section class="card">
+<span class="badge">详情 · 待复核</span><h2>详情首屏：红色标出变化位置</h2>
+<p>本样例尚未给出详情缺陷判断；只展示首屏，不包含向下滚动后的内容。</p>
+<div class="evidence" data-evidence="detail">
+<div class="control" role="group" aria-label="详情页面查看方式"><button type="button" data-image="assets/detail-diff-overlay.png" aria-pressed="true">像素差异</button><button type="button" data-image="assets/detail-current.png" aria-pressed="false">当前截图</button><button type="button" data-image="assets/detail-baseline.png" aria-pressed="false">基线截图</button></div>
+<a class="evidence-link" href="assets/detail-diff-overlay.png"><img class="evidence-image" style="display:block;width:100%;border:1px solid #dce2eb" src="assets/detail-diff-overlay.png" alt="详情首屏像素差异：红色标出变化像素和差异区域"></a>
+<p class="muted">红色表示变化，不等于缺陷；点击图片查看原尺寸。</p>
+</div>
+<div class="pair">
+<figure><a href="assets/detail-baseline.png"><img style="display:block;width:100%" src="assets/detail-baseline.png" alt="详情首屏基线截图"></a><figcaption>基线 · 09-03（点击看原图）</figcaption></figure>
+<figure><a href="assets/detail-current.png"><img style="display:block;width:100%" src="assets/detail-current.png" alt="详情首屏当前截图"></a><figcaption>当前 · 10-15（点击看原图）</figcaption></figure>
+</div>
+<details><summary>拖动对比前后页面</summary>
+<div class="compare" id="detail-compare"><img src="assets/detail-baseline.png" alt="详情首屏基线"><img class="after" src="assets/detail-current.png" alt="详情首屏当前"><div class="divider"></div><span class="label left">基线 09-03</span><span class="label right">当前 10-15</span></div>
+<label class="control">对比线位置<input type="range" min="0" max="100" value="50" aria-label="详情页面对比线位置" data-compare="detail-compare"></label>
+<a href="assets/detail-baseline.png">打开基线图</a> · <a href="assets/detail-current.png">打开当前图</a>
+</details>
+</section>
+
+<section class="card"><h2>检查范围与限制</h2>
+<table><thead><tr><th>页面状态</th><th>结果</th></tr></thead><tbody>
+<tr><td>列表 / 筛选展开态</td><td>有截图；本样例将公共导航变化合并展示，未完成整页验收。</td></tr>
+<tr><td>搜索结果态</td><td>截图中查询框为空、仍显示两行；不能据此验收搜索结果态。</td></tr>
+<tr><td>详情</td><td>有首屏对照图，等待复核。</td></tr>
+<tr><td>新建、保存、修改、删除及其他视口</td><td>未覆盖。</td></tr>
+</tbody></table>
+<details><summary>批次、来源与技术说明</summary><ul>
+<li>Chrome，1280 × 720。批次：<code>2026-10-15T02-00-01-626Z</code>，运行进度为 done，不等于视觉验收通过。</li>
+<li>基线 revision 2，源批次 <code>2026-09-03T09-01-49-476Z</code>，元数据标记手动晋升。当前 / 基线的产品版本、账号权限角色及审批记录未知。</li>
+<li>变化位置由助手查看真实截图整理，尚未经测试 / 前端确认，未调用新的视觉模型。</li>
+<li>不同产物的差异数值口径尚未对齐，不作为严重程度或发布依据。</li>
+<li><a href="README.md">完整来源、信息契约与试读表</a>。这是静态样例，不保存复核结论。</li>
+</ul></details></section>
+<footer class="muted">仅供内部评审 · 截图未脱敏，勿对外发送。</footer>
+</main>
+<script>
+document.querySelectorAll('.evidence').forEach(view=>{
+  view.querySelectorAll('button[data-image]').forEach(button=>{
+    button.addEventListener('click',()=>{
+      view.querySelector('.evidence-image').src=button.dataset.image;
+      view.querySelector('.evidence-image').alt=button.textContent+'（'+(view.dataset.evidence==='detail'?'详情首屏':'筛选页面')+'）';
+      view.querySelector('.evidence-link').href=button.dataset.image;
+      view.querySelectorAll('button').forEach(other=>other.setAttribute('aria-pressed',String(other===button)));
+    });
+  });
+});
+document.querySelectorAll('[data-compare]').forEach(input=>{
+  input.addEventListener('input',()=>{
+    document.getElementById(input.dataset.compare).style.setProperty('--split', input.value+'%');
+  });
+});
+</script>
+</body></html>

@@ -26,6 +26,7 @@ import {
 import { readAuditInsights } from './customer-report-audit-inject.js';
 import { envLabelFromId } from './customer-report-naming.js';
 import { writeCustomerReportSummary } from './customer-report-summary.js';
+import { generateVisualReviewReport } from './visual-review-report.js';
 import {
   enrichRunHistoryComparisons,
   filterScreenshotsByRun,
@@ -50,6 +51,10 @@ async function main() {
     ?.slice('--script-key='.length)
     .replace(/^flows\//, '');
   const boundRunId = args.find((a) => a.startsWith('--run='))?.slice('--run='.length);
+  const visualReview = args.includes('--visual-review');
+  if (visualReview && (!scriptKey || !boundRunId || batch)) {
+    throw new Error('--visual-review 需要 --script-key 和 --run 显式绑定申请单单账号运行，不能与 --batch-id 混用');
+  }
   const batchRuns = new Map(
     (batch?.runs || [])
       .filter((run) => run.scriptKey && run.runId)
@@ -172,6 +177,12 @@ async function main() {
   const outAbs = path.resolve(outputPath);
   fs.mkdirSync(path.dirname(outAbs), { recursive: true });
   fs.writeFileSync(outAbs, html, 'utf-8');
+  if (visualReview) {
+    const reviewDir = args.find(a => a.startsWith('--review-out='))?.slice('--review-out='.length) ||
+      path.join(path.dirname(outputPath), 'visual-review', boundRunId!);
+    const manifest = await generateVisualReviewReport(coverage.slots, scriptKey!, boundRunId!, outputPath, reviewDir);
+    console.log(`视觉复核预览: ${path.join(reviewDir, 'index.html')}\n发布载荷: ${manifest}`);
+  }
   if (batch) {
     writeCustomerReportSummary(model, path.join(path.dirname(outputPath), 'summary.json'));
   }

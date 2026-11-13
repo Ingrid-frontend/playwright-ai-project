@@ -119,6 +119,7 @@ test.describe('申请单 · Golden 回归', () => {
       await list.expectLoaded();
       await list.recoverIfEmptyList();
       await trySeedGoldenContext(list);
+      await list.restoreDefaultList();
       if (!goldenCtx.docNo && !(await list.hasDataRows())) {
         test.skip(true, GOLDEN_SKIP_MSG);
       }
@@ -135,8 +136,8 @@ test.describe('申请单 · Golden 回归', () => {
     await flowStep('按单号搜索', async () => {
       await list.search(docNo, keepFilters);
       await list.expectRowContains(docNo);
-      await list.restoreDefaultList();
-    }, { snapshot: 'request-search', step: 2 });
+    }, { snapshot: 'request-search-result', step: 2 });
+    await list.restoreDefaultList();
   });
 
   test('展开筛选并按固定关键字筛选', async ({ page, flowRunDir }) => {
@@ -151,9 +152,10 @@ test.describe('申请单 · Golden 回归', () => {
     await flowStep('按事由筛选', async () => {
       await list.filterByReason(keyword, keepFilters);
       await list.expectReasonFilterResult(keyword);
-      await list.restoreDefaultList();
       await list.expectListReady();
-    }, { snapshot: 'request-filter', step: 3 });
+      await page.mouse.move(0, 0);
+    }, { snapshot: 'request-filter-result', step: 3 });
+    await list.restoreDefaultList();
   });
 
   test('用现场单号搜索并打开详情', async ({ page, flowRunDir }) => {
@@ -173,6 +175,13 @@ test.describe('申请单 · Golden 回归', () => {
       await list.openByCode(docNo);
       const edit = new RequestEditPage(page);
       await edit.expectEditVisible();
+      await page.mouse.move(0, 0);
+      // 默认详情截图不检查焦点态，避免打开详情后的自动聚焦残留。
+      for (const frame of page.frames()) {
+        await frame.evaluate(() => {
+          if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+        });
+      }
     }, { snapshot: 'request-detail', step: 4 });
   });
 });

@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { createRequire } from 'node:module';
 import dotenv from 'dotenv';
 import {
   COMPARE_CONCURRENCY,
@@ -11,6 +12,8 @@ import {
 import {
   discoverGoldenScriptScanTargets,
   discoverScriptScanTargets,
+  filterTargetsByAccountSlugs,
+  loginSlugsFromRoleSlugs,
 } from './compare-screenshots-scan.js';
 import { buildCoverageStats } from './coverage-stats.js';
 import { buildCustomerReportModel } from './customer-report-model.js';
@@ -23,11 +26,27 @@ import { buildCustomerDeliveryPayload, writeCustomerDeliveryPayload } from './cu
 import { appendDeliveryHistory } from './customer-delivery-history.js';
 import { resolveScriptRunMeta, resolveScriptRunHistory } from './customer-report-run-meta.js';
 import { enrichRunHistoryComparisons, screenshotsForMainReport } from './customer-report-run-history.js';
-import { extractEnvId, envLabelFromId, envIdSortKey } from './customer-report-naming.js';
+import { extractEnvId, extractLoginAccount, envLabelFromId, envIdSortKey } from './customer-report-naming.js';
 import { resolveDeliveryPayloadPath } from '../../src/utils/env-profile.js';
 import { resolveCompareCrossBrowser } from './ui-regression-config.js';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
+
+const require = createRequire(import.meta.url);
+const repoEnv = require('../../pw-files/repo-env.js') as {
+  listGoldenProfileIds: (repoRoot: string, envId: string) => string[];
+  resolveFlowRoleSlug: (repoRoot: string, envId: string, profileId: string) => string;
+};
+
+function slugsForEnv(envId: string): Set<string> | null {
+  const ids = repoEnv.listGoldenProfileIds(process.cwd(), envId);
+  return loginSlugsFromRoleSlugs(
+    ids.map((id) => ({
+      id,
+      slug: String(repoEnv.resolveFlowRoleSlug(process.cwd(), envId, id) || ''),
+    })),
+  );
+}
 
 async function main() {
   const args = process.argv.slice(2);
@@ -85,10 +104,26 @@ async function main() {
     }
   }
 
+  const slugsByEnv = new Map<string, Set<string> | null>();
+  for (const envId of new Set(scanTargets.map(envIdsOf).filter(Boolean))) {
+    slugsByEnv.set(envId, slugsForEnv(envId));
+  }
+  const kept = filterTargetsByAccountSlugs(scanTargets, slugsByEnv);
+  const dropped = scanTargets.filter((t) => !kept.includes(t));
+  scanTargets = kept;
+  if (scanTargets.length === 0) {
+    console.error('当前账号档案下没有可交付的截图目录');
+    process.exit(1);
+  }
+
   const activeEnv = envFilter || process.env.PLAYWRIGHT_ENV?.trim() || '';
   console.log('正在生成客户版 UI 衰退检测报告...');
   console.log(`  范围: ${allScripts ? '全部脚本' : 'Golden 回归'}`);
   console.log(`  脚本数: ${scanTargets.length}`);
+  if (dropped.length) {
+    const slugs = [...new Set(dropped.map((t) => extractLoginAccount(t.testDir)).filter(Boolean))];
+    console.log(`  跳过不在当前账号档案的目录: ${dropped.length}（${slugs.join('、')}）`);
+  }
   if (activeEnv) {
     console.log(
       `  跨浏览器对比: ${resolveCompareCrossBrowser(activeEnv) ? '开启' : '关闭'}（env=${activeEnv}，可用 PLAYWRIGHT_COMPARE_CROSS_BROWSER 覆盖）`,

@@ -82,6 +82,7 @@ npm run selector-drift:suggest
 | [report-quality-review-2026-09-10.md](./report-quality-review-2026-09-10.md) | 要做报告质量整改时（内部）。首屏口径矛盾、AI 审计与像素报告结论冲突的完整问题清单 |
 | [delivery-freeze-2026-09.md](./delivery-freeze-2026-09.md) | **本次发版收尾前**。Stage9084 交付 DoD、冻结范围、NOT-DOING 与 POST-DELIVERY |
 | [page-change-detection-design.md](./page-change-detection-design.md) | 想扩展检测能力时。对标 PageWatch 的逆向分析 + 本项目缺口 + 不建议照搬的部分 |
+| [visual-review-delivery.md](./visual-review-delivery.md) | 要按指定运行生成视觉复核报告并交付到飞书独立表时。生成预览 → 检查 → 明确批准后发布 |
 
 ```bash
 npm run report:customer      # 客户版报告
@@ -122,6 +123,7 @@ npm run trust:report         # Intent 可信度
 | [OPTIMIZATION-ROADMAP.md](./OPTIMIZATION-ROADMAP.md) | 想知道「某个能力做了没」。已落地清单 + 环境变量速查 |
 | [scripts-map.md](./scripts-map.md) | 想知道「有哪些命令可用」。168 条 npm scripts 按域分组的唯一索引 + 6 个孤儿工具 CLI 纳管清单 |
 | [improvement-plan.md](./improvement-plan.md) | 要做项目瓶颈改造时。六大瓶颈分析 + 四阶段实施计划 + 统一验收指标 |
+| [project-discussion-log.md](./project-discussion-log.md) | 想追溯项目方向讨论与决策脉络时。每轮讨论概要、用户目标、已确认结论与待决事项 |
 
 ---
 

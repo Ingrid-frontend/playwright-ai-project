@@ -1,0 +1,136 @@
+{
+  "capturedAt": "2026-10-14T11:02:11.872Z",
+  "viewport": {
+    "name": "desktop",
+    "width": 1280,
+    "height": 720,
+    "deviceScaleFactor": 1
+  },
+  "imageWidth": 1280,
+  "imageHeight": 720,
+  "layout": {
+    "horizontalOverflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280
+  },
+  "domHash": "BODY|1|",
+  "sections": [
+    {
+      "key": "intent-approve-tabs",
+      "structureHash": "0baf4d93744717ec",
+      "textHash": "a1ca0a2df1ba04ae",
+      "nodeCount": 46,
+      "childTags": "DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "intent-approve-toolbar",
+      "structureHash": "76afb338c6e0590a",
+      "textHash": "e3b0c44298fc1c14",
+      "nodeCount": 8,
+      "childTags": "SPAN,INPUT,SPAN"
+    },
+    {
+      "key": "intent-approve-table",
+      "structureHash": "188e74f239132c20",
+      "textHash": "faea06a46504dece",
+      "nodeCount": 271,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "golden-approve-tabs",
+      "structureHash": "0baf4d93744717ec",
+      "textHash": "a1ca0a2df1ba04ae",
+      "nodeCount": 46,
+      "childTags": "DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "golden-approve-table",
+      "structureHash": "188e74f239132c20",
+      "textHash": "faea06a46504dece",
+      "nodeCount": 271,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "request-list-root",
+      "structureHash": "80817503f83aeb8d",
+      "textHash": "803f08f40916053e",
+      "nodeCount": 113,
+      "childTags": "DIV"
+    },
+    {
+      "key": "request-list-table",
+      "structureHash": "188e74f239132c20",
+      "textHash": "faea06a46504dece",
+      "nodeCount": 271,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "request-search-table",
+      "structureHash": "188e74f239132c20",
+      "textHash": "faea06a46504dece",
+      "nodeCount": 271,
+      "childTags": "DIV,DIV,DIV,DIV,DIV,DIV"
+    },
+    {
+      "key": "request-detail-slide",
+      "structureHash": "4a815659a821cf95",
+      "textHash": "bb3d4b0dd9a73c1f",
+      "nodeCount": 35,
+      "childTags": "DIV"
+    }
+  ],
+  "textSections": [
+    {
+      "key": "intent-approve-tabs",
+      "text": "工作台 消费平台财务管理数据分析AI能力中心e档案系统管理",
+      "textHash": "ef0266769073e345",
+      "charCount": 29
+    },
+    {
+      "key": "intent-approve-table",
+      "text": "序号 创建日期 申请人 供应商名称 明细供应商名称 供应商银行账户 单据名称 事由 单号 币种 金额 本币金额 当前处理人 状态 提交日期 <NUM> <NUM>-<NUM>-<NUM> 管理员 - - - 对公采购申请单（零采） UI走查测试 DGCGSQD<NUM> CNY <NUM>.<NUM> <NUM>.<NUM> - 编辑中 - 操作 删除 复制",
+      "textHash": "1c40b51930802519",
+      "charCount": 180
+    },
+    {
+      "key": "golden-approve-tabs",
+      "text": "工作台 消费平台财务管理数据分析AI能力中心e档案系统管理",
+      "textHash": "ef0266769073e345",
+      "charCount": 29
+    },
+    {
+      "key": "golden-approve-table",
+      "text": "序号 创建日期 申请人 供应商名称 明细供应商名称 供应商银行账户 单据名称 事由 单号 币种 金额 本币金额 当前处理人 状态 提交日期 <NUM> <NUM>-<NUM>-<NUM> 管理员 - - - 对公采购申请单（零采） UI走查测试 DGCGSQD<NUM> CNY <NUM>.<NUM> <NUM>.<NUM> - 编辑中 - 操作 删除 复制",
+      "textHash": "1c40b51930802519",
+      "charCount": 180
+    },
+    {
+      "key": "request-list-root",
+      "text": "状态 : 全部 重 置 搜 索 新建对公申请单 代理对公申请单 序号 创建日期 申请人 供应商名称 明细供应商名称 供应商银行账户 单据名称 事由 单号 币种 金额 本币金额 当前处理人 状态 提交日期 <NUM> <NUM>-<NUM>-<NUM> 管理员 - - - 对公采购申请单（零采） UI走查测试 DGCGSQD<NUM> CNY <NUM>.<NUM> <NUM>.<NUM> - 编辑中 - 操作 删除 复制 批量授权 共<NUM>条 <NUM> <NUM> 条/页",
+      "textHash": "094b50b7e6143768",
+      "charCount": 241
+    },
+    {
+      "key": "request-list-table",
+      "text": "序号 创建日期 申请人 供应商名称 明细供应商名称 供应商银行账户 单据名称 事由 单号 币种 金额 本币金额 当前处理人 状态 提交日期 <NUM> <NUM>-<NUM>-<NUM> 管理员 - - - 对公采购申请单（零采） UI走查测试 DGCGSQD<NUM> CNY <NUM>.<NUM> <NUM>.<NUM> - 编辑中 - 操作 删除 复制",
+      "textHash": "1c40b51930802519",
+      "charCount": 180
+    },
+    {
+      "key": "request-search-table",
+      "text": "序号 创建日期 申请人 供应商名称 明细供应商名称 供应商银行账户 单据名称 事由 单号 币种 金额 本币金额 当前处理人 状态 提交日期 <NUM> <NUM>-<NUM>-<NUM> 管理员 - - - 对公采购申请单（零采） UI走查测试 DGCGSQD<NUM> CNY <NUM>.<NUM> <NUM>.<NUM> - 编辑中 - 操作 删除 复制",
+      "textHash": "1c40b51930802519",
+      "charCount": 180
+    },
+    {
+      "key": "request-detail-slide",
+      "text": "对公采购申请单（零采） 创建日期：<NUM>-<NUM>-<NUM> 制单人：管理员 单号：DGCGSQD<NUM> <NUM>-<NUM>-<NUM> <NUM>:<NUM> 单据已保存 管理员<NUM>江苏省精创电气股份有限公司江苏省精创电气股份有限公司（手工）|财务中心 展开 单据状态： 编辑中 单据金额 CNY <NUM>.<NUM> 单据信息 编 辑 费用承担公司：江苏省精创电气股份有限公司 费用承担部门：江苏省精创电气股份有限公司（手工）|财务中心 币种：CNY 人民币 流程加急：否 采购类型：供应类 采购原因： UI走查测试 附件：下载全部 <NUM> <COUNT>.jpg 采购人：管理员 申请明细 新建明细批量导入预算明细批量删除明细 费用模式 五金消耗|预算总额：CNY <NUM>.<NUM> 序号 费用大类 费用类型 币种 设备名称 型号 数量 单价 金额 标签 购买原因 要求交付时间 操作 <NUM> 生产消耗品 五金消耗 CNY <NUM> <NUM> <NUM> <NUM> <NUM> - <NUM> <NUM>-<NUM>-<NUM> 复制删除 提 交 删除单据授 权返 回",
+      "textHash": "c3252b2adc044393",
+      "charCount": 509
+    }
+  ],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "snapshotName": "ap-request-detail",
+  "state": "normal"
+}
