@@ -246,6 +246,7 @@ async function verifyRunner(kind: 'direct' | 'flow', test: Case): Promise<void> 
       stopOnTestFailure: true, stopOnCompareGate: true, runCompareAfterAbort: false,
       feishuMode: 'none', notifyOn: [], steps,
       description: 'offline', schedule: null, timezone: 'Asia/Shanghai', accountProfile: 'all',
+      scheduler: null, envs: [], flows: [],
     } as Parameters<typeof runner.runFlowJob>[0], ctx);
   }
   const skipped = test.compare === false || Boolean(test.nonGolden || test.empty || test.loginFailed)

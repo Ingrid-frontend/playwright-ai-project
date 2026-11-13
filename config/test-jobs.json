@@ -24,7 +24,7 @@
   "jobs": [
     {
       "id": "request-flow-golden",
-      "enabled": true,
+      "enabled": false,
       "description": "L1 申请单 Golden 回归（dev，golden* 角色串行跑 golden-regression）",
       "runner": "request-flow-golden",
       "tier": "L1",
@@ -49,7 +49,7 @@
     },
     {
       "id": "request-flow-golden-all-envs",
-      "enabled": true,
+      "enabled": false,
       "description": "L3 申请单 Golden 回归（全环境 golden* 角色串行跑 golden-regression，发版前手动触发）",
       "runner": "request-flow-golden",
       "tier": "L3",
@@ -74,7 +74,7 @@
     },
     {
       "id": "request-flow-write",
-      "enabled": true,
+      "enabled": false,
       "description": "申请单 Write 回归（dev，write 档案跑 travel-submit + full-flow）",
       "runner": "request-flow-write",
       "schedule": "0 3 * * 2,4",
@@ -98,7 +98,7 @@
     },
     {
       "id": "approval-flow-golden",
-      "enabled": true,
+      "enabled": false,
       "description": "L1 审批 Golden 回归（dev，golden* 角色串行跑 golden-regression，复用申请单登录态）",
       "runner": "approval-flow-golden",
       "tier": "L1",
@@ -123,7 +123,7 @@
     },
     {
       "id": "approval-flow-write",
-      "enabled": true,
+      "enabled": false,
       "description": "审批 Write 回归（dev，write 档案跑 approve-reject）",
       "runner": "approval-flow-write",
       "schedule": "0 4 * * 3",
@@ -172,7 +172,7 @@
     },
     {
       "id": "golden-all-flows",
-      "enabled": true,
+      "enabled": false,
       "description": "本机定时：dev、uat、stage9084 上申请单、审批、报销、对公申请单各做一次检测全部",
       "scheduler": "local",
       "schedule": "30 10 * * 1-5",
@@ -190,7 +190,7 @@
     },
     {
       "id": "catalog-drift-check",
-      "enabled": true,
+      "enabled": false,
       "description": "L2 catalog 漂移检测（dev，每日 09:00 北京，先于 10:00 golden 发现 UI 变更）",
       "runner": "catalog-drift-check",
       "tier": "L2",
